@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"perles/internal/watcher"
@@ -43,13 +42,13 @@ func TestWatcher_DebounceMultipleWrites(t *testing.T) {
 	case <-onChange:
 		// Expected
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected notification but got timeout")
+		require.Fail(t, "expected notification but got timeout")
 	}
 
 	// No second notification should come quickly
 	select {
 	case <-onChange:
-		t.Fatal("unexpected second notification")
+		require.Fail(t, "unexpected second notification")
 	case <-time.After(100 * time.Millisecond):
 		// Expected - no second notification
 	}
@@ -81,7 +80,7 @@ func TestWatcher_IgnoresIrrelevantFiles(t *testing.T) {
 
 	select {
 	case <-onChange:
-		t.Fatal("should not notify for unrelated files")
+		require.Fail(t, "should not notify for unrelated files")
 	case <-time.After(100 * time.Millisecond):
 		// Expected - no notification for unrelated file
 	}
@@ -106,7 +105,7 @@ func TestWatcher_Stop(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		err := w.Stop()
-		assert.NoError(t, err, "Stop returned error")
+		require.NoError(t, err, "Stop returned error")
 		close(done)
 	}()
 
@@ -114,7 +113,7 @@ func TestWatcher_Stop(t *testing.T) {
 	case <-done:
 		// Expected - stop completed successfully
 	case <-time.After(1 * time.Second):
-		t.Fatal("Stop() timed out - possible deadlock")
+		require.Fail(t, "Stop() timed out - possible deadlock")
 	}
 }
 
@@ -145,7 +144,7 @@ func TestWatcher_WatchesWALFile(t *testing.T) {
 	case <-onChange:
 		// Expected - WAL writes should trigger notification
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("expected notification for WAL file write")
+		require.Fail(t, "expected notification for WAL file write")
 	}
 }
 
@@ -153,6 +152,6 @@ func TestDefaultConfig(t *testing.T) {
 	dbPath := "/test/beads.db"
 	cfg := watcher.DefaultConfig(dbPath)
 
-	assert.Equal(t, dbPath, cfg.DBPath)
-	assert.Equal(t, 1*time.Second, cfg.DebounceDur)
+	require.Equal(t, dbPath, cfg.DBPath)
+	require.Equal(t, 1*time.Second, cfg.DebounceDur)
 }

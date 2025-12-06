@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew_InputMode(t *testing.T) {
@@ -17,15 +18,9 @@ func TestNew_InputMode(t *testing.T) {
 
 	m := New(cfg)
 
-	if !m.hasInputs {
-		t.Error("expected hasInputs to be true when Inputs is set")
-	}
-	if len(m.inputs) != 1 {
-		t.Errorf("expected 1 input, got %d", len(m.inputs))
-	}
-	if m.inputs[0].Placeholder != cfg.Inputs[0].Placeholder {
-		t.Errorf("expected placeholder %q, got %q", cfg.Inputs[0].Placeholder, m.inputs[0].Placeholder)
-	}
+	require.True(t, m.hasInputs, "expected hasInputs to be true when Inputs is set")
+	require.Len(t, m.inputs, 1)
+	require.Equal(t, cfg.Inputs[0].Placeholder, m.inputs[0].Placeholder)
 }
 
 func TestNew_ConfirmMode(t *testing.T) {
@@ -37,15 +32,9 @@ func TestNew_ConfirmMode(t *testing.T) {
 
 	m := New(cfg)
 
-	if m.hasInputs {
-		t.Error("expected hasInputs to be false when Inputs is empty")
-	}
-	if m.focusedInput != -1 {
-		t.Errorf("expected focusedInput -1 for confirm mode, got %d", m.focusedInput)
-	}
-	if m.focusedField != FieldSave {
-		t.Errorf("expected focusedField FieldSave for confirm mode, got %d", m.focusedField)
-	}
+	require.False(t, m.hasInputs, "expected hasInputs to be false when Inputs is empty")
+	require.Equal(t, -1, m.focusedInput, "expected focusedInput -1 for confirm mode")
+	require.Equal(t, FieldSave, m.focusedField, "expected focusedField FieldSave for confirm mode")
 }
 
 func TestNew_WithInitialValue(t *testing.T) {
@@ -58,9 +47,7 @@ func TestNew_WithInitialValue(t *testing.T) {
 
 	m := New(cfg)
 
-	if m.inputs[0].Value() != cfg.Inputs[0].Value {
-		t.Errorf("expected initial value %q, got %q", cfg.Inputs[0].Value, m.inputs[0].Value())
-	}
+	require.Equal(t, cfg.Inputs[0].Value, m.inputs[0].Value())
 }
 
 func TestNew_WithMaxLength(t *testing.T) {
@@ -73,9 +60,7 @@ func TestNew_WithMaxLength(t *testing.T) {
 
 	m := New(cfg)
 
-	if m.inputs[0].CharLimit != cfg.Inputs[0].MaxLength {
-		t.Errorf("expected CharLimit %d, got %d", cfg.Inputs[0].MaxLength, m.inputs[0].CharLimit)
-	}
+	require.Equal(t, cfg.Inputs[0].MaxLength, m.inputs[0].CharLimit)
 }
 
 func TestNew_MultipleInputs(t *testing.T) {
@@ -90,12 +75,10 @@ func TestNew_MultipleInputs(t *testing.T) {
 
 	m := New(cfg)
 
-	if len(m.inputs) != 3 {
-		t.Errorf("expected 3 inputs, got %d", len(m.inputs))
-	}
-	if m.inputKeys[0] != "first" || m.inputKeys[1] != "second" || m.inputKeys[2] != "third" {
-		t.Errorf("input keys not set correctly: %v", m.inputKeys)
-	}
+	require.Len(t, m.inputs, 3)
+	require.Equal(t, "first", m.inputKeys[0])
+	require.Equal(t, "second", m.inputKeys[1])
+	require.Equal(t, "third", m.inputKeys[2])
 }
 
 func TestInit_InputMode(t *testing.T) {
@@ -107,9 +90,7 @@ func TestInit_InputMode(t *testing.T) {
 	})
 
 	cmd := m.Init()
-	if cmd == nil {
-		t.Error("expected Init() to return textinput.Blink command for input mode")
-	}
+	require.NotNil(t, cmd, "expected Init() to return textinput.Blink command for input mode")
 }
 
 func TestInit_ConfirmMode(t *testing.T) {
@@ -118,9 +99,7 @@ func TestInit_ConfirmMode(t *testing.T) {
 	})
 
 	cmd := m.Init()
-	if cmd != nil {
-		t.Error("expected Init() to return nil for confirmation mode")
-	}
+	require.Nil(t, cmd, "expected Init() to return nil for confirmation mode")
 }
 
 func TestUpdate_Submit(t *testing.T) {
@@ -133,26 +112,19 @@ func TestUpdate_Submit(t *testing.T) {
 
 	// Navigate to Save button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedInput != -1 || m.focusedField != FieldSave {
-		t.Fatalf("expected focus on Save button, got input=%d field=%d", m.focusedInput, m.focusedField)
-	}
+	require.Equal(t, -1, m.focusedInput, "expected focus on Save button")
+	require.Equal(t, FieldSave, m.focusedField, "expected focus on Save button")
 
 	// Press enter on Save
 	enterMsg := tea.KeyMsg{Type: tea.KeyEnter}
 	m, cmd := m.Update(enterMsg)
 
-	if cmd == nil {
-		t.Fatal("expected command from Enter key on Save")
-	}
+	require.NotNil(t, cmd, "expected command from Enter key on Save")
 
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
-	if submitMsg.Values["name"] != "my value" {
-		t.Errorf("expected value %q, got %q", "my value", submitMsg.Values["name"])
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Equal(t, "my value", submitMsg.Values["name"])
 }
 
 func TestUpdate_Cancel(t *testing.T) {
@@ -166,15 +138,11 @@ func TestUpdate_Cancel(t *testing.T) {
 	escMsg := tea.KeyMsg{Type: tea.KeyEscape}
 	_, cmd := m.Update(escMsg)
 
-	if cmd == nil {
-		t.Fatal("expected command from Esc key")
-	}
+	require.NotNil(t, cmd, "expected command from Esc key")
 
 	msg := cmd()
 	_, ok := msg.(CancelMsg)
-	if !ok {
-		t.Fatalf("expected CancelMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected CancelMsg, got %T", msg)
 }
 
 func TestUpdate_CancelButton(t *testing.T) {
@@ -189,22 +157,16 @@ func TestUpdate_CancelButton(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
 
-	if m.focusedField != FieldCancel {
-		t.Fatalf("expected focus on Cancel, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldCancel, m.focusedField, "expected focus on Cancel")
 
 	// Press enter on Cancel
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected command from Enter on Cancel")
-	}
+	require.NotNil(t, cmd, "expected command from Enter on Cancel")
 
 	msg := cmd()
 	_, ok := msg.(CancelMsg)
-	if !ok {
-		t.Fatalf("expected CancelMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected CancelMsg, got %T", msg)
 }
 
 func TestUpdate_EmptySubmit(t *testing.T) {
@@ -224,9 +186,8 @@ func TestUpdate_EmptySubmit(t *testing.T) {
 
 	if cmd != nil {
 		msg := cmd()
-		if _, ok := msg.(SubmitMsg); ok {
-			t.Error("expected no SubmitMsg when input is empty in input mode")
-		}
+		_, ok := msg.(SubmitMsg)
+		require.False(t, ok, "expected no SubmitMsg when input is empty in input mode")
 	}
 }
 
@@ -238,25 +199,18 @@ func TestUpdate_ConfirmSubmit(t *testing.T) {
 	})
 
 	// Should start on Save button
-	if m.focusedInput != -1 || m.focusedField != FieldSave {
-		t.Fatalf("expected focus on Save, got input=%d field=%d", m.focusedInput, m.focusedField)
-	}
+	require.Equal(t, -1, m.focusedInput, "expected focus on Save")
+	require.Equal(t, FieldSave, m.focusedField, "expected focus on Save")
 
 	enterMsg := tea.KeyMsg{Type: tea.KeyEnter}
 	m, cmd := m.Update(enterMsg)
 
-	if cmd == nil {
-		t.Fatal("expected command from Enter key in confirmation mode")
-	}
+	require.NotNil(t, cmd, "expected command from Enter key in confirmation mode")
 
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
-	if len(submitMsg.Values) != 0 {
-		t.Errorf("expected empty values for confirmation mode, got %v", submitMsg.Values)
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Empty(t, submitMsg.Values, "expected empty values for confirmation mode")
 }
 
 func TestUpdate_WindowSizeMsg(t *testing.T) {
@@ -267,12 +221,8 @@ func TestUpdate_WindowSizeMsg(t *testing.T) {
 	sizeMsg := tea.WindowSizeMsg{Width: 100, Height: 50}
 	m, _ = m.Update(sizeMsg)
 
-	if m.width != 100 {
-		t.Errorf("expected width 100, got %d", m.width)
-	}
-	if m.height != 50 {
-		t.Errorf("expected height 50, got %d", m.height)
-	}
+	require.Equal(t, 100, m.width)
+	require.Equal(t, 50, m.height)
 }
 
 func TestUpdate_Navigation(t *testing.T) {
@@ -285,33 +235,24 @@ func TestUpdate_Navigation(t *testing.T) {
 	})
 
 	// Should start on first input
-	if m.focusedInput != 0 {
-		t.Errorf("expected focusedInput 0, got %d", m.focusedInput)
-	}
+	require.Equal(t, 0, m.focusedInput)
 
 	// Tab to second input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedInput != 1 {
-		t.Errorf("expected focusedInput 1 after tab, got %d", m.focusedInput)
-	}
+	require.Equal(t, 1, m.focusedInput, "expected focusedInput 1 after tab")
 
 	// Tab to Save button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedInput != -1 || m.focusedField != FieldSave {
-		t.Errorf("expected Save button focus, got input=%d field=%d", m.focusedInput, m.focusedField)
-	}
+	require.Equal(t, -1, m.focusedInput, "expected Save button focus")
+	require.Equal(t, FieldSave, m.focusedField, "expected Save button focus")
 
 	// Tab to Cancel button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedField != FieldCancel {
-		t.Errorf("expected Cancel button focus, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldCancel, m.focusedField, "expected Cancel button focus")
 
 	// Tab wraps to first input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedInput != 0 {
-		t.Errorf("expected wrap to first input, got %d", m.focusedInput)
-	}
+	require.Equal(t, 0, m.focusedInput, "expected wrap to first input")
 }
 
 func TestUpdate_NavigationReverse(t *testing.T) {
@@ -324,21 +265,15 @@ func TestUpdate_NavigationReverse(t *testing.T) {
 
 	// Start on input, shift+tab should go to Cancel
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedField != FieldCancel {
-		t.Errorf("expected Cancel from shift+tab, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldCancel, m.focusedField, "expected Cancel from shift+tab")
 
 	// Shift+tab to Save
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedField != FieldSave {
-		t.Errorf("expected Save from shift+tab, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldSave, m.focusedField, "expected Save from shift+tab")
 
 	// Shift+tab wraps to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedInput != 0 {
-		t.Errorf("expected wrap to input, got %d", m.focusedInput)
-	}
+	require.Equal(t, 0, m.focusedInput, "expected wrap to input")
 }
 
 func TestUpdate_HorizontalNavigation(t *testing.T) {
@@ -347,21 +282,15 @@ func TestUpdate_HorizontalNavigation(t *testing.T) {
 	})
 
 	// Confirm mode starts on Save
-	if m.focusedField != FieldSave {
-		t.Fatalf("expected Save focus, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldSave, m.focusedField, "expected Save focus")
 
 	// Right to Cancel
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if m.focusedField != FieldCancel {
-		t.Errorf("expected Cancel after right, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldCancel, m.focusedField, "expected Cancel after right")
 
 	// Left back to Save
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	if m.focusedField != FieldSave {
-		t.Errorf("expected Save after left, got %d", m.focusedField)
-	}
+	require.Equal(t, FieldSave, m.focusedField, "expected Save after left")
 }
 
 func TestView_InputMode(t *testing.T) {
@@ -375,24 +304,16 @@ func TestView_InputMode(t *testing.T) {
 	view := m.View()
 
 	// Should contain title
-	if !containsString(view, "New View") {
-		t.Error("expected view to contain title")
-	}
+	require.True(t, containsString(view, "New View"), "expected view to contain title")
 
 	// Should contain input label
-	if !containsString(view, "View Name") {
-		t.Error("expected view to contain input label")
-	}
+	require.True(t, containsString(view, "View Name"), "expected view to contain input label")
 
 	// Should contain Save button
-	if !containsString(view, "Save") {
-		t.Error("expected view to contain 'Save' button")
-	}
+	require.True(t, containsString(view, "Save"), "expected view to contain 'Save' button")
 
 	// Should contain Cancel button
-	if !containsString(view, "Cancel") {
-		t.Error("expected view to contain 'Cancel' button")
-	}
+	require.True(t, containsString(view, "Cancel"), "expected view to contain 'Cancel' button")
 }
 
 func TestView_ConfirmMode(t *testing.T) {
@@ -404,24 +325,16 @@ func TestView_ConfirmMode(t *testing.T) {
 	view := m.View()
 
 	// Should contain title
-	if !containsString(view, "Delete View") {
-		t.Error("expected view to contain title")
-	}
+	require.True(t, containsString(view, "Delete View"), "expected view to contain title")
 
 	// Should contain message
-	if !containsString(view, "Are you sure") {
-		t.Error("expected view to contain message")
-	}
+	require.True(t, containsString(view, "Are you sure"), "expected view to contain message")
 
 	// Should contain Confirm button
-	if !containsString(view, "Confirm") {
-		t.Error("expected view to contain 'Confirm' button")
-	}
+	require.True(t, containsString(view, "Confirm"), "expected view to contain 'Confirm' button")
 
 	// Should contain Cancel button
-	if !containsString(view, "Cancel") {
-		t.Error("expected view to contain 'Cancel' button")
-	}
+	require.True(t, containsString(view, "Cancel"), "expected view to contain 'Cancel' button")
 }
 
 func TestSetSize(t *testing.T) {
@@ -429,12 +342,8 @@ func TestSetSize(t *testing.T) {
 
 	m.SetSize(200, 100)
 
-	if m.width != 200 {
-		t.Errorf("expected width 200, got %d", m.width)
-	}
-	if m.height != 100 {
-		t.Errorf("expected height 100, got %d", m.height)
-	}
+	require.Equal(t, 200, m.width)
+	require.Equal(t, 100, m.height)
 }
 
 func TestOverlay(t *testing.T) {
@@ -457,14 +366,10 @@ func TestOverlay(t *testing.T) {
 	result := m.Overlay(bg)
 
 	// Result should contain modal content
-	if !containsString(result, "Test Modal") {
-		t.Error("expected overlay to contain modal content")
-	}
+	require.True(t, containsString(result, "Test Modal"), "expected overlay to contain modal content")
 
 	// Result should still have some background dots
-	if !containsString(result, "...") {
-		t.Error("expected overlay to preserve some background")
-	}
+	require.True(t, containsString(result, "..."), "expected overlay to preserve some background")
 }
 
 // containsString checks if s contains substr, ignoring ANSI escape sequences

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"perles/internal/beads"
 
@@ -62,7 +62,7 @@ func TestDetails_New(t *testing.T) {
 		Status:    beads.StatusOpen,
 	}
 	m := New(issue, nil, nil)
-	assert.Equal(t, "test-1", m.issue.ID)
+	require.Equal(t, "test-1", m.issue.ID)
 }
 
 func TestDetails_SetSize(t *testing.T) {
@@ -72,9 +72,9 @@ func TestDetails_SetSize(t *testing.T) {
 	}
 	m := New(issue, nil, nil)
 	m = m.SetSize(100, 40)
-	assert.Equal(t, 100, m.width)
-	assert.Equal(t, 40, m.height)
-	assert.True(t, m.ready, "expected model to be ready after SetSize")
+	require.Equal(t, 100, m.width)
+	require.Equal(t, 40, m.height)
+	require.True(t, m.ready, "expected model to be ready after SetSize")
 }
 
 func TestDetails_View_NotReady(t *testing.T) {
@@ -82,7 +82,7 @@ func TestDetails_View_NotReady(t *testing.T) {
 	m := New(issue, nil, nil)
 	// Without SetSize, ready is false
 	view := m.View()
-	assert.Equal(t, "Loading...", view, "expected 'Loading...' when not ready")
+	require.Equal(t, "Loading...", view, "expected 'Loading...' when not ready")
 }
 
 func TestDetails_View_Ready(t *testing.T) {
@@ -98,8 +98,8 @@ func TestDetails_View_Ready(t *testing.T) {
 	m = m.SetSize(100, 40)
 	view := m.View()
 
-	assert.Contains(t, view, "test-1", "expected view to contain issue ID")
-	assert.Contains(t, view, "Test Issue", "expected view to contain title")
+	require.Contains(t, view, "test-1", "expected view to contain issue ID")
+	require.Contains(t, view, "Test Issue", "expected view to contain title")
 }
 
 func TestDetails_View_WithDescription(t *testing.T) {
@@ -115,7 +115,7 @@ func TestDetails_View_WithDescription(t *testing.T) {
 
 	// Description is rendered with markdown styling (strip ANSI for checking)
 	stripped := stripANSI(view)
-	assert.Contains(t, stripped, "detailed description", "expected view to contain description text")
+	require.Contains(t, stripped, "detailed description", "expected view to contain description text")
 }
 
 func TestDetails_View_WithDependencies(t *testing.T) {
@@ -131,9 +131,9 @@ func TestDetails_View_WithDependencies(t *testing.T) {
 	view := m.View()
 
 	// Dependencies now render in right column with section headers (no colon)
-	assert.Contains(t, view, "Blocked by", "expected view to contain 'Blocked by' section")
-	assert.Contains(t, view, "Blocks", "expected view to contain 'Blocks' section")
-	assert.Contains(t, view, "blocker-1", "expected view to contain blocker ID")
+	require.Contains(t, view, "Blocked by", "expected view to contain 'Blocked by' section")
+	require.Contains(t, view, "Blocks", "expected view to contain 'Blocks' section")
+	require.Contains(t, view, "blocker-1", "expected view to contain blocker ID")
 }
 
 func TestDetails_View_WithLabels(t *testing.T) {
@@ -148,8 +148,8 @@ func TestDetails_View_WithLabels(t *testing.T) {
 	view := m.View()
 
 	// Check for label values (displayed in right column in two-column layout)
-	assert.Contains(t, view, "bug", "expected view to contain label 'bug'")
-	assert.Contains(t, view, "urgent", "expected view to contain label 'urgent'")
+	require.Contains(t, view, "bug", "expected view to contain label 'bug'")
+	require.Contains(t, view, "urgent", "expected view to contain label 'urgent'")
 }
 
 func TestDetails_Update_ScrollDown(t *testing.T) {
@@ -164,7 +164,7 @@ func TestDetails_Update_ScrollDown(t *testing.T) {
 
 	initialOffset := m.viewport.YOffset
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	assert.Greater(t, m.viewport.YOffset, initialOffset, "expected viewport to scroll down on 'j' key")
+	require.Greater(t, m.viewport.YOffset, initialOffset, "expected viewport to scroll down on 'j' key")
 }
 
 func TestDetails_Update_ScrollUp(t *testing.T) {
@@ -184,7 +184,7 @@ func TestDetails_Update_ScrollUp(t *testing.T) {
 
 	// Then scroll up
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	assert.Less(t, m.viewport.YOffset, afterDown, "expected viewport to scroll up on 'k' key")
+	require.Less(t, m.viewport.YOffset, afterDown, "expected viewport to scroll up on 'k' key")
 }
 
 func TestDetails_Update_GotoTop(t *testing.T) {
@@ -203,7 +203,7 @@ func TestDetails_Update_GotoTop(t *testing.T) {
 
 	// Go to top
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
-	assert.Equal(t, 0, m.viewport.YOffset, "expected viewport at top after 'g'")
+	require.Equal(t, 0, m.viewport.YOffset, "expected viewport at top after 'g'")
 }
 
 func TestDetails_Update_GotoBottom(t *testing.T) {
@@ -219,7 +219,7 @@ func TestDetails_Update_GotoBottom(t *testing.T) {
 	// Go to bottom
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
 	// Should be at or near bottom
-	assert.NotEqual(t, 0, m.viewport.YOffset, "expected viewport to scroll to bottom on 'G'")
+	require.NotEqual(t, 0, m.viewport.YOffset, "expected viewport to scroll to bottom on 'G'")
 }
 
 func TestDetails_SetSize_TwiceUpdatesViewport(t *testing.T) {
@@ -232,8 +232,8 @@ func TestDetails_SetSize_TwiceUpdatesViewport(t *testing.T) {
 	m = m.SetSize(100, 40)
 	m = m.SetSize(80, 30) // Resize
 
-	assert.Equal(t, 80, m.width, "expected width 80 after resize")
-	assert.Equal(t, 30, m.height, "expected height 30 after resize")
+	require.Equal(t, 80, m.width, "expected width 80 after resize")
+	require.Equal(t, 30, m.height, "expected height 30 after resize")
 }
 
 func TestDetails_View_AllTypes(t *testing.T) {
@@ -255,7 +255,7 @@ func TestDetails_View_AllTypes(t *testing.T) {
 		m := New(issue, nil, nil)
 		m = m.SetSize(100, 40)
 		view := m.View()
-		assert.NotEmpty(t, view, "expected non-empty view for type %s", issueType)
+		require.NotEmpty(t, view, "expected non-empty view for type %s", issueType)
 	}
 }
 
@@ -278,7 +278,7 @@ func TestDetails_View_AllPriorities(t *testing.T) {
 		m := New(issue, nil, nil)
 		m = m.SetSize(100, 40)
 		view := m.View()
-		assert.NotEmpty(t, view, "expected non-empty view for priority %d", priority)
+		require.NotEmpty(t, view, "expected non-empty view for priority %d", priority)
 	}
 }
 
@@ -296,9 +296,9 @@ func TestDetails_View_MarkdownDescription(t *testing.T) {
 
 	// Content should be preserved in rendered output (strip ANSI for checking)
 	stripped := stripANSI(view)
-	assert.Contains(t, stripped, "Heading", "expected view to contain 'Heading'")
-	assert.Contains(t, stripped, "bold", "expected view to contain 'bold'")
-	assert.Contains(t, stripped, "Item 1", "expected view to contain 'Item 1'")
+	require.Contains(t, stripped, "Heading", "expected view to contain 'Heading'")
+	require.Contains(t, stripped, "bold", "expected view to contain 'bold'")
+	require.Contains(t, stripped, "Item 1", "expected view to contain 'Item 1'")
 }
 
 func TestDetails_View_MarkdownCodeBlock(t *testing.T) {
@@ -314,8 +314,8 @@ func TestDetails_View_MarkdownCodeBlock(t *testing.T) {
 
 	// Code content should be preserved (strip ANSI for checking)
 	stripped := stripANSI(view)
-	assert.Contains(t, stripped, "func", "expected view to contain 'func'")
-	assert.Contains(t, stripped, "example", "expected view to contain 'example'")
+	require.Contains(t, stripped, "func", "expected view to contain 'func'")
+	require.Contains(t, stripped, "example", "expected view to contain 'example'")
 }
 
 func TestDetails_RendererInitialization(t *testing.T) {
@@ -328,12 +328,12 @@ func TestDetails_RendererInitialization(t *testing.T) {
 	m := New(issue, nil, nil)
 
 	// Before SetSize, mdRenderer should be nil
-	assert.Nil(t, m.mdRenderer, "expected mdRenderer to be nil before SetSize")
+	require.Nil(t, m.mdRenderer, "expected mdRenderer to be nil before SetSize")
 
 	m = m.SetSize(100, 40)
 
 	// After SetSize, mdRenderer should be initialized
-	assert.NotNil(t, m.mdRenderer, "expected mdRenderer to be initialized after SetSize")
+	require.NotNil(t, m.mdRenderer, "expected mdRenderer to be initialized after SetSize")
 }
 
 func TestDetails_SingleColumnFallback(t *testing.T) {
@@ -353,8 +353,8 @@ func TestDetails_SingleColumnFallback(t *testing.T) {
 	view := m.View()
 
 	// Single-column layout should have type indicator in title (column list style)
-	assert.Contains(t, view, "[T]", "expected single-column view to contain type indicator in title")
-	assert.Contains(t, view, "[P1]", "expected single-column view to contain priority indicator in title")
+	require.Contains(t, view, "[T]", "expected single-column view to contain type indicator in title")
+	require.Contains(t, view, "[P1]", "expected single-column view to contain priority indicator in title")
 }
 
 func TestDetails_TwoColumnLayout(t *testing.T) {
@@ -376,10 +376,10 @@ func TestDetails_TwoColumnLayout(t *testing.T) {
 	// Two-column layout should NOT have inline metadata in header
 	// Instead, metadata appears in right column without colons
 	hasInlineMetadata := strings.Contains(view, "Type:") && strings.Contains(view, "Priority:") && strings.Contains(view, "Status:")
-	assert.False(t, hasInlineMetadata, "expected two-column view to NOT have inline metadata in header")
+	require.False(t, hasInlineMetadata, "expected two-column view to NOT have inline metadata in header")
 
 	// Right column should show metadata values
-	assert.Contains(t, view, "Priority", "expected two-column view to contain Priority label")
+	require.Contains(t, view, "Priority", "expected two-column view to contain Priority label")
 }
 
 func TestDetails_EmptyDescription(t *testing.T) {
@@ -393,7 +393,7 @@ func TestDetails_EmptyDescription(t *testing.T) {
 	view := m.View()
 
 	// Should render without errors
-	assert.Contains(t, view, "test-1", "expected view to contain issue ID")
+	require.Contains(t, view, "test-1", "expected view to contain issue ID")
 }
 
 func TestDetails_NoLabels(t *testing.T) {
@@ -408,7 +408,7 @@ func TestDetails_NoLabels(t *testing.T) {
 	view := m.View()
 
 	// Should render without errors
-	assert.Contains(t, view, "test-1", "expected view to contain issue ID")
+	require.Contains(t, view, "test-1", "expected view to contain issue ID")
 }
 
 func TestDetails_ManyLabels(t *testing.T) {
@@ -424,7 +424,7 @@ func TestDetails_ManyLabels(t *testing.T) {
 
 	// All labels should be visible
 	for _, label := range issue.Labels {
-		assert.Contains(t, view, label, "expected view to contain label '%s'", label)
+		require.Contains(t, view, label, "expected view to contain label '%s'", label)
 	}
 }
 
@@ -441,7 +441,7 @@ func TestDetails_LongDependencyList(t *testing.T) {
 
 	// All dependencies should be visible
 	for _, dep := range issue.BlockedBy {
-		assert.Contains(t, view, dep, "expected view to contain dependency '%s'", dep)
+		require.Contains(t, view, dep, "expected view to contain dependency '%s'", dep)
 	}
 }
 
@@ -466,11 +466,11 @@ func TestDetails_TerminalResize(t *testing.T) {
 	narrowView := m.View()
 
 	// Both views should render without errors
-	assert.Contains(t, wideView, "test-1", "expected wide view to contain issue ID")
-	assert.Contains(t, narrowView, "test-1", "expected narrow view to contain issue ID")
+	require.Contains(t, wideView, "test-1", "expected wide view to contain issue ID")
+	require.Contains(t, narrowView, "test-1", "expected narrow view to contain issue ID")
 
 	// Narrow view should have type indicator in title (single-column uses column list style)
-	assert.Contains(t, narrowView, "[T]", "expected narrow view to contain type indicator")
+	require.Contains(t, narrowView, "[T]", "expected narrow view to contain type indicator")
 }
 
 // Tests for scrolling behavior
@@ -487,11 +487,11 @@ func TestDetails_JKScrollsViewport(t *testing.T) {
 
 	initialOffset := m.viewport.YOffset
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	assert.Greater(t, m.viewport.YOffset, initialOffset, "expected viewport to scroll down on 'j'")
+	require.Greater(t, m.viewport.YOffset, initialOffset, "expected viewport to scroll down on 'j'")
 
 	// Scroll back up
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	assert.Equal(t, initialOffset, m.viewport.YOffset, "expected viewport to scroll back up on 'k'")
+	require.Equal(t, initialOffset, m.viewport.YOffset, "expected viewport to scroll back up on 'k'")
 }
 
 func TestDetails_DependencyNavigation_LToFocusDeps(t *testing.T) {
@@ -505,28 +505,28 @@ func TestDetails_DependencyNavigation_LToFocusDeps(t *testing.T) {
 	m = m.SetSize(100, 40)
 
 	// Initially on content pane
-	assert.Equal(t, FocusContent, m.focusPane, "expected content pane initially")
+	require.Equal(t, FocusContent, m.focusPane, "expected content pane initially")
 
 	// Press 'l' to focus dependencies
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, FocusMetadata, m.focusPane, "expected metadata pane after 'l'")
-	assert.Equal(t, 0, m.selectedDependency, "expected first dependency selected")
+	require.Equal(t, FocusMetadata, m.focusPane, "expected metadata pane after 'l'")
+	require.Equal(t, 0, m.selectedDependency, "expected first dependency selected")
 
 	// Press 'j' to navigate to next dependency
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	assert.Equal(t, 1, m.selectedDependency, "expected second dependency")
+	require.Equal(t, 1, m.selectedDependency, "expected second dependency")
 
 	// Press 'k' to go back
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	assert.Equal(t, 0, m.selectedDependency, "expected first dependency")
+	require.Equal(t, 0, m.selectedDependency, "expected first dependency")
 
 	// Wrap around with 'k'
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	assert.Equal(t, 2, m.selectedDependency, "expected wrap to last dependency")
+	require.Equal(t, 2, m.selectedDependency, "expected wrap to last dependency")
 
 	// Press 'h' to return to content
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, FocusContent, m.focusPane, "expected content pane after 'h'")
+	require.Equal(t, FocusContent, m.focusPane, "expected content pane after 'h'")
 }
 
 func TestDetails_DependencyNavigation_EnterNavigates(t *testing.T) {
@@ -541,17 +541,17 @@ func TestDetails_DependencyNavigation_EnterNavigates(t *testing.T) {
 
 	// Focus dependencies with 'l'
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, FocusMetadata, m.focusPane)
-	assert.Equal(t, 0, m.selectedDependency)
+	require.Equal(t, FocusMetadata, m.focusPane)
+	require.Equal(t, 0, m.selectedDependency)
 
 	// Press Enter
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	assert.NotNil(t, cmd, "expected command from Enter on dependency")
+	require.NotNil(t, cmd, "expected command from Enter on dependency")
 
 	msg := cmd()
 	navMsg, ok := msg.(NavigateToDependencyMsg)
-	assert.True(t, ok, "expected NavigateToDependencyMsg")
-	assert.Equal(t, "target-dep", navMsg.IssueID)
+	require.True(t, ok, "expected NavigateToDependencyMsg")
+	require.Equal(t, "target-dep", navMsg.IssueID)
 }
 
 func TestDetails_DependencyNavigation_EnterNoOpOnContentPane(t *testing.T) {
@@ -565,11 +565,11 @@ func TestDetails_DependencyNavigation_EnterNoOpOnContentPane(t *testing.T) {
 	m = m.SetSize(100, 40)
 
 	// Stay on content pane (don't press 'l')
-	assert.Equal(t, FocusContent, m.focusPane)
+	require.Equal(t, FocusContent, m.focusPane)
 
 	// Press Enter - should return nil command
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	assert.Nil(t, cmd, "expected nil command when on content pane")
+	require.Nil(t, cmd, "expected nil command when on content pane")
 }
 
 func TestDetails_DependencyNavigation_LNoOpWithoutDeps(t *testing.T) {
@@ -584,7 +584,7 @@ func TestDetails_DependencyNavigation_LNoOpWithoutDeps(t *testing.T) {
 
 	// Press 'l' - should stay on content (no deps to focus)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, FocusContent, m.focusPane, "expected to stay on content when no deps")
+	require.Equal(t, FocusContent, m.focusPane, "expected to stay on content when no deps")
 }
 
 func TestDetails_DeleteKey_EmitsDeleteIssueMsg(t *testing.T) {
@@ -601,12 +601,12 @@ func TestDetails_DeleteKey_EmitsDeleteIssueMsg(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
 	// Should return a command that produces DeleteIssueMsg
-	assert.NotNil(t, cmd, "expected command from 'd' key")
+	require.NotNil(t, cmd, "expected command from 'd' key")
 	msg := cmd()
 	deleteMsg, ok := msg.(DeleteIssueMsg)
-	assert.True(t, ok, "expected DeleteIssueMsg")
-	assert.Equal(t, "test-1", deleteMsg.IssueID)
-	assert.Equal(t, beads.TypeTask, deleteMsg.IssueType)
+	require.True(t, ok, "expected DeleteIssueMsg")
+	require.Equal(t, "test-1", deleteMsg.IssueID)
+	require.Equal(t, beads.TypeTask, deleteMsg.IssueType)
 }
 
 func TestDetails_DeleteKey_EpicType(t *testing.T) {
@@ -624,9 +624,9 @@ func TestDetails_DeleteKey_EpicType(t *testing.T) {
 
 	msg := cmd()
 	deleteMsg, ok := msg.(DeleteIssueMsg)
-	assert.True(t, ok, "expected DeleteIssueMsg")
-	assert.Equal(t, "epic-1", deleteMsg.IssueID)
-	assert.Equal(t, beads.TypeEpic, deleteMsg.IssueType, "expected epic type for cascade handling")
+	require.True(t, ok, "expected DeleteIssueMsg")
+	require.Equal(t, "epic-1", deleteMsg.IssueID)
+	require.Equal(t, beads.TypeEpic, deleteMsg.IssueType, "expected epic type for cascade handling")
 }
 
 func TestDetails_FooterShowsDeleteKeybinding(t *testing.T) {
@@ -639,7 +639,7 @@ func TestDetails_FooterShowsDeleteKeybinding(t *testing.T) {
 	m = m.SetSize(100, 40)
 	view := m.View()
 
-	assert.Contains(t, view, "[d] Delete Issue", "expected footer to show delete keybinding")
+	require.Contains(t, view, "[d] Delete Issue", "expected footer to show delete keybinding")
 }
 
 // TestDetails_View_Golden uses teatest golden file comparison.

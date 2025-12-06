@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/require"
 )
 
 // getValues extracts field values from the model (test helper, accesses internal state)
@@ -33,36 +34,24 @@ func TestFocusCycling_Forward(t *testing.T) {
 	m := New(cfg)
 
 	// Start on first field
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex)
 
 	// Tab to second field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != 1 {
-		t.Errorf("expected focused index 1, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 1, m.focusedIndex)
 
 	// Tab to submit button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focused index -1 (buttons), got %d", m.focusedIndex)
-	}
-	if m.focusedButton != 0 {
-		t.Errorf("expected focused button 0 (submit), got %d", m.focusedButton)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
+	require.Equal(t, 0, m.focusedButton, "expected submit button")
 
 	// Tab to cancel button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedButton != 1 {
-		t.Errorf("expected focused button 1 (cancel), got %d", m.focusedButton)
-	}
+	require.Equal(t, 1, m.focusedButton, "expected cancel button")
 
 	// Tab wraps to first field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0 (wrapped), got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex, "expected wrapped to first field")
 }
 
 func TestFocusCycling_Reverse(t *testing.T) {
@@ -76,36 +65,24 @@ func TestFocusCycling_Reverse(t *testing.T) {
 	m := New(cfg)
 
 	// Start on first field
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex)
 
 	// Shift+Tab wraps to cancel button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focused index -1 (buttons), got %d", m.focusedIndex)
-	}
-	if m.focusedButton != 1 {
-		t.Errorf("expected focused button 1 (cancel), got %d", m.focusedButton)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
+	require.Equal(t, 1, m.focusedButton, "expected cancel button")
 
 	// Shift+Tab to submit button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedButton != 0 {
-		t.Errorf("expected focused button 0 (submit), got %d", m.focusedButton)
-	}
+	require.Equal(t, 0, m.focusedButton, "expected submit button")
 
 	// Shift+Tab to second field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedIndex != 1 {
-		t.Errorf("expected focused index 1, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 1, m.focusedIndex)
 
 	// Shift+Tab to first field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex)
 }
 
 func TestFocusCycling_NoFields(t *testing.T) {
@@ -115,24 +92,16 @@ func TestFocusCycling_NoFields(t *testing.T) {
 	m := New(cfg)
 
 	// Start on submit button
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focused index -1 (buttons), got %d", m.focusedIndex)
-	}
-	if m.focusedButton != 0 {
-		t.Errorf("expected focused button 0 (submit), got %d", m.focusedButton)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
+	require.Equal(t, 0, m.focusedButton, "expected submit button")
 
 	// Tab to cancel button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedButton != 1 {
-		t.Errorf("expected focused button 1 (cancel), got %d", m.focusedButton)
-	}
+	require.Equal(t, 1, m.focusedButton, "expected cancel button")
 
 	// Tab wraps to submit button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedButton != 0 {
-		t.Errorf("expected focused button 0 (submit), got %d", m.focusedButton)
-	}
+	require.Equal(t, 0, m.focusedButton, "expected submit button wrap")
 }
 
 // --- Keyboard Navigation Tests ---
@@ -148,15 +117,11 @@ func TestKeyboard_CtrlN_CtrlP(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}, Alt: false})
 	// Note: tea.KeyMsg with ctrl+n comes as string "ctrl+n"
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
-	if m.focusedIndex != -1 {
-		t.Errorf("ctrl+n: expected focused index -1, got %d", m.focusedIndex)
-	}
+	require.Equal(t, -1, m.focusedIndex, "ctrl+n: expected buttons focus")
 
 	// Ctrl+P should go back like Shift+Tab
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
-	if m.focusedIndex != 0 {
-		t.Errorf("ctrl+p: expected focused index 0, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex, "ctrl+p: expected field focus")
 }
 
 func TestKeyboard_Enter_AdvancesField(t *testing.T) {
@@ -171,9 +136,7 @@ func TestKeyboard_Enter_AdvancesField(t *testing.T) {
 
 	// Enter on first field advances to second
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.focusedIndex != 1 {
-		t.Errorf("expected focused index 1, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 1, m.focusedIndex)
 }
 
 func TestKeyboard_Esc_SendsCancelMsg(t *testing.T) {
@@ -184,13 +147,10 @@ func TestKeyboard_Esc_SendsCancelMsg(t *testing.T) {
 	m := New(cfg)
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatal("expected cancel command, got nil")
-	}
+	require.NotNil(t, cmd, "expected cancel command")
 	msg := cmd()
-	if _, ok := msg.(CancelMsg); !ok {
-		t.Errorf("expected CancelMsg, got %T", msg)
-	}
+	_, ok := msg.(CancelMsg)
+	require.True(t, ok, "expected CancelMsg, got %T", msg)
 }
 
 func TestKeyboard_ButtonNavigation_LeftRight(t *testing.T) {
@@ -200,32 +160,22 @@ func TestKeyboard_ButtonNavigation_LeftRight(t *testing.T) {
 	m := New(cfg)
 
 	// Start on submit button (0)
-	if m.focusedButton != 0 {
-		t.Errorf("expected button 0, got %d", m.focusedButton)
-	}
+	require.Equal(t, 0, m.focusedButton)
 
 	// Right/l moves to cancel
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if m.focusedButton != 1 {
-		t.Errorf("expected button 1 after right, got %d", m.focusedButton)
-	}
+	require.Equal(t, 1, m.focusedButton, "after right")
 
 	// Left/h moves back to submit
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	if m.focusedButton != 0 {
-		t.Errorf("expected button 0 after left, got %d", m.focusedButton)
-	}
+	require.Equal(t, 0, m.focusedButton, "after left")
 
 	// Test with h/l keys
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	if m.focusedButton != 1 {
-		t.Errorf("expected button 1 after 'l', got %d", m.focusedButton)
-	}
+	require.Equal(t, 1, m.focusedButton, "after 'l'")
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	if m.focusedButton != 0 {
-		t.Errorf("expected button 0 after 'h', got %d", m.focusedButton)
-	}
+	require.Equal(t, 0, m.focusedButton, "after 'h'")
 }
 
 // --- Submit Tests ---
@@ -244,17 +194,11 @@ func TestSubmit_EnterOnSubmitButton(t *testing.T) {
 
 	// Press Enter
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
-	if submitMsg.Values["name"] != "test" {
-		t.Errorf("expected name='test', got %v", submitMsg.Values["name"])
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Equal(t, "test", submitMsg.Values["name"])
 }
 
 func TestSubmit_EnterOnCancelButton(t *testing.T) {
@@ -268,13 +212,10 @@ func TestSubmit_EnterOnCancelButton(t *testing.T) {
 
 	// Press Enter
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected cancel command, got nil")
-	}
+	require.NotNil(t, cmd, "expected cancel command")
 	msg := cmd()
-	if _, ok := msg.(CancelMsg); !ok {
-		t.Errorf("expected CancelMsg, got %T", msg)
-	}
+	_, ok := msg.(CancelMsg)
+	require.True(t, ok, "expected CancelMsg, got %T", msg)
 }
 
 // --- Validation Tests ---
@@ -300,12 +241,8 @@ func TestValidation_Error(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should have validation error, no command
-	if cmd != nil {
-		t.Error("expected nil command due to validation error")
-	}
-	if m.validationError != "Name is required" {
-		t.Errorf("expected validation error 'Name is required', got '%s'", m.validationError)
-	}
+	require.Nil(t, cmd, "expected nil command due to validation error")
+	require.Equal(t, "Name is required", m.validationError)
 }
 
 func TestValidation_Success(t *testing.T) {
@@ -329,13 +266,10 @@ func TestValidation_Success(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should succeed
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
-	if _, ok := msg.(SubmitMsg); !ok {
-		t.Errorf("expected SubmitMsg, got %T", msg)
-	}
+	_, ok := msg.(SubmitMsg)
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
 }
 
 // --- List Field Tests ---
@@ -359,32 +293,22 @@ func TestListField_Navigation(t *testing.T) {
 	m := New(cfg)
 
 	// Cursor starts at 0
-	if m.fields[0].listCursor != 0 {
-		t.Errorf("expected cursor at 0, got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 0, m.fields[0].listCursor)
 
 	// j/down moves cursor down
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected cursor at 1 after 'j', got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 1, m.fields[0].listCursor, "after 'j'")
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.fields[0].listCursor != 2 {
-		t.Errorf("expected cursor at 2 after down, got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 2, m.fields[0].listCursor, "after down")
 
 	// At boundary, doesn't go past
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.fields[0].listCursor != 2 {
-		t.Errorf("expected cursor at 2 (boundary), got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 2, m.fields[0].listCursor, "at boundary")
 
 	// k/up moves cursor up
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected cursor at 1 after 'k', got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 1, m.fields[0].listCursor, "after 'k'")
 }
 
 func TestListField_Selection_MultiSelect(t *testing.T) {
@@ -407,21 +331,15 @@ func TestListField_Selection_MultiSelect(t *testing.T) {
 
 	// Space toggles selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be selected after space")
-	}
+	require.True(t, m.fields[0].listItems[0].selected, "expected item 0 selected after space")
 
 	// Move to item 2 and select it too
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	if !m.fields[0].listItems[1].selected {
-		t.Error("expected item 1 to be selected after space")
-	}
+	require.True(t, m.fields[0].listItems[1].selected, "expected item 1 selected after space")
 
 	// Both items should be selected (multi-select)
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to remain selected in multi-select")
-	}
+	require.True(t, m.fields[0].listItems[0].selected, "expected item 0 to remain selected in multi-select")
 }
 
 func TestListField_Selection_SingleSelect(t *testing.T) {
@@ -445,23 +363,17 @@ func TestListField_Selection_SingleSelect(t *testing.T) {
 
 	// Select first item
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be selected")
-	}
+	require.True(t, m.fields[0].listItems[0].selected, "expected item 0 selected")
 
 	// Move to second item and select
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
 	// Second item should be selected
-	if !m.fields[0].listItems[1].selected {
-		t.Error("expected item 1 to be selected")
-	}
+	require.True(t, m.fields[0].listItems[1].selected, "expected item 1 selected")
 
 	// First item should be deselected (single-select behavior)
-	if m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be deselected in single-select mode")
-	}
+	require.False(t, m.fields[0].listItems[0].selected, "expected item 0 deselected in single-select mode")
 }
 
 func TestListField_TabExitsList(t *testing.T) {
@@ -482,15 +394,11 @@ func TestListField_TabExitsList(t *testing.T) {
 	m := New(cfg)
 
 	// Start on list field
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex)
 
 	// Tab should move to buttons
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focus on buttons (-1), got %d", m.focusedIndex)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected focus on buttons")
 }
 
 func TestListField_ShiftTabEntersFromNextField(t *testing.T) {
@@ -512,15 +420,11 @@ func TestListField_ShiftTabEntersFromNextField(t *testing.T) {
 
 	// Move to second field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != 1 {
-		t.Errorf("expected focused index 1, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 1, m.focusedIndex)
 
 	// Shift+Tab should go back to list
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focused index 0 (list), got %d", m.focusedIndex)
-	}
+	require.Equal(t, 0, m.focusedIndex, "expected focus on list")
 }
 
 func TestListField_SubmitIncludesSelectedValues(t *testing.T) {
@@ -549,24 +453,16 @@ func TestListField_SubmitIncludesSelectedValues(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to buttons
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
 
 	selected, ok := submitMsg.Values["items"].([]string)
-	if !ok {
-		t.Fatalf("expected []string for items, got %T", submitMsg.Values["items"])
-	}
+	require.True(t, ok, "expected []string for items, got %T", submitMsg.Values["items"])
 
 	// Should contain val1 (selected via space) and val2 (pre-selected)
-	if len(selected) != 2 {
-		t.Errorf("expected 2 selected items, got %d", len(selected))
-	}
+	require.Len(t, selected, 2)
 	// Check both values are present
 	hasVal1, hasVal2 := false, false
 	for _, v := range selected {
@@ -577,9 +473,7 @@ func TestListField_SubmitIncludesSelectedValues(t *testing.T) {
 			hasVal2 = true
 		}
 	}
-	if !hasVal1 || !hasVal2 {
-		t.Errorf("expected val1 and val2 in selected, got %v", selected)
-	}
+	require.True(t, hasVal1 && hasVal2, "expected val1 and val2 in selected, got %v", selected)
 }
 
 func TestListField_EmptyList(t *testing.T) {
@@ -599,9 +493,7 @@ func TestListField_EmptyList(t *testing.T) {
 
 	// Should render without panic
 	view := m.View()
-	if !strings.Contains(view, "(no items)") {
-		t.Error("expected empty list to show '(no items)'")
-	}
+	require.Contains(t, view, "(no items)", "expected empty list to show '(no items)'")
 }
 
 // --- Color Field Tests ---
@@ -616,15 +508,11 @@ func TestColorField_EnterOpensColorPicker(t *testing.T) {
 	m := New(cfg).SetSize(80, 24)
 
 	// Initially colorpicker not shown
-	if m.showColorPicker {
-		t.Error("expected colorpicker to be hidden initially")
-	}
+	require.False(t, m.showColorPicker, "expected colorpicker to be hidden initially")
 
 	// Enter on color field opens colorpicker
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !m.showColorPicker {
-		t.Error("expected colorpicker to be shown after Enter")
-	}
+	require.True(t, m.showColorPicker, "expected colorpicker to be shown after Enter")
 }
 
 func TestColorField_SelectMsgUpdatesColor(t *testing.T) {
@@ -643,15 +531,11 @@ func TestColorField_SelectMsgUpdatesColor(t *testing.T) {
 	m, _ = m.Update(colorpicker.SelectMsg{Hex: "#FF8787"})
 
 	// Check colorpicker is closed
-	if m.showColorPicker {
-		t.Error("expected colorpicker to be closed after SelectMsg")
-	}
+	require.False(t, m.showColorPicker, "expected colorpicker to be closed after SelectMsg")
 
 	// Check color was updated
 	values := getValues(m)
-	if values["color"] != "#FF8787" {
-		t.Errorf("expected color '#FF8787', got %v", values["color"])
-	}
+	require.Equal(t, "#FF8787", values["color"])
 }
 
 func TestColorField_CancelMsgKeepsOriginalColor(t *testing.T) {
@@ -670,15 +554,11 @@ func TestColorField_CancelMsgKeepsOriginalColor(t *testing.T) {
 	m, _ = m.Update(colorpicker.CancelMsg{})
 
 	// Check colorpicker is closed
-	if m.showColorPicker {
-		t.Error("expected colorpicker to be closed after CancelMsg")
-	}
+	require.False(t, m.showColorPicker, "expected colorpicker to be closed after CancelMsg")
 
 	// Check color was NOT changed
 	values := getValues(m)
-	if values["color"] != "#73F59F" {
-		t.Errorf("expected color '#73F59F', got %v", values["color"])
-	}
+	require.Equal(t, "#73F59F", values["color"])
 }
 
 func TestColorField_TabSkipsWithoutOpeningPicker(t *testing.T) {
@@ -693,12 +573,8 @@ func TestColorField_TabSkipsWithoutOpeningPicker(t *testing.T) {
 	// Tab should move to buttons, not open colorpicker
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
-	if m.showColorPicker {
-		t.Error("Tab should not open colorpicker")
-	}
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focus on buttons (-1), got %d", m.focusedIndex)
-	}
+	require.False(t, m.showColorPicker, "Tab should not open colorpicker")
+	require.Equal(t, -1, m.focusedIndex, "expected focus on buttons")
 }
 
 func TestColorField_DefaultColor(t *testing.T) {
@@ -712,9 +588,7 @@ func TestColorField_DefaultColor(t *testing.T) {
 
 	// Should default to #73F59F
 	values := getValues(m)
-	if values["color"] != "#73F59F" {
-		t.Errorf("expected default color '#73F59F', got %v", values["color"])
-	}
+	require.Equal(t, "#73F59F", values["color"], "expected default color")
 }
 
 func TestColorField_SubmitIncludesColor(t *testing.T) {
@@ -730,17 +604,11 @@ func TestColorField_SubmitIncludesColor(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to buttons
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
-	if submitMsg.Values["color"] != "#FF8787" {
-		t.Errorf("expected color '#FF8787' in SubmitMsg, got %v", submitMsg.Values["color"])
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Equal(t, "#FF8787", submitMsg.Values["color"])
 }
 
 // --- Golden Tests ---
@@ -861,20 +729,14 @@ func compareGolden(t *testing.T, name, got string) {
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
 		err := os.WriteFile(goldenPath, []byte(got), 0644)
-		if err != nil {
-			t.Fatalf("failed to write golden file: %v", err)
-		}
+		require.NoError(t, err, "failed to write golden file")
 		return
 	}
 
 	want, err := os.ReadFile(goldenPath)
-	if err != nil {
-		t.Fatalf("failed to read golden file %s: %v (run with UPDATE_GOLDEN=1 to create)", goldenPath, err)
-	}
+	require.NoError(t, err, "failed to read golden file %s (run with UPDATE_GOLDEN=1 to create)", goldenPath)
 
-	if string(want) != got {
-		t.Errorf("output does not match golden file %s\n\nWant:\n%s\n\nGot:\n%s", goldenPath, string(want), got)
-	}
+	require.Equal(t, string(want), got, "output does not match golden file %s", goldenPath)
 }
 
 // --- Editable List Field Tests ---
@@ -896,19 +758,13 @@ func TestEditableListField_InitialState(t *testing.T) {
 	m := New(cfg)
 
 	// Initial focus should be on list
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("expected subFocus SubFocusList (0), got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus)
 
 	// Cursor should be at 0
-	if m.fields[0].listCursor != 0 {
-		t.Errorf("expected listCursor 0, got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 0, m.fields[0].listCursor)
 
 	// Should have 2 list items
-	if len(m.fields[0].listItems) != 2 {
-		t.Errorf("expected 2 list items, got %d", len(m.fields[0].listItems))
-	}
+	require.Len(t, m.fields[0].listItems, 2)
 }
 
 func TestEditableListField_Navigation_Tab(t *testing.T) {
@@ -928,24 +784,16 @@ func TestEditableListField_Navigation_Tab(t *testing.T) {
 	m := New(cfg)
 
 	// Initial focus should be on list
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("expected SubFocusList, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus)
 
 	// Tab moves to input within same field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("expected SubFocusInput after Tab, got %d", m.fields[0].subFocus)
-	}
-	if m.focusedIndex != 0 {
-		t.Errorf("expected focusedIndex 0 (same field), got %d", m.focusedIndex)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "expected SubFocusInput after Tab")
+	require.Equal(t, 0, m.focusedIndex, "expected same field")
 
 	// Tab again moves to buttons
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focusedIndex -1 (buttons), got %d", m.focusedIndex)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
 }
 
 func TestEditableListField_Navigation_ShiftTab(t *testing.T) {
@@ -966,28 +814,18 @@ func TestEditableListField_Navigation_ShiftTab(t *testing.T) {
 
 	// Move to input first
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("expected SubFocusInput, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus)
 
 	// Shift+Tab moves back to list
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("expected SubFocusList after Shift+Tab, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "expected SubFocusList after Shift+Tab")
 	// Cursor should be at bottom of list
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected listCursor at bottom (1), got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 1, m.fields[0].listCursor, "expected listCursor at bottom")
 
 	// Shift+Tab from list moves to cancel button (wraps)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	if m.focusedIndex != -1 {
-		t.Errorf("expected focusedIndex -1 (buttons), got %d", m.focusedIndex)
-	}
-	if m.focusedButton != 1 {
-		t.Errorf("expected focusedButton 1 (cancel), got %d", m.focusedButton)
-	}
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
+	require.Equal(t, 1, m.focusedButton, "expected cancel button")
 }
 
 func TestEditableListField_Navigation_JK(t *testing.T) {
@@ -1008,32 +846,22 @@ func TestEditableListField_Navigation_JK(t *testing.T) {
 	m := New(cfg)
 
 	// Cursor starts at 0
-	if m.fields[0].listCursor != 0 {
-		t.Errorf("expected cursor at 0, got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 0, m.fields[0].listCursor)
 
 	// j moves cursor down
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected cursor at 1 after 'j', got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 1, m.fields[0].listCursor, "after 'j'")
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.fields[0].listCursor != 2 {
-		t.Errorf("expected cursor at 2 after down, got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 2, m.fields[0].listCursor, "after down")
 
 	// At boundary, doesn't go past
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.fields[0].listCursor != 2 {
-		t.Errorf("expected cursor at 2 (boundary), got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 2, m.fields[0].listCursor, "at boundary")
 
 	// k moves cursor up
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected cursor at 1 after 'k', got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, 1, m.fields[0].listCursor, "after 'k'")
 }
 
 func TestEditableListField_Navigation_UpFromTop(t *testing.T) {
@@ -1054,9 +882,7 @@ func TestEditableListField_Navigation_UpFromTop(t *testing.T) {
 
 	// Cursor at 0, k/up should move to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("expected SubFocusInput after k at top, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "expected SubFocusInput after k at top")
 }
 
 func TestEditableListField_Navigation_DownFromInput(t *testing.T) {
@@ -1077,15 +903,11 @@ func TestEditableListField_Navigation_DownFromInput(t *testing.T) {
 
 	// Move to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("expected SubFocusInput, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus)
 
 	// Down from input moves to next field
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if m.focusedIndex != 1 {
-		t.Errorf("expected focusedIndex 1 after down from input, got %d", m.focusedIndex)
-	}
+	require.Equal(t, 1, m.focusedIndex, "expected next field after down from input")
 }
 
 func TestEditableListField_Navigation_UpFromInput(t *testing.T) {
@@ -1109,12 +931,8 @@ func TestEditableListField_Navigation_UpFromInput(t *testing.T) {
 
 	// Up from input moves to list at bottom
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("expected SubFocusList after up from input, got %d", m.fields[0].subFocus)
-	}
-	if m.fields[0].listCursor != 1 {
-		t.Errorf("expected listCursor at bottom (1), got %d", m.fields[0].listCursor)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "expected SubFocusList after up from input")
+	require.Equal(t, 1, m.fields[0].listCursor, "expected listCursor at bottom")
 }
 
 func TestEditableListField_Toggle_Space(t *testing.T) {
@@ -1134,24 +952,16 @@ func TestEditableListField_Toggle_Space(t *testing.T) {
 	m := New(cfg)
 
 	// Initial: item 0 not selected, item 1 selected
-	if m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be unselected initially")
-	}
-	if !m.fields[0].listItems[1].selected {
-		t.Error("expected item 1 to be selected initially")
-	}
+	require.False(t, m.fields[0].listItems[0].selected, "expected item 0 unselected initially")
+	require.True(t, m.fields[0].listItems[1].selected, "expected item 1 selected initially")
 
 	// Space toggles selection of item at cursor
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be selected after space")
-	}
+	require.True(t, m.fields[0].listItems[0].selected, "expected item 0 selected after space")
 
 	// Toggle again
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
-	if m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be unselected after second space")
-	}
+	require.False(t, m.fields[0].listItems[0].selected, "expected item 0 unselected after second space")
 }
 
 func TestEditableListField_Toggle_EnterInList(t *testing.T) {
@@ -1171,9 +981,7 @@ func TestEditableListField_Toggle_EnterInList(t *testing.T) {
 
 	// Enter in list toggles selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected item 0 to be selected after enter")
-	}
+	require.True(t, m.fields[0].listItems[0].selected, "expected item 0 selected after enter")
 }
 
 func TestEditableListField_AddItem(t *testing.T) {
@@ -1189,9 +997,7 @@ func TestEditableListField_AddItem(t *testing.T) {
 	m := New(cfg)
 
 	// Should start with empty list
-	if len(m.fields[0].listItems) != 0 {
-		t.Errorf("expected 0 items, got %d", len(m.fields[0].listItems))
-	}
+	require.Empty(t, m.fields[0].listItems)
 
 	// Move to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -1205,23 +1011,13 @@ func TestEditableListField_AddItem(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Verify item was added
-	if len(m.fields[0].listItems) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(m.fields[0].listItems))
-	}
-	if m.fields[0].listItems[0].value != "newitem" {
-		t.Errorf("expected value 'newitem', got '%s'", m.fields[0].listItems[0].value)
-	}
-	if m.fields[0].listItems[0].label != "newitem" {
-		t.Errorf("expected label 'newitem', got '%s'", m.fields[0].listItems[0].label)
-	}
-	if !m.fields[0].listItems[0].selected {
-		t.Error("expected new item to be selected")
-	}
+	require.Len(t, m.fields[0].listItems, 1)
+	require.Equal(t, "newitem", m.fields[0].listItems[0].value)
+	require.Equal(t, "newitem", m.fields[0].listItems[0].label)
+	require.True(t, m.fields[0].listItems[0].selected, "expected new item to be selected")
 
 	// Input should be cleared
-	if m.fields[0].addInput.Value() != "" {
-		t.Errorf("expected input to be cleared, got '%s'", m.fields[0].addInput.Value())
-	}
+	require.Empty(t, m.fields[0].addInput.Value())
 }
 
 func TestEditableListField_AddItem_TrimWhitespace(t *testing.T) {
@@ -1248,12 +1044,8 @@ func TestEditableListField_AddItem_TrimWhitespace(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Verify item was added with trimmed value
-	if len(m.fields[0].listItems) != 1 {
-		t.Fatalf("expected 1 item, got %d", len(m.fields[0].listItems))
-	}
-	if m.fields[0].listItems[0].value != "test" {
-		t.Errorf("expected trimmed value 'test', got '%s'", m.fields[0].listItems[0].value)
-	}
+	require.Len(t, m.fields[0].listItems, 1)
+	require.Equal(t, "test", m.fields[0].listItems[0].value, "expected trimmed value")
 }
 
 func TestEditableListField_AddItem_EmptyIgnored(t *testing.T) {
@@ -1275,9 +1067,7 @@ func TestEditableListField_AddItem_EmptyIgnored(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// No item should be added
-	if len(m.fields[0].listItems) != 0 {
-		t.Errorf("expected 0 items, got %d", len(m.fields[0].listItems))
-	}
+	require.Empty(t, m.fields[0].listItems)
 
 	// Try with only whitespace
 	for _, r := range "   " {
@@ -1285,9 +1075,7 @@ func TestEditableListField_AddItem_EmptyIgnored(t *testing.T) {
 	}
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if len(m.fields[0].listItems) != 0 {
-		t.Errorf("expected 0 items for whitespace-only input, got %d", len(m.fields[0].listItems))
-	}
+	require.Empty(t, m.fields[0].listItems, "expected 0 items for whitespace-only input")
 }
 
 func TestEditableListField_NoDuplicates(t *testing.T) {
@@ -1314,9 +1102,7 @@ func TestEditableListField_NoDuplicates(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should still have only 1 item
-	if len(m.fields[0].listItems) != 1 {
-		t.Errorf("expected 1 item (duplicate rejected), got %d", len(m.fields[0].listItems))
-	}
+	require.Len(t, m.fields[0].listItems, 1, "expected duplicate rejected")
 }
 
 func TestEditableListField_AllowDuplicates(t *testing.T) {
@@ -1343,9 +1129,7 @@ func TestEditableListField_AllowDuplicates(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should have 2 items (duplicates allowed)
-	if len(m.fields[0].listItems) != 2 {
-		t.Errorf("expected 2 items (duplicates allowed), got %d", len(m.fields[0].listItems))
-	}
+	require.Len(t, m.fields[0].listItems, 2, "expected duplicates allowed")
 }
 
 func TestEditableListField_ValueExtraction(t *testing.T) {
@@ -1367,14 +1151,10 @@ func TestEditableListField_ValueExtraction(t *testing.T) {
 
 	values := getValues(m)
 	selected, ok := values["tags"].([]string)
-	if !ok {
-		t.Fatalf("expected []string, got %T", values["tags"])
-	}
+	require.True(t, ok, "expected []string, got %T", values["tags"])
 
 	// Should contain val1 and val3 (the selected items)
-	if len(selected) != 2 {
-		t.Errorf("expected 2 selected items, got %d", len(selected))
-	}
+	require.Len(t, selected, 2)
 
 	hasVal1, hasVal3 := false, false
 	for _, v := range selected {
@@ -1385,9 +1165,7 @@ func TestEditableListField_ValueExtraction(t *testing.T) {
 			hasVal3 = true
 		}
 	}
-	if !hasVal1 || !hasVal3 {
-		t.Errorf("expected val1 and val3 in selected, got %v", selected)
-	}
+	require.True(t, hasVal1 && hasVal3, "expected val1 and val3 in selected, got %v", selected)
 }
 
 func TestEditableListField_SubmitIncludesValues(t *testing.T) {
@@ -1416,23 +1194,15 @@ func TestEditableListField_SubmitIncludesValues(t *testing.T) {
 
 	// Submit
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg, got %T", msg)
-	}
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
 
 	selected, ok := submitMsg.Values["tags"].([]string)
-	if !ok {
-		t.Fatalf("expected []string, got %T", submitMsg.Values["tags"])
-	}
+	require.True(t, ok, "expected []string, got %T", submitMsg.Values["tags"])
 
-	if len(selected) != 2 {
-		t.Errorf("expected 2 selected items, got %d", len(selected))
-	}
+	require.Len(t, selected, 2)
 }
 
 func TestEditableListField_EmptyList_Navigation(t *testing.T) {
@@ -1450,21 +1220,15 @@ func TestEditableListField_EmptyList_Navigation(t *testing.T) {
 
 	// j on empty list should not crash (doesn't move - no items)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("after j: expected SubFocusList, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after j")
 
 	// k on empty list at cursor 0 wraps to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("after k: expected SubFocusInput (wrap from top), got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "after k: expected wrap from top")
 
 	// Go back to list
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	if m.fields[0].subFocus != SubFocusList {
-		t.Errorf("after up: expected SubFocusList, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after up")
 
 	// Space on empty list should not crash (does nothing)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
@@ -1474,9 +1238,7 @@ func TestEditableListField_EmptyList_Navigation(t *testing.T) {
 
 	// Tab should navigate to input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	if m.fields[0].subFocus != SubFocusInput {
-		t.Errorf("after Tab: expected SubFocusInput, got %d", m.fields[0].subFocus)
-	}
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "after Tab")
 }
 
 func TestEditableListField_SpaceInInput(t *testing.T) {
@@ -1500,9 +1262,7 @@ func TestEditableListField_SpaceInInput(t *testing.T) {
 	}
 
 	// Verify space was typed into input
-	if m.fields[0].addInput.Value() != "hello world" {
-		t.Errorf("expected 'hello world', got '%s'", m.fields[0].addInput.Value())
-	}
+	require.Equal(t, "hello world", m.fields[0].addInput.Value())
 }
 
 // --- Editable List Golden Tests ---
@@ -1612,17 +1372,11 @@ func TestOnSubmitFactory_ReturnsCustomMessage(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to submit
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	customMsg, ok := msg.(CustomSubmitMsg)
-	if !ok {
-		t.Fatalf("expected CustomSubmitMsg, got %T", msg)
-	}
-	if customMsg.Name != "test" {
-		t.Errorf("expected Name='test', got %q", customMsg.Name)
-	}
+	require.True(t, ok, "expected CustomSubmitMsg, got %T", msg)
+	require.Equal(t, "test", customMsg.Name)
 }
 
 func TestOnSubmitFactory_NilReturnsSubmitMsg(t *testing.T) {
@@ -1639,17 +1393,11 @@ func TestOnSubmitFactory_NilReturnsSubmitMsg(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to submit
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected submit command, got nil")
-	}
+	require.NotNil(t, cmd, "expected submit command")
 	msg := cmd()
 	submitMsg, ok := msg.(SubmitMsg)
-	if !ok {
-		t.Fatalf("expected SubmitMsg for nil OnSubmit, got %T", msg)
-	}
-	if submitMsg.Values["name"] != "test" {
-		t.Errorf("expected name='test', got %v", submitMsg.Values["name"])
-	}
+	require.True(t, ok, "expected SubmitMsg for nil OnSubmit, got %T", msg)
+	require.Equal(t, "test", submitMsg.Values["name"])
 }
 
 func TestOnCancelFactory_ReturnsCustomMessageOnEsc(t *testing.T) {
@@ -1667,17 +1415,11 @@ func TestOnCancelFactory_ReturnsCustomMessageOnEsc(t *testing.T) {
 	// Press Esc
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 
-	if cmd == nil {
-		t.Fatal("expected cancel command, got nil")
-	}
+	require.NotNil(t, cmd, "expected cancel command")
 	msg := cmd()
 	customMsg, ok := msg.(CustomCancelMsg)
-	if !ok {
-		t.Fatalf("expected CustomCancelMsg, got %T", msg)
-	}
-	if customMsg.Reason != "user pressed esc" {
-		t.Errorf("expected Reason='user pressed esc', got %q", customMsg.Reason)
-	}
+	require.True(t, ok, "expected CustomCancelMsg, got %T", msg)
+	require.Equal(t, "user pressed esc", customMsg.Reason)
 }
 
 func TestOnCancelFactory_ReturnsCustomMessageOnCancelButton(t *testing.T) {
@@ -1695,17 +1437,11 @@ func TestOnCancelFactory_ReturnsCustomMessageOnCancelButton(t *testing.T) {
 	// Press Enter on cancel button
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	if cmd == nil {
-		t.Fatal("expected cancel command, got nil")
-	}
+	require.NotNil(t, cmd, "expected cancel command")
 	msg := cmd()
 	customMsg, ok := msg.(CustomCancelMsg)
-	if !ok {
-		t.Fatalf("expected CustomCancelMsg, got %T", msg)
-	}
-	if customMsg.Reason != "user clicked cancel" {
-		t.Errorf("expected Reason='user clicked cancel', got %q", customMsg.Reason)
-	}
+	require.True(t, ok, "expected CustomCancelMsg, got %T", msg)
+	require.Equal(t, "user clicked cancel", customMsg.Reason)
 }
 
 func TestOnCancelFactory_NilReturnsCancelMsg(t *testing.T) {
@@ -1721,13 +1457,10 @@ func TestOnCancelFactory_NilReturnsCancelMsg(t *testing.T) {
 	// Press Esc
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 
-	if cmd == nil {
-		t.Fatal("expected cancel command, got nil")
-	}
+	require.NotNil(t, cmd, "expected cancel command")
 	msg := cmd()
-	if _, ok := msg.(CancelMsg); !ok {
-		t.Fatalf("expected CancelMsg for nil OnCancel, got %T", msg)
-	}
+	_, ok := msg.(CancelMsg)
+	require.True(t, ok, "expected CancelMsg for nil OnCancel, got %T", msg)
 }
 
 func TestOnSubmitFactory_ValidationFailureStillShowsError(t *testing.T) {
@@ -1756,13 +1489,7 @@ func TestOnSubmitFactory_ValidationFailureStillShowsError(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should have validation error, no command
-	if cmd != nil {
-		t.Error("expected nil command due to validation error")
-	}
-	if m.validationError != "Name is required" {
-		t.Errorf("expected validation error 'Name is required', got '%s'", m.validationError)
-	}
-	if factoryCalled {
-		t.Error("OnSubmit factory should not be called when validation fails")
-	}
+	require.Nil(t, cmd, "expected nil command due to validation error")
+	require.Equal(t, "Name is required", m.validationError)
+	require.False(t, factoryCalled, "OnSubmit factory should not be called when validation fails")
 }

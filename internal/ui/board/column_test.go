@@ -1,11 +1,11 @@
 package board
 
 import (
+	"errors"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"perles/internal/beads"
@@ -13,8 +13,8 @@ import (
 
 func TestColumn_NewColumn(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	assert.Equal(t, "Test", c.title)
-	assert.Equal(t, beads.StatusOpen, c.status)
+	require.Equal(t, "Test", c.title)
+	require.Equal(t, beads.StatusOpen, c.status)
 }
 
 func TestColumn_SetItems(t *testing.T) {
@@ -24,18 +24,18 @@ func TestColumn_SetItems(t *testing.T) {
 		{ID: "bd-2", TitleText: "Issue 2"},
 	}
 	c = c.SetItems(issues)
-	assert.Len(t, c.Items(), 2)
+	require.Len(t, c.Items(), 2)
 }
 
 func TestColumn_SetItems_Empty(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetItems([]beads.Issue{})
-	assert.Empty(t, c.Items())
+	require.Empty(t, c.Items())
 }
 
 func TestColumn_SelectedItem_Empty(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	assert.Nil(t, c.SelectedItem(), "expected nil selected item on empty column")
+	require.Nil(t, c.SelectedItem(), "expected nil selected item on empty column")
 }
 
 func TestColumn_SelectedItem_WithItems(t *testing.T) {
@@ -47,7 +47,7 @@ func TestColumn_SelectedItem_WithItems(t *testing.T) {
 	c = c.SetItems(issues)
 	selected := c.SelectedItem()
 	require.NotNil(t, selected, "expected non-nil selected item")
-	assert.Equal(t, "bd-1", selected.ID, "expected first item selected")
+	require.Equal(t, "bd-1", selected.ID, "expected first item selected")
 }
 
 func TestColumn_SelectByID(t *testing.T) {
@@ -63,7 +63,7 @@ func TestColumn_SelectByID(t *testing.T) {
 	require.True(t, found, "expected to find bd-2")
 	selected := c.SelectedItem()
 	require.NotNil(t, selected, "expected selected item")
-	assert.Equal(t, "bd-2", selected.ID, "expected bd-2 to be selected")
+	require.Equal(t, "bd-2", selected.ID, "expected bd-2 to be selected")
 }
 
 func TestColumn_SelectByID_NotFound(t *testing.T) {
@@ -72,35 +72,35 @@ func TestColumn_SelectByID_NotFound(t *testing.T) {
 	c = c.SetItems(issues)
 
 	_, found := c.SelectByID("nonexistent")
-	assert.False(t, found, "expected not to find nonexistent issue")
+	require.False(t, found, "expected not to find nonexistent issue")
 }
 
 func TestColumn_SetFocused(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetFocused(true)
-	assert.True(t, *c.focused, "expected column to be focused")
+	require.True(t, *c.focused, "expected column to be focused")
 	c = c.SetFocused(false)
-	assert.False(t, *c.focused, "expected column to be unfocused")
+	require.False(t, *c.focused, "expected column to be unfocused")
 }
 
 func TestColumn_SetSize(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetSize(50, 20)
-	assert.Equal(t, 50, c.width)
-	assert.Equal(t, 20, c.height)
+	require.Equal(t, 50, c.width)
+	require.Equal(t, 20, c.height)
 }
 
 func TestColumn_Title_Empty(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	title := c.Title()
-	assert.Equal(t, "Test (0)", title)
+	require.Equal(t, "Test (0)", title)
 }
 
 func TestColumn_View_Empty(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetSize(30, 10)
 	view := c.View()
-	assert.Contains(t, view, "No issues")
+	require.Contains(t, view, "No issues")
 }
 
 func TestColumn_Title_WithItems(t *testing.T) {
@@ -111,7 +111,7 @@ func TestColumn_Title_WithItems(t *testing.T) {
 	}
 	c = c.SetItems(issues)
 	title := c.Title()
-	assert.Equal(t, "Ready (2)", title)
+	require.Equal(t, "Ready (2)", title)
 }
 
 func TestColumn_View_WithItems(t *testing.T) {
@@ -124,16 +124,16 @@ func TestColumn_View_WithItems(t *testing.T) {
 	c = c.SetItems(issues)
 	view := c.View()
 	// View now returns only content, not header
-	assert.NotEmpty(t, view, "expected non-empty view")
+	require.NotEmpty(t, view, "expected non-empty view")
 }
 
 func TestColumn_SetShowCounts(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetShowCounts(false)
 	require.NotNil(t, c.showCounts)
-	assert.False(t, *c.showCounts, "expected showCounts to be false")
+	require.False(t, *c.showCounts, "expected showCounts to be false")
 	c = c.SetShowCounts(true)
-	assert.True(t, *c.showCounts, "expected showCounts to be true")
+	require.True(t, *c.showCounts, "expected showCounts to be true")
 }
 
 func TestColumn_Title_ShowCountsFalse(t *testing.T) {
@@ -146,7 +146,7 @@ func TestColumn_Title_ShowCountsFalse(t *testing.T) {
 	c = c.SetShowCounts(false)
 	title := c.Title()
 	// Should show just title without count
-	assert.Equal(t, "Ready", title)
+	require.Equal(t, "Ready", title)
 }
 
 func TestColumn_Title_ShowCountsTrue(t *testing.T) {
@@ -159,7 +159,7 @@ func TestColumn_Title_ShowCountsTrue(t *testing.T) {
 	c = c.SetShowCounts(true)
 	title := c.Title()
 	// Should show title with count
-	assert.Equal(t, "Ready (2)", title)
+	require.Equal(t, "Ready (2)", title)
 }
 
 func TestColumn_Title_ShowCountsDefault(t *testing.T) {
@@ -171,7 +171,7 @@ func TestColumn_Title_ShowCountsDefault(t *testing.T) {
 	c = c.SetItems(issues)
 	// Don't call SetShowCounts - leave as nil
 	title := c.Title()
-	assert.Equal(t, "Ready (1)", title)
+	require.Equal(t, "Ready (1)", title)
 }
 
 func TestColumn_Update_NavigateDown(t *testing.T) {
@@ -185,7 +185,7 @@ func TestColumn_Update_NavigateDown(t *testing.T) {
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	selected := c.SelectedItem()
 	require.NotNil(t, selected)
-	assert.Equal(t, "bd-2", selected.ID, "expected bd-2 after down navigation")
+	require.Equal(t, "bd-2", selected.ID, "expected bd-2 after down navigation")
 }
 
 func TestColumn_Update_NavigateUp(t *testing.T) {
@@ -202,7 +202,7 @@ func TestColumn_Update_NavigateUp(t *testing.T) {
 	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 	selected := c.SelectedItem()
 	require.NotNil(t, selected)
-	assert.Equal(t, "bd-1", selected.ID, "expected bd-1 after up navigation")
+	require.Equal(t, "bd-1", selected.ID, "expected bd-1 after up navigation")
 }
 
 func TestColumn_Items(t *testing.T) {
@@ -213,8 +213,8 @@ func TestColumn_Items(t *testing.T) {
 	}
 	c = c.SetItems(issues)
 	items := c.Items()
-	assert.Len(t, items, 2)
-	assert.Equal(t, "bd-1", items[0].ID, "expected first item bd-1")
+	require.Len(t, items, 2)
+	require.Equal(t, "bd-1", items[0].ID, "expected first item bd-1")
 }
 
 // TestColumn_View_Golden uses teatest golden file comparison
@@ -244,44 +244,44 @@ func TestColumn_NewColumnWithExecutor(t *testing.T) {
 	// NewColumnWithExecutor should create a column with executor and query set
 	// We pass nil executor for unit test (actual execution tested elsewhere)
 	c := NewColumnWithExecutor("Ready", "status = open", nil)
-	assert.Equal(t, "Ready", c.title)
-	assert.Equal(t, "status = open", c.Query())
-	assert.Nil(t, c.executor)
+	require.Equal(t, "Ready", c.title)
+	require.Equal(t, "status = open", c.Query())
+	require.Nil(t, c.executor)
 }
 
 func TestColumn_SetQuery(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	c = c.SetQuery("status = open and ready = true")
-	assert.Equal(t, "status = open and ready = true", c.Query())
+	require.Equal(t, "status = open and ready = true", c.Query())
 }
 
 func TestColumn_SetExecutor(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 	// We can't easily create a real executor without a DB, so just test the setter
 	c = c.SetExecutor(nil)
-	assert.Nil(t, c.executor)
+	require.Nil(t, c.executor)
 }
 
 func TestColumn_LoadingState(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 
 	// Default should be not loading
-	assert.False(t, c.IsLoading())
+	require.False(t, c.IsLoading())
 
 	// Set loading
 	c = c.SetLoading(true)
-	assert.True(t, c.IsLoading())
+	require.True(t, c.IsLoading())
 
 	// Clear loading
 	c = c.SetLoading(false)
-	assert.False(t, c.IsLoading())
+	require.False(t, c.IsLoading())
 }
 
 func TestColumn_LoadError(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
 
 	// Default should have no error
-	assert.Nil(t, c.LoadError())
+	require.Nil(t, c.LoadError())
 }
 
 func TestColumn_LoadIssues_NoExecutor(t *testing.T) {
@@ -291,7 +291,7 @@ func TestColumn_LoadIssues_NoExecutor(t *testing.T) {
 
 	// Should return unchanged column
 	c2 := c.LoadIssues()
-	assert.Empty(t, c2.Items())
+	require.Empty(t, c2.Items())
 }
 
 func TestColumn_LoadIssues_NoQuery(t *testing.T) {
@@ -300,7 +300,7 @@ func TestColumn_LoadIssues_NoQuery(t *testing.T) {
 	// Don't set query
 
 	c2 := c.LoadIssues()
-	assert.Empty(t, c2.Items())
+	require.Empty(t, c2.Items())
 }
 
 func TestColumn_LoadIssuesCmd_NoExecutor(t *testing.T) {
@@ -309,7 +309,7 @@ func TestColumn_LoadIssuesCmd_NoExecutor(t *testing.T) {
 
 	// Should return nil command
 	cmd := c.LoadIssuesCmd()
-	assert.Nil(t, cmd)
+	require.Nil(t, cmd)
 }
 
 func TestColumn_LoadIssuesCmd_NoQuery(t *testing.T) {
@@ -317,7 +317,7 @@ func TestColumn_LoadIssuesCmd_NoQuery(t *testing.T) {
 	// Don't set query
 
 	cmd := c.LoadIssuesCmd()
-	assert.Nil(t, cmd)
+	require.Nil(t, cmd)
 }
 
 func TestColumnLoadedMsg_Structure(t *testing.T) {
@@ -329,19 +329,19 @@ func TestColumnLoadedMsg_Structure(t *testing.T) {
 		Err:         nil,
 	}
 
-	assert.Equal(t, "Ready", msg.ColumnTitle)
-	assert.Len(t, msg.Issues, 1)
-	assert.Nil(t, msg.Err)
+	require.Equal(t, "Ready", msg.ColumnTitle)
+	require.Len(t, msg.Issues, 1)
+	require.Nil(t, msg.Err)
 }
 
 func TestColumnLoadedMsg_WithError(t *testing.T) {
 	msg := ColumnLoadedMsg{
 		ColumnTitle: "Ready",
 		Issues:      nil,
-		Err:         assert.AnError,
+		Err:         errors.New("test error"),
 	}
 
-	assert.Equal(t, "Ready", msg.ColumnTitle)
-	assert.Nil(t, msg.Issues)
-	assert.Error(t, msg.Err)
+	require.Equal(t, "Ready", msg.ColumnTitle)
+	require.Nil(t, msg.Issues)
+	require.Error(t, msg.Err)
 }

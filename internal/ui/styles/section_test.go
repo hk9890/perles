@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRenderFormSection(t *testing.T) {
@@ -136,15 +137,11 @@ func TestRenderFormSection(t *testing.T) {
 			result := RenderFormSection(tt.content, tt.title, tt.hint, tt.width, tt.focused, focusColor)
 
 			for _, want := range tt.wantContains {
-				if !strings.Contains(result, want) {
-					t.Errorf("RenderFormSection() missing expected content %q\nGot:\n%s", want, result)
-				}
+				require.Contains(t, result, want, "RenderFormSection() missing expected content")
 			}
 
 			for _, notWant := range tt.wantNotContain {
-				if strings.Contains(result, notWant) {
-					t.Errorf("RenderFormSection() contains unexpected %q\nGot:\n%s", notWant, result)
-				}
+				require.NotContains(t, result, notWant, "RenderFormSection() contains unexpected content")
 			}
 		})
 	}
@@ -163,18 +160,12 @@ func TestRenderFormSection_FocusChangesColor(t *testing.T) {
 
 	// Both should contain the same structural elements
 	for _, want := range []string{"╭", "╮", "│", "╰", "╯", "Content", "Test"} {
-		if !strings.Contains(unfocused, want) {
-			t.Errorf("Unfocused section missing %q", want)
-		}
-		if !strings.Contains(focused, want) {
-			t.Errorf("Focused section missing %q", want)
-		}
+		require.Contains(t, unfocused, want, "Unfocused section missing element")
+		require.Contains(t, focused, want, "Focused section missing element")
 	}
 
 	// The outputs should be different (different ANSI color codes)
-	if unfocused == focused {
-		t.Error("Focused and unfocused sections should have different ANSI codes")
-	}
+	require.NotEqual(t, unfocused, focused, "Focused and unfocused sections should have different ANSI codes")
 }
 
 func TestRenderFormSection_ContentPadding(t *testing.T) {
@@ -184,22 +175,16 @@ func TestRenderFormSection_ContentPadding(t *testing.T) {
 
 	// The result should maintain proper alignment
 	lines := strings.Split(result, "\n")
-	if len(lines) < 3 {
-		t.Fatalf("Expected at least 3 lines, got %d", len(lines))
-	}
+	require.GreaterOrEqual(t, len(lines), 3, "Expected at least 3 lines")
 
 	// Check that content line has proper borders on both sides
 	contentLine := lines[1]
-	if !strings.Contains(contentLine, "│") {
-		t.Error("Content line missing border characters")
-	}
+	require.Contains(t, contentLine, "│", "Content line missing border characters")
 
 	// Should have border on left and right
 	if contentLine[0] != '\x1b' && !strings.HasPrefix(contentLine, "│") {
 		// Account for ANSI codes - the visual should still show borders
-		if !strings.Contains(contentLine, "│") {
-			t.Error("Content line should have vertical borders")
-		}
+		require.Contains(t, contentLine, "│", "Content line should have vertical borders")
 	}
 }
 
@@ -207,9 +192,7 @@ func TestRenderFormSection_HintFormatting(t *testing.T) {
 	result := RenderFormSection([]string{"Content"}, "Title", "hint text", 40, false, BorderHighlightFocusColor)
 
 	// Hint should be wrapped in parentheses
-	if !strings.Contains(result, "(hint text)") {
-		t.Error("Hint should be formatted with parentheses")
-	}
+	require.Contains(t, result, "(hint text)", "Hint should be formatted with parentheses")
 }
 
 func TestRenderFormSection_EmptyContent(t *testing.T) {
@@ -217,9 +200,8 @@ func TestRenderFormSection_EmptyContent(t *testing.T) {
 	result := RenderFormSection([]string{}, "Title", "", 30, false, BorderHighlightFocusColor)
 
 	// Should have top and bottom borders
-	if !strings.Contains(result, "╭") || !strings.Contains(result, "╰") {
-		t.Error("Empty content should still have top and bottom borders")
-	}
+	require.Contains(t, result, "╭", "Empty content should have top border")
+	require.Contains(t, result, "╰", "Empty content should have bottom border")
 }
 
 func TestRenderFormSection_LongTitle(t *testing.T) {
@@ -228,12 +210,9 @@ func TestRenderFormSection_LongTitle(t *testing.T) {
 	result := RenderFormSection([]string{"Content"}, longTitle, "", 30, false, BorderHighlightFocusColor)
 
 	// Should still produce valid output with borders
-	if !strings.Contains(result, "╭") || !strings.Contains(result, "╮") {
-		t.Error("Long title should still produce valid borders")
-	}
+	require.Contains(t, result, "╭", "Long title should still produce valid top border")
+	require.Contains(t, result, "╮", "Long title should still produce valid right border")
 
 	// Should contain at least part of the title
-	if !strings.Contains(result, "This") {
-		t.Error("Should contain at least the beginning of the title")
-	}
+	require.Contains(t, result, "This", "Should contain at least the beginning of the title")
 }

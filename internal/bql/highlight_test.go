@@ -2,11 +2,11 @@ package bql
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"github.com/stretchr/testify/require"
 )
 
 // ansiRegex matches ANSI escape sequences
@@ -126,15 +126,11 @@ func TestHighlight(t *testing.T) {
 
 			// Check ANSI presence
 			gotANSI := hasANSI(result)
-			if gotANSI != tt.wantANSI {
-				t.Errorf("Highlight() ANSI = %v, want %v", gotANSI, tt.wantANSI)
-			}
+			require.Equal(t, tt.wantANSI, gotANSI, "Highlight() ANSI mismatch")
 
 			// Verify text content is preserved (strip ANSI and compare)
 			stripped := stripANSI(result)
-			if stripped != tt.query {
-				t.Errorf("Highlight() stripped = %q, want %q", stripped, tt.query)
-			}
+			require.Equal(t, tt.query, stripped, "Highlight() text not preserved")
 		})
 	}
 }
@@ -158,9 +154,7 @@ func TestHighlight_WhitespacePreservation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := Highlight(tt.query)
 			stripped := stripANSI(result)
-			if stripped != tt.query {
-				t.Errorf("whitespace not preserved: got %q, want %q", stripped, tt.query)
-			}
+			require.Equal(t, tt.query, stripped, "whitespace not preserved")
 		})
 	}
 }
@@ -179,11 +173,10 @@ func TestHighlight_EmptyAndEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := Highlight(tt.query)
-			if tt.wantEmpty && result != "" {
-				t.Errorf("expected empty result, got %q", result)
-			}
-			if !tt.wantEmpty && result == "" {
-				t.Errorf("expected non-empty result")
+			if tt.wantEmpty {
+				require.Empty(t, result)
+			} else {
+				require.NotEmpty(t, result)
 			}
 		})
 	}
@@ -209,9 +202,7 @@ func TestHighlight_UnterminatedString(t *testing.T) {
 
 			// Text should be preserved (stripped of ANSI)
 			stripped := stripANSI(result)
-			if stripped != tt.query {
-				t.Errorf("text not preserved: got %q, want %q", stripped, tt.query)
-			}
+			require.Equal(t, tt.query, stripped, "text not preserved")
 		})
 	}
 }
@@ -239,14 +230,10 @@ func TestHighlight_KnownValuesHighlighted(t *testing.T) {
 
 			// Text should be preserved
 			stripped := stripANSI(result)
-			if stripped != tt.query {
-				t.Errorf("text not preserved: got %q, want %q", stripped, tt.query)
-			}
+			require.Equal(t, tt.query, stripped, "text not preserved")
 
 			// Should have ANSI codes
-			if !hasANSI(result) {
-				t.Error("expected ANSI codes in result")
-			}
+			require.True(t, hasANSI(result), "expected ANSI codes in result")
 		})
 	}
 }
@@ -268,9 +255,7 @@ func TestHighlight_UnknownValuesNotHighlighted(t *testing.T) {
 
 			// Text should be preserved
 			stripped := stripANSI(result)
-			if stripped != tt.query {
-				t.Errorf("text not preserved: got %q, want %q", stripped, tt.query)
-			}
+			require.Equal(t, tt.query, stripped, "text not preserved")
 		})
 	}
 }
@@ -285,27 +270,17 @@ func TestHighlight_InValueListNotHighlighted(t *testing.T) {
 
 	// Strip ANSI to verify text is preserved
 	stripped := stripANSI(result)
-	if stripped != query {
-		t.Errorf("text not preserved: got %q, want %q", stripped, query)
-	}
+	require.Equal(t, query, stripped, "text not preserved")
 
 	// Check that result contains ANSI (for "label", "in", parens, etc.)
-	if !hasANSI(result) {
-		t.Error("expected some ANSI codes in result")
-	}
+	require.True(t, hasANSI(result), "expected some ANSI codes in result")
 
 	// The values "one", "two", "three" should appear without field styling
 	// We can verify by checking they appear as plain text (not wrapped in field color codes)
 	// This is a bit tricky to test precisely, but we can at least verify the text is there
-	if !strings.Contains(result, "one") {
-		t.Error("expected 'one' in result")
-	}
-	if !strings.Contains(result, "two") {
-		t.Error("expected 'two' in result")
-	}
-	if !strings.Contains(result, "three") {
-		t.Error("expected 'three' in result")
-	}
+	require.Contains(t, result, "one")
+	require.Contains(t, result, "two")
+	require.Contains(t, result, "three")
 }
 
 func TestHighlight_TokenStyles(t *testing.T) {
@@ -344,12 +319,8 @@ func TestHighlight_TokenStyles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := Highlight(tt.query)
-			if !hasANSI(result) {
-				t.Errorf("expected ANSI codes in output for query %q", tt.query)
-			}
-			if !strings.Contains(result, tt.token) {
-				t.Errorf("expected token %q in output", tt.token)
-			}
+			require.True(t, hasANSI(result), "expected ANSI codes in output for query %q", tt.query)
+			require.Contains(t, result, tt.token)
 		})
 	}
 }
@@ -379,15 +350,11 @@ func TestStyleToken(t *testing.T) {
 			result := styleToken(tok)
 
 			// Result should contain the literal
-			if !strings.Contains(result, tt.literal) {
-				t.Errorf("styleToken() should contain literal %q, got %q", tt.literal, result)
-			}
+			require.Contains(t, result, tt.literal, "styleToken() should contain literal")
 
 			// Result should have ANSI codes (unless it's illegal/eof which use default style)
 			if tt.tokenType != TokenIllegal && tt.tokenType != TokenEOF {
-				if !hasANSI(result) {
-					t.Errorf("styleToken() should produce ANSI output for %v", tt.tokenType)
-				}
+				require.True(t, hasANSI(result), "styleToken() should produce ANSI output for %v", tt.tokenType)
 			}
 		})
 	}

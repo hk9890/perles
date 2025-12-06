@@ -5,28 +5,28 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
 	m := New()
 
-	assert.False(t, m.Visible())
-	assert.Empty(t, m.View())
+	require.False(t, m.Visible())
+	require.Empty(t, m.View())
 }
 
 func TestShow(t *testing.T) {
 	m := New().Show("Hello", StyleSuccess)
 
-	assert.True(t, m.Visible())
-	assert.Contains(t, m.View(), "Hello")
+	require.True(t, m.Visible())
+	require.Contains(t, m.View(), "Hello")
 }
 
 func TestHide(t *testing.T) {
 	m := New().Show("Hello", StyleSuccess).Hide()
 
-	assert.False(t, m.Visible())
-	assert.Empty(t, m.View())
+	require.False(t, m.Visible())
+	require.Empty(t, m.View())
 }
 
 func TestShow_ReplacesExisting(t *testing.T) {
@@ -34,21 +34,21 @@ func TestShow_ReplacesExisting(t *testing.T) {
 		Show("First", StyleSuccess).
 		Show("Second", StyleError)
 
-	assert.True(t, m.Visible())
-	assert.Contains(t, m.View(), "Second")
-	assert.NotContains(t, m.View(), "First")
+	require.True(t, m.Visible())
+	require.Contains(t, m.View(), "Second")
+	require.NotContains(t, m.View(), "First")
 }
 
 func TestView_EmptyWhenNotVisible(t *testing.T) {
 	m := New()
 
-	assert.Empty(t, m.View())
+	require.Empty(t, m.View())
 }
 
 func TestView_EmptyWhenMessageEmpty(t *testing.T) {
 	m := Model{visible: true, message: ""}
 
-	assert.Empty(t, m.View())
+	require.Empty(t, m.View())
 }
 
 func TestView_StyleSuccess(t *testing.T) {
@@ -56,9 +56,9 @@ func TestView_StyleSuccess(t *testing.T) {
 	view := m.View()
 
 	// Should contain the message with ✅ emoji and have a border
-	assert.Contains(t, view, "✅")
-	assert.Contains(t, view, "Success!")
-	assert.Contains(t, view, "╭") // Rounded border corner
+	require.Contains(t, view, "✅")
+	require.Contains(t, view, "Success!")
+	require.Contains(t, view, "╭") // Rounded border corner
 }
 
 func TestView_StyleError(t *testing.T) {
@@ -66,9 +66,9 @@ func TestView_StyleError(t *testing.T) {
 	view := m.View()
 
 	// Should contain the message with ❌ emoji
-	assert.Contains(t, view, "❌")
-	assert.Contains(t, view, "Error!")
-	assert.Contains(t, view, "╭")
+	require.Contains(t, view, "❌")
+	require.Contains(t, view, "Error!")
+	require.Contains(t, view, "╭")
 }
 
 func TestView_StyleInfo(t *testing.T) {
@@ -76,9 +76,9 @@ func TestView_StyleInfo(t *testing.T) {
 	view := m.View()
 
 	// Should contain the message with ℹ️ emoji
-	assert.Contains(t, view, "ℹ️")
-	assert.Contains(t, view, "Switched view")
-	assert.Contains(t, view, "╭")
+	require.Contains(t, view, "ℹ️")
+	require.Contains(t, view, "Switched view")
+	require.Contains(t, view, "╭")
 }
 
 func TestView_StyleWarn(t *testing.T) {
@@ -86,16 +86,16 @@ func TestView_StyleWarn(t *testing.T) {
 	view := m.View()
 
 	// Should contain the message with ⚠️ emoji
-	assert.Contains(t, view, "⚠️")
-	assert.Contains(t, view, "Caution!")
-	assert.Contains(t, view, "╭")
+	require.Contains(t, view, "⚠️")
+	require.Contains(t, view, "Caution!")
+	require.Contains(t, view, "╭")
 }
 
 func TestSetSize(t *testing.T) {
 	m := New().SetSize(80, 24)
 
-	assert.Equal(t, 80, m.width)
-	assert.Equal(t, 24, m.height)
+	require.Equal(t, 80, m.width)
+	require.Equal(t, 24, m.height)
 }
 
 func TestOverlay_NotVisibleReturnsBackground(t *testing.T) {
@@ -104,7 +104,7 @@ func TestOverlay_NotVisibleReturnsBackground(t *testing.T) {
 
 	result := m.Overlay(bg, 20, 10)
 
-	assert.Equal(t, bg, result)
+	require.Equal(t, bg, result)
 }
 
 func TestOverlay_VisiblePlacesAtBottom(t *testing.T) {
@@ -125,7 +125,7 @@ func TestOverlay_VisiblePlacesAtBottom(t *testing.T) {
 			break
 		}
 	}
-	assert.True(t, found, "Toast should appear near the bottom of the overlay")
+	require.True(t, found, "Toast should appear near the bottom of the overlay")
 }
 
 func TestOverlay_EmptyMessageReturnsBackground(t *testing.T) {
@@ -134,7 +134,7 @@ func TestOverlay_EmptyMessageReturnsBackground(t *testing.T) {
 
 	result := m.Overlay(bg, 20, 10)
 
-	assert.Equal(t, bg, result)
+	require.Equal(t, bg, result)
 }
 
 func TestDismissMsg(t *testing.T) {
@@ -146,7 +146,7 @@ func TestDismissMsg(t *testing.T) {
 func TestScheduleDismiss(t *testing.T) {
 	// ScheduleDismiss returns a tea.Cmd, verify it's not nil
 	cmd := ScheduleDismiss(0)
-	assert.NotNil(t, cmd)
+	require.NotNil(t, cmd)
 }
 
 func TestVisible_ImmutableModel(t *testing.T) {
@@ -154,8 +154,8 @@ func TestVisible_ImmutableModel(t *testing.T) {
 	m2 := m1.Show("Hello", StyleSuccess)
 
 	// Original should be unchanged
-	assert.False(t, m1.Visible())
-	assert.True(t, m2.Visible())
+	require.False(t, m1.Visible())
+	require.True(t, m2.Visible())
 }
 
 func TestHide_ImmutableModel(t *testing.T) {
@@ -163,8 +163,8 @@ func TestHide_ImmutableModel(t *testing.T) {
 	m2 := m1.Hide()
 
 	// Original should be unchanged
-	assert.True(t, m1.Visible())
-	assert.False(t, m2.Visible())
+	require.True(t, m1.Visible())
+	require.False(t, m2.Visible())
 }
 
 // TestOverlay_Success_Golden tests success toast overlay rendering.

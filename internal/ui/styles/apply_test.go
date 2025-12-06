@@ -3,14 +3,14 @@ package styles
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplyTheme_Default(t *testing.T) {
 	err := ApplyTheme(ThemeConfig{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// Should apply default preset colors
-	assert.Equal(t, DefaultPreset.Colors[TokenTextPrimary], TextPrimaryColor.Dark)
+	require.Equal(t, DefaultPreset.Colors[TokenTextPrimary], TextPrimaryColor.Dark)
 }
 
 func TestApplyTheme_Preset(t *testing.T) {
@@ -26,8 +26,8 @@ func TestApplyTheme_Preset(t *testing.T) {
 	defer delete(Presets, "test")
 
 	err := ApplyTheme(ThemeConfig{Preset: "test"})
-	assert.NoError(t, err)
-	assert.Equal(t, "#FF0000", TextPrimaryColor.Dark)
+	require.NoError(t, err)
+	require.Equal(t, "#FF0000", TextPrimaryColor.Dark)
 }
 
 func TestApplyTheme_ColorOverride(t *testing.T) {
@@ -36,8 +36,8 @@ func TestApplyTheme_ColorOverride(t *testing.T) {
 			"text.primary": "#00FF00",
 		},
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, "#00FF00", TextPrimaryColor.Dark)
+	require.NoError(t, err)
+	require.Equal(t, "#00FF00", TextPrimaryColor.Dark)
 }
 
 func TestApplyTheme_PresetWithOverride(t *testing.T) {
@@ -59,15 +59,15 @@ func TestApplyTheme_PresetWithOverride(t *testing.T) {
 			"text.primary": "#00FF00", // Override preset
 		},
 	})
-	assert.NoError(t, err)
-	assert.Equal(t, "#00FF00", TextPrimaryColor.Dark)   // Overridden
-	assert.Equal(t, "#0000FF", TextSecondaryColor.Dark) // From preset
+	require.NoError(t, err)
+	require.Equal(t, "#00FF00", TextPrimaryColor.Dark)   // Overridden
+	require.Equal(t, "#0000FF", TextSecondaryColor.Dark) // From preset
 }
 
 func TestApplyTheme_InvalidPreset(t *testing.T) {
 	err := ApplyTheme(ThemeConfig{Preset: "nonexistent"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown theme preset")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown theme preset")
 }
 
 func TestApplyTheme_InvalidToken(t *testing.T) {
@@ -76,8 +76,8 @@ func TestApplyTheme_InvalidToken(t *testing.T) {
 			"invalid.token": "#FF0000",
 		},
 	})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown color token")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown color token")
 }
 
 func TestApplyTheme_InvalidHexColor(t *testing.T) {
@@ -86,8 +86,8 @@ func TestApplyTheme_InvalidHexColor(t *testing.T) {
 			"text.primary": "not-a-color",
 		},
 	})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid hex color")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid hex color")
 }
 
 func TestIsValidToken(t *testing.T) {
@@ -102,7 +102,7 @@ func TestIsValidToken(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.token), func(t *testing.T) {
-			assert.Equal(t, tt.valid, isValidToken(tt.token))
+			require.Equal(t, tt.valid, isValidToken(tt.token))
 		})
 	}
 }
@@ -126,7 +126,7 @@ func TestIsValidHexColor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.color, func(t *testing.T) {
-			assert.Equal(t, tt.valid, isValidHexColor(tt.color))
+			require.Equal(t, tt.valid, isValidHexColor(tt.color))
 		})
 	}
 }

@@ -5,7 +5,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,23 +16,23 @@ func TestLabelEditor_New(t *testing.T) {
 	labels := testLabels()
 	m := New("test-123", labels)
 
-	assert.Equal(t, "test-123", m.issueID, "expected issueID to be set")
+	require.Equal(t, "test-123", m.issueID, "expected issueID to be set")
 
 	// Verify all labels are visible in view
 	view := m.View()
 	for _, label := range labels {
-		assert.Contains(t, view, label, "expected view to contain label %s", label)
+		require.Contains(t, view, label, "expected view to contain label %s", label)
 	}
 	// All labels should be checked (enabled by default)
-	assert.Contains(t, view, "[x]", "expected enabled checkboxes in view")
+	require.Contains(t, view, "[x]", "expected enabled checkboxes in view")
 }
 
 func TestLabelEditor_New_EmptyLabels(t *testing.T) {
 	m := New("test-123", []string{})
 
-	assert.Equal(t, "test-123", m.issueID, "expected issueID to be set")
+	require.Equal(t, "test-123", m.issueID, "expected issueID to be set")
 	view := m.View()
-	assert.Contains(t, view, "no items", "expected empty state message")
+	require.Contains(t, view, "no items", "expected empty state message")
 }
 
 func TestLabelEditor_AddLabel(t *testing.T) {
@@ -60,8 +59,8 @@ func TestLabelEditor_AddLabel(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "existing", "expected 'existing' in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "new-label", "expected 'new-label' in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "existing", "expected 'existing' in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "new-label", "expected 'new-label' in SaveMsg")
 }
 
 func TestLabelEditor_ToggleLabel_Space(t *testing.T) {
@@ -84,9 +83,9 @@ func TestLabelEditor_ToggleLabel_Space(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "bug", "expected 'bug' in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
-	assert.NotContains(t, saveMsg.Labels, "feature", "expected 'feature' NOT in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "bug", "expected 'bug' in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
+	require.NotContains(t, saveMsg.Labels, "feature", "expected 'feature' NOT in SaveMsg")
 }
 
 func TestLabelEditor_ToggleLabel_Enter(t *testing.T) {
@@ -106,9 +105,9 @@ func TestLabelEditor_ToggleLabel_Enter(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg")
-	assert.NotContains(t, saveMsg.Labels, "bug", "expected 'bug' NOT in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "feature", "expected 'feature' in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
+	require.NotContains(t, saveMsg.Labels, "bug", "expected 'bug' NOT in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "feature", "expected 'feature' in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
 }
 
 func TestLabelEditor_Navigation_JK(t *testing.T) {
@@ -117,18 +116,18 @@ func TestLabelEditor_Navigation_JK(t *testing.T) {
 	// Initial state - should have cursor on first item
 	view := m.View()
 	// The ">" cursor should be on bug
-	assert.Contains(t, view, ">[x] bug", "expected cursor on first label")
+	require.Contains(t, view, ">[x] bug", "expected cursor on first label")
 
 	// Navigate down with 'j'
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	view = m.View()
 	// The cursor should now be on feature
-	assert.Contains(t, view, ">[x] feature", "expected cursor on second label")
+	require.Contains(t, view, ">[x] feature", "expected cursor on second label")
 
 	// Navigate down with 'j' again
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	view = m.View()
-	assert.Contains(t, view, ">[x] ui", "expected cursor on third label")
+	require.Contains(t, view, ">[x] ui", "expected cursor on third label")
 }
 
 func TestLabelEditor_Navigation_Tab(t *testing.T) {
@@ -136,19 +135,19 @@ func TestLabelEditor_Navigation_Tab(t *testing.T) {
 
 	// View should start with focus indicator on list
 	view := m.View()
-	assert.Contains(t, view, ">[x]", "expected cursor indicator on labels")
+	require.Contains(t, view, ">[x]", "expected cursor indicator on labels")
 
 	// Tab to input section
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	view = m.View()
 	// Input section should now have focus indicator
-	assert.Contains(t, view, ">Enter label", "expected cursor on input")
+	require.Contains(t, view, ">Enter label", "expected cursor on input")
 
 	// Tab to submit button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	view = m.View()
 	// Check that Save button appears focused (different styling)
-	assert.Contains(t, view, "Save", "expected Save button visible")
+	require.Contains(t, view, "Save", "expected Save button visible")
 }
 
 func TestLabelEditor_DuplicatePrevention(t *testing.T) {
@@ -181,7 +180,7 @@ func TestLabelEditor_DuplicatePrevention(t *testing.T) {
 			count++
 		}
 	}
-	assert.Equal(t, 1, count, "expected exactly one 'bug' label (duplicate rejected)")
+	require.Equal(t, 1, count, "expected exactly one 'bug' label (duplicate rejected)")
 }
 
 func TestLabelEditor_EmptyInput(t *testing.T) {
@@ -201,7 +200,7 @@ func TestLabelEditor_EmptyInput(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg")
-	assert.Len(t, saveMsg.Labels, 3, "expected labels unchanged (empty rejected)")
+	require.Len(t, saveMsg.Labels, 3, "expected labels unchanged (empty rejected)")
 }
 
 func TestLabelEditor_Cancel_Esc(t *testing.T) {
@@ -214,7 +213,7 @@ func TestLabelEditor_Cancel_Esc(t *testing.T) {
 	require.NotNil(t, cmd, "expected command to be returned")
 	msg := cmd()
 	_, ok := msg.(CancelMsg)
-	assert.True(t, ok, "expected CancelMsg to be returned")
+	require.True(t, ok, "expected CancelMsg to be returned")
 }
 
 func TestLabelEditor_Save_OnlyEnabledLabels(t *testing.T) {
@@ -233,12 +232,12 @@ func TestLabelEditor_Save_OnlyEnabledLabels(t *testing.T) {
 	require.NotNil(t, cmd, "expected command to be returned")
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
-	assert.True(t, ok, "expected SaveMsg to be returned")
-	assert.Equal(t, "test-123", saveMsg.IssueID, "expected correct issue ID")
-	assert.Len(t, saveMsg.Labels, 2, "expected 2 enabled labels")
-	assert.Contains(t, saveMsg.Labels, "bug", "expected 'bug' in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
-	assert.NotContains(t, saveMsg.Labels, "feature", "expected 'feature' NOT in SaveMsg")
+	require.True(t, ok, "expected SaveMsg to be returned")
+	require.Equal(t, "test-123", saveMsg.IssueID, "expected correct issue ID")
+	require.Len(t, saveMsg.Labels, 2, "expected 2 enabled labels")
+	require.Contains(t, saveMsg.Labels, "bug", "expected 'bug' in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "ui", "expected 'ui' in SaveMsg")
+	require.NotContains(t, saveMsg.Labels, "feature", "expected 'feature' NOT in SaveMsg")
 }
 
 func TestLabelEditor_Save_WithNewLabel(t *testing.T) {
@@ -261,15 +260,15 @@ func TestLabelEditor_Save_WithNewLabel(t *testing.T) {
 	require.NotNil(t, cmd, "expected command to be returned")
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
-	assert.True(t, ok, "expected SaveMsg to be returned")
-	assert.Len(t, saveMsg.Labels, 4, "expected 4 labels in SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "new-label", "expected new-label in SaveMsg")
+	require.True(t, ok, "expected SaveMsg to be returned")
+	require.Len(t, saveMsg.Labels, 4, "expected 4 labels in SaveMsg")
+	require.Contains(t, saveMsg.Labels, "new-label", "expected new-label in SaveMsg")
 }
 
 func TestLabelEditor_Init(t *testing.T) {
 	m := New("test-123", testLabels())
 	cmd := m.Init()
-	assert.Nil(t, cmd, "expected Init to return nil")
+	require.Nil(t, cmd, "expected Init to return nil")
 }
 
 func TestLabelEditor_SetSize(t *testing.T) {
@@ -286,19 +285,19 @@ func TestLabelEditor_View(t *testing.T) {
 	view := m.View()
 
 	// Should contain title
-	assert.Contains(t, view, "Edit Labels", "expected view to contain title")
+	require.Contains(t, view, "Edit Labels", "expected view to contain title")
 
 	// Should contain labels
-	assert.Contains(t, view, "bug", "expected view to contain 'bug'")
-	assert.Contains(t, view, "feature", "expected view to contain 'feature'")
-	assert.Contains(t, view, "ui", "expected view to contain 'ui'")
+	require.Contains(t, view, "bug", "expected view to contain 'bug'")
+	require.Contains(t, view, "feature", "expected view to contain 'feature'")
+	require.Contains(t, view, "ui", "expected view to contain 'ui'")
 
 	// Should have checkboxes (all enabled by default)
-	assert.Contains(t, view, "[x]", "expected view to contain enabled checkboxes")
+	require.Contains(t, view, "[x]", "expected view to contain enabled checkboxes")
 
 	// Should have input hint and Save button
-	assert.Contains(t, view, "Enter to add", "expected view to contain input hint")
-	assert.Contains(t, view, "Save", "expected view to contain Save button")
+	require.Contains(t, view, "Enter to add", "expected view to contain input hint")
+	require.Contains(t, view, "Save", "expected view to contain Save button")
 }
 
 func TestLabelEditor_View_WithDisabled(t *testing.T) {
@@ -310,14 +309,14 @@ func TestLabelEditor_View_WithDisabled(t *testing.T) {
 	view := m.View()
 
 	// Should show unchecked checkbox
-	assert.Contains(t, view, "[ ]", "expected view to contain disabled checkbox")
+	require.Contains(t, view, "[ ]", "expected view to contain disabled checkbox")
 }
 
 func TestLabelEditor_View_Empty(t *testing.T) {
 	m := New("test-123", []string{}).SetSize(80, 24)
 	view := m.View()
 
-	assert.Contains(t, view, "no items", "expected empty state message")
+	require.Contains(t, view, "no items", "expected empty state message")
 }
 
 func TestLabelEditor_SpaceInInput(t *testing.T) {
@@ -342,7 +341,7 @@ func TestLabelEditor_SpaceInInput(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg")
-	assert.Contains(t, saveMsg.Labels, "hello world", "expected 'hello world' label with space")
+	require.Contains(t, saveMsg.Labels, "hello world", "expected 'hello world' label with space")
 }
 
 // TestLabelEditor_View_Golden uses teatest golden file comparison

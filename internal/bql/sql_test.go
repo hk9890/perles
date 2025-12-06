@@ -3,7 +3,6 @@ package bql
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,9 +67,9 @@ func TestSQLBuilder_SimpleComparison(t *testing.T) {
 			builder := NewSQLBuilder(query)
 			where, orderBy, params := builder.Build()
 
-			assert.Equal(t, tt.wantWhere, where)
-			assert.Equal(t, tt.wantParams, params)
-			assert.Equal(t, tt.wantOrderBy, orderBy)
+			require.Equal(t, tt.wantWhere, where)
+			require.Equal(t, tt.wantParams, params)
+			require.Equal(t, tt.wantOrderBy, orderBy)
 		})
 	}
 }
@@ -84,8 +83,8 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.id IN (SELECT issue_id FROM blocked_issues_cache)", where)
-		assert.Empty(t, params)
+		require.Equal(t, "i.id IN (SELECT issue_id FROM blocked_issues_cache)", where)
+		require.Empty(t, params)
 	})
 
 	t.Run("blocked false", func(t *testing.T) {
@@ -96,7 +95,7 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		assert.Equal(t, "i.id NOT IN (SELECT issue_id FROM blocked_issues_cache)", where)
+		require.Equal(t, "i.id NOT IN (SELECT issue_id FROM blocked_issues_cache)", where)
 	})
 
 	t.Run("ready true", func(t *testing.T) {
@@ -107,7 +106,7 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		assert.Equal(t, "i.id IN (SELECT id FROM ready_issues)", where)
+		require.Equal(t, "i.id IN (SELECT id FROM ready_issues)", where)
 	})
 
 	t.Run("single label", func(t *testing.T) {
@@ -118,8 +117,8 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.id IN (SELECT issue_id FROM labels WHERE label = ?)", where)
-		assert.Equal(t, []interface{}{"urgent"}, params)
+		require.Equal(t, "i.id IN (SELECT issue_id FROM labels WHERE label = ?)", where)
+		require.Equal(t, []interface{}{"urgent"}, params)
 	})
 }
 
@@ -132,8 +131,8 @@ func TestSQLBuilder_InExpression(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.issue_type IN (?, ?)", where)
-		assert.Equal(t, []interface{}{"bug", "task"}, params)
+		require.Equal(t, "i.issue_type IN (?, ?)", where)
+		require.Equal(t, []interface{}{"bug", "task"}, params)
 	})
 
 	t.Run("type not in list", func(t *testing.T) {
@@ -144,8 +143,8 @@ func TestSQLBuilder_InExpression(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.issue_type NOT IN (?, ?)", where)
-		assert.Equal(t, []interface{}{"epic", "chore"}, params)
+		require.Equal(t, "i.issue_type NOT IN (?, ?)", where)
+		require.Equal(t, []interface{}{"epic", "chore"}, params)
 	})
 
 	t.Run("priority in list", func(t *testing.T) {
@@ -156,8 +155,8 @@ func TestSQLBuilder_InExpression(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.priority IN (?, ?)", where)
-		assert.Equal(t, []interface{}{0, 1}, params)
+		require.Equal(t, "i.priority IN (?, ?)", where)
+		require.Equal(t, []interface{}{0, 1}, params)
 	})
 
 	t.Run("label in list", func(t *testing.T) {
@@ -168,8 +167,8 @@ func TestSQLBuilder_InExpression(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "i.id IN (SELECT issue_id FROM labels WHERE label IN (?, ?))", where)
-		assert.Equal(t, []interface{}{"urgent", "critical"}, params)
+		require.Equal(t, "i.id IN (SELECT issue_id FROM labels WHERE label IN (?, ?))", where)
+		require.Equal(t, []interface{}{"urgent", "critical"}, params)
 	})
 }
 
@@ -182,8 +181,8 @@ func TestSQLBuilder_BinaryExpressions(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "(i.issue_type = ? AND i.priority = ?)", where)
-		assert.Equal(t, []interface{}{"bug", 0}, params)
+		require.Equal(t, "(i.issue_type = ? AND i.priority = ?)", where)
+		require.Equal(t, []interface{}{"bug", 0}, params)
 	})
 
 	t.Run("or expression", func(t *testing.T) {
@@ -194,8 +193,8 @@ func TestSQLBuilder_BinaryExpressions(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		assert.Equal(t, "(i.issue_type = ? OR i.issue_type = ?)", where)
-		assert.Equal(t, []interface{}{"bug", "task"}, params)
+		require.Equal(t, "(i.issue_type = ? OR i.issue_type = ?)", where)
+		require.Equal(t, []interface{}{"bug", "task"}, params)
 	})
 
 	t.Run("complex and/or", func(t *testing.T) {
@@ -207,8 +206,8 @@ func TestSQLBuilder_BinaryExpressions(t *testing.T) {
 		where, _, params := builder.Build()
 
 		// Should be ((bug AND P0) OR open) due to precedence
-		assert.Equal(t, "((i.issue_type = ? AND i.priority = ?) OR i.status = ?)", where)
-		assert.Equal(t, []interface{}{"bug", 0, "open"}, params)
+		require.Equal(t, "((i.issue_type = ? AND i.priority = ?) OR i.status = ?)", where)
+		require.Equal(t, []interface{}{"bug", 0, "open"}, params)
 	})
 }
 
@@ -220,7 +219,7 @@ func TestSQLBuilder_NotExpression(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, _, _ := builder.Build()
 
-	assert.Equal(t, "NOT (i.id IN (SELECT issue_id FROM blocked_issues_cache))", where)
+	require.Equal(t, "NOT (i.id IN (SELECT issue_id FROM blocked_issues_cache))", where)
 }
 
 func TestSQLBuilder_OrderBy(t *testing.T) {
@@ -232,7 +231,7 @@ func TestSQLBuilder_OrderBy(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		_, orderBy, _ := builder.Build()
 
-		assert.Equal(t, "i.created_at ASC", orderBy)
+		require.Equal(t, "i.created_at ASC", orderBy)
 	})
 
 	t.Run("single field desc", func(t *testing.T) {
@@ -243,7 +242,7 @@ func TestSQLBuilder_OrderBy(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		_, orderBy, _ := builder.Build()
 
-		assert.Equal(t, "i.created_at DESC", orderBy)
+		require.Equal(t, "i.created_at DESC", orderBy)
 	})
 
 	t.Run("multiple fields", func(t *testing.T) {
@@ -254,7 +253,7 @@ func TestSQLBuilder_OrderBy(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		_, orderBy, _ := builder.Build()
 
-		assert.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
+		require.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
 	})
 
 	t.Run("order by only", func(t *testing.T) {
@@ -265,9 +264,9 @@ func TestSQLBuilder_OrderBy(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, orderBy, params := builder.Build()
 
-		assert.Empty(t, where)
-		assert.Equal(t, "i.updated_at DESC", orderBy)
-		assert.Empty(t, params)
+		require.Empty(t, where)
+		require.Equal(t, "i.updated_at DESC", orderBy)
+		require.Empty(t, params)
 	})
 }
 
@@ -298,7 +297,7 @@ func TestSQLBuilder_DateComparisons(t *testing.T) {
 			builder := NewSQLBuilder(query)
 			where, _, _ := builder.Build()
 
-			assert.Equal(t, tt.wantWhere, where)
+			require.Equal(t, tt.wantWhere, where)
 		})
 	}
 }
@@ -313,7 +312,7 @@ func TestSQLBuilder_ComplexQuery(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, orderBy, params := builder.Build()
 
-	assert.Equal(t, "((i.issue_type = ? OR i.issue_type = ?) AND i.id NOT IN (SELECT issue_id FROM blocked_issues_cache))", where)
-	assert.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
-	assert.Equal(t, []interface{}{"bug", "task"}, params)
+	require.Equal(t, "((i.issue_type = ? OR i.issue_type = ?) AND i.id NOT IN (SELECT issue_id FROM blocked_issues_cache))", where)
+	require.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
+	require.Equal(t, []interface{}{"bug", "task"}, params)
 }

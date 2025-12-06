@@ -3,7 +3,7 @@ package bql
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLexer_BasicTokens(t *testing.T) {
@@ -273,8 +273,8 @@ func TestLexer_BasicTokens(t *testing.T) {
 			lexer := NewLexer(tt.input)
 			for i, expected := range tt.expected {
 				tok := lexer.NextToken()
-				assert.Equal(t, expected.Type, tok.Type, "token %d type mismatch", i)
-				assert.Equal(t, expected.Literal, tok.Literal, "token %d literal mismatch", i)
+				require.Equal(t, expected.Type, tok.Type, "token %d type mismatch", i)
+				require.Equal(t, expected.Literal, tok.Literal, "token %d literal mismatch", i)
 			}
 		})
 	}
@@ -297,8 +297,8 @@ func TestLexer_AllOperators(t *testing.T) {
 			lexer := NewLexer("field " + op + " value")
 			lexer.NextToken() // skip field
 			tok := lexer.NextToken()
-			assert.Equal(t, expected, tok.Type)
-			assert.Equal(t, op, tok.Literal)
+			require.Equal(t, expected, tok.Type)
+			require.Equal(t, op, tok.Literal)
 		})
 	}
 }
@@ -333,7 +333,7 @@ func TestLexer_AllKeywords(t *testing.T) {
 		t.Run(kw, func(t *testing.T) {
 			lexer := NewLexer(kw)
 			tok := lexer.NextToken()
-			assert.Equal(t, expected, tok.Type)
+			require.Equal(t, expected, tok.Type)
 		})
 	}
 }

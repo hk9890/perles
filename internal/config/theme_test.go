@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"perles/internal/ui/styles"
@@ -20,7 +19,7 @@ theme:
 `
 	cfg := loadConfigFromYAML(t, configYAML)
 
-	assert.Equal(t, "catppuccin-mocha", cfg.Theme.Preset)
+	require.Equal(t, "catppuccin-mocha", cfg.Theme.Preset)
 
 	// Apply theme and verify colors changed
 	themeCfg := styles.ThemeConfig{
@@ -32,7 +31,7 @@ theme:
 	require.NoError(t, err)
 
 	// Catppuccin Mocha uses #CDD6F4 for text.primary
-	assert.Equal(t, "#CDD6F4", styles.TextPrimaryColor.Dark)
+	require.Equal(t, "#CDD6F4", styles.TextPrimaryColor.Dark)
 }
 
 // TestThemeConfig_WithColorOverrides tests applying color overrides.
@@ -50,8 +49,8 @@ func TestThemeConfig_WithColorOverrides(t *testing.T) {
 	}
 
 	require.NotNil(t, cfg.Theme.Colors)
-	assert.Equal(t, "#FF0000", cfg.Theme.Colors["text.primary"])
-	assert.Equal(t, "#00FF00", cfg.Theme.Colors["status.error"])
+	require.Equal(t, "#FF0000", cfg.Theme.Colors["text.primary"])
+	require.Equal(t, "#00FF00", cfg.Theme.Colors["status.error"])
 
 	// Apply theme and verify colors applied
 	themeCfg := styles.ThemeConfig{
@@ -62,8 +61,8 @@ func TestThemeConfig_WithColorOverrides(t *testing.T) {
 	err := styles.ApplyTheme(themeCfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "#FF0000", styles.TextPrimaryColor.Dark)
-	assert.Equal(t, "#00FF00", styles.StatusErrorColor.Dark)
+	require.Equal(t, "#FF0000", styles.TextPrimaryColor.Dark)
+	require.Equal(t, "#00FF00", styles.StatusErrorColor.Dark)
 }
 
 // TestThemeConfig_PresetWithOverrides tests that color overrides take precedence over preset.
@@ -77,8 +76,8 @@ func TestThemeConfig_PresetWithOverrides(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, "dracula", cfg.Theme.Preset)
-	assert.Equal(t, "#123456", cfg.Theme.Colors["text.primary"])
+	require.Equal(t, "dracula", cfg.Theme.Preset)
+	require.Equal(t, "#123456", cfg.Theme.Colors["text.primary"])
 
 	// Apply theme
 	themeCfg := styles.ThemeConfig{
@@ -90,9 +89,9 @@ func TestThemeConfig_PresetWithOverrides(t *testing.T) {
 	require.NoError(t, err)
 
 	// Override should take precedence
-	assert.Equal(t, "#123456", styles.TextPrimaryColor.Dark)
+	require.Equal(t, "#123456", styles.TextPrimaryColor.Dark)
 	// Dracula's status error should still be applied (#FF5555)
-	assert.Equal(t, "#FF5555", styles.StatusErrorColor.Dark)
+	require.Equal(t, "#FF5555", styles.StatusErrorColor.Dark)
 }
 
 // TestThemeConfig_InvalidPreset tests that invalid preset returns error.
@@ -110,7 +109,7 @@ theme:
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown theme preset")
+	require.Contains(t, err.Error(), "unknown theme preset")
 }
 
 // TestThemeConfig_InvalidColorToken tests that invalid color token returns error.
@@ -130,7 +129,7 @@ func TestThemeConfig_InvalidColorToken(t *testing.T) {
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown color token")
+	require.Contains(t, err.Error(), "unknown color token")
 }
 
 // TestThemeConfig_InvalidHexColor tests that invalid hex color returns error.
@@ -150,7 +149,7 @@ func TestThemeConfig_InvalidHexColor(t *testing.T) {
 	}
 	err := styles.ApplyTheme(themeCfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid hex color")
+	require.Contains(t, err.Error(), "invalid hex color")
 }
 
 // TestThemeConfig_EmptyConfig tests that empty theme config applies defaults.
@@ -161,8 +160,8 @@ auto_refresh: true
 	cfg := loadConfigFromYAML(t, configYAML)
 
 	// Empty theme should result in empty/nil values
-	assert.Empty(t, cfg.Theme.Preset)
-	assert.Nil(t, cfg.Theme.Colors)
+	require.Empty(t, cfg.Theme.Preset)
+	require.Nil(t, cfg.Theme.Colors)
 
 	// Apply should succeed with default colors
 	themeCfg := styles.ThemeConfig{
@@ -174,7 +173,7 @@ auto_refresh: true
 	require.NoError(t, err)
 
 	// Default preset should be applied (#CCCCCC for text.primary)
-	assert.Equal(t, "#CCCCCC", styles.TextPrimaryColor.Dark)
+	require.Equal(t, "#CCCCCC", styles.TextPrimaryColor.Dark)
 }
 
 // TestThemeConfig_AllPresets tests that all built-in presets load correctly.
@@ -208,7 +207,7 @@ theme:
 				Colors: cfg.Theme.Colors,
 			}
 			err := styles.ApplyTheme(themeCfg)
-			assert.NoError(t, err, "preset %s should apply without error", preset)
+			require.NoError(t, err, "preset %s should apply without error", preset)
 		})
 	}
 }

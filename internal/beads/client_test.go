@@ -7,13 +7,12 @@ import (
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewClient_InvalidPath(t *testing.T) {
 	_, err := NewClient("/nonexistent/path/that/does/not/exist")
-	assert.Error(t, err, "expected error for invalid path")
+	require.Error(t, err, "expected error for invalid path")
 }
 
 // setupTestDB creates an in-memory SQLite database with test data for client tests.
@@ -152,7 +151,7 @@ func TestListIssuesByIds_EmptyList(t *testing.T) {
 
 	issues, err := client.ListIssuesByIds([]string{})
 	require.NoError(t, err)
-	assert.Empty(t, issues)
+	require.Empty(t, issues)
 }
 
 func TestListIssuesByIds_SingleID(t *testing.T) {
@@ -164,12 +163,12 @@ func TestListIssuesByIds_SingleID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 
-	assert.Equal(t, "issue-1", issues[0].ID)
-	assert.Equal(t, "First issue", issues[0].TitleText)
-	assert.Equal(t, "Description 1", issues[0].DescriptionText)
-	assert.Equal(t, StatusOpen, issues[0].Status)
-	assert.Equal(t, Priority(0), issues[0].Priority)
-	assert.Equal(t, TypeBug, issues[0].Type)
+	require.Equal(t, "issue-1", issues[0].ID)
+	require.Equal(t, "First issue", issues[0].TitleText)
+	require.Equal(t, "Description 1", issues[0].DescriptionText)
+	require.Equal(t, StatusOpen, issues[0].Status)
+	require.Equal(t, Priority(0), issues[0].Priority)
+	require.Equal(t, TypeBug, issues[0].Type)
 }
 
 func TestListIssuesByIds_MultipleIDs(t *testing.T) {
@@ -186,7 +185,7 @@ func TestListIssuesByIds_MultipleIDs(t *testing.T) {
 	for i, issue := range issues {
 		ids[i] = issue.ID
 	}
-	assert.ElementsMatch(t, []string{"issue-1", "issue-2", "issue-3"}, ids)
+	require.ElementsMatch(t, []string{"issue-1", "issue-2", "issue-3"}, ids)
 }
 
 func TestListIssuesByIds_NonExistentIDsOmitted(t *testing.T) {
@@ -202,7 +201,7 @@ func TestListIssuesByIds_NonExistentIDsOmitted(t *testing.T) {
 	for i, issue := range issues {
 		ids[i] = issue.ID
 	}
-	assert.ElementsMatch(t, []string{"issue-1", "issue-2"}, ids)
+	require.ElementsMatch(t, []string{"issue-1", "issue-2"}, ids)
 }
 
 func TestListIssuesByIds_DeletedExcluded(t *testing.T) {
@@ -214,7 +213,7 @@ func TestListIssuesByIds_DeletedExcluded(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1, "deleted issues should be excluded")
 
-	assert.Equal(t, "issue-1", issues[0].ID)
+	require.Equal(t, "issue-1", issues[0].ID)
 }
 
 func TestListIssuesByIds_LabelsPopulated(t *testing.T) {
@@ -226,7 +225,7 @@ func TestListIssuesByIds_LabelsPopulated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 
-	assert.ElementsMatch(t, []string{"urgent", "backend"}, issues[0].Labels)
+	require.ElementsMatch(t, []string{"urgent", "backend"}, issues[0].Labels)
 }
 
 func TestListIssuesByIds_BlockedByPopulated(t *testing.T) {
@@ -239,7 +238,7 @@ func TestListIssuesByIds_BlockedByPopulated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 
-	assert.Contains(t, issues[0].BlockedBy, "issue-1")
+	require.Contains(t, issues[0].BlockedBy, "issue-1")
 }
 
 func TestListIssuesByIds_BlocksPopulated(t *testing.T) {
@@ -252,7 +251,7 @@ func TestListIssuesByIds_BlocksPopulated(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 
-	assert.Contains(t, issues[0].Blocks, "issue-3")
+	require.Contains(t, issues[0].Blocks, "issue-3")
 }
 
 func TestListIssuesByIds_EpicChildrenInBlocks(t *testing.T) {
@@ -265,7 +264,7 @@ func TestListIssuesByIds_EpicChildrenInBlocks(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, issues, 1)
 
-	assert.Contains(t, issues[0].Blocks, "issue-2", "epic should have children in Blocks field")
+	require.Contains(t, issues[0].Blocks, "issue-2", "epic should have children in Blocks field")
 }
 
 func TestListIssuesByIds_NullDescription(t *testing.T) {
@@ -279,7 +278,7 @@ func TestListIssuesByIds_NullDescription(t *testing.T) {
 	require.Len(t, issues, 1)
 
 	// Empty description should be handled gracefully
-	assert.Equal(t, "", issues[0].DescriptionText)
+	require.Equal(t, "", issues[0].DescriptionText)
 }
 
 func TestListIssuesByIds_AllNonExistent(t *testing.T) {
@@ -289,7 +288,7 @@ func TestListIssuesByIds_AllNonExistent(t *testing.T) {
 
 	issues, err := client.ListIssuesByIds([]string{"fake-1", "fake-2", "fake-3"})
 	require.NoError(t, err)
-	assert.Empty(t, issues, "all nonexistent IDs should return empty slice")
+	require.Empty(t, issues, "all nonexistent IDs should return empty slice")
 }
 
 func TestGetComments_NoComments(t *testing.T) {
@@ -300,7 +299,7 @@ func TestGetComments_NoComments(t *testing.T) {
 	// issue-3 has no comments
 	comments, err := client.GetComments("issue-3")
 	require.NoError(t, err)
-	assert.Empty(t, comments, "issue with no comments should return empty slice")
+	require.Empty(t, comments, "issue with no comments should return empty slice")
 }
 
 func TestGetComments_SingleComment(t *testing.T) {
@@ -313,10 +312,10 @@ func TestGetComments_SingleComment(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, comments, 1)
 
-	assert.Equal(t, "charlie", comments[0].Author)
-	assert.Equal(t, "Only comment on issue-2", comments[0].Text)
-	assert.NotZero(t, comments[0].ID)
-	assert.False(t, comments[0].CreatedAt.IsZero())
+	require.Equal(t, "charlie", comments[0].Author)
+	require.Equal(t, "Only comment on issue-2", comments[0].Text)
+	require.NotZero(t, comments[0].ID)
+	require.False(t, comments[0].CreatedAt.IsZero())
 }
 
 func TestGetComments_MultipleComments(t *testing.T) {
@@ -331,7 +330,7 @@ func TestGetComments_MultipleComments(t *testing.T) {
 
 	// Verify both comments are present
 	authors := []string{comments[0].Author, comments[1].Author}
-	assert.ElementsMatch(t, []string{"alice", "bob"}, authors)
+	require.ElementsMatch(t, []string{"alice", "bob"}, authors)
 }
 
 func TestGetComments_OrderedByCreatedAt(t *testing.T) {
@@ -345,9 +344,9 @@ func TestGetComments_OrderedByCreatedAt(t *testing.T) {
 	require.Len(t, comments, 2)
 
 	// Should be ordered by created_at ASC (oldest first)
-	assert.Equal(t, "alice", comments[0].Author, "first comment should be from alice (earlier)")
-	assert.Equal(t, "bob", comments[1].Author, "second comment should be from bob (later)")
-	assert.True(t, comments[0].CreatedAt.Before(comments[1].CreatedAt), "comments should be ordered by created_at ASC")
+	require.Equal(t, "alice", comments[0].Author, "first comment should be from alice (earlier)")
+	require.Equal(t, "bob", comments[1].Author, "second comment should be from bob (later)")
+	require.True(t, comments[0].CreatedAt.Before(comments[1].CreatedAt), "comments should be ordered by created_at ASC")
 }
 
 func TestGetComments_NonExistentIssue(t *testing.T) {
@@ -358,5 +357,5 @@ func TestGetComments_NonExistentIssue(t *testing.T) {
 	// Non-existent issue should return empty slice (not error)
 	comments, err := client.GetComments("nonexistent-issue")
 	require.NoError(t, err)
-	assert.Empty(t, comments, "non-existent issue should return empty slice")
+	require.Empty(t, comments, "non-existent issue should return empty slice")
 }

@@ -7,7 +7,6 @@ import (
 
 	"perles/internal/beads"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,11 +22,11 @@ func TestNoBeadsDirectory_BeadsClientFails(t *testing.T) {
 	// Verify no .beads directory exists
 	beadsPath := filepath.Join(tmpDir, ".beads")
 	_, err = os.Stat(beadsPath)
-	assert.True(t, os.IsNotExist(err), "expected .beads to not exist")
+	require.True(t, os.IsNotExist(err), "expected .beads to not exist")
 
 	// Verify beads.NewClient fails for this directory
 	_, err = beads.NewClient(tmpDir)
-	assert.Error(t, err, "expected beads.NewClient to fail without .beads directory")
+	require.Error(t, err, "expected beads.NewClient to fail without .beads directory")
 }
 
 // TestNoBeadsDirectory_WithBeadsSucceeds verifies that beads.NewClient succeeds

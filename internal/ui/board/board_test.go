@@ -5,77 +5,77 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"perles/internal/config"
 )
 
 func TestBoard_New_DefaultFocus(t *testing.T) {
 	m := New()
-	assert.Equal(t, ColReady, m.FocusedColumn(), "expected default focus on Ready column")
+	require.Equal(t, ColReady, m.FocusedColumn(), "expected default focus on Ready column")
 }
 
 func TestBoard_NavigateRight(t *testing.T) {
 	m := New()
 	// Default focus is Ready (index 1)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, ColInProgress, m.FocusedColumn(), "expected ColInProgress after 'l'")
+	require.Equal(t, ColInProgress, m.FocusedColumn(), "expected ColInProgress after 'l'")
 }
 
 func TestBoard_NavigateLeft(t *testing.T) {
 	m := New()
 	// Default focus is Ready (index 1)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, ColBlocked, m.FocusedColumn(), "expected ColBlocked after 'h'")
+	require.Equal(t, ColBlocked, m.FocusedColumn(), "expected ColBlocked after 'h'")
 }
 
 func TestBoard_NavigateRightBoundary(t *testing.T) {
 	m := New()
 	m = m.SetFocus(ColClosed)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, ColClosed, m.FocusedColumn(), "expected to stay at ColClosed boundary")
+	require.Equal(t, ColClosed, m.FocusedColumn(), "expected to stay at ColClosed boundary")
 }
 
 func TestBoard_NavigateLeftBoundary(t *testing.T) {
 	m := New()
 	m = m.SetFocus(ColBlocked)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, ColBlocked, m.FocusedColumn(), "expected to stay at ColBlocked boundary")
+	require.Equal(t, ColBlocked, m.FocusedColumn(), "expected to stay at ColBlocked boundary")
 }
 
 func TestBoard_NavigateWithArrowKeys(t *testing.T) {
 	m := New()
 	// Test right arrow
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	assert.Equal(t, ColInProgress, m.FocusedColumn(), "expected ColInProgress after right arrow")
+	require.Equal(t, ColInProgress, m.FocusedColumn(), "expected ColInProgress after right arrow")
 
 	// Test left arrow
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	assert.Equal(t, ColReady, m.FocusedColumn(), "expected ColReady after left arrow")
+	require.Equal(t, ColReady, m.FocusedColumn(), "expected ColReady after left arrow")
 }
 
 func TestBoard_SetFocus(t *testing.T) {
 	m := New()
 	m = m.SetFocus(ColClosed)
-	assert.Equal(t, ColClosed, m.FocusedColumn())
+	require.Equal(t, ColClosed, m.FocusedColumn())
 }
 
 func TestBoard_SetFocus_InvalidIndex(t *testing.T) {
 	m := New()
 	original := m.FocusedColumn()
 	m = m.SetFocus(ColumnIndex(100)) // Invalid
-	assert.Equal(t, original, m.FocusedColumn(), "expected focus to remain for invalid index")
+	require.Equal(t, original, m.FocusedColumn(), "expected focus to remain for invalid index")
 }
 
 func TestBoard_SelectedIssue_Empty(t *testing.T) {
 	m := New()
-	assert.Nil(t, m.SelectedIssue(), "expected nil selected issue on empty board")
+	require.Nil(t, m.SelectedIssue(), "expected nil selected issue on empty board")
 }
 
 func TestBoard_SelectByID_NotFound(t *testing.T) {
 	m := New()
 	_, found := m.SelectByID("nonexistent")
-	assert.False(t, found, "expected not to find nonexistent issue")
+	require.False(t, found, "expected not to find nonexistent issue")
 }
 
 func TestBoard_SetSize(t *testing.T) {
@@ -89,7 +89,7 @@ func TestBoard_View(t *testing.T) {
 	m := New()
 	m = m.SetSize(120, 40)
 	view := m.View()
-	assert.NotEmpty(t, view, "expected non-empty view")
+	require.NotEmpty(t, view, "expected non-empty view")
 }
 
 // TestBoard_View_Golden uses teatest golden file comparison
@@ -107,8 +107,8 @@ func TestBoard_CustomColumns(t *testing.T) {
 	}
 
 	board := NewFromConfig(configs)
-	assert.Equal(t, 2, board.ColCount())
-	assert.Equal(t, 1, board.FocusedColumn()) // Second column by default
+	require.Equal(t, 2, board.ColCount())
+	require.Equal(t, 1, board.FocusedColumn()) // Second column by default
 }
 
 func TestBoard_CustomColumns_SingleColumn(t *testing.T) {
@@ -117,8 +117,8 @@ func TestBoard_CustomColumns_SingleColumn(t *testing.T) {
 	}
 
 	board := NewFromConfig(configs)
-	assert.Equal(t, 1, board.ColCount())
-	assert.Equal(t, 0, board.FocusedColumn()) // First and only column
+	require.Equal(t, 1, board.ColCount())
+	require.Equal(t, 0, board.FocusedColumn()) // First and only column
 }
 
 func TestBoard_CustomColumns_Navigation(t *testing.T) {
@@ -129,26 +129,26 @@ func TestBoard_CustomColumns_Navigation(t *testing.T) {
 	}
 
 	m := NewFromConfig(configs)
-	assert.Equal(t, 1, m.FocusedColumn()) // Start on second column
+	require.Equal(t, 1, m.FocusedColumn()) // Start on second column
 
 	// Navigate right
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, 2, m.FocusedColumn())
+	require.Equal(t, 2, m.FocusedColumn())
 
 	// Try to go past boundary
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
-	assert.Equal(t, 2, m.FocusedColumn(), "should stay at boundary")
+	require.Equal(t, 2, m.FocusedColumn(), "should stay at boundary")
 
 	// Navigate left
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, 1, m.FocusedColumn())
+	require.Equal(t, 1, m.FocusedColumn())
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, 0, m.FocusedColumn())
+	require.Equal(t, 0, m.FocusedColumn())
 
 	// Try to go past boundary
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	assert.Equal(t, 0, m.FocusedColumn(), "should stay at boundary")
+	require.Equal(t, 0, m.FocusedColumn(), "should stay at boundary")
 }
 
 // Multi-view tests
@@ -172,10 +172,10 @@ func TestBoard_NewFromViews(t *testing.T) {
 
 	m := NewFromViews(views, nil)
 
-	assert.Equal(t, 2, m.ViewCount())
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View1", m.CurrentViewName())
-	assert.Equal(t, 2, m.ColCount()) // View1 has 2 columns
+	require.Equal(t, 2, m.ViewCount())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View1", m.CurrentViewName())
+	require.Equal(t, 2, m.ColCount()) // View1 has 2 columns
 }
 
 func TestBoard_CycleViewNext(t *testing.T) {
@@ -186,23 +186,23 @@ func TestBoard_CycleViewNext(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View0", m.CurrentViewName())
 
 	// Cycle 0 -> 1
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, 1, m.CurrentViewIndex())
-	assert.Equal(t, "View1", m.CurrentViewName())
+	require.Equal(t, 1, m.CurrentViewIndex())
+	require.Equal(t, "View1", m.CurrentViewName())
 
 	// Cycle 1 -> 2
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, 2, m.CurrentViewIndex())
-	assert.Equal(t, "View2", m.CurrentViewName())
+	require.Equal(t, 2, m.CurrentViewIndex())
+	require.Equal(t, "View2", m.CurrentViewName())
 
 	// Cycle 2 -> 0 (wraparound)
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View0", m.CurrentViewName())
 }
 
 func TestBoard_CycleViewPrev(t *testing.T) {
@@ -213,22 +213,22 @@ func TestBoard_CycleViewPrev(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 
 	// Cycle 0 -> 2 (wraparound backward)
 	m, _ = m.CycleViewPrev()
-	assert.Equal(t, 2, m.CurrentViewIndex())
-	assert.Equal(t, "View2", m.CurrentViewName())
+	require.Equal(t, 2, m.CurrentViewIndex())
+	require.Equal(t, "View2", m.CurrentViewName())
 
 	// Cycle 2 -> 1
 	m, _ = m.CycleViewPrev()
-	assert.Equal(t, 1, m.CurrentViewIndex())
-	assert.Equal(t, "View1", m.CurrentViewName())
+	require.Equal(t, 1, m.CurrentViewIndex())
+	require.Equal(t, "View1", m.CurrentViewName())
 
 	// Cycle 1 -> 0
 	m, _ = m.CycleViewPrev()
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View0", m.CurrentViewName())
 }
 
 func TestBoard_CycleViewNext_SingleView(t *testing.T) {
@@ -237,12 +237,12 @@ func TestBoard_CycleViewNext_SingleView(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 
 	// Cycling with single view should do nothing
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "OnlyView", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "OnlyView", m.CurrentViewName())
 }
 
 func TestBoard_CycleViewPrev_SingleView(t *testing.T) {
@@ -254,8 +254,8 @@ func TestBoard_CycleViewPrev_SingleView(t *testing.T) {
 
 	// Cycling with single view should do nothing
 	m, _ = m.CycleViewPrev()
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "OnlyView", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "OnlyView", m.CurrentViewName())
 }
 
 func TestBoard_SetCurrentViewName(t *testing.T) {
@@ -265,11 +265,11 @@ func TestBoard_SetCurrentViewName(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, "View0", m.CurrentViewName())
 
 	m = m.SetCurrentViewName("Renamed")
-	assert.Equal(t, "Renamed", m.CurrentViewName())
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "Renamed", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
 }
 
 func TestBoard_SetCurrentViewName_PreservesOtherViews(t *testing.T) {
@@ -283,11 +283,11 @@ func TestBoard_SetCurrentViewName_PreservesOtherViews(t *testing.T) {
 
 	// Switch to View1 and verify it's unchanged
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, "View1", m.CurrentViewName())
+	require.Equal(t, "View1", m.CurrentViewName())
 
 	// Switch back and verify rename persisted
 	m, _ = m.CycleViewPrev()
-	assert.Equal(t, "Renamed", m.CurrentViewName())
+	require.Equal(t, "Renamed", m.CurrentViewName())
 }
 
 func TestBoard_ViewSwitchChangesColumns(t *testing.T) {
@@ -310,12 +310,12 @@ func TestBoard_ViewSwitchChangesColumns(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 2, m.ColCount()) // View1 has 2 columns
+	require.Equal(t, 2, m.ColCount()) // View1 has 2 columns
 
 	// Switch to View2
 	m, _ = m.CycleViewNext()
-	assert.Equal(t, 3, m.ColCount()) // View2 has 3 columns
-	assert.Equal(t, "View2", m.CurrentViewName())
+	require.Equal(t, 3, m.ColCount()) // View2 has 3 columns
+	require.Equal(t, "View2", m.CurrentViewName())
 }
 
 func TestBoard_LoadCurrentViewCmd_NoExecutor(t *testing.T) {
@@ -327,7 +327,7 @@ func TestBoard_LoadCurrentViewCmd_NoExecutor(t *testing.T) {
 	cmd := m.LoadCurrentViewCmd()
 	// With no executor, LoadIssuesCmdForView returns nil for each column
 	// and the batch should be nil
-	assert.Nil(t, cmd)
+	require.Nil(t, cmd)
 }
 
 func TestBoard_ColumnLoadedMsg_UpdatesCorrectView(t *testing.T) {
@@ -337,7 +337,7 @@ func TestBoard_ColumnLoadedMsg_UpdatesCorrectView(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 
 	// Message for current view (0) should be processed
 	msg := ColumnLoadedMsg{
@@ -358,7 +358,7 @@ func TestBoard_ColumnLoadedMsg_UpdatesCorrectView(t *testing.T) {
 	}
 	m, _ = m.Update(msg2)
 	// Still on view 0
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 }
 
 func TestBoard_SwitchToView(t *testing.T) {
@@ -369,18 +369,18 @@ func TestBoard_SwitchToView(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View0", m.CurrentViewName())
 
 	// Switch directly to view 2
 	m, _ = m.SwitchToView(2)
-	assert.Equal(t, 2, m.CurrentViewIndex())
-	assert.Equal(t, "View2", m.CurrentViewName())
+	require.Equal(t, 2, m.CurrentViewIndex())
+	require.Equal(t, "View2", m.CurrentViewName())
 
 	// Switch back to view 0
 	m, _ = m.SwitchToView(0)
-	assert.Equal(t, 0, m.CurrentViewIndex())
-	assert.Equal(t, "View0", m.CurrentViewName())
+	require.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, "View0", m.CurrentViewName())
 }
 
 func TestBoard_SwitchToView_InvalidIndex(t *testing.T) {
@@ -389,14 +389,14 @@ func TestBoard_SwitchToView_InvalidIndex(t *testing.T) {
 	}
 
 	m := NewFromViews(views, nil)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 
 	// Invalid indices should be no-ops
 	m, _ = m.SwitchToView(-1)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 
 	m, _ = m.SwitchToView(5)
-	assert.Equal(t, 0, m.CurrentViewIndex())
+	require.Equal(t, 0, m.CurrentViewIndex())
 }
 
 func TestBoard_InvalidateViews(t *testing.T) {
@@ -417,9 +417,9 @@ func TestBoard_InvalidateViews(t *testing.T) {
 	m = m.InvalidateViews()
 
 	// All views should now be marked as not loaded
-	assert.False(t, m.views[0].loaded, "View 0 should be invalidated")
-	assert.False(t, m.views[1].loaded, "View 1 should be invalidated")
-	assert.False(t, m.views[2].loaded, "View 2 should be invalidated")
+	require.False(t, m.views[0].loaded, "View 0 should be invalidated")
+	require.False(t, m.views[1].loaded, "View 1 should be invalidated")
+	require.False(t, m.views[2].loaded, "View 2 should be invalidated")
 }
 
 func TestBoard_SwitchToView_ReloadsAfterInvalidate(t *testing.T) {
@@ -431,7 +431,7 @@ func TestBoard_SwitchToView_ReloadsAfterInvalidate(t *testing.T) {
 	m := NewFromViews(views, nil)
 
 	// Initially view 0 is not loaded
-	assert.False(t, m.views[0].loaded, "View 0 should start unloaded")
+	require.False(t, m.views[0].loaded, "View 0 should start unloaded")
 
 	// Mark both views as loaded (simulating they've been visited)
 	m.views[0].loaded = true
@@ -439,12 +439,12 @@ func TestBoard_SwitchToView_ReloadsAfterInvalidate(t *testing.T) {
 
 	// Switch to view 1 - view is already loaded, loaded flag stays true
 	m, _ = m.SwitchToView(1)
-	assert.True(t, m.views[1].loaded, "View 1 should still be marked loaded")
+	require.True(t, m.views[1].loaded, "View 1 should still be marked loaded")
 
 	// Invalidate all views
 	m = m.InvalidateViews()
-	assert.False(t, m.views[0].loaded, "View 0 should be invalidated")
-	assert.False(t, m.views[1].loaded, "View 1 should be invalidated")
+	require.False(t, m.views[0].loaded, "View 0 should be invalidated")
+	require.False(t, m.views[1].loaded, "View 1 should be invalidated")
 
 	// After invalidation, switching to a view will attempt to reload it
 	// (the loaded flag is false, so switchToView will try to load)
@@ -455,7 +455,7 @@ func TestBoard_SwitchToView_ReloadsAfterInvalidate(t *testing.T) {
 	// After the switch, view should be marked loaded (even without executor)
 	// because ColumnLoadedMsg would mark it loaded - but since we don't
 	// process that msg here, we just verify the invalidation worked
-	assert.False(t, m.views[0].loaded, "View 0 should still be unloaded (no executor)")
+	require.False(t, m.views[0].loaded, "View 0 should still be unloaded (no executor)")
 }
 
 func TestBoard_EmptyColumns_ShowsEmptyState(t *testing.T) {
@@ -464,8 +464,8 @@ func TestBoard_EmptyColumns_ShowsEmptyState(t *testing.T) {
 	m := NewFromConfig(configs).SetSize(80, 24)
 
 	view := m.View()
-	assert.Contains(t, view, "No columns configured")
-	assert.Contains(t, view, "Press 'a' to add a column")
+	require.Contains(t, view, "No columns configured")
+	require.Contains(t, view, "Press 'a' to add a column")
 }
 
 func TestBoard_EmptyView_ColCount(t *testing.T) {
@@ -473,7 +473,7 @@ func TestBoard_EmptyView_ColCount(t *testing.T) {
 	configs := []config.ColumnConfig{}
 	m := NewFromConfig(configs)
 
-	assert.Equal(t, 0, m.ColCount())
+	require.Equal(t, 0, m.ColCount())
 }
 
 func TestBoard_NewFromViews_EmptyColumns(t *testing.T) {
@@ -487,10 +487,10 @@ func TestBoard_NewFromViews_EmptyColumns(t *testing.T) {
 
 	m := NewFromViews(views, nil).SetSize(80, 24)
 
-	assert.Equal(t, 1, m.ViewCount())
-	assert.Equal(t, "EmptyView", m.CurrentViewName())
-	assert.Equal(t, 0, m.ColCount())
+	require.Equal(t, 1, m.ViewCount())
+	require.Equal(t, "EmptyView", m.CurrentViewName())
+	require.Equal(t, 0, m.ColCount())
 
 	view := m.View()
-	assert.Contains(t, view, "No columns configured")
+	require.Contains(t, view, "No columns configured")
 }

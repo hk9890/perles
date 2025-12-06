@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"perles/internal/beads"
 	"perles/internal/config"
@@ -43,10 +43,10 @@ func createTestModelWithResults() Model {
 func TestSearch_New(t *testing.T) {
 	m := createTestModel()
 
-	assert.Equal(t, FocusSearch, m.focus, "expected focus on search input")
-	assert.Equal(t, ViewSearch, m.view, "expected ViewSearch mode")
-	assert.False(t, m.hasDetail, "expected no detail initially")
-	assert.Nil(t, m.results, "expected no results initially")
+	require.Equal(t, FocusSearch, m.focus, "expected focus on search input")
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch mode")
+	require.False(t, m.hasDetail, "expected no detail initially")
+	require.Nil(t, m.results, "expected no results initially")
 }
 
 func TestSearch_SetSize(t *testing.T) {
@@ -54,8 +54,8 @@ func TestSearch_SetSize(t *testing.T) {
 
 	m = m.SetSize(120, 50)
 
-	assert.Equal(t, 120, m.width, "width should be updated")
-	assert.Equal(t, 50, m.height, "height should be updated")
+	require.Equal(t, 120, m.width, "width should be updated")
+	require.Equal(t, 50, m.height, "height should be updated")
 }
 
 func TestSearch_SetSize_ZeroGuard(t *testing.T) {
@@ -66,8 +66,8 @@ func TestSearch_SetSize_ZeroGuard(t *testing.T) {
 	m = m.SetSize(0, 0)
 
 	// Should not crash and should preserve existing values
-	assert.Equal(t, 0, m.width, "width should be 0")
-	assert.Equal(t, 0, m.height, "height should be 0")
+	require.Equal(t, 0, m.width, "width should be 0")
+	require.Equal(t, 0, m.height, "height should be 0")
 }
 
 func TestSearch_HandleSearchResults_Success(t *testing.T) {
@@ -79,10 +79,10 @@ func TestSearch_HandleSearchResults_Success(t *testing.T) {
 
 	m, _ = m.handleSearchResults(searchResultsMsg{issues: issues, err: nil})
 
-	assert.Nil(t, m.searchErr, "expected no error")
-	assert.Len(t, m.results, 2, "expected 2 results")
-	assert.Equal(t, 0, m.selectedIdx, "expected first item selected")
-	assert.True(t, m.hasDetail, "expected detail panel to be active")
+	require.Nil(t, m.searchErr, "expected no error")
+	require.Len(t, m.results, 2, "expected 2 results")
+	require.Equal(t, 0, m.selectedIdx, "expected first item selected")
+	require.True(t, m.hasDetail, "expected detail panel to be active")
 }
 
 func TestSearch_HandleSearchResults_Empty(t *testing.T) {
@@ -90,9 +90,9 @@ func TestSearch_HandleSearchResults_Empty(t *testing.T) {
 
 	m, _ = m.handleSearchResults(searchResultsMsg{issues: []beads.Issue{}, err: nil})
 
-	assert.Nil(t, m.searchErr, "expected no error")
-	assert.Empty(t, m.results, "expected empty results")
-	assert.False(t, m.hasDetail, "expected no detail panel")
+	require.Nil(t, m.searchErr, "expected no error")
+	require.Empty(t, m.results, "expected empty results")
+	require.False(t, m.hasDetail, "expected no detail panel")
 }
 
 func TestSearch_HandleSearchResults_Error(t *testing.T) {
@@ -101,12 +101,12 @@ func TestSearch_HandleSearchResults_Error(t *testing.T) {
 
 	m, cmd := m.handleSearchResults(searchResultsMsg{issues: nil, err: testErr})
 
-	assert.Equal(t, testErr, m.searchErr, "expected error to be set")
-	assert.Nil(t, m.results, "expected nil results")
-	assert.False(t, m.hasDetail, "expected no detail panel")
+	require.Equal(t, testErr, m.searchErr, "expected error to be set")
+	require.Nil(t, m.results, "expected nil results")
+	require.False(t, m.hasDetail, "expected no detail panel")
 	// Error is shown in Results panel after blur, not via toaster
-	assert.False(t, m.showSearchErr, "showSearchErr should be false until blur")
-	assert.Nil(t, cmd, "no command expected (no toaster)")
+	require.False(t, m.showSearchErr, "showSearchErr should be false until blur")
+	require.Nil(t, cmd, "no command expected (no toaster)")
 }
 
 func TestSearch_FocusNavigation_SlashFocusesSearch(t *testing.T) {
@@ -116,8 +116,8 @@ func TestSearch_FocusNavigation_SlashFocusesSearch(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 
-	assert.Equal(t, FocusSearch, m.focus, "expected focus on search")
-	assert.True(t, m.input.Focused(), "expected input to be focused")
+	require.Equal(t, FocusSearch, m.focus, "expected focus on search")
+	require.True(t, m.input.Focused(), "expected input to be focused")
 }
 
 func TestSearch_FocusNavigation_HMovesLeft(t *testing.T) {
@@ -127,7 +127,7 @@ func TestSearch_FocusNavigation_HMovesLeft(t *testing.T) {
 	// h moves focus from details to results
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
 
-	assert.Equal(t, FocusResults, m.focus, "expected focus on results")
+	require.Equal(t, FocusResults, m.focus, "expected focus on results")
 }
 
 func TestSearch_FocusNavigation_LMovesRight(t *testing.T) {
@@ -137,7 +137,7 @@ func TestSearch_FocusNavigation_LMovesRight(t *testing.T) {
 	// l moves focus from results to details
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 
-	assert.Equal(t, FocusDetails, m.focus, "expected focus on details")
+	require.Equal(t, FocusDetails, m.focus, "expected focus on details")
 }
 
 func TestSearch_FocusNavigation_LMovesToDetailsEvenWhenEmpty(t *testing.T) {
@@ -148,7 +148,7 @@ func TestSearch_FocusNavigation_LMovesToDetailsEvenWhenEmpty(t *testing.T) {
 	// l should move to details even when detail panel is empty
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
 
-	assert.Equal(t, FocusDetails, m.focus, "expected focus to move to details")
+	require.Equal(t, FocusDetails, m.focus, "expected focus to move to details")
 }
 
 func TestSearch_FocusNavigation_EscFromSearchExitsToKanban(t *testing.T) {
@@ -159,13 +159,13 @@ func TestSearch_FocusNavigation_EscFromSearchExitsToKanban(t *testing.T) {
 	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
 
 	// Should blur input and return ExitToKanbanMsg
-	assert.False(t, m.input.Focused(), "expected input to be blurred")
-	assert.NotNil(t, cmd, "expected command to be returned")
+	require.False(t, m.input.Focused(), "expected input to be blurred")
+	require.NotNil(t, cmd, "expected command to be returned")
 
 	// Execute the command to get the message
 	msg := cmd()
 	_, ok := msg.(ExitToKanbanMsg)
-	assert.True(t, ok, "expected ExitToKanbanMsg")
+	require.True(t, ok, "expected ExitToKanbanMsg")
 }
 
 func TestSearch_FocusNavigation_EscFromResultsExitsToKanban(t *testing.T) {
@@ -174,12 +174,12 @@ func TestSearch_FocusNavigation_EscFromResultsExitsToKanban(t *testing.T) {
 
 	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
 
-	assert.NotNil(t, cmd, "expected command to be returned")
+	require.NotNil(t, cmd, "expected command to be returned")
 
 	// Execute the command to get the message
 	msg := cmd()
 	_, ok := msg.(ExitToKanbanMsg)
-	assert.True(t, ok, "expected ExitToKanbanMsg")
+	require.True(t, ok, "expected ExitToKanbanMsg")
 }
 
 func TestSearch_FocusNavigation_EscFromDetailsExitsToKanban(t *testing.T) {
@@ -188,12 +188,12 @@ func TestSearch_FocusNavigation_EscFromDetailsExitsToKanban(t *testing.T) {
 
 	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
 
-	assert.NotNil(t, cmd, "expected command to be returned")
+	require.NotNil(t, cmd, "expected command to be returned")
 
 	// Execute the command to get the message
 	msg := cmd()
 	_, ok := msg.(ExitToKanbanMsg)
-	assert.True(t, ok, "expected ExitToKanbanMsg")
+	require.True(t, ok, "expected ExitToKanbanMsg")
 }
 
 func TestSearch_ResultSelection_JMovesDown(t *testing.T) {
@@ -203,7 +203,7 @@ func TestSearch_ResultSelection_JMovesDown(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 
-	assert.Equal(t, 1, m.selectedIdx, "expected selectedIdx to increment")
+	require.Equal(t, 1, m.selectedIdx, "expected selectedIdx to increment")
 }
 
 func TestSearch_ResultSelection_KMovesUp(t *testing.T) {
@@ -213,7 +213,7 @@ func TestSearch_ResultSelection_KMovesUp(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 
-	assert.Equal(t, 0, m.selectedIdx, "expected selectedIdx to decrement")
+	require.Equal(t, 0, m.selectedIdx, "expected selectedIdx to decrement")
 }
 
 func TestSearch_ResultSelection_JAtEnd(t *testing.T) {
@@ -223,7 +223,7 @@ func TestSearch_ResultSelection_JAtEnd(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 
-	assert.Equal(t, 2, m.selectedIdx, "expected selectedIdx to stay at end")
+	require.Equal(t, 2, m.selectedIdx, "expected selectedIdx to stay at end")
 }
 
 func TestSearch_ResultSelection_KAtStart(t *testing.T) {
@@ -233,7 +233,7 @@ func TestSearch_ResultSelection_KAtStart(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
 
-	assert.Equal(t, 0, m.selectedIdx, "expected selectedIdx to stay at start")
+	require.Equal(t, 0, m.selectedIdx, "expected selectedIdx to stay at start")
 }
 
 func TestSearch_HelpOverlay_QuestionOpens(t *testing.T) {
@@ -242,7 +242,7 @@ func TestSearch_HelpOverlay_QuestionOpens(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 
-	assert.Equal(t, ViewHelp, m.view, "expected help view")
+	require.Equal(t, ViewHelp, m.view, "expected help view")
 }
 
 func TestSearch_HelpOverlay_QuestionCloses(t *testing.T) {
@@ -251,7 +251,7 @@ func TestSearch_HelpOverlay_QuestionCloses(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 
-	assert.Equal(t, ViewSearch, m.view, "expected search view")
+	require.Equal(t, ViewSearch, m.view, "expected search view")
 }
 
 func TestSearch_HelpOverlay_EscCloses(t *testing.T) {
@@ -260,7 +260,7 @@ func TestSearch_HelpOverlay_EscCloses(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
 
-	assert.Equal(t, ViewSearch, m.view, "expected search view")
+	require.Equal(t, ViewSearch, m.view, "expected search view")
 }
 
 func TestSearch_PickerOpen_Priority(t *testing.T) {
@@ -270,8 +270,8 @@ func TestSearch_PickerOpen_Priority(t *testing.T) {
 	msg := details.OpenPriorityPickerMsg{IssueID: "test-1", Current: beads.Priority(1)}
 	m, _ = m.openPriorityPicker(msg)
 
-	assert.Equal(t, ViewPriorityPicker, m.view, "expected priority picker view")
-	assert.NotNil(t, m.selectedIssue, "expected selected issue to be set")
+	require.Equal(t, ViewPriorityPicker, m.view, "expected priority picker view")
+	require.NotNil(t, m.selectedIssue, "expected selected issue to be set")
 }
 
 func TestSearch_PickerOpen_Status(t *testing.T) {
@@ -281,8 +281,8 @@ func TestSearch_PickerOpen_Status(t *testing.T) {
 	msg := details.OpenStatusPickerMsg{IssueID: "test-1", Current: beads.StatusOpen}
 	m, _ = m.openStatusPicker(msg)
 
-	assert.Equal(t, ViewStatusPicker, m.view, "expected status picker view")
-	assert.NotNil(t, m.selectedIssue, "expected selected issue to be set")
+	require.Equal(t, ViewStatusPicker, m.view, "expected status picker view")
+	require.NotNil(t, m.selectedIssue, "expected selected issue to be set")
 }
 
 func TestSearch_PickerCancel_Esc(t *testing.T) {
@@ -292,8 +292,8 @@ func TestSearch_PickerCancel_Esc(t *testing.T) {
 
 	m, _ = m.handlePickerKey(tea.KeyMsg{Type: tea.KeyEscape})
 
-	assert.Equal(t, ViewSearch, m.view, "expected search view after cancel")
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
 }
 
 func TestSearch_PickerCancel_Q(t *testing.T) {
@@ -303,8 +303,8 @@ func TestSearch_PickerCancel_Q(t *testing.T) {
 
 	m, _ = m.handlePickerKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 
-	assert.Equal(t, ViewSearch, m.view, "expected search view after cancel")
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
 }
 
 func TestSearch_PriorityChanged_Success(t *testing.T) {
@@ -314,10 +314,10 @@ func TestSearch_PriorityChanged_Success(t *testing.T) {
 	msg := priorityChangedMsg{issueID: "test-1", priority: beads.Priority(0), err: nil}
 	m, cmd := m.handlePriorityChanged(msg)
 
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	assert.NotNil(t, cmd, "expected ShowToastMsg command for success")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.NotNil(t, cmd, "expected ShowToastMsg command for success")
 	// Check that results list was updated
-	assert.Equal(t, beads.Priority(0), m.results[0].Priority, "expected priority updated in results")
+	require.Equal(t, beads.Priority(0), m.results[0].Priority, "expected priority updated in results")
 }
 
 func TestSearch_PriorityChanged_Error(t *testing.T) {
@@ -327,8 +327,8 @@ func TestSearch_PriorityChanged_Error(t *testing.T) {
 	msg := priorityChangedMsg{issueID: "test-1", priority: beads.Priority(0), err: errors.New("db error")}
 	m, cmd := m.handlePriorityChanged(msg)
 
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	assert.NotNil(t, cmd, "expected ShowToastMsg command for error")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.NotNil(t, cmd, "expected ShowToastMsg command for error")
 }
 
 func TestSearch_StatusChanged_Success(t *testing.T) {
@@ -338,10 +338,10 @@ func TestSearch_StatusChanged_Success(t *testing.T) {
 	msg := statusChangedMsg{issueID: "test-1", status: beads.StatusClosed, err: nil}
 	m, cmd := m.handleStatusChanged(msg)
 
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	assert.NotNil(t, cmd, "expected ShowToastMsg command for success")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.NotNil(t, cmd, "expected ShowToastMsg command for success")
 	// Check that results list was updated
-	assert.Equal(t, beads.StatusClosed, m.results[0].Status, "expected status updated in results")
+	require.Equal(t, beads.StatusClosed, m.results[0].Status, "expected status updated in results")
 }
 
 func TestSearch_StatusChanged_Error(t *testing.T) {
@@ -351,8 +351,8 @@ func TestSearch_StatusChanged_Error(t *testing.T) {
 	msg := statusChangedMsg{issueID: "test-1", status: beads.StatusClosed, err: errors.New("db error")}
 	m, cmd := m.handleStatusChanged(msg)
 
-	assert.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	assert.NotNil(t, cmd, "expected ShowToastMsg command for error")
+	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	require.NotNil(t, cmd, "expected ShowToastMsg command for error")
 }
 
 func TestSearch_View_NotPanics(t *testing.T) {
@@ -384,7 +384,7 @@ func TestSearch_View_NotPanics(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Should not panic
 			view := tt.m.View()
-			assert.NotEmpty(t, view, "view should not be empty")
+			require.NotEmpty(t, view, "view should not be empty")
 		})
 	}
 }
@@ -393,14 +393,14 @@ func TestSearch_IssueItem_FilterValue(t *testing.T) {
 	issue := beads.Issue{ID: "test-1", TitleText: "My Test Issue"}
 	item := issueItem{issue: issue}
 
-	assert.Equal(t, "My Test Issue", item.FilterValue())
+	require.Equal(t, "My Test Issue", item.FilterValue())
 }
 
 func TestSearch_IssueDelegate_HeightAndSpacing(t *testing.T) {
 	d := newIssueDelegate()
 
-	assert.Equal(t, 1, d.Height(), "delegate height should be 1")
-	assert.Equal(t, 0, d.Spacing(), "delegate spacing should be 0")
+	require.Equal(t, 1, d.Height(), "delegate height should be 1")
+	require.Equal(t, 0, d.Spacing(), "delegate spacing should be 0")
 }
 
 func TestSearch_SetQuery(t *testing.T) {
@@ -409,7 +409,7 @@ func TestSearch_SetQuery(t *testing.T) {
 	m = m.SetQuery("status:open")
 
 	// Verify query was set on input
-	assert.Equal(t, "status:open", m.input.Value(), "query should be set")
+	require.Equal(t, "status:open", m.input.Value(), "query should be set")
 }
 
 func TestSearch_SetQuery_Empty(t *testing.T) {
@@ -417,13 +417,13 @@ func TestSearch_SetQuery_Empty(t *testing.T) {
 
 	// Set a query first
 	m = m.SetQuery("priority:1")
-	assert.Equal(t, "priority:1", m.input.Value())
+	require.Equal(t, "priority:1", m.input.Value())
 
 	// Set empty query
 	m = m.SetQuery("")
 
 	// Should clear the query
-	assert.Equal(t, "", m.input.Value(), "empty query should clear input")
+	require.Equal(t, "", m.input.Value(), "empty query should clear input")
 }
 
 // Tests for Ctrl+S save as column flow
@@ -435,7 +435,7 @@ func TestCtrlS_OpensActionPicker(t *testing.T) {
 
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlS})
 
-	assert.Equal(t, ViewSaveAction, m.view, "expected action picker to open")
+	require.Equal(t, ViewSaveAction, m.view, "expected action picker to open")
 }
 
 func TestCtrlS_RequiresQuery(t *testing.T) {
@@ -445,8 +445,8 @@ func TestCtrlS_RequiresQuery(t *testing.T) {
 
 	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlS})
 
-	assert.NotEqual(t, ViewSaveColumn, m.view, "should not open view selector with empty query")
-	assert.NotNil(t, cmd, "expected ShowToastMsg command for warning")
+	require.NotEqual(t, ViewSaveColumn, m.view, "should not open view selector with empty query")
+	require.NotNil(t, cmd, "expected ShowToastMsg command for warning")
 }
 
 func TestViewSelector_EscReturnToSearch(t *testing.T) {
@@ -456,7 +456,7 @@ func TestViewSelector_EscReturnToSearch(t *testing.T) {
 	// The factory pattern produces closeSaveViewMsg instead of formmodal.CancelMsg
 	m, _ = m.Update(closeSaveViewMsg{})
 
-	assert.Equal(t, ViewSearch, m.view, "expected to return to search view")
+	require.Equal(t, ViewSearch, m.view, "expected to return to search view")
 }
 
 func TestViewSelector_SaveBubblesUp(t *testing.T) {
@@ -473,8 +473,8 @@ func TestViewSelector_SaveBubblesUp(t *testing.T) {
 	}
 	m, cmd := m.Update(saveMsg)
 
-	assert.Equal(t, ViewSearch, m.view, "expected to return to search view")
-	assert.NotNil(t, cmd, "expected batch command with ShowToastMsg")
+	require.Equal(t, ViewSearch, m.view, "expected to return to search view")
+	require.NotNil(t, cmd, "expected batch command with ShowToastMsg")
 }
 
 // createTestModelWithViews creates a Model with views configured for viewselector tests.
@@ -518,7 +518,7 @@ func TestCtrlS_WorksWithNoViews(t *testing.T) {
 	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlS})
 
 	// Should show action picker - user can still create a new view
-	assert.Equal(t, ViewSaveAction, m.view, "should open action picker even with no views")
+	require.Equal(t, ViewSaveAction, m.view, "should open action picker even with no views")
 }
 
 func TestActionPicker_SelectExistingView(t *testing.T) {
@@ -531,7 +531,7 @@ func TestActionPicker_SelectExistingView(t *testing.T) {
 		Query:  "status = open",
 	})
 
-	assert.Equal(t, ViewSaveColumn, m.view, "expected to transition to view selector")
+	require.Equal(t, ViewSaveColumn, m.view, "expected to transition to view selector")
 }
 
 func TestActionPicker_SelectNewView(t *testing.T) {
@@ -544,7 +544,7 @@ func TestActionPicker_SelectNewView(t *testing.T) {
 		Query:  "status = open",
 	})
 
-	assert.Equal(t, ViewNewView, m.view, "expected to transition to new view modal")
+	require.Equal(t, ViewNewView, m.view, "expected to transition to new view modal")
 }
 
 func TestActionPicker_Cancel(t *testing.T) {
@@ -553,7 +553,7 @@ func TestActionPicker_Cancel(t *testing.T) {
 
 	m, _ = m.Update(saveviewoptions.CancelMsg{})
 
-	assert.Equal(t, ViewSearch, m.view, "expected to return to search")
+	require.Equal(t, ViewSearch, m.view, "expected to return to search")
 }
 
 func TestNewViewModal_Save(t *testing.T) {
@@ -570,8 +570,8 @@ func TestNewViewModal_Save(t *testing.T) {
 	}
 	m, cmd := m.Update(saveMsg)
 
-	assert.Equal(t, ViewSearch, m.view, "expected to return to search")
-	assert.NotNil(t, cmd, "expected batch command with ShowToastMsg")
+	require.Equal(t, ViewSearch, m.view, "expected to return to search")
+	require.NotNil(t, cmd, "expected batch command with ShowToastMsg")
 }
 
 func TestNewViewModal_Cancel(t *testing.T) {
@@ -581,5 +581,5 @@ func TestNewViewModal_Cancel(t *testing.T) {
 	// The factory pattern produces closeSaveViewMsg instead of formmodal.CancelMsg
 	m, _ = m.Update(closeSaveViewMsg{})
 
-	assert.Equal(t, ViewSearch, m.view, "expected to return to search")
+	require.Equal(t, ViewSearch, m.view, "expected to return to search")
 }

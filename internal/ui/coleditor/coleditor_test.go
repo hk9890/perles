@@ -9,7 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,36 +29,36 @@ func TestNew_InitialState(t *testing.T) {
 	}
 	ed := New(0, cols, nil)
 
-	assert.Equal(t, ModeEdit, ed.Mode())
-	assert.Equal(t, FieldName, ed.Focused())
-	assert.Equal(t, "Blocked", ed.NameInput().Value())
-	assert.Equal(t, "status = open and blocked = true", ed.QueryInput().Value())
+	require.Equal(t, ModeEdit, ed.Mode())
+	require.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, "Blocked", ed.NameInput().Value())
+	require.Equal(t, "status = open and blocked = true", ed.QueryInput().Value())
 }
 
 func TestNewForCreate_DefaultValues(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Existing", Query: "status = open"}}
 	ed := NewForCreate(0, columns, nil)
 
-	assert.Equal(t, ModeNew, ed.Mode())
-	assert.Equal(t, 0, ed.InsertAfter())
-	assert.Equal(t, "", ed.NameInput().Value())
-	assert.Equal(t, "status = open", ed.QueryInput().Value()) // Default query
-	assert.Equal(t, "#AABBCC", ed.CurrentConfig().Color)
+	require.Equal(t, ModeNew, ed.Mode())
+	require.Equal(t, 0, ed.InsertAfter())
+	require.Equal(t, "", ed.NameInput().Value())
+	require.Equal(t, "status = open", ed.QueryInput().Value()) // Default query
+	require.Equal(t, "#AABBCC", ed.CurrentConfig().Color)
 }
 
 func TestNewForCreate_FocusOnName(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Existing", Query: "status = open"}}
 	ed := NewForCreate(0, columns, nil)
 
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 }
 
 func TestNew_SetsModeEdit(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
 	ed := New(0, columns, nil)
 
-	assert.Equal(t, ModeEdit, ed.Mode())
-	assert.Equal(t, -1, ed.InsertAfter()) // Not used in edit mode
+	require.Equal(t, ModeEdit, ed.Mode())
+	require.Equal(t, -1, ed.InsertAfter()) // Not used in edit mode
 }
 
 func TestNavigation_DownMoves(t *testing.T) {
@@ -67,17 +66,17 @@ func TestNavigation_DownMoves(t *testing.T) {
 	ed := New(0, columns, nil)
 
 	// Initial focus on name field
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 
 	// Down: Name → Color → Query → Save → Delete (matches visual layout)
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.Equal(t, FieldColor, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldQuery, ed.Focused())
+	require.Equal(t, FieldQuery, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyTab})
-	assert.Equal(t, FieldSave, ed.Focused())
+	require.Equal(t, FieldSave, ed.Focused())
 }
 
 func TestNavigation_UpMoves(t *testing.T) {
@@ -87,15 +86,15 @@ func TestNavigation_UpMoves(t *testing.T) {
 	// Move down first: Name → Color → Query
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldQuery, ed.Focused())
+	require.Equal(t, FieldQuery, ed.Focused())
 
 	// Press up to move back: Query → Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyUp})
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.Equal(t, FieldColor, ed.Focused())
 
 	// Press shift+tab to move back: Color → Name
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 }
 
 func TestNavigation_Wraps(t *testing.T) {
@@ -104,11 +103,11 @@ func TestNavigation_Wraps(t *testing.T) {
 
 	// At FieldName, press up should wrap to FieldDelete
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyUp})
-	assert.Equal(t, FieldDelete, ed.Focused())
+	require.Equal(t, FieldDelete, ed.Focused())
 
 	// Press down should wrap back to FieldName
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 }
 
 func TestNavigation_CtrlN(t *testing.T) {
@@ -116,17 +115,17 @@ func TestNavigation_CtrlN(t *testing.T) {
 	ed := New(0, columns, nil)
 
 	// Initial focus on name field
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 
 	// ctrl+n should move down: Name → Color → Query
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.Equal(t, FieldColor, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
-	assert.Equal(t, FieldQuery, ed.Focused())
+	require.Equal(t, FieldQuery, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
-	assert.Equal(t, FieldSave, ed.Focused())
+	require.Equal(t, FieldSave, ed.Focused())
 }
 
 func TestNavigation_CtrlP(t *testing.T) {
@@ -136,14 +135,14 @@ func TestNavigation_CtrlP(t *testing.T) {
 	// Move down first: Name → Color → Query
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldQuery, ed.Focused())
+	require.Equal(t, FieldQuery, ed.Focused())
 
 	// ctrl+p should move up: Query → Color → Name
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.Equal(t, FieldColor, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
-	assert.Equal(t, FieldName, ed.Focused())
+	require.Equal(t, FieldName, ed.Focused())
 }
 
 func TestNewForCreate_NavigationSkipsDelete(t *testing.T) {
@@ -157,9 +156,9 @@ func TestNewForCreate_NavigationSkipsDelete(t *testing.T) {
 		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
 	}
 
-	assert.False(t, visited[FieldDelete], "Delete field should not be visited in New mode")
-	assert.True(t, visited[FieldName], "Name field should be visited")
-	assert.True(t, visited[FieldSave], "Save field should be visited")
+	require.False(t, visited[FieldDelete], "Delete field should not be visited in New mode")
+	require.True(t, visited[FieldName], "Name field should be visited")
+	require.True(t, visited[FieldSave], "Save field should be visited")
 }
 
 func TestCurrentConfig_BuildsCorrectly(t *testing.T) {
@@ -170,9 +169,9 @@ func TestCurrentConfig_BuildsCorrectly(t *testing.T) {
 
 	cfg := ed.CurrentConfig()
 
-	assert.Equal(t, "Test", cfg.Name)
-	assert.Equal(t, "status = open and ready = true", cfg.Query)
-	assert.Equal(t, "#FF0000", cfg.Color)
+	require.Equal(t, "Test", cfg.Name)
+	require.Equal(t, "status = open and ready = true", cfg.Query)
+	require.Equal(t, "#FF0000", cfg.Color)
 }
 
 func TestLivePreview_FiltersOnQuery(t *testing.T) {
@@ -190,7 +189,7 @@ func TestLivePreview_FiltersOnQuery(t *testing.T) {
 
 	// Preview should show what the executor returned
 	require.Len(t, ed.PreviewIssues(), 1)
-	assert.Equal(t, "1", ed.PreviewIssues()[0].ID)
+	require.Equal(t, "1", ed.PreviewIssues()[0].ID)
 }
 
 func TestDelete_OpensModal(t *testing.T) {
@@ -210,13 +209,13 @@ func TestDelete_OpensModal(t *testing.T) {
 	ed, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should show delete modal
-	assert.True(t, ed.ShowDeleteModal())
+	require.True(t, ed.ShowDeleteModal())
 
 	// Should NOT have sent DeleteMsg yet (only modal init command)
 	if cmd != nil {
 		msg := cmd()
 		_, isDelete := msg.(DeleteMsg)
-		assert.False(t, isDelete, "Should not send DeleteMsg when opening modal")
+		require.False(t, isDelete, "Should not send DeleteMsg when opening modal")
 	}
 }
 
@@ -239,14 +238,14 @@ func TestDeleteModal_ConfirmSendsDeleteMsg(t *testing.T) {
 	ed, cmd := ed.Update(modal.SubmitMsg{})
 
 	// Modal should be closed
-	assert.False(t, ed.ShowDeleteModal())
+	require.False(t, ed.ShowDeleteModal())
 
 	// Should return DeleteMsg with correct index
 	require.NotNil(t, cmd)
 	msg := cmd()
 	deleteMsg, ok := msg.(DeleteMsg)
 	require.True(t, ok, "Expected DeleteMsg after confirm")
-	assert.Equal(t, 0, deleteMsg.ColumnIndex)
+	require.Equal(t, 0, deleteMsg.ColumnIndex)
 }
 
 func TestDeleteModal_CancelReturnsToEditor(t *testing.T) {
@@ -268,13 +267,13 @@ func TestDeleteModal_CancelReturnsToEditor(t *testing.T) {
 	ed, cmd := ed.Update(modal.CancelMsg{})
 
 	// Modal should be closed
-	assert.False(t, ed.ShowDeleteModal())
+	require.False(t, ed.ShowDeleteModal())
 
 	// Should NOT send DeleteMsg
-	assert.Nil(t, cmd, "Should not return any command on cancel")
+	require.Nil(t, cmd, "Should not return any command on cancel")
 
 	// Should still be on delete field (still in editor)
-	assert.Equal(t, FieldDelete, ed.Focused())
+	require.Equal(t, FieldDelete, ed.Focused())
 }
 
 func TestDelete_AllowedForLastColumn(t *testing.T) {
@@ -292,7 +291,7 @@ func TestDelete_AllowedForLastColumn(t *testing.T) {
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should show delete modal
-	assert.True(t, ed.ShowDeleteModal(), "Delete modal should open for last column")
+	require.True(t, ed.ShowDeleteModal(), "Delete modal should open for last column")
 
 	// Confirm deletion
 	_, cmd := ed.Update(modal.SubmitMsg{})
@@ -302,7 +301,7 @@ func TestDelete_AllowedForLastColumn(t *testing.T) {
 	msg := cmd()
 	deleteMsg, ok := msg.(DeleteMsg)
 	require.True(t, ok, "Expected DeleteMsg after confirm")
-	assert.Equal(t, 0, deleteMsg.ColumnIndex)
+	require.Equal(t, 0, deleteMsg.ColumnIndex)
 }
 
 func TestEnter_ReturnsSaveMsg(t *testing.T) {
@@ -320,8 +319,8 @@ func TestEnter_ReturnsSaveMsg(t *testing.T) {
 	msg := cmd()
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok)
-	assert.Equal(t, 0, saveMsg.ColumnIndex)
-	assert.Equal(t, "Test", saveMsg.Config.Name)
+	require.Equal(t, 0, saveMsg.ColumnIndex)
+	require.Equal(t, "Test", saveMsg.Config.Name)
 }
 
 func TestEsc_ReturnsCancelMsg(t *testing.T) {
@@ -354,8 +353,8 @@ func TestNewForCreate_ReturnsAddMsg(t *testing.T) {
 	msg := cmd()
 	addMsg, ok := msg.(AddMsg)
 	require.True(t, ok, "Expected AddMsg but got %T", msg)
-	assert.Equal(t, 2, addMsg.InsertAfterIndex)
-	assert.Equal(t, "Test Column", addMsg.Config.Name)
+	require.Equal(t, 2, addMsg.InsertAfterIndex)
+	require.Equal(t, "Test Column", addMsg.Config.Name)
 }
 
 func TestSetSize(t *testing.T) {
@@ -366,7 +365,7 @@ func TestSetSize(t *testing.T) {
 
 	// View should render without panic
 	view := ed.View()
-	assert.NotEmpty(t, view)
+	require.NotEmpty(t, view)
 }
 
 func TestView_ContainsFormElements(t *testing.T) {
@@ -379,16 +378,16 @@ func TestView_ContainsFormElements(t *testing.T) {
 	view := ed.View()
 
 	// Check header
-	assert.Contains(t, view, "Edit Column")
-	assert.Contains(t, view, "Ready")
+	require.Contains(t, view, "Edit Column")
+	require.Contains(t, view, "Ready")
 
 	// Check form sections (labels are now section headers, not field labels)
-	assert.Contains(t, view, "─ Name ")
-	assert.Contains(t, view, "─ Color ")
-	assert.Contains(t, view, "─ BQL Query ")
+	require.Contains(t, view, "─ Name ")
+	require.Contains(t, view, "─ Color ")
+	require.Contains(t, view, "─ BQL Query ")
 
 	// Check preview section
-	assert.Contains(t, view, "Live Preview")
+	require.Contains(t, view, "Live Preview")
 }
 
 func TestValidation_EmptyNameBlocksSave(t *testing.T) {
@@ -404,10 +403,10 @@ func TestValidation_EmptyNameBlocksSave(t *testing.T) {
 	ed, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should NOT return a save command
-	assert.Nil(t, cmd)
+	require.Nil(t, cmd)
 
 	// Should have validation error
-	assert.Equal(t, "Column name is required", ed.ValidationError())
+	require.Equal(t, "Column name is required", ed.ValidationError())
 }
 
 func TestValidation_EmptyQueryBlocksSave(t *testing.T) {
@@ -423,31 +422,31 @@ func TestValidation_EmptyQueryBlocksSave(t *testing.T) {
 	ed, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Should NOT return a save command
-	assert.Nil(t, cmd)
+	require.Nil(t, cmd)
 
 	// Should have validation error
-	assert.Contains(t, ed.ValidationError(), "query is required")
+	require.Contains(t, ed.ValidationError(), "query is required")
 }
 
 func TestColorWarning_InvalidFormat(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open", Color: "invalid"}}
 	ed := New(0, columns, nil)
 
-	assert.True(t, ed.HasColorWarning())
+	require.True(t, ed.HasColorWarning())
 }
 
 func TestColorWarning_ValidHex(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open", Color: "#FF0000"}}
 	ed := New(0, columns, nil)
 
-	assert.False(t, ed.HasColorWarning())
+	require.False(t, ed.HasColorWarning())
 }
 
 func TestColorWarning_EmptyIsOk(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open", Color: ""}}
 	ed := New(0, columns, nil)
 
-	assert.False(t, ed.HasColorWarning())
+	require.False(t, ed.HasColorWarning())
 }
 
 func TestHorizontalNavigation(t *testing.T) {
@@ -461,15 +460,15 @@ func TestHorizontalNavigation(t *testing.T) {
 	for ed.Focused() != FieldSave {
 		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
 	}
-	assert.Equal(t, FieldSave, ed.Focused())
+	require.Equal(t, FieldSave, ed.Focused())
 
 	// Right should go to Delete in Edit mode
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight})
-	assert.Equal(t, FieldDelete, ed.Focused())
+	require.Equal(t, FieldDelete, ed.Focused())
 
 	// Left should go back to Save
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	assert.Equal(t, FieldSave, ed.Focused())
+	require.Equal(t, FieldSave, ed.Focused())
 }
 
 // TestColEditor_View_Golden uses teatest golden file comparison
@@ -516,14 +515,14 @@ func TestColorPicker_EnterOpensOverlay(t *testing.T) {
 
 	// Navigate to FieldColor
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.Equal(t, FieldColor, ed.Focused())
 
 	// Initially picker should be closed
-	assert.False(t, ed.ShowColorPicker())
+	require.False(t, ed.ShowColorPicker())
 
 	// Press Enter to open picker
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	assert.True(t, ed.ShowColorPicker())
+	require.True(t, ed.ShowColorPicker())
 }
 
 func TestColorPicker_SelectMsgUpdatesColor(t *testing.T) {
@@ -540,9 +539,9 @@ func TestColorPicker_SelectMsgUpdatesColor(t *testing.T) {
 	ed, _ = ed.Update(colorpicker.SelectMsg{Hex: "#73F59F"})
 
 	// Picker should close and color should update
-	assert.False(t, ed.ShowColorPicker())
-	assert.Equal(t, "#73F59F", ed.ColorValue())
-	assert.Equal(t, "#73F59F", ed.CurrentConfig().Color)
+	require.False(t, ed.ShowColorPicker())
+	require.Equal(t, "#73F59F", ed.ColorValue())
+	require.Equal(t, "#73F59F", ed.CurrentConfig().Color)
 }
 
 func TestColorPicker_CancelMsgClosesWithoutChange(t *testing.T) {
@@ -559,8 +558,8 @@ func TestColorPicker_CancelMsgClosesWithoutChange(t *testing.T) {
 	ed, _ = ed.Update(colorpicker.CancelMsg{})
 
 	// Picker should close but color should remain unchanged
-	assert.False(t, ed.ShowColorPicker())
-	assert.Equal(t, "#FF0000", ed.ColorValue())
+	require.False(t, ed.ShowColorPicker())
+	require.Equal(t, "#FF0000", ed.ColorValue())
 }
 
 func TestColorPicker_NavigationWhenOpen(t *testing.T) {
@@ -576,8 +575,8 @@ func TestColorPicker_NavigationWhenOpen(t *testing.T) {
 	// Key presses should go to colorpicker, not form
 	// Focus should remain on FieldColor (not navigate away)
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.True(t, ed.ShowColorPicker()) // Still open
-	assert.Equal(t, FieldColor, ed.Focused())
+	require.True(t, ed.ShowColorPicker()) // Still open
+	require.Equal(t, FieldColor, ed.Focused())
 }
 
 func TestColorPicker_PreviewUpdatesAfterSelection(t *testing.T) {
@@ -596,7 +595,7 @@ func TestColorPicker_PreviewUpdatesAfterSelection(t *testing.T) {
 	ed, _ = ed.Update(colorpicker.SelectMsg{Hex: "#73F59F"})
 
 	// Preview should still have issues (updatePreview called)
-	assert.Len(t, ed.PreviewIssues(), 1)
+	require.Len(t, ed.PreviewIssues(), 1)
 }
 
 func TestNewForCreate_EmptyColumns(t *testing.T) {
@@ -604,9 +603,9 @@ func TestNewForCreate_EmptyColumns(t *testing.T) {
 	columns := []config.ColumnConfig{} // Empty columns
 	ed := NewForCreate(-1, columns, nil)
 
-	assert.Equal(t, ModeNew, ed.Mode())
-	assert.Equal(t, -1, ed.InsertAfter())
-	assert.Equal(t, "", ed.NameInput().Value())
-	assert.Equal(t, "status = open", ed.QueryInput().Value())
-	assert.Empty(t, ed.AllColumns())
+	require.Equal(t, ModeNew, ed.Mode())
+	require.Equal(t, -1, ed.InsertAfter())
+	require.Equal(t, "", ed.NameInput().Value())
+	require.Equal(t, "status = open", ed.QueryInput().Value())
+	require.Empty(t, ed.AllColumns())
 }

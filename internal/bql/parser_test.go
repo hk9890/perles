@@ -3,7 +3,6 @@ package bql
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,12 +36,12 @@ func TestParser_SimpleComparison(t *testing.T) {
 
 			cmp, ok := query.Filter.(*CompareExpr)
 			require.True(t, ok, "expected CompareExpr")
-			assert.Equal(t, tt.field, cmp.Field)
-			assert.Equal(t, tt.op, cmp.Op)
-			assert.Equal(t, tt.value, cmp.Value.String)
-			assert.Equal(t, tt.valType, cmp.Value.Type)
+			require.Equal(t, tt.field, cmp.Field)
+			require.Equal(t, tt.op, cmp.Op)
+			require.Equal(t, tt.value, cmp.Value.String)
+			require.Equal(t, tt.valType, cmp.Value.Type)
 			if tt.valType == ValuePriority {
-				assert.Equal(t, tt.intValue, cmp.Value.Int)
+				require.Equal(t, tt.intValue, cmp.Value.Int)
 			}
 		})
 	}
@@ -67,9 +66,9 @@ func TestParser_BooleanComparison(t *testing.T) {
 
 			cmp, ok := query.Filter.(*CompareExpr)
 			require.True(t, ok)
-			assert.Equal(t, tt.field, cmp.Field)
-			assert.Equal(t, ValueBool, cmp.Value.Type)
-			assert.Equal(t, tt.value, cmp.Value.Bool)
+			require.Equal(t, tt.field, cmp.Field)
+			require.Equal(t, ValueBool, cmp.Value.Type)
+			require.Equal(t, tt.value, cmp.Value.Bool)
 		})
 	}
 }
@@ -96,11 +95,11 @@ func TestParser_InExpression(t *testing.T) {
 
 			in, ok := query.Filter.(*InExpr)
 			require.True(t, ok, "expected InExpr")
-			assert.Equal(t, tt.field, in.Field)
-			assert.Equal(t, tt.not, in.Not)
+			require.Equal(t, tt.field, in.Field)
+			require.Equal(t, tt.not, in.Not)
 			require.Len(t, in.Values, len(tt.values))
 			for i, v := range tt.values {
-				assert.Equal(t, v, in.Values[i].String)
+				require.Equal(t, v, in.Values[i].String)
 			}
 		})
 	}
@@ -114,15 +113,15 @@ func TestParser_BinaryExpressions(t *testing.T) {
 
 		bin, ok := query.Filter.(*BinaryExpr)
 		require.True(t, ok, "expected BinaryExpr")
-		assert.Equal(t, TokenAnd, bin.Op)
+		require.Equal(t, TokenAnd, bin.Op)
 
 		left, ok := bin.Left.(*CompareExpr)
 		require.True(t, ok)
-		assert.Equal(t, "type", left.Field)
+		require.Equal(t, "type", left.Field)
 
 		right, ok := bin.Right.(*CompareExpr)
 		require.True(t, ok)
-		assert.Equal(t, "priority", right.Field)
+		require.Equal(t, "priority", right.Field)
 	})
 
 	t.Run("or expression", func(t *testing.T) {
@@ -132,7 +131,7 @@ func TestParser_BinaryExpressions(t *testing.T) {
 
 		bin, ok := query.Filter.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenOr, bin.Op)
+		require.Equal(t, TokenOr, bin.Op)
 	})
 
 	t.Run("and/or precedence", func(t *testing.T) {
@@ -144,12 +143,12 @@ func TestParser_BinaryExpressions(t *testing.T) {
 		// Top level should be OR
 		bin, ok := query.Filter.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenOr, bin.Op)
+		require.Equal(t, TokenOr, bin.Op)
 
 		// Left side should be AND
 		leftBin, ok := bin.Left.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenAnd, leftBin.Op)
+		require.Equal(t, TokenAnd, leftBin.Op)
 	})
 
 	t.Run("multiple and", func(t *testing.T) {
@@ -160,7 +159,7 @@ func TestParser_BinaryExpressions(t *testing.T) {
 		// Should be (bug AND P0) AND open
 		bin, ok := query.Filter.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenAnd, bin.Op)
+		require.Equal(t, TokenAnd, bin.Op)
 	})
 }
 
@@ -174,7 +173,7 @@ func TestParser_NotExpression(t *testing.T) {
 
 	cmp, ok := not.Expr.(*CompareExpr)
 	require.True(t, ok)
-	assert.Equal(t, "blocked", cmp.Field)
+	require.Equal(t, "blocked", cmp.Field)
 }
 
 func TestParser_ParenthesesGrouping(t *testing.T) {
@@ -186,12 +185,12 @@ func TestParser_ParenthesesGrouping(t *testing.T) {
 		// Top level should be AND
 		bin, ok := query.Filter.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenAnd, bin.Op)
+		require.Equal(t, TokenAnd, bin.Op)
 
 		// Left side should be OR (grouped)
 		leftBin, ok := bin.Left.(*BinaryExpr)
 		require.True(t, ok)
-		assert.Equal(t, TokenOr, leftBin.Op)
+		require.Equal(t, TokenOr, leftBin.Op)
 	})
 
 	t.Run("nested parentheses", func(t *testing.T) {
@@ -201,7 +200,7 @@ func TestParser_ParenthesesGrouping(t *testing.T) {
 
 		cmp, ok := query.Filter.(*CompareExpr)
 		require.True(t, ok)
-		assert.Equal(t, "type", cmp.Field)
+		require.Equal(t, "type", cmp.Field)
 	})
 }
 
@@ -211,8 +210,8 @@ func TestParser_OrderBy(t *testing.T) {
 		query, err := parser.Parse()
 		require.NoError(t, err)
 		require.Len(t, query.OrderBy, 1)
-		assert.Equal(t, "created", query.OrderBy[0].Field)
-		assert.False(t, query.OrderBy[0].Desc)
+		require.Equal(t, "created", query.OrderBy[0].Field)
+		require.False(t, query.OrderBy[0].Desc)
 	})
 
 	t.Run("order by desc", func(t *testing.T) {
@@ -220,8 +219,8 @@ func TestParser_OrderBy(t *testing.T) {
 		query, err := parser.Parse()
 		require.NoError(t, err)
 		require.Len(t, query.OrderBy, 1)
-		assert.Equal(t, "created", query.OrderBy[0].Field)
-		assert.True(t, query.OrderBy[0].Desc)
+		require.Equal(t, "created", query.OrderBy[0].Field)
+		require.True(t, query.OrderBy[0].Desc)
 	})
 
 	t.Run("order by asc explicit", func(t *testing.T) {
@@ -229,8 +228,8 @@ func TestParser_OrderBy(t *testing.T) {
 		query, err := parser.Parse()
 		require.NoError(t, err)
 		require.Len(t, query.OrderBy, 1)
-		assert.Equal(t, "priority", query.OrderBy[0].Field)
-		assert.False(t, query.OrderBy[0].Desc)
+		require.Equal(t, "priority", query.OrderBy[0].Field)
+		require.False(t, query.OrderBy[0].Desc)
 	})
 
 	t.Run("order by multiple fields", func(t *testing.T) {
@@ -238,19 +237,19 @@ func TestParser_OrderBy(t *testing.T) {
 		query, err := parser.Parse()
 		require.NoError(t, err)
 		require.Len(t, query.OrderBy, 2)
-		assert.Equal(t, "priority", query.OrderBy[0].Field)
-		assert.False(t, query.OrderBy[0].Desc)
-		assert.Equal(t, "created", query.OrderBy[1].Field)
-		assert.True(t, query.OrderBy[1].Desc)
+		require.Equal(t, "priority", query.OrderBy[0].Field)
+		require.False(t, query.OrderBy[0].Desc)
+		require.Equal(t, "created", query.OrderBy[1].Field)
+		require.True(t, query.OrderBy[1].Desc)
 	})
 
 	t.Run("order by only (no filter)", func(t *testing.T) {
 		parser := NewParser("order by updated desc")
 		query, err := parser.Parse()
 		require.NoError(t, err)
-		assert.Nil(t, query.Filter)
+		require.Nil(t, query.Filter)
 		require.Len(t, query.OrderBy, 1)
-		assert.Equal(t, "updated", query.OrderBy[0].Field)
+		require.Equal(t, "updated", query.OrderBy[0].Field)
 	})
 }
 
@@ -273,8 +272,8 @@ func TestParser_DateValues(t *testing.T) {
 
 			cmp, ok := query.Filter.(*CompareExpr)
 			require.True(t, ok)
-			assert.Equal(t, ValueDate, cmp.Value.Type)
-			assert.Equal(t, tt.dateStr, cmp.Value.String)
+			require.Equal(t, ValueDate, cmp.Value.Type)
+			require.Equal(t, tt.dateStr, cmp.Value.String)
 		})
 	}
 }
@@ -287,7 +286,7 @@ func TestParser_QuotedStrings(t *testing.T) {
 
 		cmp, ok := query.Filter.(*CompareExpr)
 		require.True(t, ok)
-		assert.Equal(t, "hello world", cmp.Value.String)
+		require.Equal(t, "hello world", cmp.Value.String)
 	})
 
 	t.Run("single quotes", func(t *testing.T) {
@@ -297,7 +296,7 @@ func TestParser_QuotedStrings(t *testing.T) {
 
 		cmp, ok := query.Filter.(*CompareExpr)
 		require.True(t, ok)
-		assert.Equal(t, "hello world", cmp.Value.String)
+		require.Equal(t, "hello world", cmp.Value.String)
 	})
 }
 
@@ -342,7 +341,7 @@ func TestParser_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			parser := NewParser(tt.input)
 			_, err := parser.Parse()
-			assert.Error(t, err, "expected error for: %s", tt.input)
+			require.Error(t, err, "expected error for: %s", tt.input)
 		})
 	}
 }

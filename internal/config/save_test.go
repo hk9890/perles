@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,9 +27,9 @@ func TestSaveColumns_CreatesNewFile(t *testing.T) {
 	// Verify content
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "name: Test")
-	assert.Contains(t, string(data), "query: status = open")
-	assert.Contains(t, string(data), "color: '#FF0000'")
+	require.Contains(t, string(data), "name: Test")
+	require.Contains(t, string(data), "query: status = open")
+	require.Contains(t, string(data), "color: '#FF0000'")
 }
 
 func TestSaveColumns_PreservesOtherConfig(t *testing.T) {
@@ -60,11 +59,11 @@ ui:
 	require.NoError(t, err)
 	content := string(data)
 
-	assert.Contains(t, content, "auto_refresh: true")
-	assert.Contains(t, content, "highlight:")
-	assert.Contains(t, content, "show_counts: false")
+	require.Contains(t, content, "auto_refresh: true")
+	require.Contains(t, content, "highlight:")
+	require.Contains(t, content, "show_counts: false")
 	// And columns are there
-	assert.Contains(t, content, "name: Ready")
+	require.Contains(t, content, "name: Ready")
 }
 
 func TestSaveColumns_Roundtrip(t *testing.T) {
@@ -102,12 +101,12 @@ func TestSaveColumns_Roundtrip(t *testing.T) {
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 2)
 
-	assert.Equal(t, original[0].Name, loaded[0].Columns[0].Name)
-	assert.Equal(t, original[0].Query, loaded[0].Columns[0].Query)
-	assert.Equal(t, original[0].Color, loaded[0].Columns[0].Color)
+	require.Equal(t, original[0].Name, loaded[0].Columns[0].Name)
+	require.Equal(t, original[0].Query, loaded[0].Columns[0].Query)
+	require.Equal(t, original[0].Color, loaded[0].Columns[0].Color)
 
-	assert.Equal(t, original[1].Name, loaded[0].Columns[1].Name)
-	assert.Equal(t, original[1].Query, loaded[0].Columns[1].Query)
+	require.Equal(t, original[1].Name, loaded[0].Columns[1].Name)
+	require.Equal(t, original[1].Query, loaded[0].Columns[1].Query)
 }
 
 func TestUpdateColumn(t *testing.T) {
@@ -141,11 +140,11 @@ func TestUpdateColumn(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 3)
-	assert.Equal(t, "Blocked", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Ready to Go", loaded[0].Columns[1].Name)
-	assert.Equal(t, "#AABBCC", loaded[0].Columns[1].Color)
-	assert.Equal(t, "ready = true", loaded[0].Columns[1].Query)
-	assert.Equal(t, "Done", loaded[0].Columns[2].Name)
+	require.Equal(t, "Blocked", loaded[0].Columns[0].Name)
+	require.Equal(t, "Ready to Go", loaded[0].Columns[1].Name)
+	require.Equal(t, "#AABBCC", loaded[0].Columns[1].Color)
+	require.Equal(t, "ready = true", loaded[0].Columns[1].Query)
+	require.Equal(t, "Done", loaded[0].Columns[2].Name)
 }
 
 func TestUpdateColumn_OutOfRange(t *testing.T) {
@@ -157,12 +156,12 @@ func TestUpdateColumn_OutOfRange(t *testing.T) {
 	}
 
 	err := UpdateColumn(configPath, 5, ColumnConfig{Name: "New", Query: "status = open"}, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	err = UpdateColumn(configPath, -1, ColumnConfig{Name: "New", Query: "status = open"}, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestDeleteColumn(t *testing.T) {
@@ -195,8 +194,8 @@ func TestDeleteColumn(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 2)
-	assert.Equal(t, "Blocked", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Done", loaded[0].Columns[1].Name)
+	require.Equal(t, "Blocked", loaded[0].Columns[0].Name)
+	require.Equal(t, "Done", loaded[0].Columns[1].Name)
 }
 
 func TestDeleteColumn_DeletesLastColumn(t *testing.T) {
@@ -219,7 +218,7 @@ func TestDeleteColumn_DeletesLastColumn(t *testing.T) {
 	err = v.UnmarshalKey("views", &loaded)
 	require.NoError(t, err)
 	require.Len(t, loaded, 1)
-	assert.Empty(t, loaded[0].Columns)
+	require.Empty(t, loaded[0].Columns)
 }
 
 func TestDeleteColumn_OutOfRange(t *testing.T) {
@@ -232,12 +231,12 @@ func TestDeleteColumn_OutOfRange(t *testing.T) {
 	}
 
 	err := DeleteColumn(configPath, 5, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	err = DeleteColumn(configPath, -1, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestSaveColumns_AtomicWrite(t *testing.T) {
@@ -259,13 +258,13 @@ func TestSaveColumns_AtomicWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, entry := range entries {
-		assert.False(t, filepath.Ext(entry.Name()) == ".tmp", "temp file left behind: %s", entry.Name())
+		require.False(t, filepath.Ext(entry.Name()) == ".tmp", "temp file left behind: %s", entry.Name())
 	}
 
 	// Verify content
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "name: Updated")
+	require.Contains(t, string(data), "name: Updated")
 }
 
 func TestSaveColumns_CreatesDirectory(t *testing.T) {
@@ -298,11 +297,11 @@ func TestSaveColumns_OmitsEmptyFields(t *testing.T) {
 	content := string(data)
 
 	// Should have name and query
-	assert.Contains(t, content, "name: Minimal")
-	assert.Contains(t, content, "query: status = open")
+	require.Contains(t, content, "name: Minimal")
+	require.Contains(t, content, "query: status = open")
 
 	// Should NOT have empty color
-	assert.NotContains(t, content, "color:")
+	require.NotContains(t, content, "color:")
 }
 
 func TestAddColumn_InsertMiddle(t *testing.T) {
@@ -334,11 +333,11 @@ func TestAddColumn_InsertMiddle(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 4)
-	assert.Equal(t, "Blocked", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Ready", loaded[0].Columns[1].Name)
-	assert.Equal(t, "Review", loaded[0].Columns[2].Name) // New column
-	assert.Equal(t, "#FF0000", loaded[0].Columns[2].Color)
-	assert.Equal(t, "Done", loaded[0].Columns[3].Name)
+	require.Equal(t, "Blocked", loaded[0].Columns[0].Name)
+	require.Equal(t, "Ready", loaded[0].Columns[1].Name)
+	require.Equal(t, "Review", loaded[0].Columns[2].Name) // New column
+	require.Equal(t, "#FF0000", loaded[0].Columns[2].Color)
+	require.Equal(t, "Done", loaded[0].Columns[3].Name)
 }
 
 func TestAddColumn_InsertAtEnd(t *testing.T) {
@@ -368,8 +367,8 @@ func TestAddColumn_InsertAtEnd(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 2)
-	assert.Equal(t, "Only", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Second", loaded[0].Columns[1].Name)
+	require.Equal(t, "Only", loaded[0].Columns[0].Name)
+	require.Equal(t, "Second", loaded[0].Columns[1].Name)
 }
 
 func TestAddColumn_InsertAtBeginning(t *testing.T) {
@@ -399,8 +398,8 @@ func TestAddColumn_InsertAtBeginning(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 2)
-	assert.Equal(t, "First", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Only", loaded[0].Columns[1].Name)
+	require.Equal(t, "First", loaded[0].Columns[0].Name)
+	require.Equal(t, "Only", loaded[0].Columns[1].Name)
 }
 
 func TestAddColumn_InvalidIndex(t *testing.T) {
@@ -414,13 +413,13 @@ func TestAddColumn_InvalidIndex(t *testing.T) {
 
 	// Index too high
 	err := AddColumn(configPath, 5, ColumnConfig{Name: "New", Query: "blocked = true"}, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Index too low
 	err = AddColumn(configPath, -2, ColumnConfig{Name: "New", Query: "blocked = true"}, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestAddColumn_EmptyColumnArray(t *testing.T) {
@@ -448,7 +447,7 @@ func TestAddColumn_EmptyColumnArray(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 1)
-	assert.Equal(t, "First", loaded[0].Columns[0].Name)
+	require.Equal(t, "First", loaded[0].Columns[0].Name)
 }
 
 func TestSwapColumns(t *testing.T) {
@@ -481,9 +480,9 @@ func TestSwapColumns(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 3)
-	assert.Equal(t, "Ready", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Blocked", loaded[0].Columns[1].Name)
-	assert.Equal(t, "Done", loaded[0].Columns[2].Name)
+	require.Equal(t, "Ready", loaded[0].Columns[0].Name)
+	require.Equal(t, "Blocked", loaded[0].Columns[1].Name)
+	require.Equal(t, "Done", loaded[0].Columns[2].Name)
 }
 
 func TestSwapColumns_SameIndex(t *testing.T) {
@@ -515,8 +514,8 @@ func TestSwapColumns_SameIndex(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 2)
-	assert.Equal(t, "One", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Two", loaded[0].Columns[1].Name)
+	require.Equal(t, "One", loaded[0].Columns[0].Name)
+	require.Equal(t, "Two", loaded[0].Columns[1].Name)
 }
 
 func TestSwapColumns_OutOfRange(t *testing.T) {
@@ -530,13 +529,13 @@ func TestSwapColumns_OutOfRange(t *testing.T) {
 
 	// Index too high
 	err := SwapColumns(configPath, 0, 5, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Index negative
 	err = SwapColumns(configPath, -1, 1, columns)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestAddView(t *testing.T) {
@@ -578,12 +577,12 @@ func TestAddView(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 2)
-	assert.Equal(t, "Default", loaded[0].Name)
-	assert.Equal(t, "Bugs", loaded[1].Name)
+	require.Equal(t, "Default", loaded[0].Name)
+	require.Equal(t, "Bugs", loaded[1].Name)
 	require.Len(t, loaded[1].Columns, 1)
-	assert.Equal(t, "All Bugs", loaded[1].Columns[0].Name)
-	assert.Equal(t, "type = bug", loaded[1].Columns[0].Query)
-	assert.Equal(t, "#FF0000", loaded[1].Columns[0].Color)
+	require.Equal(t, "All Bugs", loaded[1].Columns[0].Name)
+	require.Equal(t, "type = bug", loaded[1].Columns[0].Query)
+	require.Equal(t, "#FF0000", loaded[1].Columns[0].Color)
 }
 
 func TestAddView_Empty(t *testing.T) {
@@ -614,9 +613,9 @@ func TestAddView_Empty(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 1)
-	assert.Equal(t, "First View", loaded[0].Name)
+	require.Equal(t, "First View", loaded[0].Name)
 	require.Len(t, loaded[0].Columns, 1)
-	assert.Equal(t, "All Issues", loaded[0].Columns[0].Name)
+	require.Equal(t, "All Issues", loaded[0].Columns[0].Name)
 }
 
 func TestDeleteView(t *testing.T) {
@@ -664,8 +663,8 @@ func TestDeleteView(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 2)
-	assert.Equal(t, "Default", loaded[0].Name)
-	assert.Equal(t, "Features", loaded[1].Name)
+	require.Equal(t, "Default", loaded[0].Name)
+	require.Equal(t, "Features", loaded[1].Name)
 }
 
 func TestDeleteView_FirstView(t *testing.T) {
@@ -707,7 +706,7 @@ func TestDeleteView_FirstView(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 1)
-	assert.Equal(t, "Second", loaded[0].Name)
+	require.Equal(t, "Second", loaded[0].Name)
 }
 
 func TestDeleteView_LastView(t *testing.T) {
@@ -725,8 +724,8 @@ func TestDeleteView_LastView(t *testing.T) {
 	}
 
 	err := DeleteView(configPath, 0, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "cannot delete the only view")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot delete the only view")
 }
 
 func TestDeleteView_OutOfRange(t *testing.T) {
@@ -750,13 +749,13 @@ func TestDeleteView_OutOfRange(t *testing.T) {
 
 	// Index too high
 	err := DeleteView(configPath, 5, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Index negative
 	err = DeleteView(configPath, -1, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 // Tests for InsertColumnInView
@@ -796,10 +795,10 @@ func TestInsertColumnInView_InsertsAtPosition0(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 3)
-	assert.Equal(t, "First", loaded[0].Columns[0].Name)
-	assert.Equal(t, "#FF0000", loaded[0].Columns[0].Color)
-	assert.Equal(t, "Existing1", loaded[0].Columns[1].Name)
-	assert.Equal(t, "Existing2", loaded[0].Columns[2].Name)
+	require.Equal(t, "First", loaded[0].Columns[0].Name)
+	require.Equal(t, "#FF0000", loaded[0].Columns[0].Color)
+	require.Equal(t, "Existing1", loaded[0].Columns[1].Name)
+	require.Equal(t, "Existing2", loaded[0].Columns[2].Name)
 }
 
 func TestInsertColumnInView_PreservesExistingColumns(t *testing.T) {
@@ -840,14 +839,14 @@ func TestInsertColumnInView_PreservesExistingColumns(t *testing.T) {
 	require.Len(t, loaded[0].Columns, 4)
 
 	// Verify original columns preserved with correct data
-	assert.Equal(t, "New Column", loaded[0].Columns[0].Name)
-	assert.Equal(t, "Blocked", loaded[0].Columns[1].Name)
-	assert.Equal(t, "#FF0000", loaded[0].Columns[1].Color)
-	assert.Equal(t, "blocked = true", loaded[0].Columns[1].Query)
-	assert.Equal(t, "Ready", loaded[0].Columns[2].Name)
-	assert.Equal(t, "#00FF00", loaded[0].Columns[2].Color)
-	assert.Equal(t, "Done", loaded[0].Columns[3].Name)
-	assert.Equal(t, "#0000FF", loaded[0].Columns[3].Color)
+	require.Equal(t, "New Column", loaded[0].Columns[0].Name)
+	require.Equal(t, "Blocked", loaded[0].Columns[1].Name)
+	require.Equal(t, "#FF0000", loaded[0].Columns[1].Color)
+	require.Equal(t, "blocked = true", loaded[0].Columns[1].Query)
+	require.Equal(t, "Ready", loaded[0].Columns[2].Name)
+	require.Equal(t, "#00FF00", loaded[0].Columns[2].Color)
+	require.Equal(t, "Done", loaded[0].Columns[3].Name)
+	require.Equal(t, "#0000FF", loaded[0].Columns[3].Color)
 }
 
 func TestInsertColumnInView_PreservesOtherConfig(t *testing.T) {
@@ -887,10 +886,10 @@ views:
 	require.NoError(t, err)
 	content := string(data)
 
-	assert.Contains(t, content, "auto_refresh: true")
-	assert.Contains(t, content, "highlight:")
-	assert.Contains(t, content, "name: New")
-	assert.Contains(t, content, "name: Open")
+	require.Contains(t, content, "auto_refresh: true")
+	require.Contains(t, content, "highlight:")
+	require.Contains(t, content, "name: New")
+	require.Contains(t, content, "name: Open")
 }
 
 func TestInsertColumnInView_InvalidViewIndex(t *testing.T) {
@@ -910,13 +909,13 @@ func TestInsertColumnInView_InvalidViewIndex(t *testing.T) {
 
 	// Index too high
 	err := InsertColumnInView(configPath, 5, 0, newCol, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Index negative
 	err = InsertColumnInView(configPath, -1, 0, newCol, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestInsertColumnInView_InvalidPosition(t *testing.T) {
@@ -936,13 +935,13 @@ func TestInsertColumnInView_InvalidPosition(t *testing.T) {
 
 	// Position too high (only valid: 0, 1)
 	err := InsertColumnInView(configPath, 0, 5, newCol, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Position negative
 	err = InsertColumnInView(configPath, 0, -1, newCol, views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }
 
 func TestInsertColumnInView_AtomicWrite(t *testing.T) {
@@ -973,14 +972,14 @@ func TestInsertColumnInView_AtomicWrite(t *testing.T) {
 
 	for _, entry := range entries {
 		name := entry.Name()
-		assert.False(t, name != ".perles.yaml" && filepath.Ext(name) == ".tmp",
+		require.False(t, name != ".perles.yaml" && filepath.Ext(name) == ".tmp",
 			"temp file left behind: %s", name)
 	}
 
 	// Verify content was written correctly
 	data, err := os.ReadFile(configPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "name: New")
+	require.Contains(t, string(data), "name: New")
 }
 
 func TestInsertColumnInView_MultipleViews(t *testing.T) {
@@ -1024,11 +1023,11 @@ func TestInsertColumnInView_MultipleViews(t *testing.T) {
 	require.Len(t, loaded, 2)
 	// First view should be unchanged
 	require.Len(t, loaded[0].Columns, 1)
-	assert.Equal(t, "Default Col", loaded[0].Columns[0].Name)
+	require.Equal(t, "Default Col", loaded[0].Columns[0].Name)
 	// Second view should have new column at front
 	require.Len(t, loaded[1].Columns, 2)
-	assert.Equal(t, "New Bug Col", loaded[1].Columns[0].Name)
-	assert.Equal(t, "Bug Col", loaded[1].Columns[1].Name)
+	require.Equal(t, "New Bug Col", loaded[1].Columns[0].Name)
+	require.Equal(t, "Bug Col", loaded[1].Columns[1].Name)
 }
 
 func TestInsertColumnInView_EmptyColumns(t *testing.T) {
@@ -1063,7 +1062,7 @@ func TestInsertColumnInView_EmptyColumns(t *testing.T) {
 
 	require.Len(t, loaded, 1)
 	require.Len(t, loaded[0].Columns, 1)
-	assert.Equal(t, "First", loaded[0].Columns[0].Name)
+	require.Equal(t, "First", loaded[0].Columns[0].Name)
 }
 
 func TestRenameView(t *testing.T) {
@@ -1105,8 +1104,8 @@ func TestRenameView(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 2)
-	assert.Equal(t, "Default", loaded[0].Name)
-	assert.Equal(t, "Critical Bugs", loaded[1].Name)
+	require.Equal(t, "Default", loaded[0].Name)
+	require.Equal(t, "Critical Bugs", loaded[1].Name)
 }
 
 func TestRenameView_FirstView(t *testing.T) {
@@ -1148,8 +1147,8 @@ func TestRenameView_FirstView(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, loaded, 2)
-	assert.Equal(t, "Renamed First", loaded[0].Name)
-	assert.Equal(t, "Second", loaded[1].Name)
+	require.Equal(t, "Renamed First", loaded[0].Name)
+	require.Equal(t, "Second", loaded[1].Name)
 }
 
 func TestRenameView_OutOfRange(t *testing.T) {
@@ -1167,11 +1166,11 @@ func TestRenameView_OutOfRange(t *testing.T) {
 
 	// Index too high
 	err := RenameView(configPath, 5, "New Name", views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 
 	// Index negative
 	err = RenameView(configPath, -1, "New Name", views)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "out of range")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "out of range")
 }

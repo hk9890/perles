@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"perles/internal/config"
 	"perles/internal/mode"
@@ -33,7 +33,7 @@ func createTestModel() Model {
 
 func TestApp_DefaultMode(t *testing.T) {
 	m := createTestModel()
-	assert.Equal(t, mode.ModeKanban, m.currentMode, "expected default mode to be kanban")
+	require.Equal(t, mode.ModeKanban, m.currentMode, "expected default mode to be kanban")
 }
 
 func TestApp_WindowSizeMsg(t *testing.T) {
@@ -43,8 +43,8 @@ func TestApp_WindowSizeMsg(t *testing.T) {
 	newModel, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 50})
 	m = newModel.(Model)
 
-	assert.Equal(t, 120, m.width, "expected width to be updated")
-	assert.Equal(t, 50, m.height, "expected height to be updated")
+	require.Equal(t, 120, m.width, "expected width to be updated")
+	require.Equal(t, 50, m.height, "expected height to be updated")
 }
 
 func TestApp_CtrlSpaceSwitchesMode(t *testing.T) {
@@ -55,13 +55,13 @@ func TestApp_CtrlSpaceSwitchesMode(t *testing.T) {
 	m = newModel.(Model)
 
 	// Should now be in search mode
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "mode should switch to search")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "mode should switch to search")
 
 	// Ctrl+Space again should switch back to kanban
 	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 	m = newModel.(Model)
 
-	assert.Equal(t, mode.ModeKanban, m.currentMode, "mode should switch back to kanban")
+	require.Equal(t, mode.ModeKanban, m.currentMode, "mode should switch back to kanban")
 }
 
 func TestApp_ViewDelegates(t *testing.T) {
@@ -69,7 +69,7 @@ func TestApp_ViewDelegates(t *testing.T) {
 
 	// View should delegate to kanban
 	view := m.View()
-	assert.NotEmpty(t, view, "expected non-empty view from kanban mode")
+	require.NotEmpty(t, view, "expected non-empty view from kanban mode")
 }
 
 func TestApp_ModeSwitchPreservesSize(t *testing.T) {
@@ -79,28 +79,28 @@ func TestApp_ModeSwitchPreservesSize(t *testing.T) {
 	newModel, _ := m.Update(tea.WindowSizeMsg{Width: 150, Height: 60})
 	m = newModel.(Model)
 
-	assert.Equal(t, 150, m.width, "initial width should be 150")
-	assert.Equal(t, 60, m.height, "initial height should be 60")
+	require.Equal(t, 150, m.width, "initial width should be 150")
+	require.Equal(t, 60, m.height, "initial height should be 60")
 
 	// Switch to search mode (Ctrl+Space)
 	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 	m = newModel.(Model)
 
 	// Verify size preserved in app
-	assert.Equal(t, 150, m.width, "width should be preserved after mode switch")
-	assert.Equal(t, 60, m.height, "height should be preserved after mode switch")
+	require.Equal(t, 150, m.width, "width should be preserved after mode switch")
+	require.Equal(t, 60, m.height, "height should be preserved after mode switch")
 
 	// Verify search mode has the correct size (by checking View doesn't panic)
 	view := m.View()
-	assert.NotEmpty(t, view, "search view should render without panic")
+	require.NotEmpty(t, view, "search view should render without panic")
 
 	// Switch back to kanban (Ctrl+Space)
 	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 	m = newModel.(Model)
 
 	// Verify size still preserved
-	assert.Equal(t, 150, m.width, "width should be preserved after returning to kanban")
-	assert.Equal(t, 60, m.height, "height should be preserved after returning to kanban")
+	require.Equal(t, 150, m.width, "width should be preserved after returning to kanban")
+	require.Equal(t, 60, m.height, "height should be preserved after returning to kanban")
 }
 
 func TestApp_SearchModeInit(t *testing.T) {
@@ -111,7 +111,7 @@ func TestApp_SearchModeInit(t *testing.T) {
 	m = newModel.(Model)
 
 	// Verify mode switched
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
 
 	// Init should have been called (returns a command)
 	// The search Init() returns nil if no initial query
@@ -120,26 +120,26 @@ func TestApp_SearchModeInit(t *testing.T) {
 
 	// Verify View renders search mode content
 	view := m.View()
-	assert.NotEmpty(t, view, "search view should render")
+	require.NotEmpty(t, view, "search view should render")
 }
 
 func TestApp_KanbanModeExtracted(t *testing.T) {
 	m := createTestModel()
 
 	// Verify kanban mode exists and works
-	assert.NotNil(t, m.kanban, "kanban mode should be initialized")
-	assert.Equal(t, mode.ModeKanban, m.currentMode, "default mode should be kanban")
+	require.NotNil(t, m.kanban, "kanban mode should be initialized")
+	require.Equal(t, mode.ModeKanban, m.currentMode, "default mode should be kanban")
 
 	// Verify kanban view renders
 	view := m.View()
-	assert.NotEmpty(t, view, "kanban view should render")
+	require.NotEmpty(t, view, "kanban view should render")
 
 	// Verify we can interact with kanban mode
 	// (j key for navigation - should not crash)
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	m = newModel.(Model)
 
-	assert.Equal(t, mode.ModeKanban, m.currentMode, "should still be in kanban mode")
+	require.Equal(t, mode.ModeKanban, m.currentMode, "should still be in kanban mode")
 }
 
 func TestApp_CtrlCQuits(t *testing.T) {
@@ -149,7 +149,7 @@ func TestApp_CtrlCQuits(t *testing.T) {
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
 	// The quit command should be tea.Quit
-	assert.NotNil(t, cmd, "expected quit command")
+	require.NotNil(t, cmd, "expected quit command")
 }
 
 func TestApp_SearchModeReceivesUpdates(t *testing.T) {
@@ -164,11 +164,11 @@ func TestApp_SearchModeReceivesUpdates(t *testing.T) {
 	m = newModel.(Model)
 
 	// Should still be in search mode (help overlay doesn't change mode)
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "should still be in search mode")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "should still be in search mode")
 
 	// View should render without panic
 	view := m.View()
-	assert.NotEmpty(t, view, "view should render")
+	require.NotEmpty(t, view, "view should render")
 }
 
 func TestApp_ModeSwitchRoundTrip(t *testing.T) {
@@ -179,12 +179,12 @@ func TestApp_ModeSwitchRoundTrip(t *testing.T) {
 		// Switch to search
 		newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 		m = newModel.(Model)
-		assert.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
+		require.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
 
 		// Switch back to kanban
 		newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 		m = newModel.(Model)
-		assert.Equal(t, mode.ModeKanban, m.currentMode, "should be in kanban mode")
+		require.Equal(t, mode.ModeKanban, m.currentMode, "should be in kanban mode")
 	}
 }
 
@@ -196,14 +196,14 @@ func TestApp_SwitchToSearchMsg_WithQuery(t *testing.T) {
 	m = newModel.(Model)
 
 	// Verify mode switched to search
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
 
 	// Init should be called (returns command batch)
-	assert.NotNil(t, cmd, "expected Init command")
+	require.NotNil(t, cmd, "expected Init command")
 
 	// View should render without panic
 	view := m.View()
-	assert.NotEmpty(t, view, "search view should render")
+	require.NotEmpty(t, view, "search view should render")
 }
 
 func TestApp_SwitchToSearchMsg_EmptyQuery(t *testing.T) {
@@ -214,14 +214,14 @@ func TestApp_SwitchToSearchMsg_EmptyQuery(t *testing.T) {
 	m = newModel.(Model)
 
 	// Verify mode switched to search
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
 
 	// Init should be called
-	assert.NotNil(t, cmd, "expected Init command")
+	require.NotNil(t, cmd, "expected Init command")
 
 	// View should render
 	view := m.View()
-	assert.NotEmpty(t, view, "search view should render")
+	require.NotEmpty(t, view, "search view should render")
 }
 
 func TestApp_ExitToKanbanMsg(t *testing.T) {
@@ -230,18 +230,18 @@ func TestApp_ExitToKanbanMsg(t *testing.T) {
 	// Switch to search mode first (Ctrl+Space)
 	newModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlAt})
 	m = newModel.(Model)
-	assert.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
+	require.Equal(t, mode.ModeSearch, m.currentMode, "should be in search mode")
 
 	// Simulate ExitToKanbanMsg from search mode (ESC key)
 	newModel, _ = m.Update(search.ExitToKanbanMsg{})
 	m = newModel.(Model)
 
 	// Verify mode switched back to kanban
-	assert.Equal(t, mode.ModeKanban, m.currentMode, "should be back in kanban mode")
+	require.Equal(t, mode.ModeKanban, m.currentMode, "should be back in kanban mode")
 
 	// View should render kanban mode
 	view := m.View()
-	assert.NotEmpty(t, view, "kanban view should render")
+	require.NotEmpty(t, view, "kanban view should render")
 }
 
 func TestApp_SaveSearchToNewView(t *testing.T) {
@@ -263,7 +263,7 @@ func TestApp_SaveSearchToNewView(t *testing.T) {
 	// (because we append before AddView in the actual handler)
 	// Note: Our test model has no ConfigPath so AddView will fail
 	// This is expected - the important thing is the handler doesn't panic
-	assert.GreaterOrEqual(t, len(m.services.Config.Views), initialViewCount,
+	require.GreaterOrEqual(t, len(m.services.Config.Views), initialViewCount,
 		"view count should not decrease")
 }
 
@@ -285,5 +285,5 @@ func TestApp_SaveSearchToNewView_Structure(t *testing.T) {
 	// Since config path is empty, AddView fails but we can verify the handler runs
 	// The in-memory update happens after AddView, so it won't update on error
 	// This is correct behavior - don't partially update on error
-	assert.NotNil(t, resultModel, "handler should return model")
+	require.NotNil(t, resultModel, "handler should return model")
 }

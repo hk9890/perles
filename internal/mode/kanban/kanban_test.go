@@ -1,9 +1,10 @@
 package kanban
 
 import (
+	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"perles/internal/beads"
 	"perles/internal/config"
@@ -45,8 +46,8 @@ func TestDeleteFlow_CancelReturnsToDetails(t *testing.T) {
 	// Simulate modal cancel
 	m, _ = m.handleModalCancel()
 
-	assert.Equal(t, ViewDetails, m.view, "expected ViewDetails after cancel")
-	assert.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails after cancel")
+	require.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
 }
 
 func TestDeleteFlow_SubmitTriggersDelete(t *testing.T) {
@@ -65,8 +66,8 @@ func TestDeleteFlow_SubmitTriggersDelete(t *testing.T) {
 	m, cmd := m.handleModalSubmit(modal.SubmitMsg{})
 
 	// Should return a delete command
-	assert.NotNil(t, cmd, "expected delete command")
-	assert.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
+	require.NotNil(t, cmd, "expected delete command")
+	require.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
 }
 
 func TestDeleteFlow_IssueDeletedMsgReturnsToBoard(t *testing.T) {
@@ -79,9 +80,9 @@ func TestDeleteFlow_IssueDeletedMsgReturnsToBoard(t *testing.T) {
 	}
 	m, cmd := m.handleIssueDeleted(msg)
 
-	assert.Equal(t, ViewBoard, m.view, "expected ViewBoard after successful delete")
+	require.Equal(t, ViewBoard, m.view, "expected ViewBoard after successful delete")
 	// The command should include a ShowToastMsg emission (app now owns toaster)
-	assert.NotNil(t, cmd, "expected command for toast message")
+	require.NotNil(t, cmd, "expected command for toast message")
 }
 
 func TestDeleteFlow_IssueDeletedMsgWithErrorShowsError(t *testing.T) {
@@ -90,13 +91,13 @@ func TestDeleteFlow_IssueDeletedMsgWithErrorShowsError(t *testing.T) {
 	// Simulate receiving error message
 	msg := issueDeletedMsg{
 		issueID: "test-123",
-		err:     assert.AnError,
+		err:     errors.New("test error"),
 	}
 	m, _ = m.handleIssueDeleted(msg)
 
-	assert.Equal(t, ViewBoard, m.view, "expected ViewBoard after error")
-	assert.Error(t, m.err, "expected error to be set")
-	assert.Equal(t, "deleting issue", m.errContext)
+	require.Equal(t, ViewBoard, m.view, "expected ViewBoard after error")
+	require.Error(t, m.err, "expected error to be set")
+	require.Equal(t, "deleting issue", m.errContext)
 }
 
 func TestCreateDeleteModal_RegularIssue(t *testing.T) {
@@ -110,8 +111,8 @@ func TestCreateDeleteModal_RegularIssue(t *testing.T) {
 
 	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
-	assert.NotNil(t, modal)
-	assert.False(t, isCascade, "expected non-cascade for regular task")
+	require.NotNil(t, modal)
+	require.False(t, isCascade, "expected non-cascade for regular task")
 }
 
 func TestCreateDeleteModal_EpicWithoutChildren(t *testing.T) {
@@ -126,8 +127,8 @@ func TestCreateDeleteModal_EpicWithoutChildren(t *testing.T) {
 
 	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
-	assert.NotNil(t, modal)
-	assert.False(t, isCascade, "expected non-cascade for epic without children")
+	require.NotNil(t, modal)
+	require.False(t, isCascade, "expected non-cascade for epic without children")
 }
 
 func TestCreateDeleteModal_EpicWithChildren(t *testing.T) {
@@ -142,8 +143,8 @@ func TestCreateDeleteModal_EpicWithChildren(t *testing.T) {
 
 	modal, isCascade := shared.CreateDeleteModal(issue, m.services.Client)
 
-	assert.NotNil(t, modal)
-	assert.True(t, isCascade, "expected cascade for epic with children")
+	require.NotNil(t, modal)
+	require.True(t, isCascade, "expected cascade for epic with children")
 }
 
 func TestDeleteFlow_CascadeSubmit(t *testing.T) {
@@ -164,9 +165,9 @@ func TestDeleteFlow_CascadeSubmit(t *testing.T) {
 	m, cmd := m.handleModalSubmit(modal.SubmitMsg{})
 
 	// Should return a delete command
-	assert.NotNil(t, cmd, "expected delete command")
-	assert.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
-	assert.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared")
+	require.NotNil(t, cmd, "expected delete command")
+	require.Nil(t, m.selectedIssue, "expected selectedIssue to be cleared")
+	require.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared")
 }
 
 func TestDeleteFlow_CancelClearsCascadeFlag(t *testing.T) {
@@ -184,7 +185,7 @@ func TestDeleteFlow_CancelClearsCascadeFlag(t *testing.T) {
 	// Simulate cancel
 	m, _ = m.handleModalCancel()
 
-	assert.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared on cancel")
+	require.False(t, m.deleteIsCascade, "expected deleteIsCascade to be cleared on cancel")
 }
 
 func TestDeleteFlow_SubmitWithNoSelectedIssue(t *testing.T) {
@@ -198,6 +199,6 @@ func TestDeleteFlow_SubmitWithNoSelectedIssue(t *testing.T) {
 	m, cmd := m.handleModalSubmit(modal.SubmitMsg{})
 
 	// Should return to board, not crash
-	assert.Equal(t, ViewBoard, m.view, "expected ViewBoard when no issue selected")
-	assert.Nil(t, cmd, "expected no command when no issue selected")
+	require.Equal(t, ViewBoard, m.view, "expected ViewBoard when no issue selected")
+	require.Nil(t, cmd, "expected no command when no issue selected")
 }

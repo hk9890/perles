@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestUpdateStatus_InvalidIssue tests error handling for invalid issue IDs.
@@ -15,7 +15,7 @@ func TestUpdateStatus_InvalidIssue(t *testing.T) {
 	}
 
 	err := UpdateStatus("nonexistent-xyz", StatusInProgress)
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }
 
 // TestUpdatePriority_InvalidIssue tests error handling for invalid issue IDs.
@@ -26,7 +26,7 @@ func TestUpdatePriority_InvalidIssue(t *testing.T) {
 	}
 
 	err := UpdatePriority("nonexistent-xyz", PriorityHigh)
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }
 
 // TestCloseIssue_InvalidIssue tests error handling for invalid issue IDs.
@@ -37,7 +37,7 @@ func TestCloseIssue_InvalidIssue(t *testing.T) {
 	}
 
 	err := CloseIssue("nonexistent-xyz", "testing")
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }
 
 // TestReopenIssue_InvalidIssue tests error handling for invalid issue IDs.
@@ -48,7 +48,7 @@ func TestReopenIssue_InvalidIssue(t *testing.T) {
 	}
 
 	err := ReopenIssue("nonexistent-xyz")
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }
 
 // TestDeleteIssue_InvalidIssue tests error handling for invalid issue IDs.
@@ -59,7 +59,7 @@ func TestDeleteIssue_InvalidIssue(t *testing.T) {
 	}
 
 	err := DeleteIssue("nonexistent-xyz")
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }
 
 // TestDeleteIssueCascade_InvalidIssue tests error handling for invalid issue IDs.
@@ -70,5 +70,5 @@ func TestDeleteIssueCascade_InvalidIssue(t *testing.T) {
 	}
 
 	err := DeleteIssueCascade("nonexistent-xyz")
-	assert.Error(t, err, "expected error for nonexistent issue")
+	require.Error(t, err, "expected error for nonexistent issue")
 }

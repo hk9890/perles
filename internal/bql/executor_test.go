@@ -8,7 +8,6 @@ import (
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -139,9 +138,9 @@ func TestExecutor_TypeFilter(t *testing.T) {
 	issues, err := executor.Execute("type = bug")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 2)
+	require.Len(t, issues, 2)
 	for _, issue := range issues {
-		assert.Equal(t, beads.TypeBug, issue.Type)
+		require.Equal(t, beads.TypeBug, issue.Type)
 	}
 }
 
@@ -154,9 +153,9 @@ func TestExecutor_StatusFilter(t *testing.T) {
 	issues, err := executor.Execute("status = open")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 4) // test-1, test-2, test-5, test-6
+	require.Len(t, issues, 4) // test-1, test-2, test-5, test-6
 	for _, issue := range issues {
-		assert.Equal(t, beads.StatusOpen, issue.Status)
+		require.Equal(t, beads.StatusOpen, issue.Status)
 	}
 }
 
@@ -170,9 +169,9 @@ func TestExecutor_PriorityFilter(t *testing.T) {
 	issues, err := executor.Execute("priority = P0")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 2) // test-1 and test-5
+	require.Len(t, issues, 2) // test-1 and test-5
 	for _, issue := range issues {
-		assert.Equal(t, beads.Priority(0), issue.Priority)
+		require.Equal(t, beads.Priority(0), issue.Priority)
 	}
 }
 
@@ -187,9 +186,9 @@ func TestExecutor_PriorityComparison(t *testing.T) {
 	require.NoError(t, err)
 
 	// test-1 (P0), test-5 (P0), test-2 (P1), test-6 (P1) - 4 issues with priority < 2
-	assert.Len(t, issues, 4)
+	require.Len(t, issues, 4)
 	for _, issue := range issues {
-		assert.Less(t, int(issue.Priority), 2)
+		require.Less(t, int(issue.Priority), 2)
 	}
 }
 
@@ -203,8 +202,8 @@ func TestExecutor_BlockedFilter(t *testing.T) {
 	issues, err := executor.Execute("blocked = true")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 1)
-	assert.Equal(t, "test-3", issues[0].ID)
+	require.Len(t, issues, 1)
+	require.Equal(t, "test-3", issues[0].ID)
 }
 
 func TestExecutor_ReadyFilter(t *testing.T) {
@@ -220,10 +219,10 @@ func TestExecutor_ReadyFilter(t *testing.T) {
 	// test-1, test-2, test-5, test-6 are open/in_progress and not blocked
 	// test-3 is in_progress but blocked
 	// test-4 is closed
-	assert.Len(t, issues, 4)
+	require.Len(t, issues, 4)
 	for _, issue := range issues {
-		assert.NotEqual(t, "test-3", issue.ID, "blocked issue should not be ready")
-		assert.NotEqual(t, "test-4", issue.ID, "closed issue should not be ready")
+		require.NotEqual(t, "test-3", issue.ID, "blocked issue should not be ready")
+		require.NotEqual(t, "test-4", issue.ID, "closed issue should not be ready")
 	}
 }
 
@@ -237,9 +236,9 @@ func TestExecutor_LabelFilter(t *testing.T) {
 	issues, err := executor.Execute("label = urgent")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 2) // test-1 and test-5
+	require.Len(t, issues, 2) // test-1 and test-5
 	for _, issue := range issues {
-		assert.Contains(t, []string{"test-1", "test-5"}, issue.ID)
+		require.Contains(t, []string{"test-1", "test-5"}, issue.ID)
 	}
 }
 
@@ -253,8 +252,8 @@ func TestExecutor_TitleContains(t *testing.T) {
 	issues, err := executor.Execute("title ~ bug")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 1)
-	assert.Equal(t, "test-1", issues[0].ID)
+	require.Len(t, issues, 1)
+	require.Equal(t, "test-1", issues[0].ID)
 }
 
 func TestExecutor_OrderBy(t *testing.T) {
@@ -267,12 +266,12 @@ func TestExecutor_OrderBy(t *testing.T) {
 	issues, err := executor.Execute("status = open order by priority asc")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 4)
+	require.Len(t, issues, 4)
 	// First two should be P0
-	assert.Equal(t, beads.Priority(0), issues[0].Priority)
-	assert.Equal(t, beads.Priority(0), issues[1].Priority)
+	require.Equal(t, beads.Priority(0), issues[0].Priority)
+	require.Equal(t, beads.Priority(0), issues[1].Priority)
 	// Next should be P1
-	assert.Equal(t, beads.Priority(1), issues[2].Priority)
+	require.Equal(t, beads.Priority(1), issues[2].Priority)
 }
 
 func TestExecutor_ComplexQuery(t *testing.T) {
@@ -285,10 +284,10 @@ func TestExecutor_ComplexQuery(t *testing.T) {
 	issues, err := executor.Execute("type = bug and priority = P0")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 2) // test-1 and test-5
+	require.Len(t, issues, 2) // test-1 and test-5
 	for _, issue := range issues {
-		assert.Equal(t, beads.TypeBug, issue.Type)
-		assert.Equal(t, beads.Priority(0), issue.Priority)
+		require.Equal(t, beads.TypeBug, issue.Type)
+		require.Equal(t, beads.Priority(0), issue.Priority)
 	}
 }
 
@@ -302,9 +301,9 @@ func TestExecutor_OrQuery(t *testing.T) {
 	issues, err := executor.Execute("type = bug or type = feature")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 3) // test-1, test-2, test-5
+	require.Len(t, issues, 3) // test-1, test-2, test-5
 	for _, issue := range issues {
-		assert.Contains(t, []beads.IssueType{beads.TypeBug, beads.TypeFeature}, issue.Type)
+		require.Contains(t, []beads.IssueType{beads.TypeBug, beads.TypeFeature}, issue.Type)
 	}
 }
 
@@ -318,9 +317,9 @@ func TestExecutor_InExpression(t *testing.T) {
 	issues, err := executor.Execute("type in (bug, task)")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 3) // test-1, test-3, test-5
+	require.Len(t, issues, 3) // test-1, test-3, test-5
 	for _, issue := range issues {
-		assert.Contains(t, []beads.IssueType{beads.TypeBug, beads.TypeTask}, issue.Type)
+		require.Contains(t, []beads.IssueType{beads.TypeBug, beads.TypeTask}, issue.Type)
 	}
 }
 
@@ -334,7 +333,7 @@ func TestExecutor_EmptyResult(t *testing.T) {
 	issues, err := executor.Execute("priority = P4")
 	require.NoError(t, err)
 
-	assert.Empty(t, issues)
+	require.Empty(t, issues)
 }
 
 func TestExecutor_InvalidQuery(t *testing.T) {
@@ -346,7 +345,7 @@ func TestExecutor_InvalidQuery(t *testing.T) {
 	// Invalid field
 	_, err := executor.Execute("foo = bar")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field")
+	require.Contains(t, err.Error(), "unknown field")
 }
 
 func TestExecutor_ParseError(t *testing.T) {
@@ -358,7 +357,7 @@ func TestExecutor_ParseError(t *testing.T) {
 	// Invalid syntax
 	_, err := executor.Execute("type = = bug")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse error")
+	require.Contains(t, err.Error(), "parse error")
 }
 
 func TestExecutor_LoadsLabels(t *testing.T) {
@@ -372,8 +371,8 @@ func TestExecutor_LoadsLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Contains(t, issues[0].Labels, "urgent")
-	assert.Contains(t, issues[0].Labels, "auth")
+	require.Contains(t, issues[0].Labels, "urgent")
+	require.Contains(t, issues[0].Labels, "auth")
 }
 
 func TestExecutor_LoadsBlockedBy(t *testing.T) {
@@ -387,7 +386,7 @@ func TestExecutor_LoadsBlockedBy(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Contains(t, issues[0].BlockedBy, "test-1")
+	require.Contains(t, issues[0].BlockedBy, "test-1")
 }
 
 func TestExecutor_LoadsBlocks(t *testing.T) {
@@ -401,7 +400,7 @@ func TestExecutor_LoadsBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Contains(t, issues[0].Blocks, "test-3", "test-1 should show test-3 in Blocks")
+	require.Contains(t, issues[0].Blocks, "test-3", "test-1 should show test-3 in Blocks")
 }
 
 func TestExecutor_LoadsBlocksForEpicWithChildren(t *testing.T) {
@@ -415,7 +414,7 @@ func TestExecutor_LoadsBlocksForEpicWithChildren(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Contains(t, issues[0].Blocks, "test-2", "epic should show child in Blocks")
+	require.Contains(t, issues[0].Blocks, "test-2", "epic should show child in Blocks")
 }
 
 func TestIsBQLQuery(t *testing.T) {
@@ -437,7 +436,7 @@ func TestIsBQLQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			got := IsBQLQuery(tt.input)
-			assert.Equal(t, tt.want, got)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -452,9 +451,9 @@ func TestExecutor_OrderByOnly(t *testing.T) {
 	issues, err := executor.Execute("order by priority asc")
 	require.NoError(t, err)
 
-	assert.Len(t, issues, 6) // All issues except deleted
+	require.Len(t, issues, 6) // All issues except deleted
 	// First should be P0
-	assert.Equal(t, beads.Priority(0), issues[0].Priority)
+	require.Equal(t, beads.Priority(0), issues[0].Priority)
 }
 
 func TestExecutor_AssigneePopulated(t *testing.T) {
@@ -468,7 +467,7 @@ func TestExecutor_AssigneePopulated(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Equal(t, "alice", issues[0].Assignee, "assignee should be populated from database")
+	require.Equal(t, "alice", issues[0].Assignee, "assignee should be populated from database")
 }
 
 func TestExecutor_AssigneeNullIsEmptyString(t *testing.T) {
@@ -482,7 +481,7 @@ func TestExecutor_AssigneeNullIsEmptyString(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, issues, 1)
-	assert.Equal(t, "", issues[0].Assignee, "NULL assignee should be empty string")
+	require.Equal(t, "", issues[0].Assignee, "NULL assignee should be empty string")
 }
 
 func TestExecutor_MultipleIssuesWithDifferentAssignees(t *testing.T) {
@@ -503,7 +502,7 @@ func TestExecutor_MultipleIssuesWithDifferentAssignees(t *testing.T) {
 		assigneeByID[issue.ID] = issue.Assignee
 	}
 
-	assert.Equal(t, "alice", assigneeByID["test-1"])
-	assert.Equal(t, "", assigneeByID["test-2"])
-	assert.Equal(t, "bob", assigneeByID["test-3"])
+	require.Equal(t, "alice", assigneeByID["test-1"])
+	require.Equal(t, "", assigneeByID["test-2"])
+	require.Equal(t, "bob", assigneeByID["test-3"])
 }

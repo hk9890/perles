@@ -5,15 +5,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNoBeads_New(t *testing.T) {
 	m := New()
 
 	// Verify model is created with zero dimensions (not set yet)
-	assert.Equal(t, 0, m.width, "expected width to be 0")
-	assert.Equal(t, 0, m.height, "expected height to be 0")
+	require.Equal(t, 0, m.width, "expected width to be 0")
+	require.Equal(t, 0, m.height, "expected height to be 0")
 }
 
 func TestNoBeads_Init(t *testing.T) {
@@ -21,7 +21,7 @@ func TestNoBeads_Init(t *testing.T) {
 
 	// Init should return nil (no initial command)
 	cmd := m.Init()
-	assert.Nil(t, cmd, "expected Init to return nil")
+	require.Nil(t, cmd, "expected Init to return nil")
 }
 
 func TestNoBeads_SetSize(t *testing.T) {
@@ -30,14 +30,14 @@ func TestNoBeads_SetSize(t *testing.T) {
 	// Set dimensions
 	m = m.SetSize(120, 40)
 
-	assert.Equal(t, 120, m.width, "expected width to be 120")
-	assert.Equal(t, 40, m.height, "expected height to be 40")
+	require.Equal(t, 120, m.width, "expected width to be 120")
+	require.Equal(t, 40, m.height, "expected height to be 40")
 
 	// Verify SetSize returns new model (immutability)
 	m2 := m.SetSize(80, 24)
-	assert.Equal(t, 80, m2.width, "expected new model width to be 80")
-	assert.Equal(t, 24, m2.height, "expected new model height to be 24")
-	assert.Equal(t, 120, m.width, "expected original model width unchanged")
+	require.Equal(t, 80, m2.width, "expected new model width to be 80")
+	require.Equal(t, 24, m2.height, "expected new model height to be 24")
+	require.Equal(t, 120, m.width, "expected original model width unchanged")
 }
 
 func TestNoBeads_WindowSizeMsg(t *testing.T) {
@@ -49,9 +49,9 @@ func TestNoBeads_WindowSizeMsg(t *testing.T) {
 
 	// Cast back to Model to check fields
 	updated := newModel.(Model)
-	assert.Equal(t, 80, updated.width, "expected width to be updated")
-	assert.Equal(t, 24, updated.height, "expected height to be updated")
-	assert.Nil(t, cmd, "expected no command from WindowSizeMsg")
+	require.Equal(t, 80, updated.width, "expected width to be updated")
+	require.Equal(t, 24, updated.height, "expected height to be updated")
+	require.Nil(t, cmd, "expected no command from WindowSizeMsg")
 }
 
 func TestNoBeads_QuitKeys(t *testing.T) {
@@ -70,12 +70,12 @@ func TestNoBeads_QuitKeys(t *testing.T) {
 			_, cmd := m.Update(tt.key)
 
 			// Should return tea.Quit command
-			assert.NotNil(t, cmd, "expected quit command")
+			require.NotNil(t, cmd, "expected quit command")
 
 			// Execute the command and verify it's a quit message
 			msg := cmd()
 			_, isQuit := msg.(tea.QuitMsg)
-			assert.True(t, isQuit, "expected tea.QuitMsg")
+			require.True(t, isQuit, "expected tea.QuitMsg")
 		})
 	}
 }
@@ -88,7 +88,7 @@ func TestNoBeads_OtherKeyMsg(t *testing.T) {
 	_, cmd := m.Update(msg)
 
 	// Should not return any command
-	assert.Nil(t, cmd, "expected no command from other keys")
+	require.Nil(t, cmd, "expected no command from other keys")
 }
 
 func TestNoBeads_EmptyDimensions(t *testing.T) {
@@ -107,7 +107,7 @@ func TestNoBeads_EmptyDimensions(t *testing.T) {
 			m := New().SetSize(tt.width, tt.height)
 			view := m.View()
 
-			assert.Equal(t, "", view, "expected empty string for zero dimensions")
+			require.Equal(t, "", view, "expected empty string for zero dimensions")
 		})
 	}
 }
@@ -116,21 +116,21 @@ func TestNoBeads_View_ContainsTitle(t *testing.T) {
 	m := New().SetSize(80, 24)
 	view := m.View()
 
-	assert.Contains(t, view, "Looks like there's a break in the chain!", "expected view to contain title")
+	require.Contains(t, view, "Looks like there's a break in the chain!", "expected view to contain title")
 }
 
 func TestNoBeads_View_ContainsBeadsText(t *testing.T) {
 	m := New().SetSize(80, 24)
 	view := m.View()
 
-	assert.Contains(t, view, ".beads", "expected view to contain .beads text")
+	require.Contains(t, view, ".beads", "expected view to contain .beads text")
 }
 
 func TestNoBeads_View_ContainsHint(t *testing.T) {
 	m := New().SetSize(80, 24)
 	view := m.View()
 
-	assert.Contains(t, view, "Press q to quit", "expected view to contain quit hint")
+	require.Contains(t, view, "Press q to quit", "expected view to contain quit hint")
 }
 
 func TestNoBeads_View_ContainsChainArt(t *testing.T) {
@@ -138,8 +138,8 @@ func TestNoBeads_View_ContainsChainArt(t *testing.T) {
 	view := m.View()
 
 	// Chain links use box-drawing characters
-	assert.Contains(t, view, "╔═══════╗", "expected view to contain chain link top")
-	assert.Contains(t, view, "╚═══════╝", "expected view to contain chain link bottom")
+	require.Contains(t, view, "╔═══════╗", "expected view to contain chain link top")
+	require.Contains(t, view, "╚═══════╝", "expected view to contain chain link bottom")
 }
 
 func TestNoBeads_View_Stability(t *testing.T) {
@@ -148,11 +148,11 @@ func TestNoBeads_View_Stability(t *testing.T) {
 	view2 := m.View()
 
 	// Same model should produce identical output
-	assert.Equal(t, view1, view2, "expected stable output from same model")
+	require.Equal(t, view1, view2, "expected stable output from same model")
 
 	// Output should be non-empty and contain expected content
-	assert.NotEmpty(t, view1, "expected non-empty view")
-	assert.Greater(t, len(view1), 100, "expected substantial output")
+	require.NotEmpty(t, view1, "expected non-empty view")
+	require.Greater(t, len(view1), 100, "expected substantial output")
 }
 
 func TestNoBeads_View_VariousSizes(t *testing.T) {
@@ -173,9 +173,9 @@ func TestNoBeads_View_VariousSizes(t *testing.T) {
 			view := m.View()
 
 			// All sizes should render the core content
-			assert.Contains(t, view, "break in the chain", "expected title")
-			assert.Contains(t, view, ".beads", "expected beads text")
-			assert.Contains(t, view, "Press q to quit", "expected quit hint")
+			require.Contains(t, view, "break in the chain", "expected title")
+			require.Contains(t, view, ".beads", "expected beads text")
+			require.Contains(t, view, "Press q to quit", "expected quit hint")
 		})
 	}
 }

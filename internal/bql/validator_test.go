@@ -3,7 +3,6 @@ package bql
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +48,7 @@ func TestValidate_ValidQueries(t *testing.T) {
 			require.NoError(t, err)
 
 			err = Validate(q)
-			assert.NoError(t, err, "query should be valid: %s", query)
+			require.NoError(t, err, "query should be valid: %s", query)
 		})
 	}
 }
@@ -72,8 +71,8 @@ func TestValidate_InvalidField(t *testing.T) {
 
 			err = Validate(q)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "unknown field")
-			assert.Contains(t, err.Error(), tc.field)
+			require.Contains(t, err.Error(), "unknown field")
+			require.Contains(t, err.Error(), tc.field)
 		})
 	}
 }
@@ -98,7 +97,7 @@ func TestValidate_InvalidOperator(t *testing.T) {
 
 			err = Validate(q)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "not valid")
+			require.Contains(t, err.Error(), "not valid")
 		})
 	}
 }
@@ -155,7 +154,7 @@ func TestValidate_InvalidOrderBy(t *testing.T) {
 
 	err = Validate(q)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field in ORDER BY")
+	require.Contains(t, err.Error(), "unknown field in ORDER BY")
 }
 
 func TestValidate_BinaryExprWithInvalidChild(t *testing.T) {
@@ -166,7 +165,7 @@ func TestValidate_BinaryExprWithInvalidChild(t *testing.T) {
 
 	err = Validate(q)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field")
+	require.Contains(t, err.Error(), "unknown field")
 }
 
 func TestValidate_NotExprWithInvalidChild(t *testing.T) {
@@ -177,5 +176,5 @@ func TestValidate_NotExprWithInvalidChild(t *testing.T) {
 
 	err = Validate(q)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown field")
+	require.Contains(t, err.Error(), "unknown field")
 }
