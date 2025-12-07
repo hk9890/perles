@@ -135,37 +135,6 @@ perles
 | `--help` | `-h` | Print help |
 | `--debug` | `-d` | Enable developer/debug mode |
 
-## Developer Mode
-
-Developer mode provides logging and debugging tools for troubleshooting and development.
-
-### Enabling Debug Mode
-
-```bash
-# Via flag
-perles --debug
-
-# Via environment variable
-PERLES_DEBUG=1 perles
-
-# With custom log path
-PERLES_LOG=/tmp/perles.log perles --debug
-```
-
-### Features
-
-- **Log file**: All log output is written to `debug.log` (or custom path via `PERLES_LOG`)
-- **Log overlay**: Press `Ctrl+X` to view logs in-app without leaving the TUI
-- **Lifecycle logging**: Application startup and shutdown events are logged
-
-### Reporting Issues
-
-When reporting bugs, please include the `debug.log` file to help with diagnosis:
-
-1. Run perles with `--debug` flag
-2. Reproduce the issue
-3. Attach `debug.log` to your bug report
-
 ## Keybindings
 
 ### Global
@@ -536,35 +505,40 @@ Colors are organized by category:
 
 See `internal/ui/styles/tokens.go` for the complete list of 51 color tokens.
 
-## Architecture
+## Developer Mode
 
-Perles reads from the beads SQLite database (`.beads/beads.db`) and executes `bd` CLI commands for mutations. This ensures data integrity and consistency with the beads ecosystem.
+Developer mode provides logging and debugging tools for troubleshooting and development.
 
+### Enabling Debug Mode
+
+```bash
+# Via flag
+perles --debug
+
+# Via environment variable
+PERLES_DEBUG=1 perles
+
+# With custom log path
+PERLES_LOG=/tmp/perles.log perles --debug
 ```
-perles
-├── cmd/perles/        # Main entry point
-└── internal/
-    ├── app/           # Root application model
-    ├── beads/         # SQLite client and CLI executor
-    ├── bql/           # BQL parser and executor
-    ├── config/        # Configuration handling
-    ├── keys/          # Keybinding definitions
-    ├── mode/          # Mode controllers (kanban, search)
-    ├── watcher/       # File watcher for auto-refresh
-    └── ui/
-        ├── board/     # Kanban board and column components
-        ├── bqlinput/  # BQL input with syntax highlighting
-        ├── coleditor/ # Column editor modal
-        ├── colorpicker/ # Color picker for columns
-        ├── details/   # Issue detail view
-        ├── help/      # Help overlay
-        ├── labeleditor/ # Label editor modal
-        ├── modal/     # Generic modal component
-        ├── picker/    # Status/priority picker
-        ├── styles/    # Shared lip gloss styles
-        ├── toaster/   # Toast notifications
-        └── viewselector/ # View switcher component
-```
+
+### Features
+
+- **Log file**: All log output is written to `debug.log` (or custom path via `PERLES_LOG`)
+- **Log overlay**: Press `Ctrl+X` to view logs in-app without leaving the TUI
+- **Lifecycle logging**: Application startup and shutdown events are logged
+
+<p align="center">
+  <img src="./assets/debug-logs-overlay.png" width="1440" alt="board">
+</p>
+
+### Reporting Issues
+
+When reporting bugs, please include the `debug.log` file to help with diagnosis:
+
+1. Run perles with `--debug` flag
+2. Reproduce the issue
+3. Attach `debug.log` to your bug report
 
 ## Development
 
