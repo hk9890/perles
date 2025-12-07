@@ -211,6 +211,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+		} else if m.focusedIndex == -1 {
+			// On buttons: Save -> Cancel -> first field
+			if m.focusedButton == 0 {
+				m.focusedButton = 1
+				return m, nil
+			} else if len(m.fields) > 0 {
+				m.focusedIndex = 0
+				m.focusNextFieldByType()
+				return m, m.blinkCmd()
+			}
 		}
 
 	case "k", "up":
@@ -222,6 +232,16 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 					fs.listCursor--
 				}
 				return m, nil
+			}
+		} else if m.focusedIndex == -1 {
+			// On buttons: Cancel -> Save -> last field
+			if m.focusedButton == 1 {
+				m.focusedButton = 0
+				return m, nil
+			} else if len(m.fields) > 0 {
+				m.focusedIndex = len(m.fields) - 1
+				m.focusPrevFieldByType()
+				return m, m.blinkCmd()
 			}
 		}
 
@@ -490,30 +510,54 @@ func (m Model) handleKeyForEditableList(msg tea.KeyMsg, fs *fieldState) (Model, 
 		// Move to previous field
 		return m.prevField(), m.blinkCmd()
 
-	case "j", "down":
+	case "j", "k":
+		// j/k only navigate in list mode; in input they type characters
 		if fs.subFocus == SubFocusList {
-			if len(fs.listItems) > 0 && fs.listCursor < len(fs.listItems)-1 {
-				fs.listCursor++
-			}
-			return m, nil
-		}
-		// In input, down moves to next field
-		fs.addInput.Blur()
-		return m.nextField(), m.blinkCmd()
-
-	case "k", "up":
-		if fs.subFocus == SubFocusList {
-			if fs.listCursor > 0 {
-				fs.listCursor--
-			} else {
-				// At top of list, wrap to input
+			if msg.String() == "j" {
+				if len(fs.listItems) > 0 && fs.listCursor < len(fs.listItems)-1 {
+					fs.listCursor++
+					return m, nil
+				}
+				// At bottom of list, move to input section
 				fs.subFocus = SubFocusInput
 				fs.addInput.Focus()
 				return m, textinput.Blink
 			}
-			return m, nil
+			// k
+			if fs.listCursor > 0 {
+				fs.listCursor--
+				return m, nil
+			}
+			// At top of list, go to previous field (wraps to cancel)
+			return m.prevField(), m.blinkCmd()
 		}
-		// In input, up moves to list (at bottom)
+		// In input, let j/k type characters - fall through to input handler
+
+	case "down", "ctrl+n":
+		if fs.subFocus == SubFocusList {
+			if len(fs.listItems) > 0 && fs.listCursor < len(fs.listItems)-1 {
+				fs.listCursor++
+				return m, nil
+			}
+			// At bottom of list, move to input section
+			fs.subFocus = SubFocusInput
+			fs.addInput.Focus()
+			return m, textinput.Blink
+		}
+		// In input, down/ctrl+n moves to next field
+		fs.addInput.Blur()
+		return m.nextField(), m.blinkCmd()
+
+	case "up", "ctrl+p":
+		if fs.subFocus == SubFocusList {
+			if fs.listCursor > 0 {
+				fs.listCursor--
+				return m, nil
+			}
+			// At top of list, go to previous field (wraps to cancel)
+			return m.prevField(), m.blinkCmd()
+		}
+		// In input, up/ctrl+p moves to list (at bottom)
 		fs.subFocus = SubFocusList
 		fs.addInput.Blur()
 		if len(fs.listItems) > 0 {

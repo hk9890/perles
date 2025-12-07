@@ -847,6 +847,7 @@ func TestEditableListField_Navigation_JK(t *testing.T) {
 
 	// Cursor starts at 0
 	require.Equal(t, 0, m.fields[0].listCursor)
+	require.Equal(t, SubFocusList, m.fields[0].subFocus)
 
 	// j moves cursor down
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
@@ -855,9 +856,14 @@ func TestEditableListField_Navigation_JK(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	require.Equal(t, 2, m.fields[0].listCursor, "after down")
 
-	// At boundary, doesn't go past
+	// At bottom of list, j/down advances to input section
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	require.Equal(t, 2, m.fields[0].listCursor, "at boundary")
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "at bottom -> input")
+
+	// up from input returns to list at bottom (k types character in input)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "up returns to list")
+	require.Equal(t, 2, m.fields[0].listCursor, "at bottom of list")
 
 	// k moves cursor up
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
@@ -880,9 +886,10 @@ func TestEditableListField_Navigation_UpFromTop(t *testing.T) {
 	}
 	m := New(cfg)
 
-	// Cursor at 0, k/up should move to input
+	// Cursor at 0, k/up should wrap to cancel button (previous in cycle)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "expected SubFocusInput after k at top")
+	require.Equal(t, -1, m.focusedIndex, "expected buttons focus")
+	require.Equal(t, 1, m.focusedButton, "expected cancel button")
 }
 
 func TestEditableListField_Navigation_DownFromInput(t *testing.T) {
@@ -1218,17 +1225,23 @@ func TestEditableListField_EmptyList_Navigation(t *testing.T) {
 	}
 	m := New(cfg)
 
-	// j on empty list should not crash (doesn't move - no items)
+	// j on empty list advances to input (nothing to navigate in list)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
-	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after j")
+	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "after j: advances to input")
 
-	// k on empty list at cursor 0 wraps to input
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
-	require.Equal(t, SubFocusInput, m.fields[0].subFocus, "after k: expected wrap from top")
-
-	// Go back to list
+	// up from input wraps back to list (k types character in input)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after up")
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after up: back to list")
+
+	// k on empty list at cursor 0 wraps to cancel button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	require.Equal(t, -1, m.focusedIndex, "after k: on buttons")
+	require.Equal(t, 1, m.focusedButton, "after k: on cancel")
+
+	// j from cancel goes to first field (list)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, 0, m.focusedIndex, "after j: back to field")
+	require.Equal(t, SubFocusList, m.fields[0].subFocus, "after j: on list")
 
 	// Space on empty list should not crash (does nothing)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
