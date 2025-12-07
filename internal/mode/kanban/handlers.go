@@ -5,14 +5,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"perles/internal/beads"
 	"perles/internal/config"
 	"perles/internal/mode"
 	"perles/internal/mode/shared"
 	"perles/internal/ui/coleditor"
 	"perles/internal/ui/details"
-	"perles/internal/ui/modals/viewmenu"
 	"perles/internal/ui/shared/modal"
+	"perles/internal/ui/shared/picker"
 	"perles/internal/ui/shared/toaster"
 )
 
@@ -32,10 +31,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
-	case ViewDetailsPriorityPicker:
-		return m.handleDetailsPriorityPickerKey(msg)
-	case ViewDetailsStatusPicker:
-		return m.handleDetailsStatusPickerKey(msg)
+	case ViewDetailsPriorityPicker, ViewDetailsStatusPicker:
+		return m.handlePickerKey(msg)
 	case ViewColumnEditor:
 		return m.handleColumnEditorKey(msg)
 	case ViewNewViewModal:
@@ -255,7 +252,26 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case "ctrl+v": // View menu
-		m.viewMenu = viewmenu.New().SetSize(m.width, m.height)
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title: "View Menu",
+			Options: []picker.Option{
+				{Label: "Create new view", Value: "create"},
+				{Label: "Delete current view", Value: "delete"},
+				{Label: "Rename current view", Value: "rename"},
+			},
+			OnSelect: func(opt picker.Option) tea.Msg {
+				switch opt.Value {
+				case "create":
+					return viewMenuCreateMsg{}
+				case "delete":
+					return viewMenuDeleteMsg{}
+				case "rename":
+					return viewMenuRenameMsg{}
+				}
+				return nil
+			},
+			OnCancel: func() tea.Msg { return pickerCancelledMsg{} },
+		}).SetSize(m.width, m.height)
 		m.view = ViewViewMenu
 		return m, nil
 
@@ -321,44 +337,11 @@ func (m Model) handleDetailsKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) handleDetailsPriorityPickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
+// handlePickerKey handles key events for all picker views.
+// The picker's callbacks produce domain-specific messages.
+func (m Model) handlePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
-	case "esc", "q":
-		m.view = ViewDetails
-		m.selectedIssue = nil
-		return m, nil
-	case "enter":
-		if m.selectedIssue != nil {
-			priority := beads.Priority(m.picker.Selected().Value[1] - '0') // Parse "P0"-"P4"
-			m.view = ViewDetails
-			return m, updatePriorityCmd(m.selectedIssue.ID, priority)
-		}
-		m.view = ViewDetails
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.picker, cmd = m.picker.Update(msg)
-	return m, cmd
-}
-
-func (m Model) handleDetailsStatusPickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc", "q":
-		m.view = ViewDetails
-		m.selectedIssue = nil
-		return m, nil
-	case "enter":
-		if m.selectedIssue != nil {
-			status := beads.Status(m.picker.Selected().Value)
-			m.view = ViewDetails
-			return m, updateStatusCmd(m.selectedIssue.ID, status)
-		}
-		m.view = ViewDetails
-		return m, nil
 	}
 	var cmd tea.Cmd
 	m.picker, cmd = m.picker.Update(msg)
@@ -431,9 +414,9 @@ func (m Model) handleViewMenuKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// Delegate to view menu
+	// Delegate to picker
 	var cmd tea.Cmd
-	m.viewMenu, cmd = m.viewMenu.Update(msg)
+	m.picker, cmd = m.picker.Update(msg)
 	return m, cmd
 }
 
@@ -443,9 +426,9 @@ func (m Model) handleDetailsEditMenuKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// Delegate to edit menu
+	// Delegate to picker
 	var cmd tea.Cmd
-	m.editMenu, cmd = m.editMenu.Update(msg)
+	m.picker, cmd = m.picker.Update(msg)
 	return m, cmd
 }
 

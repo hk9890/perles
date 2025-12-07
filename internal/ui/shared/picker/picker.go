@@ -17,23 +17,55 @@ type Option struct {
 	Color lipgloss.TerminalColor // Optional color for the label
 }
 
+// Config defines picker configuration with optional callbacks.
+type Config struct {
+	Title    string
+	Options  []Option
+	Selected int // Initially selected index
+
+	// OnSelect produces a custom message when an option is selected (Enter pressed).
+	// If nil, picker produces SelectMsg{Option: selected}.
+	OnSelect func(selected Option) tea.Msg
+
+	// OnCancel produces a custom message when cancelled (Esc/q pressed).
+	// If nil, picker produces CancelMsg{}.
+	OnCancel func() tea.Msg
+}
+
+// SelectMsg is sent when an option is selected (if OnSelect is nil).
+type SelectMsg struct {
+	Option Option
+}
+
 // Model holds the picker state.
 type Model struct {
-	title          string
-	options        []Option
+	config         Config
 	selected       int
 	boxWidth       int // Width of the picker box itself
 	viewportWidth  int // Full viewport width for overlay centering
 	viewportHeight int // Full viewport height for overlay centering
 }
 
-// New creates a new picker with the given title and options.
-func New(title string, options []Option) Model {
-	return Model{
-		title:    title,
-		options:  options,
-		selected: 0,
+// NewWithConfig creates a new picker with the given configuration.
+// This is the preferred constructor for new code.
+func NewWithConfig(cfg Config) Model {
+	selected := cfg.Selected
+	if selected < 0 || selected >= len(cfg.Options) {
+		selected = 0
 	}
+	return Model{
+		config:   cfg,
+		selected: selected,
+	}
+}
+
+// New creates a new picker with title and options (legacy constructor).
+// Use NewWithConfig for callback support.
+func New(title string, options []Option) Model {
+	return NewWithConfig(Config{
+		Title:   title,
+		Options: options,
+	})
 }
 
 // SetSize sets the viewport dimensions for overlay rendering.
@@ -51,7 +83,7 @@ func (m Model) SetBoxWidth(width int) Model {
 
 // SetSelected sets the initially selected index.
 func (m Model) SetSelected(index int) Model {
-	if index >= 0 && index < len(m.options) {
+	if index >= 0 && index < len(m.config.Options) {
 		m.selected = index
 	}
 	return m
@@ -59,28 +91,49 @@ func (m Model) SetSelected(index int) Model {
 
 // Selected returns the currently selected option.
 func (m Model) Selected() Option {
-	if m.selected >= 0 && m.selected < len(m.options) {
-		return m.options[m.selected]
+	if m.selected >= 0 && m.selected < len(m.config.Options) {
+		return m.config.Options[m.selected]
 	}
 	return Option{}
 }
 
-// Update handles messages.
+// Update handles messages including enter/esc.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "j", "down", "ctrl+n":
-			if m.selected < len(m.options)-1 {
+			if m.selected < len(m.config.Options)-1 {
 				m.selected++
 			}
 		case "k", "up", "ctrl+p":
 			if m.selected > 0 {
 				m.selected--
 			}
+		case "enter":
+			return m, m.selectCmd()
+		case "esc", "q":
+			return m, m.cancelCmd()
 		}
 	}
 	return m, nil
+}
+
+// selectCmd returns the appropriate select command.
+func (m Model) selectCmd() tea.Cmd {
+	selected := m.Selected()
+	if m.config.OnSelect != nil {
+		return func() tea.Msg { return m.config.OnSelect(selected) }
+	}
+	return func() tea.Msg { return SelectMsg{Option: selected} }
+}
+
+// cancelCmd returns the appropriate cancel command.
+func (m Model) cancelCmd() tea.Cmd {
+	if m.config.OnCancel != nil {
+		return func() tea.Msg { return m.config.OnCancel() }
+	}
+	return func() tea.Msg { return CancelMsg{} }
 }
 
 // View renders the picker box (without positioning).
@@ -98,7 +151,7 @@ func (m Model) View() string {
 
 	// Build options
 	var options strings.Builder
-	for i, opt := range m.options {
+	for i, opt := range m.config.Options {
 		var line string
 		if i == m.selected {
 			// Selected: white bold "> " prefix, then bold label (with optional color)
@@ -116,7 +169,7 @@ func (m Model) View() string {
 			line = " " + labelStyle.Render(opt.Label)
 		}
 		options.WriteString(line)
-		if i < len(m.options)-1 {
+		if i < len(m.config.Options)-1 {
 			options.WriteString("\n")
 		}
 	}
@@ -129,7 +182,7 @@ func (m Model) View() string {
 	// Divider spans full width (no padding)
 	dividerStyle := lipgloss.NewStyle().Foreground(styles.OverlayBorderColor)
 	divider := dividerStyle.Render(strings.Repeat("─", width))
-	content := titleStyle.Render(m.title) + "\n" +
+	content := titleStyle.Render(m.config.Title) + "\n" +
 		divider + "\n" +
 		options.String()
 

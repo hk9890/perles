@@ -16,10 +16,8 @@ import (
 	"perles/internal/ui/board"
 	"perles/internal/ui/coleditor"
 	"perles/internal/ui/details"
-	"perles/internal/ui/modals/editissue"
 	"perles/internal/ui/modals/help"
 	"perles/internal/ui/modals/labeleditor"
-	"perles/internal/ui/modals/viewmenu"
 	"perles/internal/ui/shared/colorpicker"
 	"perles/internal/ui/shared/modal"
 	"perles/internal/ui/shared/picker"
@@ -64,8 +62,6 @@ type Model struct {
 	colEditor   coleditor.Model
 	modal       modal.Model
 	labelEditor labeleditor.Model
-	viewMenu    viewmenu.Model
-	editMenu    editissue.Model
 	spinner     spinner.Model
 	view        ViewMode
 	width       int
@@ -172,9 +168,9 @@ func (m Model) SetSize(width, height int) Model {
 	if m.view == ViewNewViewModal || m.view == ViewDeleteViewModal || m.view == ViewDeleteConfirm || m.view == ViewDeleteColumnModal || m.view == ViewRenameViewModal {
 		m.modal.SetSize(width, height)
 	}
-	// Update view menu if we're viewing it
-	if m.view == ViewViewMenu {
-		m.viewMenu = m.viewMenu.SetSize(width, height)
+	// Update picker if we're viewing a menu
+	if m.view == ViewViewMenu || m.view == ViewDetailsEditMenu {
+		m.picker = m.picker.SetSize(width, height)
 	}
 	return m
 }
@@ -202,19 +198,55 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case issueDeletedMsg:
 		return m.handleIssueDeleted(msg)
 
+	// Picker callback messages
+	case prioritySelectedMsg:
+		m.view = ViewDetails
+		m.selectedIssue = nil
+		return m, updatePriorityCmd(msg.issueID, msg.priority)
+
+	case statusSelectedMsg:
+		m.view = ViewDetails
+		m.selectedIssue = nil
+		return m, updateStatusCmd(msg.issueID, msg.status)
+
+	case pickerCancelledMsg:
+		m.view = ViewDetails
+		m.selectedIssue = nil
+		return m, nil
+
 	// Open picker messages from details view
 	case details.OpenPriorityPickerMsg:
-		m.picker = picker.New("Priority", shared.PriorityOptions()).
-			SetSize(m.width, m.height).
-			SetSelected(int(msg.Current))
+		issueID := msg.IssueID
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title:    "Priority",
+			Options:  shared.PriorityOptions(),
+			Selected: int(msg.Current),
+			OnSelect: func(opt picker.Option) tea.Msg {
+				priority := beads.Priority(opt.Value[1] - '0') // Parse "P0"-"P4"
+				return prioritySelectedMsg{issueID: issueID, priority: priority}
+			},
+			OnCancel: func() tea.Msg {
+				return pickerCancelledMsg{}
+			},
+		}).SetSize(m.width, m.height)
 		m.selectedIssue = m.getIssueByID(msg.IssueID)
 		m.view = ViewDetailsPriorityPicker
 		return m, nil
 
 	case details.OpenStatusPickerMsg:
-		m.picker = picker.New("Status", shared.StatusOptions()).
-			SetSize(m.width, m.height).
-			SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(msg.Current)))
+		issueID := msg.IssueID
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title:    "Status",
+			Options:  shared.StatusOptions(),
+			Selected: picker.FindIndexByValue(shared.StatusOptions(), string(msg.Current)),
+			OnSelect: func(opt picker.Option) tea.Msg {
+				status := beads.Status(opt.Value)
+				return statusSelectedMsg{issueID: issueID, status: status}
+			},
+			OnCancel: func() tea.Msg {
+				return pickerCancelledMsg{}
+			},
+		}).SetSize(m.width, m.height)
 		m.selectedIssue = m.getIssueByID(msg.IssueID)
 		m.view = ViewDetailsStatusPicker
 		return m, nil
@@ -246,16 +278,80 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.labelEditor.Init()
 
 	case details.OpenEditMenuMsg:
-		m.editMenu = editissue.New().SetSize(m.width, m.height)
 		m.selectedIssue = m.getIssueByID(msg.IssueID)
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title: "Edit Issue",
+			Options: []picker.Option{
+				{Label: "Edit labels", Value: "labels"},
+				{Label: "Change priority", Value: "priority"},
+				{Label: "Change status", Value: "status"},
+			},
+			OnSelect: func(opt picker.Option) tea.Msg {
+				switch opt.Value {
+				case "labels":
+					return editMenuLabelsMsg{}
+				case "priority":
+					return editMenuPriorityMsg{}
+				case "status":
+					return editMenuStatusMsg{}
+				}
+				return nil
+			},
+			OnCancel: func() tea.Msg { return pickerCancelledMsg{} },
+		}).SetSize(m.width, m.height)
 		m.view = ViewDetailsEditMenu
 		return m, nil
 
-	case editissue.SelectMsg:
-		return m.handleEditMenuSelect(msg)
+	case editMenuLabelsMsg:
+		if m.selectedIssue == nil {
+			m.view = ViewDetails
+			return m, nil
+		}
+		m.labelEditor = labeleditor.New(m.selectedIssue.ID, m.selectedIssue.Labels).
+			SetSize(m.width, m.height)
+		m.view = ViewLabelEditor
+		return m, m.labelEditor.Init()
 
-	case editissue.CancelMsg:
-		m.view = ViewDetails
+	case editMenuPriorityMsg:
+		if m.selectedIssue == nil {
+			m.view = ViewDetails
+			return m, nil
+		}
+		issueID := m.selectedIssue.ID
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title:    "Priority",
+			Options:  shared.PriorityOptions(),
+			Selected: int(m.selectedIssue.Priority),
+			OnSelect: func(opt picker.Option) tea.Msg {
+				priority := beads.Priority(opt.Value[1] - '0') // Parse "P0"-"P4"
+				return prioritySelectedMsg{issueID: issueID, priority: priority}
+			},
+			OnCancel: func() tea.Msg {
+				return pickerCancelledMsg{}
+			},
+		}).SetSize(m.width, m.height)
+		m.view = ViewDetailsPriorityPicker
+		return m, nil
+
+	case editMenuStatusMsg:
+		if m.selectedIssue == nil {
+			m.view = ViewDetails
+			return m, nil
+		}
+		issueID := m.selectedIssue.ID
+		m.picker = picker.NewWithConfig(picker.Config{
+			Title:    "Status",
+			Options:  shared.StatusOptions(),
+			Selected: picker.FindIndexByValue(shared.StatusOptions(), string(m.selectedIssue.Status)),
+			OnSelect: func(opt picker.Option) tea.Msg {
+				status := beads.Status(opt.Value)
+				return statusSelectedMsg{issueID: issueID, status: status}
+			},
+			OnCancel: func() tea.Msg {
+				return pickerCancelledMsg{}
+			},
+		}).SetSize(m.width, m.height)
+		m.view = ViewDetailsStatusPicker
 		return m, nil
 
 	case labeleditor.SaveMsg:
@@ -304,12 +400,51 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.view = ViewBoard
 		return m, nil
 
-	case viewmenu.SelectMsg:
-		return m.handleViewMenuSelect(msg)
+	case viewMenuCreateMsg:
+		// Open new view modal
+		m.modal = modal.New(modal.Config{
+			Title:          "Create New View",
+			ConfirmVariant: modal.ButtonPrimary,
+			Inputs: []modal.InputConfig{
+				{Key: "name", Label: "View Name", Placeholder: "Enter view name...", MaxLength: 50},
+			},
+		})
+		m.modal.SetSize(m.width, m.height)
+		m.view = ViewNewViewModal
+		return m, m.modal.Init()
 
-	case viewmenu.CancelMsg:
-		m.view = ViewBoard
-		return m, nil
+	case viewMenuDeleteMsg:
+		// Prevent deletion of last view
+		if len(m.services.Config.Views) <= 1 {
+			m.view = ViewBoard
+			return m, func() tea.Msg {
+				return mode.ShowToastMsg{Message: "Cannot delete the only view", Style: toaster.StyleError}
+			}
+		}
+		// Open delete view confirmation
+		viewName := m.board.CurrentViewName()
+		m.modal = modal.New(modal.Config{
+			Title:          "Delete View",
+			Message:        fmt.Sprintf("Delete view '%s'? This cannot be undone.", viewName),
+			ConfirmVariant: modal.ButtonDanger,
+		})
+		m.modal.SetSize(m.width, m.height)
+		m.view = ViewDeleteViewModal
+		return m, m.modal.Init()
+
+	case viewMenuRenameMsg:
+		// Open rename modal with current view name pre-filled
+		currentViewName := m.board.CurrentViewName()
+		m.modal = modal.New(modal.Config{
+			Title:          "Rename View",
+			ConfirmVariant: modal.ButtonPrimary,
+			Inputs: []modal.InputConfig{
+				{Key: "name", Label: "View Name", Value: currentViewName, MaxLength: 50},
+			},
+		})
+		m.modal.SetSize(m.width, m.height)
+		m.view = ViewRenameViewModal
+		return m, m.modal.Init()
 
 	case modal.SubmitMsg:
 		return m.handleModalSubmit(msg)
@@ -354,14 +489,14 @@ func (m Model) View() string {
 		return m.labelEditor.Overlay(m.details.View())
 	case ViewDetailsEditMenu:
 		// Render edit menu overlay on top of details view
-		return m.editMenu.Overlay(m.details.View())
+		return m.picker.Overlay(m.details.View())
 	case ViewViewMenu:
 		// Render view menu overlay on top of board
 		bg := m.board.View()
 		if m.showStatusBar {
 			bg += "\n" + m.renderStatusBar()
 		}
-		return m.viewMenu.Overlay(bg)
+		return m.picker.Overlay(bg)
 	case ViewDeleteColumnModal:
 		// Render delete column modal overlay on top of board
 		bg := m.board.View()
@@ -575,93 +710,6 @@ func (m Model) deleteColumn() (Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// handleViewMenuSelect routes view menu selections to appropriate actions.
-func (m Model) handleViewMenuSelect(msg viewmenu.SelectMsg) (Model, tea.Cmd) {
-	switch msg.Option {
-	case viewmenu.OptionCreate:
-		// Open new view modal
-		m.modal = modal.New(modal.Config{
-			Title:          "Create New View",
-			ConfirmVariant: modal.ButtonPrimary,
-			Inputs: []modal.InputConfig{
-				{Key: "name", Label: "View Name", Placeholder: "Enter view name...", MaxLength: 50},
-			},
-		})
-		m.modal.SetSize(m.width, m.height)
-		m.view = ViewNewViewModal
-		return m, m.modal.Init()
-
-	case viewmenu.OptionDelete:
-		// Prevent deletion of last view
-		if len(m.services.Config.Views) <= 1 {
-			m.view = ViewBoard
-			return m, func() tea.Msg {
-				return mode.ShowToastMsg{Message: "Cannot delete the only view", Style: toaster.StyleError}
-			}
-		}
-
-		viewName := m.board.CurrentViewName()
-		m.modal = modal.New(modal.Config{
-			Title:          "Delete View",
-			Message:        fmt.Sprintf("Delete view '%s'? This cannot be undone.", viewName),
-			ConfirmVariant: modal.ButtonDanger,
-		})
-		m.modal.SetSize(m.width, m.height)
-		m.view = ViewDeleteViewModal
-		return m, m.modal.Init()
-
-	case viewmenu.OptionRename:
-		// Open rename modal with current view name pre-filled
-		currentViewName := m.board.CurrentViewName()
-		m.modal = modal.New(modal.Config{
-			Title:          "Rename View",
-			ConfirmVariant: modal.ButtonPrimary,
-			Inputs: []modal.InputConfig{
-				{Key: "name", Label: "View Name", Value: currentViewName, MaxLength: 50},
-			},
-		})
-		m.modal.SetSize(m.width, m.height)
-		m.view = ViewRenameViewModal
-		return m, m.modal.Init()
-	}
-
-	m.view = ViewBoard
-	return m, nil
-}
-
-// handleEditMenuSelect routes edit menu selections to appropriate actions.
-func (m Model) handleEditMenuSelect(msg editissue.SelectMsg) (Model, tea.Cmd) {
-	if m.selectedIssue == nil {
-		m.view = ViewDetails
-		return m, nil
-	}
-
-	switch msg.Option {
-	case editissue.OptionLabels:
-		m.labelEditor = labeleditor.New(m.selectedIssue.ID, m.selectedIssue.Labels).
-			SetSize(m.width, m.height)
-		m.view = ViewLabelEditor
-		return m, m.labelEditor.Init()
-
-	case editissue.OptionPriority:
-		m.picker = picker.New("Priority", shared.PriorityOptions()).
-			SetSize(m.width, m.height).
-			SetSelected(int(m.selectedIssue.Priority))
-		m.view = ViewDetailsPriorityPicker
-		return m, nil
-
-	case editissue.OptionStatus:
-		m.picker = picker.New("Status", shared.StatusOptions()).
-			SetSize(m.width, m.height).
-			SetSelected(picker.FindIndexByValue(shared.StatusOptions(), string(m.selectedIssue.Status)))
-		m.view = ViewDetailsStatusPicker
-		return m, nil
-	}
-
-	m.view = ViewDetails
-	return m, nil
-}
-
 // createNewView handles the creation of a new view after modal submission.
 func (m Model) createNewView(viewName string) (Model, tea.Cmd) {
 	newView := config.ViewConfig{
@@ -795,6 +843,41 @@ type labelsChangedMsg struct {
 	labels  []string
 	err     error
 }
+
+// Picker callback messages (produced by picker OnSelect/OnCancel callbacks)
+
+// prioritySelectedMsg is produced when a priority is selected in the picker.
+type prioritySelectedMsg struct {
+	issueID  string
+	priority beads.Priority
+}
+
+// statusSelectedMsg is produced when a status is selected in the picker.
+type statusSelectedMsg struct {
+	issueID string
+	status  beads.Status
+}
+
+// pickerCancelledMsg is produced when any picker is cancelled.
+type pickerCancelledMsg struct{}
+
+// viewMenuCreateMsg is produced when "create view" is selected in view menu picker.
+type viewMenuCreateMsg struct{}
+
+// viewMenuDeleteMsg is produced when "delete view" is selected in view menu picker.
+type viewMenuDeleteMsg struct{}
+
+// viewMenuRenameMsg is produced when "rename view" is selected in view menu picker.
+type viewMenuRenameMsg struct{}
+
+// editMenuLabelsMsg is produced when "labels" is selected in edit menu picker.
+type editMenuLabelsMsg struct{}
+
+// editMenuPriorityMsg is produced when "priority" is selected in edit menu picker.
+type editMenuPriorityMsg struct{}
+
+// editMenuStatusMsg is produced when "status" is selected in edit menu picker.
+type editMenuStatusMsg struct{}
 
 // Async commands
 

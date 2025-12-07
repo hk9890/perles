@@ -11,7 +11,6 @@ import (
 	"perles/internal/config"
 	"perles/internal/mode"
 	"perles/internal/ui/details"
-	"perles/internal/ui/modals/saveviewoptions"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -290,7 +289,15 @@ func TestSearch_PickerCancel_Esc(t *testing.T) {
 	m.view = ViewPriorityPicker
 	m.selectedIssue = &m.results[0]
 
-	m, _ = m.handlePickerKey(tea.KeyMsg{Type: tea.KeyEscape})
+	// handlePickerKey now delegates to picker.Update which produces a command
+	m, cmd := m.handlePickerKey(tea.KeyMsg{Type: tea.KeyEscape})
+	require.NotNil(t, cmd, "expected command from esc key")
+
+	// Execute the command to get the message (picker.CancelMsg for pickers without callbacks)
+	msg := cmd()
+
+	// Process the message in Update
+	m, _ = m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
 	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
@@ -301,7 +308,15 @@ func TestSearch_PickerCancel_Q(t *testing.T) {
 	m.view = ViewStatusPicker
 	m.selectedIssue = &m.results[0]
 
-	m, _ = m.handlePickerKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	// handlePickerKey now delegates to picker.Update which produces a command
+	m, cmd := m.handlePickerKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	require.NotNil(t, cmd, "expected command from q key")
+
+	// Execute the command to get the message (picker.CancelMsg for pickers without callbacks)
+	msg := cmd()
+
+	// Process the message in Update
+	m, _ = m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
 	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
@@ -525,11 +540,8 @@ func TestActionPicker_SelectExistingView(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewSaveAction
 
-	// Simulate selecting "existing view" from action picker
-	m, _ = m.Update(saveviewoptions.SelectMsg{
-		Action: saveviewoptions.ActionExistingView,
-		Query:  "status = open",
-	})
+	// Simulate selecting "existing view" from action picker via domain message
+	m, _ = m.Update(saveActionExistingViewMsg{query: "status = open"})
 
 	require.Equal(t, ViewSaveColumn, m.view, "expected to transition to view selector")
 }
@@ -538,11 +550,8 @@ func TestActionPicker_SelectNewView(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewSaveAction
 
-	// Simulate selecting "new view" from action picker
-	m, _ = m.Update(saveviewoptions.SelectMsg{
-		Action: saveviewoptions.ActionNewView,
-		Query:  "status = open",
-	})
+	// Simulate selecting "new view" from action picker via domain message
+	m, _ = m.Update(saveActionNewViewMsg{query: "status = open"})
 
 	require.Equal(t, ViewNewView, m.view, "expected to transition to new view modal")
 }
@@ -551,7 +560,8 @@ func TestActionPicker_Cancel(t *testing.T) {
 	m := createTestModelWithViews()
 	m.view = ViewSaveAction
 
-	m, _ = m.Update(saveviewoptions.CancelMsg{})
+	// Simulate cancelling via closeSaveViewMsg (produced by picker's OnCancel callback)
+	m, _ = m.Update(closeSaveViewMsg{})
 
 	require.Equal(t, ViewSearch, m.view, "expected to return to search")
 }

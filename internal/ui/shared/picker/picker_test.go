@@ -20,8 +20,8 @@ func TestPicker_New(t *testing.T) {
 	options := testOptions()
 	m := New("Test Title", options)
 
-	require.Equal(t, "Test Title", m.title, "expected title to be set")
-	require.Len(t, m.options, 3, "expected 3 options")
+	require.Equal(t, "Test Title", m.config.Title, "expected title to be set")
+	require.Len(t, m.config.Options, 3, "expected 3 options")
 	require.Equal(t, 0, m.selected, "expected default selection at 0")
 }
 
@@ -197,4 +197,102 @@ func TestPicker_View_Selected_Golden(t *testing.T) {
 	m := New("Select Option", options).SetSelected(1).SetSize(80, 24)
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+// TestPicker_OnSelect_CustomCallback tests that custom OnSelect callback fires on enter
+func TestPicker_OnSelect_CustomCallback(t *testing.T) {
+	type myMsg struct{ value string }
+
+	m := NewWithConfig(Config{
+		Title:   "Test",
+		Options: []Option{{Label: "A", Value: "a"}},
+		OnSelect: func(opt Option) tea.Msg {
+			return myMsg{value: opt.Value}
+		},
+	})
+
+	// Simulate enter key
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command to be returned")
+	msg := cmd()
+	require.IsType(t, myMsg{}, msg, "expected custom message type")
+	require.Equal(t, "a", msg.(myMsg).value, "expected value 'a'")
+}
+
+// TestPicker_OnCancel_CustomCallback tests that custom OnCancel callback fires on esc
+func TestPicker_OnCancel_CustomCallback(t *testing.T) {
+	type cancelledMsg struct{}
+
+	m := NewWithConfig(Config{
+		Title:    "Test",
+		Options:  []Option{{Label: "A", Value: "a"}},
+		OnCancel: func() tea.Msg { return cancelledMsg{} },
+	})
+
+	// Simulate esc key
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	require.NotNil(t, cmd, "expected command to be returned")
+	msg := cmd()
+	require.IsType(t, cancelledMsg{}, msg, "expected custom cancel message type")
+}
+
+// TestPicker_DefaultMessages_WhenNoCallbacks tests that SelectMsg/CancelMsg are produced when no callbacks
+func TestPicker_DefaultMessages_WhenNoCallbacks(t *testing.T) {
+	m := NewWithConfig(Config{
+		Title:   "Test",
+		Options: []Option{{Label: "A", Value: "a"}},
+	})
+
+	// Enter produces SelectMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd, "expected command for enter")
+	msg := cmd()
+	require.IsType(t, SelectMsg{}, msg, "expected SelectMsg")
+	selectMsg := msg.(SelectMsg)
+	require.Equal(t, "a", selectMsg.Option.Value, "expected selected option value")
+
+	// Esc produces CancelMsg
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	require.NotNil(t, cmd, "expected command for esc")
+	msg = cmd()
+	require.IsType(t, CancelMsg{}, msg, "expected CancelMsg")
+}
+
+// TestPicker_LegacyNew_StillWorks tests that legacy New() constructor maintains backward compatibility
+func TestPicker_LegacyNew_StillWorks(t *testing.T) {
+	options := testOptions()
+	m := New("Test Title", options)
+
+	// Verify legacy constructor works
+	require.Equal(t, "Test Title", m.config.Title)
+	require.Len(t, m.config.Options, 3)
+	require.Equal(t, 0, m.selected)
+
+	// Verify navigation still works
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, 1, m.selected)
+
+	// Verify enter produces default SelectMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	msg := cmd()
+	require.IsType(t, SelectMsg{}, msg)
+	require.Equal(t, "2", msg.(SelectMsg).Option.Value)
+}
+
+// TestPicker_OnCancel_QKey tests that 'q' key also triggers cancel
+func TestPicker_OnCancel_QKey(t *testing.T) {
+	m := NewWithConfig(Config{
+		Title:   "Test",
+		Options: []Option{{Label: "A", Value: "a"}},
+	})
+
+	// Simulate 'q' key
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+
+	require.NotNil(t, cmd, "expected command to be returned")
+	msg := cmd()
+	require.IsType(t, CancelMsg{}, msg, "expected CancelMsg from 'q' key")
 }
