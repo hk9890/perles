@@ -61,7 +61,7 @@ func DefaultKeyMap() KeyMap {
 		// Actions
 		Enter: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("enter", "view details"),
+			key.WithHelp("enter", "open tree view"),
 		),
 		Refresh: key.NewBinding(
 			key.WithKeys("r"),
@@ -170,7 +170,8 @@ type SearchKeyMap struct {
 	Execute     key.Binding
 	Blur        key.Binding
 
-	// Editing
+	// Actions
+	OpenTree   key.Binding
 	Edit       key.Binding
 	Priority   key.Binding
 	Status     key.Binding
@@ -218,7 +219,11 @@ func DefaultSearchKeyMap() SearchKeyMap {
 			key.WithHelp("esc", "exit to kanban"),
 		),
 
-		// Editing
+		// Actions
+		OpenTree: key.NewBinding(
+			key.WithKeys("enter"),
+			key.WithHelp("enter", "open tree view"),
+		),
 		Edit: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "edit field"),

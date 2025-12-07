@@ -48,6 +48,7 @@ test-update:
 		./internal/ui/shared/picker/... \
 		./internal/ui/shared/toaster/... \
 		./internal/ui/styles/... \
+		./internal/ui/tree/... \
 		./internal/mode/search/... \
 		-update
 

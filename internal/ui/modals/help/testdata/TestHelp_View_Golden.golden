@@ -7,7 +7,7 @@
 │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
 │                                                                                                                      │
 │  Actions                         Views                       Navigation                General                       │
-│  enter      view details         ctrl+j/n   next view        h/l        left/right     ?          toggle help        │
+│  enter      open tree view       ctrl+j/n   next view        h/l        left/right     ?          toggle help        │
 │  r          refresh issues       ctrl+k/p   previous view    j/k        up/down        w          toggle status bar  │
 │  y          copy issue ID        ctrl+v     view menu        ^space     search mode    esc        go back            │
 │  a          add column           ctrl+d     delete column                              q          quit               │

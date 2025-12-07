@@ -18,6 +18,14 @@ const (
 	ModeSearch
 )
 
+// SubMode represents the two rendering modes within search.
+type SubMode int
+
+const (
+	SubModeList SubMode = iota // BQL query with flat results
+	SubModeTree                // Issue ID with tree rendering
+)
+
 // Controller defines the interface all modes must implement.
 type Controller interface {
 	// Init returns initial commands for the mode.

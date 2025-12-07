@@ -9,7 +9,6 @@ import (
 	"perles/internal/mode"
 	"perles/internal/mode/shared"
 	"perles/internal/ui/coleditor"
-	"perles/internal/ui/details"
 	"perles/internal/ui/shared/modal"
 	"perles/internal/ui/shared/picker"
 	"perles/internal/ui/shared/toaster"
@@ -293,20 +292,30 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, m.modal.Init()
 
 	case "enter":
+		// Open search mode in tree sub-mode for the selected issue
 		if issue := m.board.SelectedIssue(); issue != nil {
-			m.details = details.New(*issue, m.services.Client, m.services.Client).SetSize(m.width, m.height)
-			m.view = ViewDetails
+			return m, func() tea.Msg {
+				return SwitchToSearchMsg{
+					SubMode: mode.SubModeTree,
+					IssueID: issue.ID,
+				}
+			}
 		}
 		return m, nil
 
 	case "/":
-		// Switch to search with current column's BQL query
+		// Switch to search mode in list sub-mode with current column's BQL query
 		focusedCol := m.board.FocusedColumn()
 		query := ""
 		if focusedCol >= 0 && focusedCol < m.board.ColCount() {
 			query = m.board.Column(focusedCol).Query()
 		}
-		return m, func() tea.Msg { return SwitchToSearchMsg{Query: query} }
+		return m, func() tea.Msg {
+			return SwitchToSearchMsg{
+				SubMode: mode.SubModeList,
+				Query:   query,
+			}
+		}
 	}
 
 	// Delegate navigation to board

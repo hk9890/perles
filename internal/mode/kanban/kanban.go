@@ -271,6 +271,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.details = details.New(*issue, m.services.Client, m.services.Client).SetSize(m.width, m.height)
 		return m, nil
 
+	case openDetailsMsg:
+		issue := m.getIssueByID(msg.issueID)
+		if issue == nil {
+			return m, nil
+		}
+		m.details = details.New(*issue, m.services.Client, m.services.Client).SetSize(m.width, m.height)
+		m.view = ViewDetails
+		return m, nil
+
 	case details.OpenLabelEditorMsg:
 		m.labelEditor = labeleditor.New(msg.IssueID, msg.Labels).
 			SetSize(m.width, m.height)
@@ -643,6 +652,19 @@ func (m Model) getIssueByID(id string) *beads.Issue {
 	return nil
 }
 
+// OpenDetails opens the details view for an issue by ID.
+// Returns a command that fetches the issue if not already loaded.
+func (m Model) OpenDetails(issueID string) tea.Cmd {
+	return func() tea.Msg {
+		return openDetailsMsg{issueID: issueID}
+	}
+}
+
+// openDetailsMsg is produced when the details view should be opened for an issue.
+type openDetailsMsg struct {
+	issueID string
+}
+
 func (m Model) renderStatusBar() string {
 	// Build left section with view indicator (if multiple views)
 	var content string
@@ -807,9 +829,11 @@ func (m Model) renameCurrentView(newName string) (Model, tea.Cmd) {
 
 // Message types
 
-// SwitchToSearchMsg requests switching to search mode with an initial query.
+// SwitchToSearchMsg requests switching to search mode.
 type SwitchToSearchMsg struct {
-	Query string
+	Query   string       // For list sub-mode (existing)
+	SubMode mode.SubMode // Which sub-mode to enter
+	IssueID string       // For tree sub-mode
 }
 
 type errMsg struct {

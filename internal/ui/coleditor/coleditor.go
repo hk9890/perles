@@ -728,6 +728,7 @@ func (m Model) renderPreview(width int) string {
 	columnView := styles.RenderWithTitleBorder(
 		previewCol.View(),
 		previewCol.Title(),
+		"",
 		colWidth,
 		colHeight,
 		true, // focused

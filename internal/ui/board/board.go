@@ -432,6 +432,7 @@ func (m Model) View() string {
 		rendered := styles.RenderWithTitleBorder(
 			col.View(),
 			col.Title(),
+			"",
 			col.width,
 			contentHeight,
 			isFocused,

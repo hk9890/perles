@@ -115,7 +115,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Pass size to both modes, toaster, and log overlay
+		// Pass size to all modes, toaster, and log overlay
 		m.kanban = m.kanban.SetSize(msg.Width, msg.Height)
 		m.search = m.search.SetSize(msg.Width, msg.Height)
 		m.toaster = m.toaster.SetSize(msg.Width, msg.Height)
@@ -146,10 +146,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Fall through to delegate to active mode
 
 	case kanban.SwitchToSearchMsg:
-		// Switch to search mode with pre-populated query
-		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "search", "query", msg.Query)
+		// Switch to search mode
 		m.currentMode = mode.ModeSearch
-		m.search = m.search.SetQuery(msg.Query)
+		switch msg.SubMode {
+		case mode.SubModeTree:
+			log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "search", "subMode", "tree", "issue", msg.IssueID)
+			m.search = m.search.SetTreeRootIssueId(msg.IssueID)
+		default:
+			log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "search", "subMode", "list", "query", msg.Query)
+			m.search = m.search.SetQuery(msg.Query)
+		}
 		return m, m.search.Init()
 
 	case search.ExitToKanbanMsg:
@@ -211,8 +217,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) switchMode() (tea.Model, tea.Cmd) {
 	switch m.currentMode {
 	case mode.ModeKanban:
-		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "search")
+		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "search", "subMode", "list")
 		m.currentMode = mode.ModeSearch
+		// Use SetQuery to ensure list sub-mode and clear any tree state
+		m.search = m.search.SetQuery("")
 		return m, m.search.Init()
 	case mode.ModeSearch:
 		log.Info(log.CatMode, "Switching mode", "from", "search", "to", "kanban")

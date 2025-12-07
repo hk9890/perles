@@ -15,14 +15,21 @@ A terminal-based search and kanban board for [beads](https://github.com/steveyeg
   <img src="./assets/search.png" width="1440" alt="search">
 </p>
 
-## Features
+## Dependencies
 
-### Kanban Board
-- Four-column default layout: Blocked, Ready, In Progress, Closed
-- Fully customizable columns with BQL queries
-- Multi-view support - create unlimited board views
-- Real-time auto-refresh when database changes
-- Column management: add, edit, reorder, delete
+### Dependency chain
+
+<p align="center">
+  <img src="./assets/issues-dependencies.png" width="1440" alt="search">
+</p>
+
+### Parent/child hierarchy
+
+<p align="center">
+  <img src="./assets/issue-children.png" width="1440" alt="search">
+</p>
+
+## Features
 
 ### BQL (Beads Query Language)
 - Query syntax for filtering issues
@@ -32,10 +39,18 @@ A terminal-based search and kanban board for [beads](https://github.com/steveyeg
 - Sorting: order by field asc/desc
 - Date filters: today, yesterday, -7d, -24h, -3m
 
+### Kanban Board
+- Four-column default layout: Blocked, Ready, In Progress, Closed
+- Fully customizable columns with BQL queries
+- Multi-view support - create unlimited board views
+- Real-time auto-refresh when database changes
+- Column management: add, edit, reorder, delete
+
 ### Search Mode
 - Full-screen BQL-powered search interface
 - Save searches as kanban columns
 - Create new views from search results
+- Sub-mode for viewing issue dependencies and hierarchies
 
 ### Issue Management
 - View detailed issue information with markdown rendering
@@ -204,6 +219,22 @@ perles
 | `s` | Change status |
 | `p` | Change priority |
 | `Ctrl+S` | Save search as column |
+| `Esc` | Exit to kanban mode |
+
+### Search Mode - Tree View
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move cursor up/down |
+| `l` / `Tab` | Focus details panel |
+| `h` | Focus tree panel |
+| `Enter` | Refocus tree on selected node |
+| `u` | Go back to previous root |
+| `U` | Go to original root |
+| `d` | Toggle direction (up/down) |
+| `m` | Toggle mode (deps/children) |
+| `y` | Copy issue ID |
+| `/` | Switch to list mode |
 | `Esc` | Exit to kanban mode |
 
 ## Default Columns

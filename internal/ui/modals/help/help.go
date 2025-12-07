@@ -2,10 +2,11 @@
 package help
 
 import (
+	"strings"
+
 	"perles/internal/keys"
 	"perles/internal/ui/shared/overlay"
 	"perles/internal/ui/styles"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
@@ -107,6 +108,7 @@ type HelpMode int
 const (
 	ModeKanban HelpMode = iota
 	ModeSearch
+	ModeSearchTree // Tree sub-mode within search
 )
 
 // Model holds the help view state.
@@ -132,6 +134,12 @@ func NewSearch() Model {
 		searchKeys: keys.DefaultSearchKeyMap(),
 		mode:       ModeSearch,
 	}
+}
+
+// SetMode changes the help mode (for sub-mode switching).
+func (m Model) SetMode(mode HelpMode) Model {
+	m.mode = mode
+	return m
 }
 
 // SetSize updates dimensions.
@@ -168,10 +176,14 @@ func (m Model) Overlay(background string) string {
 
 // renderContent builds the help box content.
 func (m Model) renderContent() string {
-	if m.mode == ModeSearch {
+	switch m.mode {
+	case ModeSearchTree:
+		return m.renderTreeContent()
+	case ModeSearch:
 		return m.renderSearchContent()
+	default:
+		return m.renderKanbanContent()
 	}
-	return m.renderKanbanContent()
 }
 
 // renderKanbanContent renders the kanban mode help.
@@ -277,6 +289,7 @@ func (m Model) renderSearchContent() string {
 	var actionsCol strings.Builder
 	actionsCol.WriteString(sectionStyle.Render("Actions"))
 	actionsCol.WriteString("\n")
+	actionsCol.WriteString(m.renderBinding(m.searchKeys.OpenTree))
 	actionsCol.WriteString(m.renderBinding(m.searchKeys.Yank))
 	actionsCol.WriteString(m.renderBinding(m.searchKeys.SaveColumn))
 
@@ -391,6 +404,69 @@ func (m Model) renderSearchContent() string {
 	// Build final content: title, divider, body
 	var content strings.Builder
 	content.WriteString(titleStyle.Render("Search Mode Help"))
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n")
+	content.WriteString(body)
+
+	return boxStyle.Width(boxWidth).Render(content.String())
+}
+
+// renderTreeContent renders the tree sub-mode help.
+func (m Model) renderTreeContent() string {
+	// Column style with right margin for spacing
+	columnStyle := lipgloss.NewStyle().MarginRight(4)
+
+	// Navigation column - tree-specific navigation
+	var navCol strings.Builder
+	navCol.WriteString(sectionStyle.Render("Navigation"))
+	navCol.WriteString("\n")
+	navCol.WriteString(renderKeyDesc("j/↓", "move cursor down"))
+	navCol.WriteString(renderKeyDesc("k/↑", "move cursor up"))
+	navCol.WriteString(renderKeyDesc("l/Tab", "focus details panel"))
+	navCol.WriteString(renderKeyDesc("h", "focus tree panel"))
+
+	// Tree Actions column
+	var actionsCol strings.Builder
+	actionsCol.WriteString(sectionStyle.Render("Tree Actions"))
+	actionsCol.WriteString("\n")
+	actionsCol.WriteString(renderKeyDesc("Enter", "refocus on node"))
+	actionsCol.WriteString(renderKeyDesc("u", "go back (prev root)"))
+	actionsCol.WriteString(renderKeyDesc("U", "go to original root"))
+	actionsCol.WriteString(renderKeyDesc("d", "toggle direction"))
+	actionsCol.WriteString(renderKeyDesc("m", "toggle mode (deps/children)"))
+	actionsCol.WriteString(renderKeyDesc("y", "copy issue ID"))
+
+	// General column
+	var generalCol strings.Builder
+	generalCol.WriteString(sectionStyle.Render("General"))
+	generalCol.WriteString("\n")
+	generalCol.WriteString(renderKeyDesc("/", "switch to list mode"))
+	generalCol.WriteString(renderKeyDesc("Ctrl+Space", "switch mode"))
+	generalCol.WriteString(renderKeyDesc("Esc", "return to kanban"))
+	generalCol.WriteString(renderKeyDesc("?", "toggle this help"))
+
+	// Join columns horizontally, aligned at top
+	columns := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		columnStyle.Render(navCol.String()),
+		columnStyle.Render(actionsCol.String()),
+		generalCol.String(),
+	)
+
+	// Calculate box width based on columns content
+	columnsWidth := lipgloss.Width(columns)
+	boxWidth := columnsWidth + 4 // Add horizontal padding (2 each side)
+
+	// Build body content with padding
+	body := contentStyle.Render(columns + "\n" + footerStyle.Render("Press ? or Esc to close"))
+
+	// Divider spans full box width
+	divider := dividerStyle.Render(strings.Repeat("─", boxWidth))
+
+	// Build final content: title, divider, body
+	var content strings.Builder
+	content.WriteString(titleStyle.Render("Tree Mode Help"))
 	content.WriteString("\n")
 	content.WriteString(divider)
 	content.WriteString("\n")

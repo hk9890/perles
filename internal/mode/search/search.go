@@ -27,6 +27,7 @@ import (
 	"perles/internal/ui/shared/picker"
 	"perles/internal/ui/shared/toaster"
 	"perles/internal/ui/styles"
+	"perles/internal/ui/tree"
 )
 
 // FocusPane represents which pane has focus in the search mode.
@@ -58,7 +59,10 @@ const (
 type Model struct {
 	services mode.Services
 
-	// Search state
+	// Sub-mode state
+	subMode mode.SubMode
+
+	// List sub-mode (BQL search with flat results)
 	input         bqlinput.Model
 	results       []beads.Issue
 	resultsList   list.Model
@@ -66,6 +70,10 @@ type Model struct {
 	searchErr     error
 	showSearchErr bool // Only show error after blur, not during typing
 	searchVersion int  // Incremented on each input change for debounce
+
+	// Tree sub-mode (issue ID with tree rendering)
+	tree     *tree.Model  // Tree rendering model (from internal/ui/tree)
+	treeRoot *beads.Issue // Root issue for header display
 
 	// Detail panel
 	details   details.Model
@@ -269,13 +277,33 @@ func New(services mode.Services) Model {
 
 // Init returns initial commands for the mode.
 func (m Model) Init() tea.Cmd {
-	// Execute initial search
+	// If entering tree sub-mode, load the tree instead of executing search
+	if m.subMode == mode.SubModeTree && m.treeRoot != nil {
+		return m.loadTree(m.treeRoot.ID)
+	}
+	// Execute initial search for list sub-mode
 	return m.executeSearch()
 }
 
 // SetQuery sets the initial search query and returns the modified model.
+// This also ensures the model is in list sub-mode.
 func (m Model) SetQuery(query string) Model {
+	m.subMode = mode.SubModeList
+	m.focus = FocusSearch // Focus search input
 	m.input.SetValue(query)
+	// Clear tree state from any previous tree sub-mode usage
+	m.tree = nil
+	m.treeRoot = nil
+	return m
+}
+
+// SetTreeRootIssueId configures the model to enter tree sub-mode for an issue.
+// The tree will be loaded when Init() is called.
+func (m Model) SetTreeRootIssueId(issueID string) Model {
+	m.subMode = mode.SubModeTree
+	m.focus = FocusResults // Focus tree panel
+	// Store issueID in treeRoot temporarily - we'll load full issue in Init
+	m.treeRoot = &beads.Issue{ID: issueID}
 	return m
 }
 
@@ -310,6 +338,13 @@ func (m Model) SetSize(width, height int) Model {
 	// Update help
 	m.help = m.help.SetSize(width, height)
 
+	// Update tree model if present (tree sub-mode)
+	if m.tree != nil {
+		// Tree height accounts for: borders (2)
+		treeHeight := max(height-2, 1)
+		m.tree.SetSize(leftWidth-2, treeHeight) // -2 for left/right border
+	}
+
 	return m
 }
 
@@ -321,6 +356,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case searchResultsMsg:
 		return m.handleSearchResults(msg)
+
+	case treeLoadedMsg:
+		return m.handleTreeLoaded(msg)
 
 	case details.OpenPriorityPickerMsg:
 		return m.openPriorityPicker(msg)
@@ -681,6 +719,62 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 	}
 
+	// Tree sub-mode specific handling (when focused on tree panel)
+	if m.subMode == mode.SubModeTree && m.focus == FocusResults {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			return m, func() tea.Msg { return ExitToKanbanMsg{} }
+		case "?":
+			m.help = m.help.SetMode(help.ModeSearchTree)
+			m.view = ViewHelp
+			return m, nil
+		case "/":
+			// Switch from tree to list sub-mode
+			m.subMode = mode.SubModeList
+			m.focus = FocusSearch
+			m.input.Focus()
+			m.showSearchErr = false
+			return m, nil
+		case "j", "down":
+			if m.tree != nil {
+				m.tree.MoveCursor(1)
+				m.updateDetailFromTree()
+			}
+			return m, nil
+		case "k", "up":
+			if m.tree != nil {
+				m.tree.MoveCursor(-1)
+				m.updateDetailFromTree()
+			}
+			return m, nil
+		case "enter":
+			return m.refocusTree()
+		case "u":
+			return m.treeGoBack()
+		case "U":
+			return m.treeGoToOriginal()
+		case "d":
+			return m.toggleTreeDirection()
+		case "m":
+			return m.toggleTreeMode()
+		case "l", "right":
+			// Move focus to details panel
+			m.focus = FocusDetails
+			return m, nil
+		case "y":
+			// Yank (copy) issue ID to clipboard
+			return m.yankTreeIssueID()
+		case "tab", "ctrl+n":
+			m.focus = FocusDetails
+			return m, nil
+		case "ctrl+p":
+			m.focus = FocusDetails
+			return m, nil
+		}
+	}
+
 	// Not in search input - handle navigation and global keys
 	switch msg.String() {
 	case "ctrl+c":
@@ -691,6 +785,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, func() tea.Msg { return ExitToKanbanMsg{} }
 
 	case "?":
+		m.help = m.help.SetMode(help.ModeSearch)
 		m.view = ViewHelp
 		return m, nil
 
@@ -758,7 +853,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case "ctrl+n":
-		// Cycle focus forward: Search -> Results -> Details -> Search
+		// In tree sub-mode: cycle Results <-> Details (no search input)
+		if m.subMode == mode.SubModeTree {
+			switch m.focus {
+			case FocusResults:
+				m.focus = FocusDetails
+			case FocusDetails:
+				m.focus = FocusResults
+			}
+			return m, nil
+		}
+		// List sub-mode: cycle Search -> Results -> Details -> Search
 		switch m.focus {
 		case FocusSearch:
 			m.input.Blur()
@@ -774,7 +879,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case "ctrl+p":
-		// Cycle focus backward: Details -> Results -> Search -> Details
+		// In tree sub-mode: cycle Details <-> Results (no search input)
+		if m.subMode == mode.SubModeTree {
+			switch m.focus {
+			case FocusResults:
+				m.focus = FocusDetails
+			case FocusDetails:
+				m.focus = FocusResults
+			}
+			return m, nil
+		}
+		// List sub-mode: cycle Details -> Results -> Search -> Details
 		switch m.focus {
 		case FocusSearch:
 			m.input.Blur()
@@ -790,7 +905,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case "tab":
-		// Cycle focus forward: Search -> Results -> Details -> Search
+		// In tree sub-mode: cycle Results <-> Details (no search input)
+		if m.subMode == mode.SubModeTree {
+			switch m.focus {
+			case FocusResults:
+				m.focus = FocusDetails
+			case FocusDetails:
+				m.focus = FocusResults
+			}
+			return m, nil
+		}
+		// List sub-mode: cycle Search -> Results -> Details -> Search
 		switch m.focus {
 		case FocusSearch:
 			m.input.Blur()
@@ -826,6 +951,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
+		if m.focus == FocusResults {
+			// Switch to tree sub-mode for selected issue
+			return m.switchToTreeSubMode()
+		}
 		if m.focus == FocusDetails {
 			// Open picker for selected field
 			var cmd tea.Cmd
@@ -954,8 +1083,178 @@ func (m *Model) updateDetailPanel() {
 	}
 }
 
+// updateDetailFromTree updates the detail panel with the currently selected tree node.
+func (m *Model) updateDetailFromTree() {
+	if m.tree == nil {
+		return
+	}
+	node := m.tree.SelectedNode()
+	if node == nil {
+		return
+	}
+	rightWidth := m.width - (m.width / 2) - 1
+	// rightWidth-2 for left/right border, height-2 for top/bottom border
+	// Pass nil for loaders if Client is nil to avoid interface nil vs typed-nil issues
+	var depLoader details.DependencyLoader
+	var commentLoader details.CommentLoader
+	if m.services.Client != nil {
+		depLoader = m.services.Client
+		commentLoader = m.services.Client
+	}
+	m.details = details.New(node.Issue, depLoader, commentLoader).SetSize(rightWidth-2, m.height-2)
+	m.hasDetail = true
+}
+
+// refocusTree refocuses the tree on the currently selected node.
+func (m Model) refocusTree() (Model, tea.Cmd) {
+	if m.tree == nil {
+		return m, nil
+	}
+	node := m.tree.SelectedNode()
+	if node == nil || m.treeRoot == nil || node.Issue.ID == m.treeRoot.ID {
+		return m, nil
+	}
+
+	// Update root for header display
+	m.treeRoot = &node.Issue
+
+	// Refocus tree (pushes old root to stack)
+	if err := m.tree.Refocus(node.Issue.ID); err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Failed to refocus tree: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	// Update detail panel with new root
+	m.updateDetailFromTree()
+
+	return m, nil
+}
+
+// switchToTreeSubMode switches from list sub-mode to tree sub-mode for the selected issue.
+func (m Model) switchToTreeSubMode() (Model, tea.Cmd) {
+	issue := m.getSelectedIssue()
+	if issue == nil {
+		return m, nil
+	}
+
+	// Switch to tree sub-mode
+	m.subMode = mode.SubModeTree
+	m.treeRoot = issue
+
+	// Load the tree for this issue
+	return m, m.loadTree(issue.ID)
+}
+
+// treeGoBack navigates to the previous root in the tree history.
+func (m Model) treeGoBack() (Model, tea.Cmd) {
+	if m.tree == nil {
+		return m, nil
+	}
+
+	needsRequery, requeryID := m.tree.GoBack()
+	if needsRequery && requeryID != "" {
+		// Parent not in cache, need to reload tree
+		return m, m.loadTree(requeryID)
+	}
+
+	// Update header with new root
+	if root := m.tree.Root(); root != nil {
+		m.treeRoot = &root.Issue
+	}
+
+	// Update detail panel
+	m.updateDetailFromTree()
+
+	return m, nil
+}
+
+// treeGoToOriginal navigates to the original root of the tree.
+func (m Model) treeGoToOriginal() (Model, tea.Cmd) {
+	if m.tree == nil {
+		return m, nil
+	}
+
+	if err := m.tree.GoToOriginal(); err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Failed to return to original: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	// Update header with original root
+	if root := m.tree.Root(); root != nil {
+		m.treeRoot = &root.Issue
+	}
+
+	// Update detail panel
+	m.updateDetailFromTree()
+
+	return m, nil
+}
+
+// toggleTreeDirection toggles the tree direction and reloads.
+func (m Model) toggleTreeDirection() (Model, tea.Cmd) {
+	if m.tree == nil || m.treeRoot == nil {
+		return m, nil
+	}
+
+	// Toggle direction
+	newDir := tree.DirectionDown
+	if m.tree.Direction() == tree.DirectionDown {
+		newDir = tree.DirectionUp
+	}
+	m.tree.SetDirection(newDir)
+
+	// Reload tree with new direction
+	return m, m.loadTree(m.treeRoot.ID)
+}
+
+// toggleTreeMode toggles between deps and children modes and reloads.
+func (m Model) toggleTreeMode() (Model, tea.Cmd) {
+	if m.tree == nil || m.treeRoot == nil {
+		return m, nil
+	}
+
+	// Toggle mode
+	m.tree.ToggleMode()
+
+	// Reload tree with new mode
+	return m, m.loadTree(m.treeRoot.ID)
+}
+
+// yankTreeIssueID copies the selected tree node's issue ID to clipboard.
+func (m Model) yankTreeIssueID() (Model, tea.Cmd) {
+	if m.tree == nil {
+		return m, func() tea.Msg { return mode.ShowToastMsg{Message: "No tree loaded", Style: toaster.StyleError} }
+	}
+
+	node := m.tree.SelectedNode()
+	if node == nil {
+		return m, func() tea.Msg { return mode.ShowToastMsg{Message: "No issue selected", Style: toaster.StyleError} }
+	}
+
+	if err := shared.CopyToClipboard(node.Issue.ID); err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Clipboard error: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	return m, func() tea.Msg {
+		return mode.ShowToastMsg{Message: "Copied: " + node.Issue.ID, Style: toaster.StyleSuccess}
+	}
+}
+
 // getSelectedIssue returns a pointer to the currently selected issue, or nil if none.
 func (m Model) getSelectedIssue() *beads.Issue {
+	// Tree sub-mode: get selected node's issue
+	if m.subMode == mode.SubModeTree && m.tree != nil {
+		if node := m.tree.SelectedNode(); node != nil {
+			return &node.Issue
+		}
+		return nil
+	}
+
+	// List sub-mode: get from results
 	if m.selectedIdx >= 0 && m.selectedIdx < len(m.results) {
 		issue := m.results[m.selectedIdx]
 		return &issue
@@ -971,6 +1270,30 @@ func (m Model) executeSearch() tea.Cmd {
 	return func() tea.Msg {
 		issues, err := executor.Execute(query)
 		return searchResultsMsg{issues: issues, err: err}
+	}
+}
+
+// loadTree creates a command to load tree data for an issue.
+func (m Model) loadTree(rootID string) tea.Cmd {
+	executor := m.services.Executor
+	dir := tree.DirectionDown
+	if m.tree != nil {
+		dir = m.tree.Direction()
+	}
+
+	expandDir := "down"
+	if dir == tree.DirectionUp {
+		expandDir = "up"
+	}
+	query := fmt.Sprintf(`id = "%s" expand %s depth *`, rootID, expandDir)
+
+	return func() tea.Msg {
+		issues, err := executor.Execute(query)
+		return treeLoadedMsg{
+			Issues: issues,
+			RootID: rootID,
+			Err:    err,
+		}
 	}
 }
 
@@ -1004,6 +1327,69 @@ func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 	} else {
 		m.hasDetail = false
 	}
+
+	return m, nil
+}
+
+// handleTreeLoaded processes tree loading results and initializes the tree model.
+func (m Model) handleTreeLoaded(msg treeLoadedMsg) (Model, tea.Cmd) {
+	if msg.Err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error loading tree: " + msg.Err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	// Find root issue
+	var root *beads.Issue
+	for i := range msg.Issues {
+		if msg.Issues[i].ID == msg.RootID {
+			root = &msg.Issues[i]
+			break
+		}
+	}
+
+	if root == nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Root issue not found: " + msg.RootID, Style: toaster.StyleError}
+		}
+	}
+
+	// Build issue map for tree
+	issueMap := make(map[string]*beads.Issue, len(msg.Issues))
+	for i := range msg.Issues {
+		issueMap[msg.Issues[i].ID] = &msg.Issues[i]
+	}
+
+	// Determine direction and mode (preserve existing if tree exists, else defaults)
+	dir := tree.DirectionDown
+	treeMode := tree.ModeDeps
+	var previousSelectedID string
+	if m.tree != nil {
+		dir = m.tree.Direction()
+		treeMode = m.tree.Mode()
+		// Save selected issue ID to restore cursor position after rebuild
+		if node := m.tree.SelectedNode(); node != nil {
+			previousSelectedID = node.Issue.ID
+		}
+	}
+
+	// Initialize tree model
+	m.treeRoot = root
+	m.tree = tree.New(msg.RootID, issueMap, dir, treeMode)
+
+	// Set tree size based on available space (must be done before restoring cursor)
+	leftWidth := m.width / 2
+	// Tree height accounts for: borders (2)
+	treeHeight := max(m.height-2, 1)
+	m.tree.SetSize(leftWidth-2, treeHeight) // -2 for left/right border
+
+	// Restore cursor to previously selected issue if it exists in new tree
+	if previousSelectedID != "" {
+		m.tree.SelectByIssueID(previousSelectedID)
+	}
+
+	// Update details panel with selected node
+	m.updateDetailFromTree()
 
 	return m, nil
 }
@@ -1073,8 +1459,18 @@ func (m Model) renderMainView() string {
 	return content
 }
 
-// renderLeftPanel renders the left panel with search input and results.
+// renderLeftPanel renders the left panel, switching between list and tree sub-modes.
 func (m Model) renderLeftPanel(width int) string {
+	switch m.subMode {
+	case mode.SubModeTree:
+		return m.renderTreeLeftPanel(width)
+	default:
+		return m.renderListLeftPanel(width)
+	}
+}
+
+// renderListLeftPanel renders the left panel with search input and results (list sub-mode).
+func (m Model) renderListLeftPanel(width int) string {
 	var sb strings.Builder
 
 	// Calculate heights dynamically based on input content
@@ -1087,6 +1483,7 @@ func (m Model) renderLeftPanel(width int) string {
 	inputBorder := styles.RenderWithTitleBorder(
 		inputContent,
 		"BQL Search",
+		"",
 		width,
 		inputHeight,
 		m.focus == FocusSearch,
@@ -1130,6 +1527,7 @@ func (m Model) renderLeftPanel(width int) string {
 	resultsBorder := styles.RenderWithTitleBorder(
 		resultsContent,
 		resultsTitle,
+		"",
 		width,
 		resultsHeight,
 		m.focus == FocusResults,
@@ -1160,9 +1558,72 @@ func (m Model) renderRightPanel(width int) string {
 	return styles.RenderWithTitleBorder(
 		content,
 		"Issue Details",
+		"",
 		width,
 		panelHeight,
 		m.focus == FocusDetails,
+		styles.OverlayTitleColor,
+		styles.BorderHighlightFocusColor,
+	)
+}
+
+// renderCompactProgress renders a compact progress bar with percentage and counts.
+func renderCompactProgress(closed, total int) string {
+	if total == 0 {
+		return ""
+	}
+	percent := float64(closed) / float64(total) * 100
+	barWidth := 15
+	filledWidth := int(float64(barWidth) * float64(closed) / float64(total))
+
+	filledStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+	emptyStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+
+	filled := filledStyle.Render(strings.Repeat("█", filledWidth))
+	empty := emptyStyle.Render(strings.Repeat("░", barWidth-filledWidth))
+
+	return fmt.Sprintf("%s%s %.0f%% (%d/%d)", filled, empty, percent, closed, total)
+}
+
+// renderTreeLeftPanel renders the left panel with tree content (tree sub-mode).
+func (m Model) renderTreeLeftPanel(width int) string {
+	// Tree content with left padding for breathing room
+	var content string
+	if m.tree != nil {
+		content = lipgloss.NewStyle().PaddingLeft(1).Render(m.tree.View())
+	} else {
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(styles.TextSecondaryColor).
+			Italic(true).
+			PaddingLeft(1)
+		content = emptyStyle.Render("Loading tree...")
+	}
+
+	// Left title: direction and mode indicators
+	dir := "↓ down"
+	if m.tree != nil && m.tree.Direction() == tree.DirectionUp {
+		dir = "↑ up"
+	}
+	mode := "deps"
+	if m.tree != nil && m.tree.Mode() == tree.ModeChildren {
+		mode = "children"
+	}
+	leftTitle := fmt.Sprintf("Tree (%s) (%s)", dir, mode)
+
+	// Right title: progress bar
+	var rightTitle string
+	if m.tree != nil && m.tree.Root() != nil {
+		closed, total := m.tree.Root().CalculateProgress()
+		rightTitle = renderCompactProgress(closed, total)
+	}
+
+	return styles.RenderWithTitleBorder(
+		content,
+		leftTitle,
+		rightTitle,
+		width,
+		m.height,
+		m.focus == FocusResults, // Tree panel uses "results" focus
 		styles.OverlayTitleColor,
 		styles.BorderHighlightFocusColor,
 	)
@@ -1174,6 +1635,13 @@ func (m Model) renderRightPanel(width int) string {
 type searchResultsMsg struct {
 	issues []beads.Issue
 	err    error
+}
+
+// treeLoadedMsg carries the results of loading a tree for an issue.
+type treeLoadedMsg struct {
+	Issues []beads.Issue
+	RootID string
+	Err    error
 }
 
 // priorityChangedMsg signals completion of a priority update.
@@ -1282,8 +1750,17 @@ func updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
 // This is called by app.go when the centralized watcher detects changes.
 // The app handles re-subscription; this method just triggers the refresh.
 func (m Model) HandleDBChanged() (Model, tea.Cmd) {
-	// Re-execute current search
-	return m, m.executeSearch()
+	switch m.subMode {
+	case mode.SubModeTree:
+		// Reload tree with current root
+		if m.treeRoot != nil {
+			return m, m.loadTree(m.treeRoot.ID)
+		}
+		return m, nil
+	default:
+		// Re-execute current search for list sub-mode
+		return m, m.executeSearch()
+	}
 }
 
 // Message handlers

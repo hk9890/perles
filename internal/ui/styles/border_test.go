@@ -18,7 +18,7 @@ var (
 )
 
 func TestRenderWithTitleBorder_Basic(t *testing.T) {
-	result := RenderWithTitleBorder("content", "Title", 20, 5, false, testColorGreen, testColorGreen)
+	result := RenderWithTitleBorder("content", "Title", "", 20, 5, false, testColorGreen, testColorGreen)
 
 	// Should contain border characters
 	require.Contains(t, result, "╭", "missing top-left corner")
@@ -33,8 +33,8 @@ func TestRenderWithTitleBorder_Basic(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_Focused(t *testing.T) {
-	unfocused := RenderWithTitleBorder("content", "Title", 20, 5, false, testColorGreen, testColorGreen)
-	focused := RenderWithTitleBorder("content", "Title", 20, 5, true, testColorGreen, testColorGreen)
+	unfocused := RenderWithTitleBorder("content", "Title", "", 20, 5, false, testColorGreen, testColorGreen)
+	focused := RenderWithTitleBorder("content", "Title", "", 20, 5, true, testColorGreen, testColorGreen)
 
 	// Both should have same structure but different styling
 	unfocusedLines := strings.Split(unfocused, "\n")
@@ -49,7 +49,7 @@ func TestRenderWithTitleBorder_Focused(t *testing.T) {
 
 func TestRenderWithTitleBorder_LongTitle(t *testing.T) {
 	longTitle := "This Is A Very Long Title That Should Be Truncated"
-	result := RenderWithTitleBorder("content", longTitle, 20, 5, false, testColorRed, testColorRed)
+	result := RenderWithTitleBorder("content", longTitle, "", 20, 5, false, testColorRed, testColorRed)
 
 	// Should still have valid border structure
 	require.Contains(t, result, "╭", "missing top-left corner")
@@ -66,7 +66,7 @@ func TestRenderWithTitleBorder_LongTitle(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_EmptyContent(t *testing.T) {
-	result := RenderWithTitleBorder("", "Title", 20, 5, false, testColorBlue, testColorBlue)
+	result := RenderWithTitleBorder("", "Title", "", 20, 5, false, testColorBlue, testColorBlue)
 
 	// Should still render proper border
 	require.Contains(t, result, "╭", "missing top-left corner")
@@ -79,7 +79,7 @@ func TestRenderWithTitleBorder_EmptyContent(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_NarrowWidth(t *testing.T) {
-	result := RenderWithTitleBorder("x", "T", 6, 3, false, testColorPurple, testColorPurple)
+	result := RenderWithTitleBorder("x", "T", "", 6, 3, false, testColorPurple, testColorPurple)
 
 	// Should still render something valid
 	require.Contains(t, result, "╭", "missing top-left corner")
@@ -94,7 +94,7 @@ func TestRenderWithTitleBorder_NarrowWidth(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_MinimalWidth(t *testing.T) {
-	result := RenderWithTitleBorder("", "", 3, 3, false, BorderDefaultColor, BorderDefaultColor)
+	result := RenderWithTitleBorder("", "", "", 3, 3, false, BorderDefaultColor, BorderDefaultColor)
 
 	// Should handle minimal size gracefully
 	require.Contains(t, result, "╭", "missing top-left corner")
@@ -102,7 +102,7 @@ func TestRenderWithTitleBorder_MinimalWidth(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_EmptyTitle(t *testing.T) {
-	result := RenderWithTitleBorder("content", "", 20, 5, false, testColorGreen, testColorGreen)
+	result := RenderWithTitleBorder("content", "", "", 20, 5, false, testColorGreen, testColorGreen)
 
 	// First line should just be a plain border
 	lines := strings.Split(result, "\n")
@@ -114,7 +114,7 @@ func TestRenderWithTitleBorder_EmptyTitle(t *testing.T) {
 
 func TestRenderWithTitleBorder_MultilineContent(t *testing.T) {
 	content := "Line 1\nLine 2\nLine 3"
-	result := RenderWithTitleBorder(content, "Title", 20, 7, false, testColorBlue, testColorBlue)
+	result := RenderWithTitleBorder(content, "Title", "", 20, 7, false, testColorBlue, testColorBlue)
 
 	// Should contain all content lines
 	require.Contains(t, result, "Line 1", "missing Line 1")
@@ -123,7 +123,7 @@ func TestRenderWithTitleBorder_MultilineContent(t *testing.T) {
 }
 
 func TestRenderWithTitleBorder_ContentPadding(t *testing.T) {
-	result := RenderWithTitleBorder("Hi", "Title", 20, 5, false, testColorRed, testColorRed)
+	result := RenderWithTitleBorder("Hi", "Title", "", 20, 5, false, testColorRed, testColorRed)
 
 	lines := strings.Split(result, "\n")
 
@@ -149,11 +149,41 @@ func TestRenderWithTitleBorder_DifferentColors(t *testing.T) {
 
 	for _, tc := range colors {
 		t.Run(tc.name, func(t *testing.T) {
-			result := RenderWithTitleBorder("content", "Title", 20, 5, false, tc.color, tc.color)
+			result := RenderWithTitleBorder("content", "Title", "", 20, 5, false, tc.color, tc.color)
 			require.Contains(t, result, "Title", "%s: missing title", tc.name)
 			require.Contains(t, result, "╭", "%s: missing border", tc.name)
 		})
 	}
+}
+
+func TestRenderWithTitleBorder_RightTitleOnly(t *testing.T) {
+	result := RenderWithTitleBorder("content", "", "Right", 20, 5, false, testColorGreen, testColorGreen)
+	lines := strings.Split(result, "\n")
+	require.NotEmpty(t, lines, "no lines in result")
+	require.Contains(t, lines[0], "Right", "right title not found in first line")
+}
+
+func TestRenderWithTitleBorder_DualTitles(t *testing.T) {
+	result := RenderWithTitleBorder("content", "Left", "Right", 30, 5, false, testColorGreen, testColorGreen)
+	lines := strings.Split(result, "\n")
+	require.NotEmpty(t, lines, "no lines in result")
+	require.Contains(t, lines[0], "Left", "left title not found")
+	require.Contains(t, lines[0], "Right", "right title not found")
+}
+
+func TestRenderWithTitleBorder_NoTitles(t *testing.T) {
+	result := RenderWithTitleBorder("content", "", "", 20, 5, false, testColorGreen, testColorGreen)
+
+	// Should still have valid border structure
+	require.Contains(t, result, "╭", "missing top-left corner")
+	require.Contains(t, result, "╮", "missing top-right corner")
+
+	// First line should be a plain border (no title text)
+	lines := strings.Split(result, "\n")
+	require.NotEmpty(t, lines, "no lines in result")
+	// Should only contain border characters and dashes
+	require.True(t, strings.HasPrefix(lines[0], "╭"), "should start with top-left corner")
+	require.True(t, strings.HasSuffix(lines[0], "╮"), "should end with top-right corner")
 }
 
 func TestTruncateString(t *testing.T) {
