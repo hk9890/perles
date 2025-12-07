@@ -4,6 +4,7 @@ package watcher
 import (
 	"fmt"
 	"path/filepath"
+	"perles/internal/log"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -34,8 +35,10 @@ func DefaultConfig(dbPath string) Config {
 
 // New creates a new database watcher.
 func New(cfg Config) (*Watcher, error) {
+	log.Debug(log.CatWatcher, "Creating watcher", "dbPath", cfg.DBPath, "debounce", cfg.DebounceDur)
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
+		log.ErrorErr(log.CatWatcher, "Failed to create fsnotify watcher", err)
 		return nil, fmt.Errorf("creating fsnotify watcher: %w", err)
 	}
 
@@ -54,9 +57,11 @@ func (w *Watcher) Start() (<-chan struct{}, error) {
 	// Watch the directory containing the database
 	dir := filepath.Dir(w.dbPath)
 	if err := w.fsWatcher.Add(dir); err != nil {
+		log.ErrorErr(log.CatWatcher, "Failed to watch directory", err, "dir", dir)
 		return nil, fmt.Errorf("watching directory %s: %w", dir, err)
 	}
 
+	log.Info(log.CatWatcher, "Started watching", "dir", dir)
 	go w.loop()
 
 	return w.onChange, nil
@@ -64,6 +69,7 @@ func (w *Watcher) Start() (<-chan struct{}, error) {
 
 // Stop terminates the watcher and releases resources.
 func (w *Watcher) Stop() error {
+	log.Debug(log.CatWatcher, "Stopping watcher")
 	close(w.done)
 	return w.fsWatcher.Close()
 }
@@ -87,8 +93,11 @@ func (w *Watcher) loop() {
 				continue
 			}
 
+			log.Debug(log.CatWatcher, "File event received", "file", event.Name, "op", event.Op.String())
+
 			// Reset or start debounce timer
 			if timer == nil {
+				log.Debug(log.CatWatcher, "Starting debounce timer", "duration", w.debounce)
 				timer = time.NewTimer(w.debounce)
 				pending = true
 			} else {
@@ -99,6 +108,7 @@ func (w *Watcher) loop() {
 					default:
 					}
 				}
+				log.Debug(log.CatWatcher, "Resetting debounce timer", "duration", w.debounce)
 				timer.Reset(w.debounce)
 				pending = true
 			}
@@ -110,6 +120,7 @@ func (w *Watcher) loop() {
 			return nil
 		}():
 			if pending {
+				log.Debug(log.CatWatcher, "Debounce complete, triggering refresh")
 				// Non-blocking send - drop if channel full
 				select {
 				case w.onChange <- struct{}{}:
@@ -118,13 +129,12 @@ func (w *Watcher) loop() {
 				pending = false
 			}
 
-		case _, ok := <-w.fsWatcher.Errors:
+		case err, ok := <-w.fsWatcher.Errors:
 			if !ok {
 				return
 			}
 			// Log error but continue watching
-			// Note: We intentionally don't log here to avoid dependency on a logger.
-			// Callers can wrap the watcher if they need error visibility.
+			log.ErrorErr(log.CatWatcher, "File watcher error", err)
 
 		case <-w.done:
 			if timer != nil {

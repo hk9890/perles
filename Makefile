@@ -15,6 +15,10 @@ build:
 run: build
 	./perles
 
+# Build and run the binary with the debug flag
+debug: build
+	./perles -d
+
 # Install the binary to $GOPATH/bin with version info
 install:
 	go install -ldflags "$(LDFLAGS)" .

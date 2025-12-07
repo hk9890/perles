@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"perles/internal/log"
 
 	"gopkg.in/yaml.v3"
 )
@@ -13,9 +14,12 @@ import (
 // SaveViews updates the views configuration in the config file.
 // This preserves comments and formatting in other sections by using yaml.Node.
 func SaveViews(configPath string, views []ViewConfig) error {
+	log.Debug(log.CatConfig, "Saving views", "path", configPath, "viewCount", len(views))
+
 	// Read existing file content
 	data, err := os.ReadFile(configPath) //nolint:gosec // G304: configPath is from user's config dir, not user input
 	if err != nil && !os.IsNotExist(err) {
+		log.ErrorErr(log.CatConfig, "Failed to read config file", err, "path", configPath)
 		return fmt.Errorf("reading config: %w", err)
 	}
 
@@ -23,6 +27,7 @@ func SaveViews(configPath string, views []ViewConfig) error {
 	var doc yaml.Node
 	if len(data) > 0 {
 		if err := yaml.Unmarshal(data, &doc); err != nil {
+			log.ErrorErr(log.CatConfig, "Failed to parse config", err, "path", configPath)
 			return fmt.Errorf("parsing config: %w", err)
 		}
 	}
@@ -71,6 +76,7 @@ func SaveViews(configPath string, views []ViewConfig) error {
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)
 	if err := encoder.Encode(&doc); err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to marshal config", err)
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 	_ = encoder.Close()
@@ -78,11 +84,13 @@ func SaveViews(configPath string, views []ViewConfig) error {
 	// Write atomically (write to temp, then rename)
 	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0750); err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to create config directory", err, "dir", dir)
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
 	temp, err := os.CreateTemp(dir, ".perles.yaml.tmp.*")
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to create temp file", err, "dir", dir)
 		return fmt.Errorf("creating temp file: %w", err)
 	}
 	tempPath := temp.Name()
@@ -90,18 +98,22 @@ func SaveViews(configPath string, views []ViewConfig) error {
 	if _, err := temp.Write(buf.Bytes()); err != nil {
 		_ = temp.Close()
 		_ = os.Remove(tempPath)
+		log.ErrorErr(log.CatConfig, "Failed to write temp file", err, "path", tempPath)
 		return fmt.Errorf("writing temp file: %w", err)
 	}
 	if err := temp.Close(); err != nil {
 		_ = os.Remove(tempPath)
+		log.ErrorErr(log.CatConfig, "Failed to close temp file", err, "path", tempPath)
 		return fmt.Errorf("closing temp file: %w", err)
 	}
 
 	if err := os.Rename(tempPath, configPath); err != nil {
 		_ = os.Remove(tempPath)
+		log.ErrorErr(log.CatConfig, "Failed to rename temp file", err, "from", tempPath, "to", configPath)
 		return fmt.Errorf("renaming temp file: %w", err)
 	}
 
+	log.Debug(log.CatConfig, "Saved config", "path", configPath)
 	return nil
 }
 

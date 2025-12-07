@@ -2,6 +2,7 @@ package beads
 
 import (
 	"database/sql"
+	"perles/internal/log"
 	"strings"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
@@ -17,14 +18,18 @@ type Client struct {
 // NewClient creates a client connected to the beads database.
 func NewClient(projectPath string) (*Client, error) {
 	dbPath := projectPath + "/.beads/beads.db"
+	log.Debug(log.CatDB, "Opening database", "path", dbPath)
 	db, err := sql.Open("sqlite3", "file:"+dbPath+"?mode=ro")
 	if err != nil {
+		log.ErrorErr(log.CatDB, "Failed to open database", err, "path", dbPath)
 		return nil, err
 	}
 	// Verify connection works
 	if err := db.Ping(); err != nil {
+		log.ErrorErr(log.CatDB, "Failed to ping database", err, "path", dbPath)
 		return nil, err
 	}
+	log.Info(log.CatDB, "Connected to database", "path", dbPath)
 	return &Client{db: db, dbPath: dbPath}, nil
 }
 
@@ -88,6 +93,7 @@ func (c *Client) ListIssuesByIds(ids []string) ([]Issue, error) {
 
 	rows, err := c.db.Query(query, args...)
 	if err != nil {
+		log.ErrorErr(log.CatDB, "ListIssuesByIds query failed", err, "idCount", len(ids))
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -108,6 +114,7 @@ func (c *Client) ListIssuesByIds(ids []string) ([]Issue, error) {
 			&blockerIDs, &blocksIDs, &labelsStr,
 		)
 		if err != nil {
+			log.ErrorErr(log.CatDB, "ListIssuesByIds scan failed", err)
 			return nil, err
 		}
 
@@ -149,6 +156,7 @@ func (c *Client) GetComments(issueID string) ([]Comment, error) {
 	`
 	rows, err := c.db.Query(query, issueID)
 	if err != nil {
+		log.ErrorErr(log.CatDB, "GetComments query failed", err, "issueID", issueID)
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -157,6 +165,7 @@ func (c *Client) GetComments(issueID string) ([]Comment, error) {
 	for rows.Next() {
 		var comment Comment
 		if err := rows.Scan(&comment.ID, &comment.Author, &comment.Text, &comment.CreatedAt); err != nil {
+			log.ErrorErr(log.CatDB, "GetComments scan failed", err, "issueID", issueID)
 			return nil, err
 		}
 		comments = append(comments, comment)

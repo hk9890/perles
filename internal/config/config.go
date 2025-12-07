@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"perles/internal/log"
 	"time"
 )
 
@@ -261,16 +262,21 @@ views:
 // WriteDefaultConfig creates a config file at the given path with default settings and comments.
 // Creates the parent directory if it doesn't exist.
 func WriteDefaultConfig(configPath string) error {
+	log.Debug(log.CatConfig, "Writing default config", "path", configPath)
+
 	// Create parent directory if needed
 	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0750); err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to create config directory", err, "dir", dir)
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
 	// Write the template
 	if err := os.WriteFile(configPath, []byte(DefaultConfigTemplate()), 0600); err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to write config file", err, "path", configPath)
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
+	log.Info(log.CatConfig, "Created default config", "path", configPath)
 	return nil
 }

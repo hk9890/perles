@@ -9,6 +9,7 @@ import (
 	"perles/internal/app"
 	"perles/internal/beads"
 	"perles/internal/config"
+	"perles/internal/log"
 	"perles/internal/ui/nobeads"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,9 +29,10 @@ func init() {
 }
 
 var (
-	version = "dev"
-	cfgFile string
-	cfg     config.Config
+	version   = "dev"
+	cfgFile   string
+	cfg       config.Config
+	debugFlag bool
 )
 
 var rootCmd = &cobra.Command{
@@ -48,6 +50,8 @@ func init() {
 		"config file (default: ~/.config/perles/config.yaml)")
 	rootCmd.Flags().StringP("beads-dir", "b", "",
 		"path to beads database directory")
+	rootCmd.Flags().BoolVarP(&debugFlag, "debug", "d", false,
+		"enable debug mode with logging (also: PERLES_DEBUG=1)")
 
 	// Bind flags to viper
 	_ = viper.BindPFlag("beads_dir", rootCmd.Flags().Lookup("beads-dir"))
@@ -93,6 +97,24 @@ func initConfig() {
 }
 
 func runApp(cmd *cobra.Command, args []string) error {
+	// Initialize logging if debug mode enabled (via flag or env var)
+	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
+	if debug {
+		logPath := os.Getenv("PERLES_LOG")
+		if logPath == "" {
+			logPath = "debug.log"
+		}
+
+		cleanup, err := log.InitWithTeaLog(logPath, "perles", 100)
+		if err != nil {
+			return fmt.Errorf("initializing logging: %w", err)
+		}
+		defer cleanup()
+
+		// Log application startup
+		log.Info(log.CatConfig, "Perles starting", "version", version, "debug", true, "logPath", logPath)
+	}
+
 	if err := config.ValidateViews(cfg.Views); err != nil {
 		return fmt.Errorf("invalid view configuration: %w", err)
 	}
@@ -125,8 +147,8 @@ func runApp(cmd *cobra.Command, args []string) error {
 		configFilePath = ".perles/config.yaml"
 	}
 
-	// Pass config to app with database and config paths
-	model := app.NewWithConfig(client, cfg, dbPath+"/.beads/beads.db", configFilePath)
+	// Pass config to app with database and config paths (debug for log overlay)
+	model := app.NewWithConfig(client, cfg, dbPath+"/.beads/beads.db", configFilePath, debug)
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),
@@ -135,8 +157,20 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	_, err = p.Run()
 
+	// Log shutdown (only in debug mode - log is initialized)
+	if debug {
+		if err != nil {
+			log.Error(log.CatConfig, "Perles shutting down with error", "error", err)
+		} else {
+			log.Info(log.CatConfig, "Perles shutting down")
+		}
+	}
+
 	// Clean up watcher resources
 	if closeErr := model.Close(); closeErr != nil && err == nil {
+		if debug {
+			log.Error(log.CatConfig, "Error during cleanup", "error", closeErr)
+		}
 		err = closeErr
 	}
 

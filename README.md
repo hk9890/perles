@@ -133,6 +133,38 @@ perles
 | `--no-auto-refresh` | | Disable automatic board refresh |
 | `--version` | `-v` | Print version |
 | `--help` | `-h` | Print help |
+| `--debug` | `-d` | Enable developer/debug mode |
+
+## Developer Mode
+
+Developer mode provides logging and debugging tools for troubleshooting and development.
+
+### Enabling Debug Mode
+
+```bash
+# Via flag
+perles --debug
+
+# Via environment variable
+PERLES_DEBUG=1 perles
+
+# With custom log path
+PERLES_LOG=/tmp/perles.log perles --debug
+```
+
+### Features
+
+- **Log file**: All log output is written to `debug.log` (or custom path via `PERLES_LOG`)
+- **Log overlay**: Press `Ctrl+X` to view logs in-app without leaving the TUI
+- **Lifecycle logging**: Application startup and shutdown events are logged
+
+### Reporting Issues
+
+When reporting bugs, please include the `debug.log` file to help with diagnosis:
+
+1. Run perles with `--debug` flag
+2. Reproduce the issue
+3. Attach `debug.log` to your bug report
 
 ## Keybindings
 
