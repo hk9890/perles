@@ -367,6 +367,7 @@ func TestTokenStyle(t *testing.T) {
 	tokenTypes := []TokenType{
 		TokenAnd, TokenOr, TokenNot, TokenIn,
 		TokenOrder, TokenBy, TokenAsc, TokenDesc,
+		TokenExpand, TokenDepth, TokenStar,
 		TokenEq, TokenNeq, TokenLt, TokenGt,
 		TokenLte, TokenGte, TokenContains, TokenNotContains,
 		TokenLParen, TokenRParen, TokenComma,
@@ -379,6 +380,79 @@ func TestTokenStyle(t *testing.T) {
 			style := tokenStyle(tt)
 			// Just verify it returns without panic
 			_ = style.Render("test")
+		})
+	}
+}
+
+func TestHighlight_ExpandKeywords(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{"expand keyword", "id = x expand children"},
+		{"expand with depth", "id = x expand all depth 2"},
+		{"expand with star", "id = x expand children depth *"},
+		{"expand only", "expand blockers"},
+		{"expand with order by", "expand deps order by priority"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Highlight(tt.query)
+
+			// Text should be preserved
+			stripped := stripANSI(result)
+			require.Equal(t, tt.query, stripped, "text not preserved")
+
+			// Should have ANSI codes
+			require.True(t, hasANSI(result), "expected ANSI codes in result")
+		})
+	}
+}
+
+func TestHighlight_ExpandTokenStyles(t *testing.T) {
+	// Test that expand-related tokens produce styled output
+	tests := []struct {
+		name  string
+		query string
+		token string // the token we expect to be styled
+	}{
+		{"keyword expand", "expand children", "expand"},
+		{"keyword depth", "expand children depth 2", "depth"},
+		{"operator star", "expand all depth *", "*"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Highlight(tt.query)
+			require.True(t, hasANSI(result), "expected ANSI codes in output for query %q", tt.query)
+			require.Contains(t, result, tt.token)
+		})
+	}
+}
+
+func TestStyleToken_ExpandTokens(t *testing.T) {
+	// Test that styleToken produces styled output for expand-related token types
+	tests := []struct {
+		name      string
+		tokenType TokenType
+		literal   string
+	}{
+		{"expand keyword", TokenExpand, "expand"},
+		{"depth keyword", TokenDepth, "depth"},
+		{"star operator", TokenStar, "*"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tok := Token{Type: tt.tokenType, Literal: tt.literal}
+			result := styleToken(tok)
+
+			// Result should contain the literal
+			require.Contains(t, result, tt.literal, "styleToken() should contain literal")
+
+			// Result should have ANSI codes
+			require.True(t, hasANSI(result), "styleToken() should produce ANSI output for %v", tt.tokenType)
 		})
 	}
 }

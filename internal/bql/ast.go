@@ -13,11 +13,17 @@ type Expr interface {
 
 // Query represents a complete BQL query.
 type Query struct {
-	Filter  Expr        // The filter expression (may be nil for ORDER BY only queries)
-	OrderBy []OrderTerm // ORDER BY terms (may be empty)
+	Filter  Expr          // The filter expression (may be nil for ORDER BY only queries)
+	Expand  *ExpandClause // Expansion config (may be nil for no expansion)
+	OrderBy []OrderTerm   // ORDER BY terms (may be empty)
 }
 
 func (q *Query) node() {}
+
+// HasExpand returns true if the query has an expansion clause.
+func (q *Query) HasExpand() bool {
+	return q.Expand != nil && q.Expand.Type != ExpandNone
+}
 
 // BinaryExpr represents "expr AND/OR expr".
 type BinaryExpr struct {
@@ -81,4 +87,31 @@ type Value struct {
 type OrderTerm struct {
 	Field string
 	Desc  bool // true for DESC, false for ASC (default)
+}
+
+// ExpandType specifies which relationships to include.
+type ExpandType int
+
+const (
+	ExpandNone     ExpandType = iota
+	ExpandChildren            // Include child issues (parent-child deps)
+	ExpandBlockers            // Include issues that block matched issues
+	ExpandBlocks              // Include issues blocked by matched issues
+	ExpandDeps                // Include both blocking relationships
+	ExpandAll                 // Include all relationship types
+)
+
+// ExpandDepth represents how deep to expand relationships.
+type ExpandDepth int
+
+const (
+	DepthDefault   ExpandDepth = 1  // Default: expand one level
+	DepthUnlimited ExpandDepth = -1 // Unlimited: expand until no more found
+	DepthMax       ExpandDepth = 10 // Maximum allowed explicit depth
+)
+
+// ExpandClause represents the EXPAND clause configuration.
+type ExpandClause struct {
+	Type  ExpandType  // Which relationships to expand
+	Depth ExpandDepth // How many levels to expand (1 = default, -1 = unlimited)
 }

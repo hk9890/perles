@@ -67,6 +67,9 @@ func (l *Lexer) NextToken() Token {
 	case '~':
 		tok.Type = TokenContains
 		tok.Literal = "~"
+	case '*':
+		tok.Type = TokenStar
+		tok.Literal = "*"
 	case '"', '\'':
 		tok.Type = TokenString
 		tok.Literal = l.readString(l.ch)

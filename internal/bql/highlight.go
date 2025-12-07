@@ -110,12 +110,17 @@ func tokenStyle(t TokenType) lipgloss.Style {
 	switch t {
 	// Keywords
 	case TokenAnd, TokenOr, TokenNot, TokenIn,
-		TokenOrder, TokenBy, TokenAsc, TokenDesc:
+		TokenOrder, TokenBy, TokenAsc, TokenDesc,
+		TokenExpand, TokenDepth:
 		return KeywordStyle
 
 	// Comparison operators
 	case TokenEq, TokenNeq, TokenLt, TokenGt,
 		TokenLte, TokenGte, TokenContains, TokenNotContains:
+		return OperatorStyle
+
+	// Special operators (for expand depth *)
+	case TokenStar:
 		return OperatorStyle
 
 	// Delimiters

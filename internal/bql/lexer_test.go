@@ -305,28 +305,34 @@ func TestLexer_AllOperators(t *testing.T) {
 
 func TestLexer_AllKeywords(t *testing.T) {
 	keywords := map[string]TokenType{
-		"and":   TokenAnd,
-		"AND":   TokenAnd,
-		"And":   TokenAnd,
-		"or":    TokenOr,
-		"OR":    TokenOr,
-		"Or":    TokenOr,
-		"not":   TokenNot,
-		"NOT":   TokenNot,
-		"in":    TokenIn,
-		"IN":    TokenIn,
-		"order": TokenOrder,
-		"ORDER": TokenOrder,
-		"by":    TokenBy,
-		"BY":    TokenBy,
-		"asc":   TokenAsc,
-		"ASC":   TokenAsc,
-		"desc":  TokenDesc,
-		"DESC":  TokenDesc,
-		"true":  TokenTrue,
-		"TRUE":  TokenTrue,
-		"false": TokenFalse,
-		"FALSE": TokenFalse,
+		"and":    TokenAnd,
+		"AND":    TokenAnd,
+		"And":    TokenAnd,
+		"or":     TokenOr,
+		"OR":     TokenOr,
+		"Or":     TokenOr,
+		"not":    TokenNot,
+		"NOT":    TokenNot,
+		"in":     TokenIn,
+		"IN":     TokenIn,
+		"order":  TokenOrder,
+		"ORDER":  TokenOrder,
+		"by":     TokenBy,
+		"BY":     TokenBy,
+		"asc":    TokenAsc,
+		"ASC":    TokenAsc,
+		"desc":   TokenDesc,
+		"DESC":   TokenDesc,
+		"true":   TokenTrue,
+		"TRUE":   TokenTrue,
+		"false":  TokenFalse,
+		"FALSE":  TokenFalse,
+		"expand": TokenExpand,
+		"EXPAND": TokenExpand,
+		"Expand": TokenExpand,
+		"depth":  TokenDepth,
+		"DEPTH":  TokenDepth,
+		"Depth":  TokenDepth,
 	}
 
 	for kw, expected := range keywords {
@@ -336,4 +342,76 @@ func TestLexer_AllKeywords(t *testing.T) {
 			require.Equal(t, expected, tok.Type)
 		})
 	}
+}
+
+func TestLexer_ExpandKeyword(t *testing.T) {
+	l := NewLexer("expand children depth 2")
+
+	tok := l.NextToken()
+	require.Equal(t, TokenExpand, tok.Type)
+	require.Equal(t, "expand", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenIdent, tok.Type)
+	require.Equal(t, "children", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenDepth, tok.Type)
+	require.Equal(t, "depth", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenNumber, tok.Type)
+	require.Equal(t, "2", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenEOF, tok.Type)
+}
+
+func TestLexer_ExpandUnlimitedDepth(t *testing.T) {
+	l := NewLexer("expand all depth *")
+
+	tok := l.NextToken()
+	require.Equal(t, TokenExpand, tok.Type)
+	require.Equal(t, "expand", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenIdent, tok.Type)
+	require.Equal(t, "all", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenDepth, tok.Type)
+	require.Equal(t, "depth", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenStar, tok.Type)
+	require.Equal(t, "*", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenEOF, tok.Type)
+}
+
+func TestLexer_ExpandWithFilter(t *testing.T) {
+	l := NewLexer("type = epic expand children")
+
+	tok := l.NextToken()
+	require.Equal(t, TokenIdent, tok.Type)
+	require.Equal(t, "type", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenEq, tok.Type)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenIdent, tok.Type)
+	require.Equal(t, "epic", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenExpand, tok.Type)
+	require.Equal(t, "expand", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenIdent, tok.Type)
+	require.Equal(t, "children", tok.Literal)
+
+	tok = l.NextToken()
+	require.Equal(t, TokenEOF, tok.Type)
 }

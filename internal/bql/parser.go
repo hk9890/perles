@@ -22,13 +22,22 @@ func NewParser(input string) *Parser {
 func (p *Parser) Parse() (*Query, error) {
 	query := &Query{}
 
-	// Parse filter expression (optional - might just be ORDER BY)
-	if p.current.Type != TokenOrder && p.current.Type != TokenEOF {
+	// Parse filter expression (optional - might just be EXPAND or ORDER BY)
+	if p.current.Type != TokenExpand && p.current.Type != TokenOrder && p.current.Type != TokenEOF {
 		expr, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
 		query.Filter = expr
+	}
+
+	// Parse EXPAND clause (optional)
+	if p.current.Type == TokenExpand {
+		expand, err := p.parseExpand()
+		if err != nil {
+			return nil, err
+		}
+		query.Expand = expand
 	}
 
 	// Parse ORDER BY clause (optional)
@@ -304,4 +313,91 @@ func (p *Parser) parseOrderBy() ([]OrderTerm, error) {
 	}
 
 	return terms, nil
+}
+
+// parseExpand parses the EXPAND clause: "expand <type> [depth <n>|*]"
+func (p *Parser) parseExpand() (*ExpandClause, error) {
+	p.nextToken() // consume EXPAND
+
+	if p.current.Type != TokenIdent {
+		return nil, fmt.Errorf(
+			"expected expansion type at position %d, got %q (valid: children, blockers, blocks, deps, all)",
+			p.current.Pos, p.current.Literal)
+	}
+
+	expandType, err := parseExpandType(p.current.Literal)
+	if err != nil {
+		return nil, fmt.Errorf("%w at position %d", err, p.current.Pos)
+	}
+	p.nextToken()
+
+	// Default depth is 1
+	clause := &ExpandClause{
+		Type:  expandType,
+		Depth: DepthDefault,
+	}
+
+	// Parse optional DEPTH clause
+	if p.current.Type == TokenDepth {
+		p.nextToken() // consume DEPTH
+
+		depth, err := p.parseDepthValue()
+		if err != nil {
+			return nil, err
+		}
+		clause.Depth = depth
+	}
+
+	return clause, nil
+}
+
+// parseDepthValue parses the depth value: a number or "*" for unlimited.
+func (p *Parser) parseDepthValue() (ExpandDepth, error) {
+	switch p.current.Type {
+	case TokenStar:
+		p.nextToken()
+		return DepthUnlimited, nil
+
+	case TokenNumber:
+		var n int
+		_, err := fmt.Sscanf(p.current.Literal, "%d", &n)
+		if err != nil {
+			return 0, fmt.Errorf("invalid depth value %q at position %d",
+				p.current.Literal, p.current.Pos)
+		}
+		if n < 1 {
+			return 0, fmt.Errorf("depth must be at least 1, got %d at position %d",
+				n, p.current.Pos)
+		}
+		if n > int(DepthMax) {
+			return 0, fmt.Errorf("depth cannot exceed %d, got %d at position %d",
+				DepthMax, n, p.current.Pos)
+		}
+		p.nextToken()
+		return ExpandDepth(n), nil
+
+	default:
+		return 0, fmt.Errorf(
+			"expected depth value (number or *) at position %d, got %q",
+			p.current.Pos, p.current.Literal)
+	}
+}
+
+// parseExpandType converts a string to an ExpandType.
+func parseExpandType(s string) (ExpandType, error) {
+	switch s {
+	case "children", "Children", "CHILDREN":
+		return ExpandChildren, nil
+	case "blockers", "Blockers", "BLOCKERS":
+		return ExpandBlockers, nil
+	case "blocks", "Blocks", "BLOCKS":
+		return ExpandBlocks, nil
+	case "deps", "Deps", "DEPS":
+		return ExpandDeps, nil
+	case "all", "All", "ALL":
+		return ExpandAll, nil
+	default:
+		return ExpandNone, fmt.Errorf(
+			"unknown expansion type %q (valid: children, blockers, blocks, deps, all)", s)
+	}
 }

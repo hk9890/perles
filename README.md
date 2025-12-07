@@ -295,6 +295,52 @@ status = open order by priority
 type = bug order by priority asc, created desc
 ```
 
+### Expand (Include Related Issues)
+
+The `expand` keyword includes related issues in your search results, allowing you to see complete issue hierarchies and dependency chains.
+
+```bql
+# Basic syntax
+<filter> expand <type> [depth <n>]
+```
+
+#### Expansion Types
+
+| Type | Description |
+|------|-------------|
+| `children` | Issues that are children of matched issues (parent-child relationship) |
+| `blockers` | Issues that block matched issues |
+| `blocks` | Issues that are blocked by matched issues |
+| `deps` | All blocking relationships (both directions) |
+| `all` | All relationship types combined |
+
+#### Depth Control
+
+| Depth | Description |
+|-------|-------------|
+| `depth 1` | Direct relationships only (default) |
+| `depth 2-10` | Include relationships up to N levels deep |
+| `depth *` | Unlimited depth (follows all relationships) |
+
+#### Examples
+
+```bql
+# Get an epic and all its children
+type = epic expand children
+
+# Get an epic and all descendants (unlimited depth)
+type = epic expand children depth *
+
+# Get an issue and everything blocking it
+id = bd-123 expand blockers
+
+# Get an issue and all related issues (both directions)
+id = bd-123 expand deps depth *
+
+# Get all epics with their full hierarchies
+type = epic expand all depth *
+```
+
 ### Example Queries
 
 ```bql
@@ -309,6 +355,9 @@ priority <= P1 and updated >= -24h order by updated desc
 
 # Search by title
 title ~ authentication or title ~ login
+
+# Epic with all its children
+type = epic expand children depth *
 ```
 
 ## Configuration

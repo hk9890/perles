@@ -345,3 +345,124 @@ func TestParser_Errors(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_ExpandClause(t *testing.T) {
+	tests := []struct {
+		input     string
+		wantType  ExpandType
+		wantDepth ExpandDepth
+		hasFilter bool
+	}{
+		{"type = epic expand children", ExpandChildren, DepthDefault, true},
+		{"id = x expand blockers", ExpandBlockers, DepthDefault, true},
+		{"priority = P0 expand blocks", ExpandBlocks, DepthDefault, true},
+		{"status = open expand deps", ExpandDeps, DepthDefault, true},
+		{"type = epic expand all", ExpandAll, DepthDefault, true},
+		{"expand children order by priority", ExpandChildren, DepthDefault, false},
+		{"expand deps", ExpandDeps, DepthDefault, false},
+		{"type = epic expand children depth 1", ExpandChildren, 1, true},
+		{"type = epic expand children depth 2", ExpandChildren, 2, true},
+		{"type = epic expand children depth 10", ExpandChildren, 10, true},
+		{"type = epic expand all depth *", ExpandAll, DepthUnlimited, true},
+		{"expand blockers depth *", ExpandBlockers, DepthUnlimited, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			p := NewParser(tt.input)
+			query, err := p.Parse()
+			require.NoError(t, err)
+			require.NotNil(t, query.Expand)
+			require.Equal(t, tt.wantType, query.Expand.Type)
+			require.Equal(t, tt.wantDepth, query.Expand.Depth)
+			if tt.hasFilter {
+				require.NotNil(t, query.Filter)
+			} else {
+				require.Nil(t, query.Filter)
+			}
+		})
+	}
+}
+
+func TestParser_ExpandWithOrderBy(t *testing.T) {
+	p := NewParser("type = epic expand children depth 2 order by priority asc")
+	query, err := p.Parse()
+	require.NoError(t, err)
+	require.NotNil(t, query.Filter)
+	require.NotNil(t, query.Expand)
+	require.Equal(t, ExpandChildren, query.Expand.Type)
+	require.Equal(t, ExpandDepth(2), query.Expand.Depth)
+	require.Len(t, query.OrderBy, 1)
+	require.Equal(t, "priority", query.OrderBy[0].Field)
+}
+
+func TestParser_HasExpand(t *testing.T) {
+	t.Run("query without expand", func(t *testing.T) {
+		p := NewParser("type = epic")
+		query, err := p.Parse()
+		require.NoError(t, err)
+		require.False(t, query.HasExpand())
+	})
+
+	t.Run("query with expand", func(t *testing.T) {
+		p := NewParser("type = epic expand children")
+		query, err := p.Parse()
+		require.NoError(t, err)
+		require.True(t, query.HasExpand())
+	})
+}
+
+func TestParser_InvalidExpandType(t *testing.T) {
+	p := NewParser("type = epic expand invalid")
+	_, err := p.Parse()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown expansion type")
+}
+
+func TestParser_InvalidDepthValue(t *testing.T) {
+	tests := []struct {
+		input   string
+		wantErr string
+	}{
+		{"expand children depth 0", "depth must be at least 1"},
+		{"expand children depth 11", "depth cannot exceed 10"},
+		{"expand children depth foo", "expected depth value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			p := NewParser(tt.input)
+			_, err := p.Parse()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestParser_ExpandTypeCaseInsensitive(t *testing.T) {
+	types := []struct {
+		input    string
+		wantType ExpandType
+	}{
+		{"expand children", ExpandChildren},
+		{"expand Children", ExpandChildren},
+		{"expand CHILDREN", ExpandChildren},
+		{"expand blockers", ExpandBlockers},
+		{"expand Blockers", ExpandBlockers},
+		{"expand BLOCKERS", ExpandBlockers},
+		{"expand blocks", ExpandBlocks},
+		{"expand deps", ExpandDeps},
+		{"expand all", ExpandAll},
+		{"expand ALL", ExpandAll},
+	}
+
+	for _, tt := range types {
+		t.Run(tt.input, func(t *testing.T) {
+			p := NewParser(tt.input)
+			query, err := p.Parse()
+			require.NoError(t, err)
+			require.NotNil(t, query.Expand)
+			require.Equal(t, tt.wantType, query.Expand.Type)
+		})
+	}
+}

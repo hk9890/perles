@@ -17,6 +17,9 @@ func NewExecutor(db *sql.DB) *Executor {
 	return &Executor{db: db}
 }
 
+// maxExpandIterations is the safety limit for unlimited depth expansion.
+const maxExpandIterations = 100
+
 // Execute runs a BQL query and returns matching issues.
 func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 	// Parse the query
@@ -31,6 +34,25 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 		return nil, fmt.Errorf("validation error: %w", err)
 	}
 
+	// Execute base query
+	issues, err := e.executeBaseQuery(query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply expansion if specified
+	if query.HasExpand() {
+		issues, err = e.expandIssues(issues, query.Expand)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return issues, nil
+}
+
+// executeBaseQuery runs the main BQL filter query.
+func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 	// Build SQL
 	builder := NewSQLBuilder(query)
 	whereClause, orderBy, params := builder.Build()
@@ -82,7 +104,11 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	// Scan results
+	return e.scanIssues(rows)
+}
+
+// scanIssues reads issues from database rows.
+func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 	var issues []beads.Issue
 	for rows.Next() {
 		var issue beads.Issue
@@ -130,6 +156,240 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 	return issues, rows.Err()
 }
 
+// expandIssues iteratively fetches related issues based on expansion configuration.
+func (e *Executor) expandIssues(baseIssues []beads.Issue, expand *ExpandClause) ([]beads.Issue, error) {
+	if len(baseIssues) == 0 {
+		return baseIssues, nil
+	}
+
+	// Initialize tracking
+	seenIDs := make(map[string]bool)
+	for _, issue := range baseIssues {
+		seenIDs[issue.ID] = true
+	}
+
+	// Start with base issues as the current frontier
+	currentIDs := make([]string, len(baseIssues))
+	for i, issue := range baseIssues {
+		currentIDs[i] = issue.ID
+	}
+
+	allIssues := baseIssues
+
+	// Determine max iterations
+	maxIterations := int(expand.Depth)
+	if expand.Depth == DepthUnlimited {
+		maxIterations = maxExpandIterations
+	}
+
+	// Iterate up to depth
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		// Query for related IDs
+		relatedIDs, err := e.queryRelatedIDs(currentIDs, expand.Type)
+		if err != nil {
+			return nil, fmt.Errorf("expand query error: %w", err)
+		}
+
+		// Filter to genuinely new IDs
+		var newIDs []string
+		for _, id := range relatedIDs {
+			if !seenIDs[id] {
+				newIDs = append(newIDs, id)
+				seenIDs[id] = true
+			}
+		}
+
+		// If no new IDs found, we've reached the end of the graph
+		if len(newIDs) == 0 {
+			break
+		}
+
+		// Fetch the new issues
+		newIssues, err := e.fetchIssuesByIDs(newIDs)
+		if err != nil {
+			return nil, fmt.Errorf("fetch expanded issues error: %w", err)
+		}
+
+		// Add to results
+		allIssues = append(allIssues, newIssues...)
+
+		// Update frontier for next iteration
+		currentIDs = newIDs
+	}
+
+	return allIssues, nil
+}
+
+// queryRelatedIDs queries the dependencies table for related issue IDs.
+func (e *Executor) queryRelatedIDs(issueIDs []string, expandType ExpandType) ([]string, error) {
+	if len(issueIDs) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholder string for IN clause
+	placeholders := make([]string, len(issueIDs))
+	params := make([]any, len(issueIDs))
+	for i, id := range issueIDs {
+		placeholders[i] = "?"
+		params[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	var queries []string
+
+	switch expandType {
+	case ExpandChildren:
+		// Children: issues where depends_on_id is in our set (parent-child type)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.issue_id FROM dependencies d
+			JOIN issues i ON d.issue_id = i.id
+			WHERE d.depends_on_id IN (%s)
+				AND d.type = 'parent-child'
+				AND i.status != 'deleted'
+		`, inClause))
+
+	case ExpandBlockers:
+		// Blockers: issues that block the current set (depends_on_id in blocks type)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+
+	case ExpandBlocks:
+		// Blocks: issues blocked by the current set (issue_id in blocks type)
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.issue_id FROM dependencies d
+			JOIN issues i ON d.issue_id = i.id
+			WHERE d.depends_on_id IN (%s)
+				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+
+	case ExpandDeps:
+		// Both directions for blocks type
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.issue_id FROM dependencies d
+			JOIN issues i ON d.issue_id = i.id
+			WHERE d.depends_on_id IN (%s)
+				AND d.type = 'blocks'
+				AND i.status != 'deleted'
+		`, inClause))
+
+	case ExpandAll:
+		// All relationships in both directions
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.issue_id FROM dependencies d
+			JOIN issues i ON d.issue_id = i.id
+			WHERE d.depends_on_id IN (%s)
+				AND i.status != 'deleted'
+		`, inClause))
+		queries = append(queries, fmt.Sprintf(`
+			SELECT d.depends_on_id FROM dependencies d
+			JOIN issues i ON d.depends_on_id = i.id
+			WHERE d.issue_id IN (%s)
+				AND i.status != 'deleted'
+		`, inClause))
+
+	default:
+		return nil, nil
+	}
+
+	// Execute all queries and collect unique IDs
+	seenIDs := make(map[string]bool)
+	var relatedIDs []string
+
+	for _, q := range queries {
+		rows, err := e.db.Query(q, params...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return nil, err
+			}
+			if !seenIDs[id] {
+				seenIDs[id] = true
+				relatedIDs = append(relatedIDs, id)
+			}
+		}
+		_ = rows.Close()
+
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return relatedIDs, nil
+}
+
+// fetchIssuesByIDs fetches full issue details for a list of IDs.
+func (e *Executor) fetchIssuesByIDs(ids []string) ([]beads.Issue, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholder string for IN clause
+	placeholders := make([]string, len(ids))
+	params := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		params[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	//nolint:gosec // G201 - inClause contains only safe ? placeholders, not user input
+	sqlQuery := fmt.Sprintf(`
+		SELECT
+			i.id, i.title, i.description, i.status,
+			i.priority, i.issue_type, i.assignee, i.created_at, i.updated_at,
+			COALESCE((
+				SELECT GROUP_CONCAT(d.depends_on_id)
+				FROM dependencies d
+				JOIN issues blocker ON d.depends_on_id = blocker.id
+				WHERE d.issue_id = i.id
+					AND d.type = 'blocks'
+					AND blocker.status IN ('open', 'in_progress', 'blocked')
+			), '') as blocker_ids,
+			COALESCE((
+				SELECT GROUP_CONCAT(d.issue_id)
+				FROM dependencies d
+				JOIN issues child ON d.issue_id = child.id
+				WHERE d.depends_on_id = i.id
+					AND d.type IN ('blocks', 'parent-child')
+					AND child.status != 'deleted'
+			), '') as blocks_ids,
+			COALESCE((
+				SELECT GROUP_CONCAT(l.label)
+				FROM labels l
+				WHERE l.issue_id = i.id
+			), '') as labels
+		FROM issues i
+		WHERE i.id IN (%s)
+			AND i.status != 'deleted'
+	`, inClause)
+
+	rows, err := e.db.Query(sqlQuery, params...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch by IDs error: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	return e.scanIssues(rows)
+}
+
 // IsBQLQuery returns true if the input looks like a BQL query.
 // This is used to determine whether to use BQL or simple text search.
 func IsBQLQuery(input string) bool {
@@ -142,6 +402,8 @@ func IsBQLQuery(input string) bool {
 		" in ", " IN ", " In ",
 		" not ", " NOT ", " Not ",
 		"order by", "ORDER BY", "Order By",
+		" expand ", " EXPAND ", " Expand ",
+		" depth ", " DEPTH ", " Depth ",
 	}
 
 	for _, indicator := range bqlIndicators {
@@ -150,5 +412,7 @@ func IsBQLQuery(input string) bool {
 		}
 	}
 
-	return false
+	// Also check for expand at the start of the query (no leading space needed)
+	lowerInput := strings.ToLower(strings.TrimSpace(input))
+	return strings.HasPrefix(lowerInput, "expand ")
 }

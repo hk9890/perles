@@ -47,6 +47,11 @@ const (
 	// Boolean literals
 	TokenTrue  // true
 	TokenFalse // false
+
+	// Expand clause
+	TokenExpand // expand
+	TokenDepth  // depth
+	TokenStar   // * (for unlimited depth)
 )
 
 // String returns the string representation of the token type.
@@ -104,6 +109,12 @@ func (t TokenType) String() string {
 		return "TRUE"
 	case TokenFalse:
 		return "FALSE"
+	case TokenExpand:
+		return "EXPAND"
+	case TokenDepth:
+		return "DEPTH"
+	case TokenStar:
+		return "*"
 	default:
 		return "UNKNOWN"
 	}
@@ -118,16 +129,18 @@ type Token struct {
 
 // keywords maps keyword strings to their token types.
 var keywords = map[string]TokenType{
-	"and":   TokenAnd,
-	"or":    TokenOr,
-	"not":   TokenNot,
-	"in":    TokenIn,
-	"order": TokenOrder,
-	"by":    TokenBy,
-	"asc":   TokenAsc,
-	"desc":  TokenDesc,
-	"true":  TokenTrue,
-	"false": TokenFalse,
+	"and":    TokenAnd,
+	"or":     TokenOr,
+	"not":    TokenNot,
+	"in":     TokenIn,
+	"order":  TokenOrder,
+	"by":     TokenBy,
+	"asc":    TokenAsc,
+	"desc":   TokenDesc,
+	"true":   TokenTrue,
+	"false":  TokenFalse,
+	"expand": TokenExpand,
+	"depth":  TokenDepth,
 }
 
 // LookupKeyword returns the token type for the given identifier.
