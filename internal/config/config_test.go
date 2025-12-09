@@ -242,3 +242,81 @@ func TestConfig_SetColumnsForView_OutOfRange(t *testing.T) {
 	// Original unchanged
 	require.Equal(t, "Col1", cfg.Views[0].Columns[0].Name)
 }
+
+// Tests for tree column type support
+
+func TestValidateColumns_TreeType_Valid(t *testing.T) {
+	cols := []ColumnConfig{
+		{Name: "Dependencies", Type: "tree", IssueID: "bd-123"},
+	}
+	err := ValidateColumns(cols)
+	require.NoError(t, err)
+}
+
+func TestValidateColumns_TreeType_MissingIssueID(t *testing.T) {
+	cols := []ColumnConfig{
+		{Name: "Dependencies", Type: "tree", IssueID: ""},
+	}
+	err := ValidateColumns(cols)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "issue_id is required for tree columns")
+}
+
+func TestValidateColumns_BQLType_Explicit(t *testing.T) {
+	// Explicit type=bql should work the same as no type
+	cols := []ColumnConfig{
+		{Name: "Open", Type: "bql", Query: "status = open"},
+	}
+	err := ValidateColumns(cols)
+	require.NoError(t, err)
+}
+
+func TestValidateColumns_BQLType_MissingQuery(t *testing.T) {
+	cols := []ColumnConfig{
+		{Name: "Open", Type: "bql", Query: ""},
+	}
+	err := ValidateColumns(cols)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "query is required for bql columns")
+}
+
+func TestValidateColumns_BackwardCompatibility_NoType(t *testing.T) {
+	// Configs without Type field should default to bql behavior
+	cols := []ColumnConfig{
+		{Name: "Todo", Query: "status = open"},
+		{Name: "In Progress", Query: "status = in_progress"},
+	}
+	err := ValidateColumns(cols)
+	require.NoError(t, err)
+}
+
+func TestValidateColumns_InvalidType(t *testing.T) {
+	cols := []ColumnConfig{
+		{Name: "Bad", Type: "invalid", Query: "status = open"},
+	}
+	err := ValidateColumns(cols)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid type \"invalid\"")
+}
+
+func TestValidateColumns_MixedTypes(t *testing.T) {
+	// Mixed bql and tree columns in the same view
+	cols := []ColumnConfig{
+		{Name: "Open", Type: "bql", Query: "status = open"},
+		{Name: "Dependencies", Type: "tree", IssueID: "bd-123"},
+		{Name: "Closed", Query: "status = closed"}, // No type = bql
+	}
+	err := ValidateColumns(cols)
+	require.NoError(t, err)
+}
+
+func TestValidateColumns_TreeWithMode(t *testing.T) {
+	// TreeMode field is optional (defaults in usage, not validation)
+	cols := []ColumnConfig{
+		{Name: "Deps Mode", Type: "tree", IssueID: "bd-123", TreeMode: "deps"},
+		{Name: "Child Mode", Type: "tree", IssueID: "bd-456", TreeMode: "child"},
+		{Name: "Default Mode", Type: "tree", IssueID: "bd-789"}, // No tree_mode
+	}
+	err := ValidateColumns(cols)
+	require.NoError(t, err)
+}

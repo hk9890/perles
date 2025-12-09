@@ -17,7 +17,6 @@ import (
 	"perles/internal/config"
 	"perles/internal/mode"
 	"perles/internal/mode/shared"
-	"perles/internal/ui/board"
 	"perles/internal/ui/details"
 	"perles/internal/ui/forms/bqlinput"
 	"perles/internal/ui/modals/help"
@@ -1883,11 +1882,11 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 		prefix = styles.SelectionIndicatorStyle.Render(">")
 	}
 
-	typeText := board.GetTypeIndicator(issue.Type)
-	typeStyle := board.GetTypeStyle(issue.Type)
+	typeText := styles.GetTypeIndicator(issue.Type)
+	typeStyle := styles.GetTypeStyle(issue.Type)
 
 	priorityText := fmt.Sprintf("[P%d]", issue.Priority)
-	priorityStyle := board.GetPriorityStyle(issue.Priority)
+	priorityStyle := styles.GetPriorityStyle(issue.Priority)
 
 	idStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
 	idText := fmt.Sprintf("[%s]", issue.ID)

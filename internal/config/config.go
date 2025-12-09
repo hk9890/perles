@@ -11,9 +11,12 @@ import (
 
 // ColumnConfig defines a single kanban column.
 type ColumnConfig struct {
-	Name  string `mapstructure:"name"`
-	Query string `mapstructure:"query"` // BQL query for filtering issues
-	Color string `mapstructure:"color"` // hex color e.g. "#10B981"
+	Name     string `mapstructure:"name"`
+	Type     string `mapstructure:"type"`      // "bql" (default) or "tree"
+	Query    string `mapstructure:"query"`     // BQL query for filtering (required when type=bql)
+	IssueID  string `mapstructure:"issue_id"`  // Root issue ID (required when type=tree)
+	TreeMode string `mapstructure:"tree_mode"` // "deps" (default) or "child" for tree columns
+	Color    string `mapstructure:"color"`     // hex color e.g. "#10B981"
 }
 
 // ViewConfig defines a named board view with its column configuration.
@@ -101,8 +104,22 @@ func ValidateColumns(cols []ColumnConfig) error {
 		if col.Name == "" {
 			return fmt.Errorf("column %d: name is required", i)
 		}
-		if col.Query == "" {
-			return fmt.Errorf("column %d (%s): query is required", i, col.Name)
+
+		// Type-based validation (discriminated union pattern)
+		switch col.Type {
+		case "", "bql":
+			// BQL columns require a query
+			if col.Query == "" {
+				return fmt.Errorf("column %d (%s): query is required for bql columns", i, col.Name)
+			}
+		case "tree":
+			// Tree columns require an issue ID
+			if col.IssueID == "" {
+				return fmt.Errorf("column %d (%s): issue_id is required for tree columns", i, col.Name)
+			}
+			// TreeMode defaults to "deps" (handled in tree column creation, not validation)
+		default:
+			return fmt.Errorf("column %d (%s): invalid type %q (must be \"bql\" or \"tree\")", i, col.Name, col.Type)
 		}
 	}
 	return nil

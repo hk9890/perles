@@ -1,7 +1,11 @@
 // Package styles contains Lip Gloss style definitions.
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"perles/internal/beads"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
 	// Semantic color names - Text hierarchy
@@ -139,6 +143,60 @@ var (
 	// Loading spinner color
 	SpinnerColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#FFF"}
 )
+
+// GetTypeIndicator returns the letter indicator for an issue type.
+func GetTypeIndicator(t beads.IssueType) string {
+	switch t {
+	case beads.TypeBug:
+		return "[B]"
+	case beads.TypeFeature:
+		return "[F]"
+	case beads.TypeTask:
+		return "[T]"
+	case beads.TypeEpic:
+		return "[E]"
+	case beads.TypeChore:
+		return "[C]"
+	default:
+		return "[?]"
+	}
+}
+
+// GetTypeStyle returns the style for an issue type.
+func GetTypeStyle(t beads.IssueType) lipgloss.Style {
+	switch t {
+	case beads.TypeBug:
+		return TypeBugStyle
+	case beads.TypeFeature:
+		return TypeFeatureStyle
+	case beads.TypeTask:
+		return TypeTaskStyle
+	case beads.TypeEpic:
+		return TypeEpicStyle
+	case beads.TypeChore:
+		return TypeChoreStyle
+	default:
+		return lipgloss.NewStyle()
+	}
+}
+
+// GetPriorityStyle returns the style for a priority level.
+func GetPriorityStyle(p beads.Priority) lipgloss.Style {
+	switch p {
+	case beads.PriorityCritical:
+		return PriorityCriticalStyle
+	case beads.PriorityHigh:
+		return PriorityHighStyle
+	case beads.PriorityMedium:
+		return PriorityMediumStyle
+	case beads.PriorityLow:
+		return PriorityLowStyle
+	case beads.PriorityBacklog:
+		return PriorityBacklogStyle
+	default:
+		return lipgloss.NewStyle()
+	}
+}
 
 // Legacy ApplyTheme with simple signature is now in apply.go
 // The new ApplyTheme(cfg ThemeConfig) provides full theme support.

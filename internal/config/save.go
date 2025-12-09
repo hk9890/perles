@@ -201,11 +201,37 @@ func buildColumnsNode(columns []ColumnConfig) *yaml.Node {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: col.Name},
 		)
 
-		// Always include query
-		colNode.Content = append(colNode.Content,
-			&yaml.Node{Kind: yaml.ScalarNode, Value: "query"},
-			&yaml.Node{Kind: yaml.ScalarNode, Value: col.Query},
-		)
+		// Include type if it's "tree" (bql is default, omit for backward compatibility)
+		if col.Type == "tree" {
+			colNode.Content = append(colNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "type"},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: col.Type},
+			)
+		}
+
+		// Include query only for BQL columns (type empty or "bql")
+		if col.Type == "" || col.Type == "bql" {
+			colNode.Content = append(colNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "query"},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: col.Query},
+			)
+		}
+
+		// Include issue_id for tree columns
+		if col.Type == "tree" && col.IssueID != "" {
+			colNode.Content = append(colNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "issue_id"},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: col.IssueID},
+			)
+		}
+
+		// Include tree_mode for tree columns if not default ("deps")
+		if col.Type == "tree" && col.TreeMode != "" && col.TreeMode != "deps" {
+			colNode.Content = append(colNode.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: "tree_mode"},
+				&yaml.Node{Kind: yaml.ScalarNode, Value: col.TreeMode},
+			)
+		}
 
 		if col.Color != "" {
 			colNode.Content = append(colNode.Content,

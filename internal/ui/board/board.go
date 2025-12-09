@@ -28,7 +28,7 @@ const (
 // View represents a named collection of columns.
 type View struct {
 	name    string
-	columns []Column
+	columns []BoardColumn
 	configs []config.ColumnConfig
 	loaded  bool // true if this view has been loaded at least once
 }
@@ -40,7 +40,7 @@ type Model struct {
 	currentView int    // index of active view
 
 	// Active view's columns (for backward compatibility)
-	columns  []Column
+	columns  []BoardColumn
 	configs  []config.ColumnConfig
 	executor *bql.Executor // BQL executor for column loading
 	focused  int
@@ -61,7 +61,7 @@ func NewFromConfig(configs []config.ColumnConfig) Model {
 
 // NewFromConfigWithExecutor creates a board with columns that can self-load via BQL.
 func NewFromConfigWithExecutor(configs []config.ColumnConfig, executor *bql.Executor) Model {
-	columns := make([]Column, len(configs))
+	columns := make([]BoardColumn, len(configs))
 
 	for i, cfg := range configs {
 		// Extract primary status from Query for column rendering
@@ -95,15 +95,25 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 	views := make([]View, len(viewConfigs))
 
 	for i, vc := range viewConfigs {
-		columns := make([]Column, len(vc.Columns))
+		columns := make([]BoardColumn, len(vc.Columns))
 		for j, cc := range vc.Columns {
-			primaryStatus := extractPrimaryStatus(cc.Query)
-			col := NewColumnWithExecutor(cc.Name, cc.Query, executor)
-			col.status = primaryStatus
-			if cc.Color != "" {
-				col = col.SetColor(lipgloss.Color(cc.Color))
+			if cc.Type == "tree" {
+				// Create TreeColumn for tree type
+				treeCol := NewTreeColumn(cc.Name, cc.IssueID, cc.TreeMode, executor)
+				if cc.Color != "" {
+					treeCol = treeCol.SetColor(lipgloss.Color(cc.Color))
+				}
+				columns[j] = treeCol
+			} else {
+				// Default: BQL column (existing logic)
+				primaryStatus := extractPrimaryStatus(cc.Query)
+				col := NewColumnWithExecutor(cc.Name, cc.Query, executor)
+				col.status = primaryStatus
+				if cc.Color != "" {
+					col = col.SetColor(lipgloss.Color(cc.Color))
+				}
+				columns[j] = col
 			}
-			columns[j] = col
 		}
 		views[i] = View{
 			name:    vc.Name,
@@ -115,7 +125,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor *bql.Executor) Model
 
 	// Default focus to second column (Ready equivalent) or first
 	focusIdx := 0
-	var columns []Column
+	var columns []BoardColumn
 	var configs []config.ColumnConfig
 	if len(views) > 0 {
 		columns = views[0].columns
@@ -172,7 +182,7 @@ func (m Model) SelectedIssue() *beads.Issue {
 	if m.focused < 0 || m.focused >= len(m.columns) {
 		return nil
 	}
-	return m.columns[m.focused].SelectedItem()
+	return m.columns[m.focused].SelectedIssue()
 }
 
 // FocusedColumn returns the currently focused column index.
@@ -191,22 +201,36 @@ func (m Model) SetFocus(col int) Model {
 // SelectByID finds an issue by ID across all columns and selects it.
 // Returns the model and true if found, false otherwise.
 func (m Model) SelectByID(id string) (Model, bool) {
-	// Search all columns for the issue
+	// Search all columns for the issue (only works for BQL columns)
 	for i := range m.columns {
-		col, found := m.columns[i].SelectByID(id)
-		if found {
-			m.columns[i] = col
-			m.focused = i
-			return m, true
+		if col, ok := m.columns[i].(Column); ok {
+			col, found := col.SelectByID(id)
+			if found {
+				m.columns[i] = col
+				m.focused = i
+				return m, true
+			}
 		}
 	}
 	return m, false
 }
 
-// Column returns the column at the given index.
+// Column returns the column at the given index (type asserted to Column).
+// Returns empty Column if index is out of range or column is not a BQL column.
 func (m Model) Column(idx int) Column {
 	if idx < 0 || idx >= len(m.columns) {
 		return Column{}
+	}
+	if col, ok := m.columns[idx].(Column); ok {
+		return col
+	}
+	return Column{}
+}
+
+// BoardColumn returns the BoardColumn interface at the given index.
+func (m Model) BoardColumn(idx int) BoardColumn {
+	if idx < 0 || idx >= len(m.columns) {
+		return nil
 	}
 	return m.columns[idx]
 }
@@ -214,7 +238,7 @@ func (m Model) Column(idx int) Column {
 // IsEmpty returns true if all columns have no items.
 func (m Model) IsEmpty() bool {
 	for _, col := range m.columns {
-		if len(col.Items()) > 0 {
+		if !col.IsEmpty() {
 			return false
 		}
 	}
@@ -311,8 +335,7 @@ func (m Model) LoadCurrentViewCmd() tea.Cmd {
 	cmds := make([]tea.Cmd, 0, len(view.columns))
 
 	for i := range m.columns {
-		m.columns[i] = m.columns[i].SetLoading(true)
-		if cmd := m.columns[i].LoadIssuesCmdForView(m.currentView); cmd != nil {
+		if cmd := m.columns[i].LoadCmd(m.currentView); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -337,9 +360,8 @@ func (m Model) InvalidateViews() Model {
 func (m Model) LoadAllColumns() tea.Cmd {
 	var cmds []tea.Cmd
 	for i := range m.columns {
-		m.columns[i] = m.columns[i].SetLoading(true)
 		// Use current view index so messages aren't filtered out
-		if cmd := m.columns[i].LoadIssuesCmdForView(m.currentView); cmd != nil {
+		if cmd := m.columns[i].LoadCmd(m.currentView); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -358,18 +380,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil // Ignore stale messages from other views
 		}
 
-		// Find the column by title and update it
+		// Find the column by title and update it using HandleLoaded
 		for i := range m.columns {
-			if m.columns[i].title == msg.ColumnTitle {
-				m.columns[i] = m.columns[i].SetLoading(false)
-				if msg.Err != nil {
-					// Store error in column (loadError field)
-					m.columns[i].loadError = msg.Err
-				} else {
-					m.columns[i] = m.columns[i].SetItems(msg.Issues)
-				}
-				break
-			}
+			// Use Title() but strip count suffix for comparison
+			// BQL columns include count in Title(), so compare with msg.ColumnTitle
+			col := m.columns[i]
+			// HandleLoaded will only update if it's the right message type
+			m.columns[i] = col.HandleLoaded(msg)
+		}
+
+		// Mark view as loaded
+		if len(m.views) > 0 && m.currentView < len(m.views) {
+			m.views[m.currentView].loaded = true
+			// Also sync columns back to view (columns slice is a copy)
+			m.views[m.currentView].columns = m.columns
+		}
+
+		return m, nil
+
+	case TreeColumnLoadedMsg:
+		// Only update if this message is for our current view (or no views configured)
+		if len(m.views) > 0 && msg.ViewIndex != m.currentView {
+			return m, nil // Ignore stale messages from other views
+		}
+
+		// Find the tree column by title and update it using HandleLoaded
+		for i := range m.columns {
+			col := m.columns[i]
+			// HandleLoaded will only update if it's the right message type
+			m.columns[i] = col.HandleLoaded(msg)
 		}
 
 		// Mark view as loaded
@@ -395,11 +434,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "j", "down", "k", "up":
+		case "j", "down", "k", "up", "m":
+			// Pass navigation and mode toggle keys to focused column
 			if m.focused >= 0 && m.focused < len(m.columns) {
-				col := m.columns[m.focused]
-				col, _ = col.Update(msg)
+				col, cmd := m.columns[m.focused].Update(msg)
 				m.columns[m.focused] = col
+				return m, cmd
 			}
 			return m, nil
 		}
@@ -432,8 +472,8 @@ func (m Model) View() string {
 		rendered := styles.RenderWithTitleBorder(
 			col.View(),
 			col.Title(),
-			"",
-			col.width,
+			col.RightTitle(),
+			col.Width(),
 			contentHeight,
 			isFocused,
 			colColor,

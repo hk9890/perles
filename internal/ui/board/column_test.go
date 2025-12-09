@@ -77,15 +77,15 @@ func TestColumn_SelectByID_NotFound(t *testing.T) {
 
 func TestColumn_SetFocused(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	c = c.SetFocused(true)
+	c = c.SetFocused(true).(Column)
 	require.True(t, *c.focused, "expected column to be focused")
-	c = c.SetFocused(false)
+	c = c.SetFocused(false).(Column)
 	require.False(t, *c.focused, "expected column to be unfocused")
 }
 
 func TestColumn_SetSize(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	c = c.SetSize(50, 20)
+	c = c.SetSize(50, 20).(Column)
 	require.Equal(t, 50, c.width)
 	require.Equal(t, 20, c.height)
 }
@@ -98,7 +98,7 @@ func TestColumn_Title_Empty(t *testing.T) {
 
 func TestColumn_View_Empty(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	c = c.SetSize(30, 10)
+	c = c.SetSize(30, 10).(Column)
 	view := c.View()
 	require.Contains(t, view, "No issues")
 }
@@ -116,7 +116,7 @@ func TestColumn_Title_WithItems(t *testing.T) {
 
 func TestColumn_View_WithItems(t *testing.T) {
 	c := NewColumn("Ready", beads.StatusOpen)
-	c = c.SetSize(50, 20)
+	c = c.SetSize(50, 20).(Column)
 	issues := []beads.Issue{
 		{ID: "bd-1", TitleText: "Issue 1", Priority: beads.PriorityHigh, Type: beads.TypeTask},
 		{ID: "bd-2", TitleText: "Issue 2", Priority: beads.PriorityMedium, Type: beads.TypeBug},
@@ -129,10 +129,10 @@ func TestColumn_View_WithItems(t *testing.T) {
 
 func TestColumn_SetShowCounts(t *testing.T) {
 	c := NewColumn("Test", beads.StatusOpen)
-	c = c.SetShowCounts(false)
+	c = c.SetShowCounts(false).(Column)
 	require.NotNil(t, c.showCounts)
 	require.False(t, *c.showCounts, "expected showCounts to be false")
-	c = c.SetShowCounts(true)
+	c = c.SetShowCounts(true).(Column)
 	require.True(t, *c.showCounts, "expected showCounts to be true")
 }
 
@@ -143,7 +143,7 @@ func TestColumn_Title_ShowCountsFalse(t *testing.T) {
 		{ID: "bd-2", TitleText: "Issue 2"},
 	}
 	c = c.SetItems(issues)
-	c = c.SetShowCounts(false)
+	c = c.SetShowCounts(false).(Column)
 	title := c.Title()
 	// Should show just title without count
 	require.Equal(t, "Ready", title)
@@ -156,7 +156,7 @@ func TestColumn_Title_ShowCountsTrue(t *testing.T) {
 		{ID: "bd-2", TitleText: "Issue 2"},
 	}
 	c = c.SetItems(issues)
-	c = c.SetShowCounts(true)
+	c = c.SetShowCounts(true).(Column)
 	title := c.Title()
 	// Should show title with count
 	require.Equal(t, "Ready (2)", title)
@@ -182,7 +182,8 @@ func TestColumn_Update_NavigateDown(t *testing.T) {
 	}
 	c = c.SetItems(issues)
 
-	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	updated, _ := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	c = updated.(Column)
 	selected := c.SelectedItem()
 	require.NotNil(t, selected)
 	require.Equal(t, "bd-2", selected.ID, "expected bd-2 after down navigation")
@@ -197,9 +198,11 @@ func TestColumn_Update_NavigateUp(t *testing.T) {
 	c = c.SetItems(issues)
 
 	// Navigate down first
-	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	updated, _ := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	c = updated.(Column)
 	// Then up
-	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	updated, _ = c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	c = updated.(Column)
 	selected := c.SelectedItem()
 	require.NotNil(t, selected)
 	require.Equal(t, "bd-1", selected.ID, "expected bd-1 after up navigation")
@@ -220,14 +223,14 @@ func TestColumn_Items(t *testing.T) {
 // TestColumn_View_Golden uses teatest golden file comparison
 // Run with -update flag to update golden files: go test -update ./internal/ui/board/...
 func TestColumn_View_Golden(t *testing.T) {
-	c := NewColumn("Ready", beads.StatusOpen).SetSize(30, 15)
+	c := NewColumn("Ready", beads.StatusOpen).SetSize(30, 15).(Column)
 	view := c.View()
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
 // TestColumn_View_WithIssues_Golden tests column with sample issues
 func TestColumn_View_WithIssues_Golden(t *testing.T) {
-	c := NewColumn("Ready", beads.StatusOpen).SetSize(30, 15).SetFocused(true)
+	c := NewColumn("Ready", beads.StatusOpen).SetSize(30, 15).(Column).SetFocused(true).(Column)
 	issues := []beads.Issue{
 		{ID: "bd-1", TitleText: "First Issue", Priority: beads.PriorityHigh, Type: beads.TypeBug},
 		{ID: "bd-2", TitleText: "Second Issue", Priority: beads.PriorityMedium, Type: beads.TypeTask},
@@ -260,21 +263,6 @@ func TestColumn_SetExecutor(t *testing.T) {
 	// We can't easily create a real executor without a DB, so just test the setter
 	c = c.SetExecutor(nil)
 	require.Nil(t, c.executor)
-}
-
-func TestColumn_LoadingState(t *testing.T) {
-	c := NewColumn("Test", beads.StatusOpen)
-
-	// Default should be not loading
-	require.False(t, c.IsLoading())
-
-	// Set loading
-	c = c.SetLoading(true)
-	require.True(t, c.IsLoading())
-
-	// Clear loading
-	c = c.SetLoading(false)
-	require.False(t, c.IsLoading())
 }
 
 func TestColumn_LoadError(t *testing.T) {

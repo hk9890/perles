@@ -9,7 +9,6 @@ import (
 
 	"perles/internal/beads"
 	"perles/internal/bql"
-	"perles/internal/ui/board"
 	"perles/internal/ui/shared/modal"
 	"perles/internal/ui/styles"
 )
@@ -65,10 +64,10 @@ func CreateDeleteModal(issue *beads.Issue, loader IssueLoader) (modal.Model, boo
 		issueIdStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
 		for _, childID := range issue.Children {
 			if child, ok := childIssues[childID]; ok {
-				typeText := board.GetTypeIndicator(child.Type)
-				typeStyle := board.GetTypeStyle(child.Type)
+				typeText := styles.GetTypeIndicator(child.Type)
+				typeStyle := styles.GetTypeStyle(child.Type)
 				priorityText := fmt.Sprintf("[P%d]", child.Priority)
-				priorityStyle := board.GetPriorityStyle(child.Priority)
+				priorityStyle := styles.GetPriorityStyle(child.Priority)
 				idText := fmt.Sprintf("[%s]", childID)
 
 				line := fmt.Sprintf("  %s%s%s %s\n",

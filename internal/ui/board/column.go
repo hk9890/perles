@@ -13,6 +13,50 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// BoardColumn defines the interface for board columns (BQL or Tree).
+// This enables polymorphic handling of different column types.
+type BoardColumn interface {
+	// Title returns the column title (with optional count).
+	Title() string
+
+	// RightTitle returns an optional right-aligned title (e.g., progress bar).
+	// Return empty string if no right title is needed.
+	RightTitle() string
+
+	// View renders the column content.
+	View() string
+
+	// SetSize updates column dimensions and returns the updated column.
+	SetSize(width, height int) BoardColumn
+
+	// SetFocused sets whether this column is focused.
+	SetFocused(focused bool) BoardColumn
+
+	// Color returns the column's border/title color.
+	Color() lipgloss.TerminalColor
+
+	// Width returns the column's width for rendering.
+	Width() int
+
+	// LoadCmd returns a tea.Cmd that loads data asynchronously.
+	LoadCmd(viewIndex int) tea.Cmd
+
+	// HandleLoaded processes a load message and returns the updated column.
+	HandleLoaded(msg tea.Msg) BoardColumn
+
+	// SelectedIssue returns the currently selected issue, if any.
+	SelectedIssue() *beads.Issue
+
+	// Update handles messages and returns the updated column and any command.
+	Update(msg tea.Msg) (BoardColumn, tea.Cmd)
+
+	// SetShowCounts sets whether to display counts in the column title.
+	SetShowCounts(show bool) BoardColumn
+
+	// IsEmpty returns true if the column has no items.
+	IsEmpty() bool
+}
+
 // issueDelegate is a custom delegate for rendering issues with priority colors and type indicators.
 type issueDelegate struct {
 	focused *bool // pointer to column's focused state
@@ -51,13 +95,13 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 
 	// Text content
 	priorityText := fmt.Sprintf("[P%d]", issue.Priority)
-	typeText := GetTypeIndicator(issue.Type)
+	typeText := styles.GetTypeIndicator(issue.Type)
 	issueId := fmt.Sprintf("[%s]", issue.ID)
 	issueTitle := issue.TitleText
 
 	// Component styles
-	priorityStyle := GetPriorityStyle(issue.Priority)
-	typeStyle := GetTypeStyle(issue.Type)
+	priorityStyle := styles.GetPriorityStyle(issue.Priority)
+	typeStyle := styles.GetTypeStyle(issue.Type)
 	issueIdStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
 
 	var line string
@@ -79,60 +123,6 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 	_, _ = fmt.Fprint(w, line)
 }
 
-// GetTypeIndicator returns the letter indicator for an issue type.
-func GetTypeIndicator(t beads.IssueType) string {
-	switch t {
-	case beads.TypeBug:
-		return "[B]"
-	case beads.TypeFeature:
-		return "[F]"
-	case beads.TypeTask:
-		return "[T]"
-	case beads.TypeEpic:
-		return "[E]"
-	case beads.TypeChore:
-		return "[C]"
-	default:
-		return "[?]"
-	}
-}
-
-// GetTypeStyle returns the style for an issue type.
-func GetTypeStyle(t beads.IssueType) lipgloss.Style {
-	switch t {
-	case beads.TypeBug:
-		return styles.TypeBugStyle
-	case beads.TypeFeature:
-		return styles.TypeFeatureStyle
-	case beads.TypeTask:
-		return styles.TypeTaskStyle
-	case beads.TypeEpic:
-		return styles.TypeEpicStyle
-	case beads.TypeChore:
-		return styles.TypeChoreStyle
-	default:
-		return lipgloss.NewStyle()
-	}
-}
-
-// GetPriorityStyle returns the style for a priority level.
-func GetPriorityStyle(p beads.Priority) lipgloss.Style {
-	switch p {
-	case beads.PriorityCritical:
-		return styles.PriorityCriticalStyle
-	case beads.PriorityHigh:
-		return styles.PriorityHighStyle
-	case beads.PriorityMedium:
-		return styles.PriorityMediumStyle
-	case beads.PriorityLow:
-		return styles.PriorityLowStyle
-	case beads.PriorityBacklog:
-		return styles.PriorityBacklogStyle
-	default:
-		return lipgloss.NewStyle()
-	}
-}
-
 // Column represents a single kanban column.
 type Column struct {
 	title      string
@@ -148,7 +138,6 @@ type Column struct {
 	// BQL self-loading fields
 	executor  *bql.Executor // BQL executor for loading issues
 	query     string        // BQL query for this column
-	loading   bool          // true while loading issues
 	loadError error         // error from last load attempt
 }
 
@@ -200,12 +189,10 @@ func (c Column) LoadIssues() Column {
 	issues, err := c.executor.Execute(c.query)
 	if err != nil {
 		c.loadError = err
-		c.loading = false
 		return c
 	}
 
 	c.loadError = nil
-	c.loading = false
 	return c.SetItems(issues)
 }
 
@@ -217,6 +204,12 @@ func (c Column) LoadIssuesCmd() tea.Cmd {
 
 // LoadIssuesCmdForView loads issues and includes view index in the message.
 func (c Column) LoadIssuesCmdForView(viewIndex int) tea.Cmd {
+	return c.LoadCmd(viewIndex)
+}
+
+// LoadCmd returns a tea.Cmd that loads data asynchronously.
+// Implements BoardColumn interface.
+func (c Column) LoadCmd(viewIndex int) tea.Cmd {
 	if c.executor == nil || c.query == "" {
 		return nil
 	}
@@ -237,15 +230,26 @@ func (c Column) LoadIssuesCmdForView(viewIndex int) tea.Cmd {
 	}
 }
 
-// SetLoading sets the loading state of the column.
-func (c Column) SetLoading(loading bool) Column {
-	c.loading = loading
-	return c
-}
+// HandleLoaded processes a load message and returns the updated column.
+// Implements BoardColumn interface.
+func (c Column) HandleLoaded(msg tea.Msg) BoardColumn {
+	loadedMsg, ok := msg.(ColumnLoadedMsg)
+	if !ok {
+		return c
+	}
 
-// IsLoading returns true if the column is currently loading.
-func (c Column) IsLoading() bool {
-	return c.loading
+	// Only handle messages for this column
+	if loadedMsg.ColumnTitle != c.title {
+		return c
+	}
+
+	if loadedMsg.Err != nil {
+		c.loadError = loadedMsg.Err
+		return c
+	}
+
+	c.loadError = nil
+	return c.SetItems(loadedMsg.Issues)
 }
 
 // LoadError returns the error from the last load attempt, if any.
@@ -271,7 +275,7 @@ func (c Column) SetExecutor(executor *bql.Executor) Column {
 }
 
 // SetSize updates column dimensions.
-func (c Column) SetSize(width, height int) Column {
+func (c Column) SetSize(width, height int) BoardColumn {
 	c.width = width
 	c.height = height
 
@@ -284,7 +288,7 @@ func (c Column) SetSize(width, height int) Column {
 }
 
 // SetFocused sets whether this column is focused.
-func (c Column) SetFocused(focused bool) Column {
+func (c Column) SetFocused(focused bool) BoardColumn {
 	*c.focused = focused
 	return c
 }
@@ -301,7 +305,8 @@ func (c Column) SetItems(issues []beads.Issue) Column {
 }
 
 // SetShowCounts sets whether to display counts in the column title.
-func (c Column) SetShowCounts(show bool) Column {
+// Implements BoardColumn interface.
+func (c Column) SetShowCounts(show bool) BoardColumn {
 	if c.showCounts == nil {
 		c.showCounts = new(bool)
 	}
@@ -318,9 +323,21 @@ func (c Column) SelectedItem() *beads.Issue {
 	return nil
 }
 
+// SelectedIssue returns the currently selected issue.
+// Implements BoardColumn interface.
+func (c Column) SelectedIssue() *beads.Issue {
+	return c.SelectedItem()
+}
+
 // Items returns all issues in the column.
 func (c Column) Items() []beads.Issue {
 	return c.items
+}
+
+// IsEmpty returns true if the column has no items.
+// Implements BoardColumn interface.
+func (c Column) IsEmpty() bool {
+	return len(c.items) == 0
 }
 
 // SelectByID selects the issue with the given ID. Returns true if found.
@@ -335,7 +352,7 @@ func (c Column) SelectByID(id string) (Column, bool) {
 }
 
 // Update handles messages.
-func (c Column) Update(msg tea.Msg) (Column, tea.Cmd) {
+func (c Column) Update(msg tea.Msg) (BoardColumn, tea.Cmd) {
 	var cmd tea.Cmd
 	c.list, cmd = c.list.Update(msg)
 	return c, cmd
@@ -349,6 +366,12 @@ func (c Column) Title() string {
 		return c.title
 	}
 	return fmt.Sprintf("%s (%d)", c.title, len(c.items))
+}
+
+// RightTitle returns an optional right-aligned title.
+// BQL columns don't use a right title, so this returns empty string.
+func (c Column) RightTitle() string {
+	return ""
 }
 
 // View renders the column content (without border - border applied by board).
@@ -375,4 +398,10 @@ func (c Column) Color() lipgloss.TerminalColor {
 		return styles.BorderDefaultColor // Default fallback
 	}
 	return c.color
+}
+
+// Width returns the column's width for rendering.
+// Implements BoardColumn interface.
+func (c Column) Width() int {
+	return c.width
 }

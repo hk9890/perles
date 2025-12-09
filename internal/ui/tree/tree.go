@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"perles/internal/beads"
-	"perles/internal/ui/board"
 	"perles/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
@@ -162,6 +161,26 @@ func (m *Model) ToggleMode() {
 	}
 }
 
+// Rebuild reconstructs the tree from existing data with current direction/mode.
+// Call this after SetDirection or ToggleMode to apply the changes.
+func (m *Model) Rebuild() error {
+	if m.root == nil {
+		return nil
+	}
+	rootID := m.root.Issue.ID
+	root, err := BuildTree(m.issueMap, rootID, m.direction, m.mode)
+	if err != nil {
+		return err
+	}
+	m.root = root
+	m.nodes = root.Flatten()
+	// Try to preserve cursor position, clamp if needed
+	if m.cursor >= len(m.nodes) {
+		m.cursor = max(len(m.nodes)-1, 0)
+	}
+	return nil
+}
+
 // Refocus sets a new root and pushes current root to stack.
 func (m *Model) Refocus(newRootID string) error {
 	if m.root != nil {
@@ -309,10 +328,10 @@ func (m *Model) renderNode(node *TreeNode, isLast bool, isSelected bool) string 
 	sb.WriteString(prefix)
 
 	// Type and priority badges
-	typeText := board.GetTypeIndicator(node.Issue.Type)
-	typeStyle := board.GetTypeStyle(node.Issue.Type)
+	typeText := styles.GetTypeIndicator(node.Issue.Type)
+	typeStyle := styles.GetTypeStyle(node.Issue.Type)
 	priorityText := fmt.Sprintf("[P%d]", node.Issue.Priority)
-	priorityStyle := board.GetPriorityStyle(node.Issue.Priority)
+	priorityStyle := styles.GetPriorityStyle(node.Issue.Priority)
 
 	sb.WriteString(typeStyle.Render(typeText))
 	sb.WriteString(priorityStyle.Render(priorityText))

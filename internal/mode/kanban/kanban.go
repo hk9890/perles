@@ -190,6 +190,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case board.ColumnLoadedMsg:
 		return m.handleColumnLoaded(msg)
 
+	case board.TreeColumnLoadedMsg:
+		// Delegate tree column load messages to board
+		m.board, _ = m.board.Update(msg)
+		m.loading = false
+		return m, nil
+
 	case statusChangedMsg:
 		return m.handleStatusChanged(msg)
 

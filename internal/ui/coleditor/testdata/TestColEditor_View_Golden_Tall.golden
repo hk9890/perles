@@ -5,7 +5,11 @@
 │Ready                                                                  │  │  1 issues match current filters                       
 ╰───────────────────────────────────────────────────────────────────────╯  │                                                       
                                                                            │  ╭─ Ready (1) ─────────────────────────────────────╮  
-╭─ Color ───────────────────────────────────────────────────────────────╮  │  │>[?][P1][bd-1] First task                        │  
+╭─ Type ────────────────────────────────────────────────────────────────╮  │  │>[?][P1][bd-1] First task                        │  
+│● BQL Query    ○ Tree View [←/→ to switch]                             │  │  │                                                 │  
+╰───────────────────────────────────────────────────────────────────────╯  │  │                                                 │  
+                                                                           │  │                                                 │  
+╭─ Color ───────────────────────────────────────────────────────────────╮  │  │                                                 │  
 │    #73F59F [Enter to change]                                          │  │  │                                                 │  
 ╰───────────────────────────────────────────────────────────────────────╯  │  │                                                 │  
                                                                            │  │                                                 │  
@@ -19,11 +23,11 @@
                                                                            │  │                                                 │  
 BQL Query Help                                                             │  │                                                 │  
                                                                            │  │                                                 │  
-BQL Fields                                   BQL Operators                 │  │                                                 │  
-status    open, in_progress, closed          =  !=   equality              │  │                                                 │  
-type      bug, feature, task, epic, chore    <  >    comparison            │  │                                                 │  
-priority  p0, p1, p2, p3, p4                 ~  !~   contains              │  │                                                 │  
-blocked   true, false                        in      match any             │  ╰─────────────────────────────────────────────────╯  
+BQL Fields                                   BQL Operators                 │  ╰─────────────────────────────────────────────────╯  
+status    open, in_progress, closed          =  !=   equality              │                                                       
+type      bug, feature, task, epic, chore    <  >    comparison            │                                                       
+priority  p0, p1, p2, p3, p4                 ~  !~   contains              │                                                       
+blocked   true, false                        in      match any             │                                                       
 ready     true, false                        and or  logical               │                                                       
 label     string (use ~ for contains)        not     negation              │                                                       
 title     string (use ~ for contains)                                      │                                                       
@@ -42,10 +46,6 @@ not blocked and priority = p0                                              │
 type = epic expand down                                                    │                                                       
 type = epic expand down depth *                                            │                                                       
 id = x expand up                                                           │                                                       
-                                                                           │                                                       
-                                                                           │                                                       
-                                                                           │                                                       
-                                                                           │                                                       
                                                                            │                                                       
                                                                            │                                                       
                                                                                                                                    

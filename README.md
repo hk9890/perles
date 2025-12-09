@@ -5,8 +5,16 @@ A terminal-based search and kanban board for [beads](https://github.com/steveyeg
 
 ## Kanban Board
 
+### Single BQL Columns
+
 <p align="center">
   <img src="./assets/board.png" width="1440" alt="board">
+</p>
+
+### Mixed Dependency and BQL Columns
+
+<p align="center">
+  <img src="./assets/multiple-column-types.png" width="1440" alt="board">
 </p>
 
 ## Search

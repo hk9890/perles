@@ -1174,3 +1174,137 @@ func TestRenameView_OutOfRange(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
 }
+
+func TestSaveColumns_TreeColumnType(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".perles.yaml")
+
+	// Create columns with tree type
+	columns := []ColumnConfig{
+		{Name: "BQL Column", Type: "bql", Query: "status = open", Color: "#FF0000"},
+		{Name: "Tree Column", Type: "tree", IssueID: "perles-123", TreeMode: "deps", Color: "#00FF00"},
+		{Name: "Tree Child", Type: "tree", IssueID: "perles-456", TreeMode: "child"},
+	}
+
+	err := SaveColumns(configPath, columns)
+	require.NoError(t, err)
+
+	// Verify file content
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	content := string(data)
+
+	// BQL column should have query, no type (backward compat)
+	require.Contains(t, content, "name: BQL Column")
+	require.Contains(t, content, "query: status = open")
+
+	// Tree column should have type and issue_id
+	require.Contains(t, content, "name: Tree Column")
+	require.Contains(t, content, "type: tree")
+	require.Contains(t, content, "issue_id: perles-123")
+
+	// Tree child should have tree_mode: child (not default)
+	require.Contains(t, content, "tree_mode: child")
+
+	// Load and verify roundtrip
+	v := viper.New()
+	v.SetConfigFile(configPath)
+	err = v.ReadInConfig()
+	require.NoError(t, err)
+
+	var loaded []ViewConfig
+	err = v.UnmarshalKey("views", &loaded)
+	require.NoError(t, err)
+
+	require.Len(t, loaded, 1)
+	require.Len(t, loaded[0].Columns, 3)
+
+	// Verify BQL column
+	require.Equal(t, "BQL Column", loaded[0].Columns[0].Name)
+	require.Equal(t, "status = open", loaded[0].Columns[0].Query)
+	require.Equal(t, "#FF0000", loaded[0].Columns[0].Color)
+
+	// Verify Tree column
+	require.Equal(t, "Tree Column", loaded[0].Columns[1].Name)
+	require.Equal(t, "tree", loaded[0].Columns[1].Type)
+	require.Equal(t, "perles-123", loaded[0].Columns[1].IssueID)
+	require.Equal(t, "#00FF00", loaded[0].Columns[1].Color)
+
+	// Verify Tree child column
+	require.Equal(t, "Tree Child", loaded[0].Columns[2].Name)
+	require.Equal(t, "tree", loaded[0].Columns[2].Type)
+	require.Equal(t, "perles-456", loaded[0].Columns[2].IssueID)
+	require.Equal(t, "child", loaded[0].Columns[2].TreeMode)
+}
+
+func TestSaveColumns_TreeColumnOmitsQuery(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".perles.yaml")
+
+	// Tree column should not have query field in YAML
+	columns := []ColumnConfig{
+		{Name: "Tree Only", Type: "tree", IssueID: "test-1"},
+	}
+
+	err := SaveColumns(configPath, columns)
+	require.NoError(t, err)
+
+	// Read raw YAML and check there's no query field for tree columns
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	content := string(data)
+
+	require.Contains(t, content, "name: Tree Only")
+	require.Contains(t, content, "type: tree")
+	require.Contains(t, content, "issue_id: test-1")
+	// Should NOT contain query for tree columns
+	require.NotContains(t, content, "query:")
+}
+
+func TestSaveColumns_TreeColumnOmitsDefaultMode(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".perles.yaml")
+
+	// Tree column with default mode should not include tree_mode in YAML
+	columns := []ColumnConfig{
+		{Name: "Tree Deps", Type: "tree", IssueID: "test-1", TreeMode: "deps"},
+		{Name: "Tree Empty Mode", Type: "tree", IssueID: "test-2", TreeMode: ""},
+	}
+
+	err := SaveColumns(configPath, columns)
+	require.NoError(t, err)
+
+	// Read raw YAML
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	content := string(data)
+
+	// Should NOT contain tree_mode field (deps is default, empty should be omitted)
+	require.NotContains(t, content, "tree_mode:")
+}
+
+func TestSaveColumns_BQLColumnBackwardCompatibility(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".perles.yaml")
+
+	// BQL columns (type empty or "bql") should not include type field for backward compatibility
+	columns := []ColumnConfig{
+		{Name: "No Type", Query: "status = open"},              // Type empty
+		{Name: "BQL Type", Type: "bql", Query: "ready = true"}, // Type explicitly bql
+	}
+
+	err := SaveColumns(configPath, columns)
+	require.NoError(t, err)
+
+	// Read raw YAML
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	content := string(data)
+
+	// Should have queries
+	require.Contains(t, content, "query: status = open")
+	require.Contains(t, content, "query: ready = true")
+
+	// Should NOT have type field for BQL columns
+	require.NotContains(t, content, "type:")
+}

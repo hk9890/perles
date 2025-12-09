@@ -11,6 +11,7 @@ import (
 	"perles/internal/ui/shared/colorpicker"
 	"perles/internal/ui/shared/modal"
 	"perles/internal/ui/styles"
+	"perles/internal/ui/tree"
 	"regexp"
 	"strings"
 
@@ -35,8 +36,11 @@ type Field int
 
 const (
 	FieldName Field = iota
+	FieldType       // Type selector: BQL Query or Tree View
 	FieldColor
-	FieldQuery
+	FieldQuery    // BQL query input (shown when type=bql)
+	FieldIssueID  // Issue ID input (shown when type=tree)
+	FieldTreeMode // Tree mode selector (shown when type=tree)
 	FieldSave
 	FieldDelete
 	fieldCount
@@ -72,9 +76,12 @@ type Model struct {
 	isBlockedColumn bool                  // Whether this column uses blocked logic
 
 	// Form inputs
-	nameInput  textinput.Model
-	queryInput bqlinput.Model
-	colorValue string // Stores the current color hex value
+	nameInput    textinput.Model
+	columnType   string // "bql" (default) or "tree"
+	queryInput   bqlinput.Model
+	issueIDInput textinput.Model
+	treeMode     string // "deps" (default) or "children" - for tree columns
+	colorValue   string // Stores the current color hex value
 
 	// Color picker overlay
 	showColorPicker bool
@@ -94,6 +101,10 @@ type Model struct {
 	// Preview data - actual issues from the column for realistic preview
 	previewIssues []beads.Issue
 	executor      QueryExecutor // BQL executor for preview queries
+
+	// Tree preview for tree column type
+	treeIssueMap map[string]*beads.Issue // Loaded issues for tree preview
+	treeRootID   string                  // Root issue ID for tree preview
 
 	// Validation error message (shown when save attempted with invalid state)
 	validationError string
@@ -115,10 +126,28 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor QueryExecut
 	nameInput.Prompt = ""
 	nameInput.Focus()
 
+	// Determine column type from config
+	columnType := cfg.Type
+	if columnType == "" {
+		columnType = "bql" // Default to BQL
+	}
+
+	// Determine tree mode from config
+	treeMode := cfg.TreeMode
+	if treeMode == "" {
+		treeMode = "deps" // Default to deps mode
+	}
+
 	queryInput := bqlinput.New()
 	queryInput.SetValue(cfg.Query)
 	queryInput.SetWidth(49)
 	queryInput.SetPlaceholder("status = open and ready = true")
+
+	issueIDInput := textinput.New()
+	issueIDInput.SetValue(cfg.IssueID)
+	issueIDInput.CharLimit = 50
+	issueIDInput.Prompt = ""
+	issueIDInput.Placeholder = "perles-123"
 
 	// Initialize color picker
 	picker := colorpicker.New().SetSelected(cfg.Color)
@@ -134,7 +163,10 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor QueryExecut
 		allColumns:      allColumns,
 		isBlockedColumn: isBlocked,
 		nameInput:       nameInput,
+		columnType:      columnType,
 		queryInput:      queryInput,
+		issueIDInput:    issueIDInput,
+		treeMode:        treeMode,
 		colorValue:      cfg.Color,
 		colorPicker:     picker,
 		focused:         FieldName,
@@ -152,6 +184,7 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 	// Default config for new column
 	cfg := config.ColumnConfig{
 		Name:  "",
+		Type:  "bql", // Default to BQL
 		Query: "status = open",
 		Color: "#AABBCC", // Neutral default color
 	}
@@ -168,6 +201,12 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 	queryInput.SetWidth(49)
 	queryInput.SetPlaceholder("status = open and ready = true")
 
+	issueIDInput := textinput.New()
+	issueIDInput.SetValue("")
+	issueIDInput.CharLimit = 50
+	issueIDInput.Prompt = ""
+	issueIDInput.Placeholder = "perles-123"
+
 	// Initialize color picker with default color
 	picker := colorpicker.New().SetSelected(cfg.Color)
 
@@ -179,7 +218,10 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 		allColumns:      allColumns,
 		isBlockedColumn: false, // New columns are never the blocked column
 		nameInput:       nameInput,
+		columnType:      "bql",
 		queryInput:      queryInput,
+		issueIDInput:    issueIDInput,
+		treeMode:        "deps", // Default tree mode
 		colorValue:      cfg.Color,
 		colorPicker:     picker,
 		focused:         FieldName,
@@ -201,17 +243,27 @@ func (m Model) SetSize(width, height int) Model {
 	inputWidth := max(leftPanelWidth-6, 20) // Account for borders and padding
 	m.nameInput.Width = inputWidth
 	m.queryInput.SetWidth(inputWidth)
+	m.issueIDInput.Width = inputWidth
 
 	return m
 }
 
 // CurrentConfig builds a ColumnConfig from current form state.
 func (m Model) CurrentConfig() config.ColumnConfig {
-	return config.ColumnConfig{
+	cfg := config.ColumnConfig{
 		Name:  m.nameInput.Value(),
-		Query: m.queryInput.Value(),
+		Type:  m.columnType,
 		Color: m.colorValue,
 	}
+
+	if m.columnType == "tree" {
+		cfg.IssueID = m.issueIDInput.Value()
+		cfg.TreeMode = m.treeMode
+	} else {
+		cfg.Query = m.queryInput.Value()
+	}
+
+	return cfg
 }
 
 // updatePreview executes the BQL query and updates preview issues.
@@ -220,11 +272,41 @@ func (m Model) updatePreview() Model {
 
 	if m.executor == nil {
 		m.previewIssues = nil
+		m.treeIssueMap = nil
+		m.treeRootID = ""
 		return m
 	}
 
-	// Execute BQL query directly for accurate preview
-	// Empty query returns all non-deleted issues
+	if m.columnType == "tree" {
+		// For tree columns, load the issue tree
+		issueID := cfg.IssueID
+		if issueID == "" {
+			m.treeIssueMap = nil
+			m.treeRootID = ""
+			return m
+		}
+
+		// Execute expand query to get the tree
+		query := fmt.Sprintf(`id = "%s" expand down depth *`, issueID)
+		issues, err := m.executor.Execute(query)
+		if err != nil {
+			m.treeIssueMap = nil
+			m.treeRootID = ""
+			return m
+		}
+
+		// Build issue map for tree
+		issueMap := make(map[string]*beads.Issue, len(issues))
+		for i := range issues {
+			issueMap[issues[i].ID] = &issues[i]
+		}
+		m.treeIssueMap = issueMap
+		m.treeRootID = issueID
+		m.previewIssues = nil // Clear BQL preview
+		return m
+	}
+
+	// For BQL columns, execute the query directly
 	issues, err := m.executor.Execute(cfg.Query)
 	if err != nil {
 		// Query invalid/incomplete - show empty preview
@@ -233,6 +315,8 @@ func (m Model) updatePreview() Model {
 	}
 
 	m.previewIssues = issues
+	m.treeIssueMap = nil // Clear tree preview
+	m.treeRootID = ""
 	return m
 }
 
@@ -316,6 +400,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "left", "h":
+			// Type selector toggle
+			if m.focused == FieldType {
+				if m.columnType == "tree" {
+					m.columnType = "bql"
+					m = m.updatePreview()
+				}
+				return m, nil
+			}
+			// Tree mode selector toggle
+			if m.focused == FieldTreeMode {
+				if m.treeMode == "child" {
+					m.treeMode = "deps"
+					m = m.updatePreview()
+				}
+				return m, nil
+			}
 			// Horizontal navigation between Save and Delete
 			if m.focused == FieldDelete {
 				m.focused = FieldSave
@@ -323,6 +423,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "right", "l":
+			// Type selector toggle
+			if m.focused == FieldType {
+				if m.columnType == "bql" {
+					m.columnType = "tree"
+					m = m.updatePreview()
+				}
+				return m, nil
+			}
+			// Tree mode selector toggle
+			if m.focused == FieldTreeMode {
+				if m.treeMode == "deps" {
+					m.treeMode = "child"
+					m = m.updatePreview()
+				}
+				return m, nil
+			}
 			// Horizontal navigation between Save and Delete (Edit mode only)
 			if m.focused == FieldSave && m.mode == ModeEdit {
 				m.focused = FieldDelete
@@ -383,7 +499,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) isTextInputField() bool {
 	switch m.focused {
-	case FieldName, FieldQuery:
+	case FieldName, FieldQuery, FieldIssueID:
 		return true
 	}
 	return false
@@ -392,6 +508,18 @@ func (m Model) isTextInputField() bool {
 // nextField returns the next field in navigation order.
 func (m Model) nextField() Field {
 	next := m.focused + 1
+
+	// Skip hidden fields based on column type
+	if m.columnType == "tree" && next == FieldQuery {
+		// For tree columns: skip Query, go to IssueID
+		next = FieldIssueID
+	} else if m.columnType != "tree" && next == FieldIssueID {
+		// For BQL columns: skip IssueID and TreeMode, go to Save
+		next = FieldSave
+	} else if m.columnType != "tree" && next == FieldTreeMode {
+		// For BQL columns: skip TreeMode, go to Save
+		next = FieldSave
+	}
 
 	// Skip Delete field in New mode
 	if m.mode == ModeNew && next == FieldDelete {
@@ -414,13 +542,28 @@ func (m Model) prevField() Field {
 		return FieldDelete
 	}
 
-	return m.focused - 1
+	prev := m.focused - 1
+
+	// Skip hidden fields based on column type
+	if m.columnType == "tree" && prev == FieldQuery {
+		// For tree columns: skip Query, go to Color
+		prev = FieldColor
+	} else if m.columnType != "tree" && prev == FieldTreeMode {
+		// For BQL columns: skip TreeMode and IssueID, go to Query
+		prev = FieldQuery
+	} else if m.columnType != "tree" && prev == FieldIssueID {
+		// For BQL columns: skip IssueID, go to Query
+		prev = FieldQuery
+	}
+
+	return prev
 }
 
 func (m Model) updateFocus() Model {
 	// Blur all text inputs
 	m.nameInput.Blur()
 	m.queryInput.Blur()
+	m.issueIDInput.Blur()
 
 	// Focus the appropriate input
 	switch m.focused {
@@ -428,6 +571,8 @@ func (m Model) updateFocus() Model {
 		m.nameInput.Focus()
 	case FieldQuery:
 		m.queryInput.Focus()
+	case FieldIssueID:
+		m.issueIDInput.Focus()
 	}
 	return m
 }
@@ -440,6 +585,8 @@ func (m Model) updateTextInput(msg tea.KeyMsg) Model {
 		m.validationError = ""
 	case FieldQuery:
 		m.queryInput, _ = m.queryInput.Update(msg)
+	case FieldIssueID:
+		m.issueIDInput, _ = m.issueIDInput.Update(msg)
 	}
 	return m
 }
@@ -453,10 +600,18 @@ func (m Model) validate() string {
 		return "Column name is required"
 	}
 
-	// Query is required
-	query := strings.TrimSpace(m.queryInput.Value())
-	if query == "" {
-		return "BQL query is required"
+	if m.columnType == "tree" {
+		// Issue ID is required for tree columns
+		issueID := strings.TrimSpace(m.issueIDInput.Value())
+		if issueID == "" {
+			return "Issue ID is required for tree columns"
+		}
+	} else {
+		// Query is required for BQL columns
+		query := strings.TrimSpace(m.queryInput.Value())
+		if query == "" {
+			return "BQL query is required"
+		}
 	}
 
 	return ""
@@ -565,6 +720,10 @@ func (m Model) renderConfigForm(width int) string {
 	nameRows := []string{m.nameInput.View()}
 	sections = append(sections, styles.RenderFormSection(nameRows, "Name", "", sectionWidth, m.focused == FieldName, styles.BorderHighlightFocusColor))
 
+	// Section: Type selector (BQL Query or Tree View)
+	typeRows := []string{m.renderTypeSelector()}
+	sections = append(sections, styles.RenderFormSection(typeRows, "Type", "", sectionWidth, m.focused == FieldType, styles.BorderHighlightFocusColor))
+
 	// Section: Color (shows swatch and hex, press Enter to open picker)
 	colorSwatch := "   "
 	if m.colorValue != "" {
@@ -576,9 +735,20 @@ func (m Model) renderConfigForm(width int) string {
 	colorRows := []string{colorSwatch + " " + m.colorValue + colorHint}
 	sections = append(sections, styles.RenderFormSection(colorRows, "Color", "", sectionWidth, m.focused == FieldColor, styles.BorderHighlightFocusColor))
 
-	// Section: BQL Query (standalone, with text wrapping)
-	queryRows := m.renderQuerySection(sectionWidth - 4) // Account for borders
-	sections = append(sections, styles.RenderFormSection(queryRows, "BQL Query", "", sectionWidth, m.focused == FieldQuery, styles.BorderHighlightFocusColor))
+	// Section: BQL Query or Issue ID + Tree Mode (conditional based on type)
+	if m.columnType == "tree" {
+		// Show Issue ID input for tree columns
+		issueIDRows := []string{m.issueIDInput.View()}
+		sections = append(sections, styles.RenderFormSection(issueIDRows, "Root Issue ID", "", sectionWidth, m.focused == FieldIssueID, styles.BorderHighlightFocusColor))
+
+		// Show Tree Mode selector for tree columns
+		treeModeRows := []string{m.renderTreeModeSelector()}
+		sections = append(sections, styles.RenderFormSection(treeModeRows, "Tree Mode", "", sectionWidth, m.focused == FieldTreeMode, styles.BorderHighlightFocusColor))
+	} else {
+		// Show BQL Query input for BQL columns
+		queryRows := m.renderQuerySection(sectionWidth - 4) // Account for borders
+		sections = append(sections, styles.RenderFormSection(queryRows, "BQL Query", "", sectionWidth, m.focused == FieldQuery, styles.BorderHighlightFocusColor))
+	}
 
 	// Actions (Save and Delete on same line) - no border, standalone buttons
 	// Delete is always enabled in edit mode - last column deletion returns to empty state
@@ -637,6 +807,52 @@ func (m Model) renderQuerySection(maxWidth int) []string {
 	return lines
 }
 
+// renderTypeSelector renders the type toggle selector.
+func (m Model) renderTypeSelector() string {
+	selectedStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.TextPrimaryColor)
+	unselectedStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMutedColor)
+	hintStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMutedColor)
+
+	var bqlLabel, treeLabel string
+	if m.columnType == "bql" {
+		bqlLabel = selectedStyle.Render("● BQL Query")
+		treeLabel = unselectedStyle.Render("○ Tree View")
+	} else {
+		bqlLabel = unselectedStyle.Render("○ BQL Query")
+		treeLabel = selectedStyle.Render("● Tree View")
+	}
+
+	hint := hintStyle.Render(" [←/→ to switch]")
+	return bqlLabel + "    " + treeLabel + hint
+}
+
+// renderTreeModeSelector renders the tree mode toggle selector.
+func (m Model) renderTreeModeSelector() string {
+	selectedStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(styles.TextPrimaryColor)
+	unselectedStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMutedColor)
+	hintStyle := lipgloss.NewStyle().
+		Foreground(styles.TextMutedColor)
+
+	var depsLabel, childLabel string
+	if m.treeMode == "deps" || m.treeMode == "" {
+		depsLabel = selectedStyle.Render("● Dependencies")
+		childLabel = unselectedStyle.Render("○ Parent-Child")
+	} else {
+		depsLabel = unselectedStyle.Render("○ Dependencies")
+		childLabel = selectedStyle.Render("● Parent-Child")
+	}
+
+	hint := hintStyle.Render(" [←/→ to switch]")
+	return depsLabel + "    " + childLabel + hint
+}
+
 func (m Model) renderActionRowHorizontal(deleteEnabled bool) string {
 	// Base button style with padding
 	buttonStyle := lipgloss.NewStyle().
@@ -688,7 +904,7 @@ func (m Model) renderPreview(width int) string {
 		Width(width).
 		Padding(1, 2)
 
-	// Header with issue count
+	// Header
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(styles.TextMutedColor)
@@ -698,17 +914,6 @@ func (m Model) renderPreview(width int) string {
 		Italic(true)
 
 	header := headerStyle.Render("Live Preview")
-	countInfo := countStyle.Render(fmt.Sprintf("%d issues match current filters", len(m.previewIssues)))
-
-	// Create a preview column using actual Column component
-	cfg := m.CurrentConfig()
-	// Status is only used for rendering hints, pass empty for preview
-	previewCol := board.NewColumn(cfg.Name, "")
-	if cfg.Color != "" {
-		previewCol = previewCol.SetColor(lipgloss.Color(cfg.Color))
-	}
-	previewCol = previewCol.SetItems(m.previewIssues)
-	previewCol = previewCol.SetFocused(true)
 
 	// Calculate column size
 	colWidth := width - 4
@@ -722,19 +927,77 @@ func (m Model) renderPreview(width int) string {
 	if colHeight > 20 {
 		colHeight = 20
 	}
-	previewCol = previewCol.SetSize(colWidth, colHeight)
 
-	// Render the column with its border
-	columnView := styles.RenderWithTitleBorder(
-		previewCol.View(),
-		previewCol.Title(),
-		"",
-		colWidth,
-		colHeight,
-		true, // focused
-		previewCol.Color(),
-		previewCol.Color(),
-	)
+	cfg := m.CurrentConfig()
+	var columnView string
+	var countInfo string
+
+	if m.columnType == "tree" {
+		// Render tree preview
+		if m.treeIssueMap != nil && m.treeRootID != "" {
+			// Convert tree mode string to tree.TreeMode
+			// Config uses "child" but tree model uses ModeChildren
+			treeMode := tree.ModeDeps
+			if m.treeMode == "child" {
+				treeMode = tree.ModeChildren
+			}
+			treeModel := tree.New(m.treeRootID, m.treeIssueMap, tree.DirectionDown, treeMode)
+			// Account for border wrapper (2 chars for left/right border, 2 for top/bottom)
+			treeModel.SetSize(colWidth-2, colHeight-2)
+			countInfo = countStyle.Render(fmt.Sprintf("Tree with %d nodes", len(m.treeIssueMap)))
+			columnView = styles.RenderWithTitleBorder(
+				treeModel.View(),
+				cfg.Name,
+				"",
+				colWidth,
+				colHeight,
+				true,
+				lipgloss.Color(cfg.Color),
+				lipgloss.Color(cfg.Color),
+			)
+		} else {
+			// No tree data yet
+			emptyMsg := lipgloss.NewStyle().
+				Foreground(styles.TextMutedColor).
+				Italic(true).
+				Render("Enter an issue ID to preview the tree")
+			countInfo = countStyle.Render("No tree data")
+			columnView = styles.RenderWithTitleBorder(
+				emptyMsg,
+				cfg.Name,
+				"",
+				colWidth,
+				colHeight,
+				true,
+				lipgloss.Color(cfg.Color),
+				lipgloss.Color(cfg.Color),
+			)
+		}
+	} else {
+		// Render BQL column preview (existing logic)
+		countInfo = countStyle.Render(fmt.Sprintf("%d issues match current filters", len(m.previewIssues)))
+
+		// Create a preview column using actual Column component
+		// Status is only used for rendering hints, pass empty for preview
+		previewCol := board.NewColumn(cfg.Name, "")
+		if cfg.Color != "" {
+			previewCol = previewCol.SetColor(lipgloss.Color(cfg.Color))
+		}
+		previewCol = previewCol.SetItems(m.previewIssues)
+		previewCol = previewCol.SetFocused(true).(board.Column)
+		previewCol = previewCol.SetSize(colWidth, colHeight).(board.Column)
+
+		columnView = styles.RenderWithTitleBorder(
+			previewCol.View(),
+			previewCol.Title(),
+			"",
+			colWidth,
+			colHeight,
+			true, // focused
+			previewCol.Color(),
+			previewCol.Color(),
+		)
+	}
 
 	return previewStyle.Render(header + "\n" + countInfo + "\n\n" + columnView)
 }
@@ -812,6 +1075,21 @@ func (m Model) NameInput() textinput.Model {
 // QueryInput returns the query input (for testing).
 func (m Model) QueryInput() bqlinput.Model {
 	return m.queryInput
+}
+
+// ColumnType returns the current column type (for testing).
+func (m Model) ColumnType() string {
+	return m.columnType
+}
+
+// IssueIDInput returns the issue ID input (for testing).
+func (m Model) IssueIDInput() textinput.Model {
+	return m.issueIDInput
+}
+
+// TreeMode returns the current tree mode (for testing).
+func (m Model) TreeMode() string {
+	return m.treeMode
 }
 
 // ShowColorPicker returns whether the color picker is visible (for testing).

@@ -470,29 +470,19 @@ func (m Model) handleColumnLoaded(msg tea.Msg) (Model, tea.Cmd) {
 	// Pass message to board for handling
 	m.board, _ = m.board.Update(msg)
 
-	// Check if all columns are done loading
-	allLoaded := true
-	for i := 0; i < m.board.ColCount(); i++ {
-		if m.board.Column(i).IsLoading() {
-			allLoaded = false
-			break
-		}
+	// SQLite queries are instant, so treat every load message as completion
+	m.loading = false
+
+	// Restore cursor if we have a pending state
+	if m.pendingCursor != nil {
+		m = m.restoreCursor(m.pendingCursor)
+		m.pendingCursor = nil
 	}
-
-	if allLoaded {
-		m.loading = false
-
-		// Restore cursor if we have a pending state
-		if m.pendingCursor != nil {
-			m = m.restoreCursor(m.pendingCursor)
-			m.pendingCursor = nil
-		}
-		// Auto sync is silent, manual refresh shows toaster
-		m.autoRefreshed = false
-		if m.manualRefreshed {
-			m.manualRefreshed = false
-			return m, func() tea.Msg { return mode.ShowToastMsg{Message: "refreshed issues", Style: toaster.StyleSuccess} }
-		}
+	// Auto sync is silent, manual refresh shows toaster
+	m.autoRefreshed = false
+	if m.manualRefreshed {
+		m.manualRefreshed = false
+		return m, func() tea.Msg { return mode.ShowToastMsg{Message: "refreshed issues", Style: toaster.StyleSuccess} }
 	}
 	return m, nil
 }

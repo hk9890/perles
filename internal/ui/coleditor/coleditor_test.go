@@ -68,7 +68,10 @@ func TestNavigation_DownMoves(t *testing.T) {
 	// Initial focus on name field
 	require.Equal(t, FieldName, ed.Focused())
 
-	// Down: Name → Color → Query → Save → Delete (matches visual layout)
+	// Down: Name → Type → Color → Query → Save → Delete (matches visual layout)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
 	require.Equal(t, FieldColor, ed.Focused())
 
@@ -83,16 +86,21 @@ func TestNavigation_UpMoves(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
 	ed := New(0, columns, nil)
 
-	// Move down first: Name → Color → Query
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Move down first: Name → Type → Color → Query
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> Query
 	require.Equal(t, FieldQuery, ed.Focused())
 
 	// Press up to move back: Query → Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyUp})
 	require.Equal(t, FieldColor, ed.Focused())
 
-	// Press shift+tab to move back: Color → Name
+	// Press shift+tab to move back: Color → Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Equal(t, FieldType, ed.Focused())
+
+	// Press shift+tab to move back: Type → Name
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	require.Equal(t, FieldName, ed.Focused())
 }
@@ -117,7 +125,10 @@ func TestNavigation_CtrlN(t *testing.T) {
 	// Initial focus on name field
 	require.Equal(t, FieldName, ed.Focused())
 
-	// ctrl+n should move down: Name → Color → Query
+	// ctrl+n should move down: Name → Type → Color → Query → Save
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	require.Equal(t, FieldType, ed.Focused())
+
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
 	require.Equal(t, FieldColor, ed.Focused())
 
@@ -132,14 +143,18 @@ func TestNavigation_CtrlP(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
 	ed := New(0, columns, nil)
 
-	// Move down first: Name → Color → Query
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Move down first: Name → Type → Color → Query
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> Query
 	require.Equal(t, FieldQuery, ed.Focused())
 
-	// ctrl+p should move up: Query → Color → Name
+	// ctrl+p should move up: Query → Color → Type → Name
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
 	require.Equal(t, FieldColor, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	require.Equal(t, FieldType, ed.Focused())
 
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
 	require.Equal(t, FieldName, ed.Focused())
@@ -509,12 +524,57 @@ func TestColEditor_View_Golden_Tall(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
+func TestColEditor_View_Golden_TreePreview(t *testing.T) {
+	// Tree column with tree data loaded
+	columns := []config.ColumnConfig{
+		{Name: "Dependencies", Type: "tree", IssueID: "epic-1", Color: "#54A0FF"},
+	}
+
+	// Create mock executor with tree data (epic with child tasks)
+	executor := &mockExecutor{
+		issues: []beads.Issue{
+			{
+				ID:        "epic-1",
+				TitleText: "Epic: Implement tree columns",
+				Status:    beads.StatusInProgress,
+				Priority:  beads.PriorityHigh,
+				Type:      beads.TypeEpic,
+				Blocks:    []string{"task-1", "task-2"},
+			},
+			{
+				ID:        "task-1",
+				TitleText: "Add tree column to board",
+				Status:    beads.StatusClosed,
+				Priority:  beads.PriorityMedium,
+				Type:      beads.TypeTask,
+				BlockedBy: []string{"epic-1"},
+			},
+			{
+				ID:        "task-2",
+				TitleText: "Fix tree width calculation",
+				Status:    beads.StatusOpen,
+				Priority:  beads.PriorityMedium,
+				Type:      beads.TypeTask,
+				BlockedBy: []string{"epic-1"},
+			},
+		},
+	}
+
+	ed := New(0, columns, executor)
+	ed = ed.SetSize(130, 40)
+
+	view := ed.View()
+
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
 func TestColorPicker_EnterOpensOverlay(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open", Color: "#FF0000"}}
 	ed := New(0, columns, nil)
 
-	// Navigate to FieldColor
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Navigate to FieldColor (Name -> Type -> Color)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
 	require.Equal(t, FieldColor, ed.Focused())
 
 	// Initially picker should be closed
@@ -530,8 +590,9 @@ func TestColorPicker_SelectMsgUpdatesColor(t *testing.T) {
 	ed := New(0, columns, nil)
 	ed = ed.SetSize(80, 40)
 
-	// Navigate to FieldColor and open picker
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Navigate to FieldColor (Name -> Type -> Color) and open picker
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.True(t, ed.ShowColorPicker())
 
@@ -549,8 +610,9 @@ func TestColorPicker_CancelMsgClosesWithoutChange(t *testing.T) {
 	ed := New(0, columns, nil)
 	ed = ed.SetSize(80, 40)
 
-	// Navigate to FieldColor and open picker
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Navigate to FieldColor (Name -> Type -> Color) and open picker
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.True(t, ed.ShowColorPicker())
 
@@ -567,8 +629,9 @@ func TestColorPicker_NavigationWhenOpen(t *testing.T) {
 	ed := New(0, columns, nil)
 	ed = ed.SetSize(80, 40)
 
-	// Navigate to FieldColor and open picker
-	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// Navigate to FieldColor (Name -> Type -> Color) and open picker
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
 	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.True(t, ed.ShowColorPicker())
 
@@ -608,4 +671,327 @@ func TestNewForCreate_EmptyColumns(t *testing.T) {
 	require.Equal(t, "", ed.NameInput().Value())
 	require.Equal(t, "status = open", ed.QueryInput().Value())
 	require.Empty(t, ed.AllColumns())
+}
+
+// Type selector tests
+
+func TestTypeSelector_DefaultIsBQL(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil)
+
+	require.Equal(t, "bql", ed.ColumnType())
+}
+
+func TestTypeSelector_LoadsFromConfig(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	require.Equal(t, "tree", ed.ColumnType())
+	require.Equal(t, "perles-123", ed.IssueIDInput().Value())
+}
+
+func TestTypeSelector_ToggleWithRightArrow(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil)
+
+	// Navigate to FieldType
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
+	// Initially BQL
+	require.Equal(t, "bql", ed.ColumnType())
+
+	// Press right to toggle to tree
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight})
+	require.Equal(t, "tree", ed.ColumnType())
+
+	// Press right again should stay at tree (can't go past)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight})
+	require.Equal(t, "tree", ed.ColumnType())
+}
+
+func TestTypeSelector_ToggleWithLeftArrow(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	// Navigate to FieldType
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
+	// Initially tree
+	require.Equal(t, "tree", ed.ColumnType())
+
+	// Press left to toggle to bql
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	require.Equal(t, "bql", ed.ColumnType())
+
+	// Press left again should stay at bql (can't go past)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	require.Equal(t, "bql", ed.ColumnType())
+}
+
+func TestTypeSelector_NavigationSkipsHiddenFields(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	// For tree type: Name -> Type -> Color -> IssueID -> TreeMode -> Save (skips Query)
+	require.Equal(t, FieldName, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldColor, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldIssueID, ed.Focused()) // Skips Query, goes to IssueID
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldTreeMode, ed.Focused()) // IssueID -> TreeMode
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldSave, ed.Focused())
+}
+
+func TestTypeSelector_BQLNavigationSkipsIssueID(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil)
+
+	// For BQL type: Name -> Type -> Color -> Query -> Save (skips IssueID)
+	require.Equal(t, FieldName, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldColor, ed.Focused())
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldQuery, ed.Focused()) // Goes to Query
+
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldSave, ed.Focused()) // Skips IssueID
+}
+
+func TestTypeSelector_CurrentConfigIncludesType(t *testing.T) {
+	// Test BQL config
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil)
+
+	cfg := ed.CurrentConfig()
+	require.Equal(t, "bql", cfg.Type)
+	require.Equal(t, "status = open", cfg.Query)
+	require.Empty(t, cfg.IssueID)
+
+	// Test tree config with IssueID set
+	treeColumns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-456"}}
+	treeEd := New(0, treeColumns, nil)
+
+	cfg = treeEd.CurrentConfig()
+	require.Equal(t, "tree", cfg.Type)
+	require.Equal(t, "perles-456", cfg.IssueID)
+	require.Empty(t, cfg.Query) // Query is not set for tree type
+}
+
+func TestTypeSelector_ValidationRequiresIssueIDForTree(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Type: "tree"}}
+	ed := New(0, columns, nil)
+	ed.nameInput.SetValue("Tree Column")
+
+	// IssueID is empty - should fail validation
+	// Navigate to Save and press Enter
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // IssueID -> TreeMode
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // TreeMode -> Save
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotEmpty(t, ed.ValidationError())
+	require.Contains(t, ed.ValidationError(), "Issue ID")
+}
+
+func TestTypeSelector_ViewRendersSelector(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil).SetSize(80, 40)
+
+	view := ed.View()
+	require.Contains(t, view, "BQL Query")
+	require.Contains(t, view, "Tree View")
+	require.Contains(t, view, "←/→ to switch")
+}
+
+// Integration test: Column editor creates tree column
+func TestNewForCreate_TreeColumn_ReturnsAddMsg(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Existing", Query: "status = open"}}
+	ed := NewForCreate(0, columns, nil)
+
+	// Type a name
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Dependencies")})
+
+	// Navigate to Type field and switch to tree
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	require.Equal(t, FieldType, ed.Focused())
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight}) // Toggle to tree
+	require.Equal(t, "tree", ed.ColumnType())
+
+	// Navigate to IssueID and type an ID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
+	require.Equal(t, FieldIssueID, ed.Focused())
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("perles-123")})
+
+	// Navigate to Save and press Enter
+	for ed.Focused() != FieldSave {
+		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	_, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should return AddMsg with tree type
+	require.NotNil(t, cmd)
+	msg := cmd()
+	addMsg, ok := msg.(AddMsg)
+	require.True(t, ok, "Expected AddMsg but got %T", msg)
+	require.Equal(t, "Dependencies", addMsg.Config.Name)
+	require.Equal(t, "tree", addMsg.Config.Type)
+	require.Equal(t, "perles-123", addMsg.Config.IssueID)
+	require.Empty(t, addMsg.Config.Query, "Query should be empty for tree columns")
+}
+
+// Integration test: Saved config has correct type and issue_id
+func TestEdit_TreeColumn_ReturnsSaveMsgWithType(t *testing.T) {
+	columns := []config.ColumnConfig{
+		{Name: "Tree Col", Type: "tree", IssueID: "perles-old"},
+	}
+	ed := New(0, columns, nil)
+
+	// Edit the issue ID
+	// Navigate to IssueID field: Name -> Type -> Color -> IssueID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
+	require.Equal(t, FieldIssueID, ed.Focused())
+
+	// Clear and type new ID
+	for i := 0; i < 10; i++ { // Clear "perles-old"
+		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("perles-new")})
+
+	// Navigate to Save and press Enter
+	for ed.Focused() != FieldSave {
+		ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	_, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should return SaveMsg with tree type and new issue_id
+	require.NotNil(t, cmd)
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "Expected SaveMsg but got %T", msg)
+	require.Equal(t, "Tree Col", saveMsg.Config.Name)
+	require.Equal(t, "tree", saveMsg.Config.Type)
+	require.Equal(t, "perles-new", saveMsg.Config.IssueID)
+}
+
+// Tests for tree mode selector
+
+func TestTreeModeSelector_DefaultIsDeps(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	require.Equal(t, "deps", ed.TreeMode())
+}
+
+func TestTreeModeSelector_LoadsFromConfig(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	ed := New(0, columns, nil)
+
+	require.Equal(t, "child", ed.TreeMode())
+}
+
+func TestTreeModeSelector_ToggleWithRightArrow(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	// Navigate to TreeMode field: Name -> Type -> Color -> IssueID -> TreeMode
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // IssueID -> TreeMode
+	require.Equal(t, FieldTreeMode, ed.Focused())
+
+	// Initially deps
+	require.Equal(t, "deps", ed.TreeMode())
+
+	// Press right to toggle to child
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight})
+	require.Equal(t, "child", ed.TreeMode())
+
+	// Press right again should stay at child (can't go past)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight})
+	require.Equal(t, "child", ed.TreeMode())
+}
+
+func TestTreeModeSelector_ToggleWithLeftArrow(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	ed := New(0, columns, nil)
+
+	// Navigate to TreeMode field
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // Color -> IssueID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // IssueID -> TreeMode
+	require.Equal(t, FieldTreeMode, ed.Focused())
+
+	// Initially child
+	require.Equal(t, "child", ed.TreeMode())
+
+	// Press left to toggle to deps
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	require.Equal(t, "deps", ed.TreeMode())
+
+	// Press left again should stay at deps (can't go past)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	require.Equal(t, "deps", ed.TreeMode())
+}
+
+func TestTreeModeSelector_CurrentConfigIncludesTreeMode(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: "child"}}
+	ed := New(0, columns, nil)
+
+	cfg := ed.CurrentConfig()
+	require.Equal(t, "child", cfg.TreeMode)
+}
+
+func TestTreeModeSelector_ViewRendersSelector(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil).SetSize(80, 40)
+
+	view := ed.View()
+	require.Contains(t, view, "Dependencies")
+	require.Contains(t, view, "Parent-Child")
+	require.Contains(t, view, "Tree Mode")
+}
+
+func TestTreeModeSelector_SaveIncludesTreeMode(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Tree", Type: "tree", IssueID: "perles-123"}}
+	ed := New(0, columns, nil)
+
+	// Navigate to TreeMode and toggle to children
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})  // Name -> Type
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})  // Type -> Color
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})  // Color -> IssueID
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})  // IssueID -> TreeMode
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRight}) // Toggle to child
+
+	// Navigate to Save and press Enter
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown}) // TreeMode -> Save
+	_, cmd := ed.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd)
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "Expected SaveMsg but got %T", msg)
+	require.Equal(t, "child", saveMsg.Config.TreeMode)
 }

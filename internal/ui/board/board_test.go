@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
+	"perles/internal/beads"
 	"perles/internal/config"
 )
 
@@ -493,4 +494,211 @@ func TestBoard_NewFromViews_EmptyColumns(t *testing.T) {
 
 	view := m.View()
 	require.Contains(t, view, "No columns configured")
+}
+
+// Mixed column type tests (BQL + Tree)
+
+func TestBoard_NewFromViews_MixedColumnTypes(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "MixedView",
+			Columns: []config.ColumnConfig{
+				{Name: "BQL Column", Type: "bql", Query: "status = open"},
+				{Name: "Tree Column", Type: "tree", IssueID: "perles-123", TreeMode: "deps"},
+				{Name: "Default Column", Query: "status = closed"}, // type defaults to bql
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+
+	require.Equal(t, 3, m.ColCount())
+	require.Equal(t, "MixedView", m.CurrentViewName())
+
+	// Verify column types
+	col0 := m.BoardColumn(0)
+	_, isBQLCol0 := col0.(Column)
+	require.True(t, isBQLCol0, "First column should be a BQL Column")
+
+	col1 := m.BoardColumn(1)
+	_, isTreeCol := col1.(TreeColumn)
+	require.True(t, isTreeCol, "Second column should be a TreeColumn")
+
+	col2 := m.BoardColumn(2)
+	_, isBQLCol2 := col2.(Column)
+	require.True(t, isBQLCol2, "Third column (default type) should be a BQL Column")
+}
+
+func TestBoard_MixedColumnTypes_Navigation(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "MixedView",
+			Columns: []config.ColumnConfig{
+				{Name: "BQL", Type: "bql", Query: "status = open"},
+				{Name: "Tree", Type: "tree", IssueID: "perles-123"},
+				{Name: "BQL2", Type: "bql", Query: "status = closed"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+	require.Equal(t, 1, m.FocusedColumn()) // Default focus on second column
+
+	// Navigate left (from tree to bql)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	require.Equal(t, 0, m.FocusedColumn())
+
+	// Navigate right (from bql to tree)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, 1, m.FocusedColumn())
+
+	// Navigate right (from tree to bql)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, 2, m.FocusedColumn())
+
+	// Verify boundary
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, 2, m.FocusedColumn(), "should stay at boundary")
+}
+
+func TestBoard_TreeColumn_Color(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "ColorView",
+			Columns: []config.ColumnConfig{
+				{Name: "Colored Tree", Type: "tree", IssueID: "perles-123", Color: "#EF4444"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+
+	col := m.BoardColumn(0)
+	treeCol, ok := col.(TreeColumn)
+	require.True(t, ok, "Column should be a TreeColumn")
+	require.NotNil(t, treeCol.Color(), "TreeColumn should have a color set")
+}
+
+func TestBoard_TreeColumnLoadedMsg_UpdatesCorrectColumn(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "MixedView",
+			Columns: []config.ColumnConfig{
+				{Name: "BQL", Type: "bql", Query: "status = open"},
+				{Name: "Tree", Type: "tree", IssueID: "perles-123"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+
+	// Simulate TreeColumnLoadedMsg for current view
+	msg := TreeColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Tree",
+		RootID:      "perles-123",
+		Issues:      nil,
+		Err:         nil,
+	}
+	m, _ = m.Update(msg)
+	// No crash means success
+
+	// Message for wrong view should be ignored
+	msg2 := TreeColumnLoadedMsg{
+		ViewIndex:   1,
+		ColumnTitle: "Tree",
+		RootID:      "perles-123",
+		Issues:      nil,
+		Err:         nil,
+	}
+	m, _ = m.Update(msg2)
+	require.Equal(t, 0, m.CurrentViewIndex())
+}
+
+func TestBoard_TreeColumn_Mode(t *testing.T) {
+	tests := []struct {
+		name     string
+		treeMode string
+		expected string
+	}{
+		{name: "deps mode", treeMode: "deps", expected: "deps"},
+		{name: "child mode", treeMode: "child", expected: "child"},
+		{name: "empty defaults to deps", treeMode: "", expected: "deps"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			views := []config.ViewConfig{
+				{
+					Name: "View",
+					Columns: []config.ColumnConfig{
+						{Name: "Tree", Type: "tree", IssueID: "perles-123", TreeMode: tt.treeMode},
+					},
+				},
+			}
+
+			m := NewFromViews(views, nil)
+
+			col := m.BoardColumn(0)
+			treeCol, ok := col.(TreeColumn)
+			require.True(t, ok, "Column should be a TreeColumn")
+			require.Equal(t, tt.expected, treeCol.Mode())
+		})
+	}
+}
+
+// TestBoard_View_WithTreeColumn_Golden tests board rendering with mixed BQL and tree columns.
+// Run with -update flag to update golden files: go test -update ./internal/ui/board/...
+func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
+	// Create board with mixed column types: BQL columns + tree column
+	views := []config.ViewConfig{
+		{
+			Name: "Mixed",
+			Columns: []config.ColumnConfig{
+				{Name: "Backlog", Query: "status = open"},
+				{Name: "Dependencies", Type: "tree", IssueID: "root-1", TreeMode: "deps"},
+				{Name: "Done", Query: "status = closed"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil)
+	m = m.SetSize(120, 40)
+
+	// Populate BQL columns with test issues
+	backlogMsg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Backlog",
+		Issues: []beads.Issue{
+			{ID: "bd-1", TitleText: "Open Task", Priority: beads.PriorityMedium, Type: beads.TypeTask, Status: beads.StatusOpen},
+			{ID: "bd-2", TitleText: "Open Bug", Priority: beads.PriorityHigh, Type: beads.TypeBug, Status: beads.StatusOpen},
+		},
+	}
+	m, _ = m.Update(backlogMsg)
+
+	doneMsg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Done",
+		Issues: []beads.Issue{
+			{ID: "bd-3", TitleText: "Completed Feature", Priority: beads.PriorityLow, Type: beads.TypeFeature, Status: beads.StatusClosed},
+		},
+	}
+	m, _ = m.Update(doneMsg)
+
+	// Populate tree column with dependency tree data
+	treeMsg := TreeColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Dependencies",
+		RootID:      "root-1",
+		IssueMap: map[string]*beads.Issue{
+			"root-1":  {ID: "root-1", TitleText: "Epic: Feature X", Type: beads.TypeEpic, Priority: beads.PriorityHigh, Children: []string{"child-1", "child-2"}},
+			"child-1": {ID: "child-1", TitleText: "Task: Backend API", Type: beads.TypeTask, Priority: beads.PriorityMedium, ParentID: "root-1"},
+			"child-2": {ID: "child-2", TitleText: "Task: Frontend UI", Type: beads.TypeTask, Priority: beads.PriorityMedium, ParentID: "root-1", Children: []string{"child-3"}},
+			"child-3": {ID: "child-3", TitleText: "Subtask: Button", Type: beads.TypeTask, Priority: beads.PriorityLow, ParentID: "child-2"},
+		},
+	}
+	m, _ = m.Update(treeMsg)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
 }

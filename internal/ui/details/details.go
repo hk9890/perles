@@ -7,7 +7,6 @@ import (
 
 	"perles/internal/beads"
 	"perles/internal/bql"
-	"perles/internal/ui/board"
 	"perles/internal/ui/shared/markdown"
 	"perles/internal/ui/styles"
 
@@ -204,7 +203,7 @@ func (m Model) calculateHeaderHeight(colWidth int) int {
 	// Calculate visual width of title line to match renderHeader() format:
 	// [Type][Priority][ID] Title
 	// Example: [T][P2][perles-abc] Some title text
-	typeText := board.GetTypeIndicator(m.issue.Type) // e.g., "[T]"
+	typeText := styles.GetTypeIndicator(m.issue.Type) // e.g., "[T]"
 	priorityText := fmt.Sprintf("[P%d]", m.issue.Priority)
 	idText := fmt.Sprintf("[%s]", m.issue.ID)
 	// Visual width = type + priority + id + space + title
@@ -415,10 +414,10 @@ func (m Model) renderHeader() string {
 	issue := m.issue
 
 	// Title line - uses same style as column list: [Type][Priority][ID] Title
-	typeText := board.GetTypeIndicator(issue.Type)
-	typeStyle := board.GetTypeStyle(issue.Type)
+	typeText := styles.GetTypeIndicator(issue.Type)
+	typeStyle := styles.GetTypeStyle(issue.Type)
 	priorityText := fmt.Sprintf("[P%d]", issue.Priority)
-	priorityStyle := board.GetPriorityStyle(issue.Priority)
+	priorityStyle := styles.GetPriorityStyle(issue.Priority)
 	idStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
 	issueId := fmt.Sprintf("[%s]", issue.ID)
 
@@ -669,10 +668,10 @@ func (m Model) renderDependencyItem(item DependencyItem, selected bool) string {
 	}
 
 	// Use board styling functions - compact format without title
-	typeText := board.GetTypeIndicator(item.Issue.Type)
-	typeStyle := board.GetTypeStyle(item.Issue.Type)
+	typeText := styles.GetTypeIndicator(item.Issue.Type)
+	typeStyle := styles.GetTypeStyle(item.Issue.Type)
 	priorityText := fmt.Sprintf("[P%d]", item.Issue.Priority)
-	priorityStyle := board.GetPriorityStyle(item.Issue.Priority)
+	priorityStyle := styles.GetPriorityStyle(item.Issue.Priority)
 
 	return fmt.Sprintf("%s%s%s%s",
 		prefix,
