@@ -890,19 +890,20 @@ func (m Model) IssueID() string {
 }
 
 // loadDependencies populates the dependencies slice from the issue's
-// BlockedBy, Blocks, and Related fields. If a client is available,
+// BlockedBy, Blocks, Children and Related fields. If a client is available,
 // it fetches full issue data for each dependency.
 func (m *Model) loadDependencies() {
 	// Collect all dependency IDs with their categories
+	// Order must match renderDependenciesSection: blocked_by, blocks, children, related
 	var items []DependencyItem
-	for _, id := range m.issue.Children {
-		items = append(items, DependencyItem{ID: id, Category: "children"})
-	}
 	for _, id := range m.issue.BlockedBy {
 		items = append(items, DependencyItem{ID: id, Category: "blocked_by"})
 	}
 	for _, id := range m.issue.Blocks {
 		items = append(items, DependencyItem{ID: id, Category: "blocks"})
+	}
+	for _, id := range m.issue.Children {
+		items = append(items, DependencyItem{ID: id, Category: "children"})
 	}
 	for _, id := range m.issue.Related {
 		items = append(items, DependencyItem{ID: id, Category: "related"})

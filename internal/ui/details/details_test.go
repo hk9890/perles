@@ -634,6 +634,66 @@ func TestDetails_DependencyNavigation_LNoOpWithoutDeps(t *testing.T) {
 	require.Equal(t, FocusContent, m.focusPane, "expected to stay on content when no deps")
 }
 
+// TestDetails_DependencyNavigation_MixedCategories_CorrectOrder tests that
+// selectedDependency index correctly maps to the visually displayed dependency.
+// This is a regression test for a bug where the dependencies slice order
+// (children→blocked_by→blocks→related) didn't match the render order
+// (blocked_by→blocks→children→related), causing Enter to navigate to wrong issue.
+func TestDetails_DependencyNavigation_MixedCategories_CorrectOrder(t *testing.T) {
+	// Create issue with multiple dependency categories
+	// The render order is: blocked_by, blocks, children, related
+	// So visually: blocker-1, blocker-2, child-1, child-2, child-3
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Children:  []string{"child-1", "child-2", "child-3"},
+		BlockedBy: []string{"blocker-1", "blocker-2"},
+		CreatedAt: time.Now(),
+	}
+	m := New(issue, nil, nil)
+	m = m.SetSize(100, 40)
+
+	// Focus dependencies
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, FocusMetadata, m.focusPane)
+
+	// Index 0 should be first blocked_by (blocker-1), NOT first child
+	require.Equal(t, 0, m.selectedDependency)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg := cmd()
+	navMsg, ok := msg.(NavigateToDependencyMsg)
+	require.True(t, ok, "expected NavigateToDependencyMsg")
+	require.Equal(t, "blocker-1", navMsg.IssueID, "index 0 should be first blocked_by")
+
+	// Navigate to index 1 (second blocked_by)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, 1, m.selectedDependency)
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg = cmd()
+	navMsg, ok = msg.(NavigateToDependencyMsg)
+	require.True(t, ok)
+	require.Equal(t, "blocker-2", navMsg.IssueID, "index 1 should be second blocked_by")
+
+	// Navigate to index 2 (first child - after all blocked_by)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, 2, m.selectedDependency)
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg = cmd()
+	navMsg, ok = msg.(NavigateToDependencyMsg)
+	require.True(t, ok)
+	require.Equal(t, "child-1", navMsg.IssueID, "index 2 should be first child")
+
+	// Navigate to index 4 (third child)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, 4, m.selectedDependency)
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msg = cmd()
+	navMsg, ok = msg.(NavigateToDependencyMsg)
+	require.True(t, ok)
+	require.Equal(t, "child-3", navMsg.IssueID, "index 4 should be third child")
+}
+
 func TestDetails_DeleteKey_EmitsDeleteIssueMsg(t *testing.T) {
 	issue := beads.Issue{
 		ID:        "test-1",
