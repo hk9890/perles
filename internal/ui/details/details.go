@@ -18,11 +18,11 @@ import (
 
 // Layout constants for two-column view.
 const (
-	minTwoColumnWidth  = 80 // Below this, use single-column layout
-	contentColWidth    = 80 // Preferred fixed width for content column
-	metadataColWidth   = 80 // Fixed width for metadata column (allows full titles)
-	metadataDividerLen = 30 // Visual divider length (extended for full timestamps)
-	columnGap          = 2  // Gap between columns
+	minTwoColumnWidth  = 100 // Below this, use single-column layout
+	contentColWidth    = 80  // Preferred fixed width for content column
+	metadataColWidth   = 34  // Fixed width for metadata column
+	metadataDividerLen = 29  // Visual divider length (extended for full timestamps)
+	columnGap          = 2   // Gap between columns
 )
 
 // DependencyLoader provides the ability to load issue data for dependencies.
@@ -170,28 +170,16 @@ func (m Model) useTwoColumnLayout() bool {
 }
 
 // calculateColumnWidths returns the left and right column widths based on terminal size.
-// Uses fixed widths when there's enough space, otherwise falls back to percentage-based.
+// Uses fixed widths when there's enough space, otherwise uses fixed sidebar minimum.
 func (m Model) calculateColumnWidths() (leftWidth, rightWidth int) {
-	// Content width accounts for modal padding and borders
 	availableWidth := max(m.width, 10)
 
-	// Total fixed width needed for two-column layout
-	totalFixedWidth := contentColWidth + metadataColWidth + columnGap
-
 	if !m.useTwoColumnLayout() {
-		// Single column - full width
-		return availableWidth, 0
+		return availableWidth - columnGap, 0
 	}
 
-	if availableWidth >= totalFixedWidth {
-		// Enough space for fixed widths
-		return contentColWidth, metadataColWidth
-	}
-
-	// Percentage-based fallback (70/30 split)
-	leftWidth = (availableWidth - columnGap) * 70 / 100
-	rightWidth = availableWidth - leftWidth - columnGap
-	return leftWidth, rightWidth
+	leftWidth = availableWidth - metadataColWidth - columnGap
+	return leftWidth, metadataColWidth
 }
 
 // calculateHeaderHeight returns the actual height of the header based on title wrapping.
@@ -435,7 +423,7 @@ func (m Model) renderHeader() string {
 
 	// Single-column: include inline metadata (type and priority already in title line)
 	statusStyle := getStatusStyle(issue.Status)
-	metaLine := fmt.Sprintf("Status: %s", statusStyle.Render(formatStatus(issue.Status)))
+	metaLine := fmt.Sprintf("\nStatus: %s", statusStyle.Render(formatStatus(issue.Status)))
 
 	// Labels line
 	var labelsLine string
@@ -448,7 +436,7 @@ func (m Model) renderHeader() string {
 		lines = append(lines, labelsLine)
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // renderLeftColumn renders the left column content (description + comments).

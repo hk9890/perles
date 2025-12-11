@@ -174,7 +174,7 @@ func TestDetails_View_WithDependencies(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 	m := New(issue, nil, nil)
-	m = m.SetSize(100, 40)
+	m = m.SetSize(170, 40) // Width >= 115 for two-column layout with dependencies
 	view := m.View()
 
 	// Dependencies now render in right column with section headers (no colon)
@@ -416,8 +416,8 @@ func TestDetails_TwoColumnLayout(t *testing.T) {
 	}
 	m := New(issue, nil, nil)
 
-	// Width at or above minTwoColumnWidth (80) should use two-column
-	m = m.SetSize(100, 40)
+	// Width at or above minTwoColumnWidth (115) should use two-column
+	m = m.SetSize(170, 40)
 	view := m.View()
 
 	// Two-column layout should NOT have inline metadata in header
@@ -483,7 +483,7 @@ func TestDetails_LongDependencyList(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 	m := New(issue, nil, nil)
-	m = m.SetSize(100, 40)
+	m = m.SetSize(170, 40) // Width >= 115 for two-column layout with dependencies
 	view := m.View()
 
 	// All dependencies should be visible
