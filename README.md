@@ -416,10 +416,6 @@ Perles looks for configuration in these locations (in order):
 | `ui.show_status_bar` | bool | `true` | Show status bar at bottom |
 | `theme.preset` | string | `""` | Theme preset name (see Theming section) |
 | `theme.colors.*` | hex | varies | Individual color token overrides |
-| `theme.highlight` | hex | `#7C3AED` | Primary accent color (legacy) |
-| `theme.subtle` | hex | `#6B7280` | Muted text color (legacy) |
-| `theme.error` | hex | `#EF4444` | Error message color (legacy) |
-| `theme.success` | hex | `#10B981` | Success message color (legacy) |
 
 ### Example Configuration
 
