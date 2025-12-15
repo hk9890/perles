@@ -227,6 +227,28 @@ func TestSearch_TreeSubMode_SetQueryClearsTreeState(t *testing.T) {
 	assert.Nil(t, m.treeRoot)
 }
 
+func TestSearch_SetTreeRootIssueId_ClearsTreeState(t *testing.T) {
+	// Bug scenario: User views Task A in tree mode, returns to kanban,
+	// then opens Epic B. Without clearing m.tree, handleTreeLoaded()
+	// would restore selection to Task A (if it's a child of Epic B).
+
+	rootIssue := beads.Issue{ID: "task-1", TitleText: "Task A"}
+	m := createTestModelWithTree(rootIssue, []beads.Issue{rootIssue})
+
+	// Verify tree state exists (simulating previous tree session)
+	assert.NotNil(t, m.tree, "precondition: tree should be set")
+	assert.Equal(t, "task-1", m.treeRoot.ID)
+
+	// User enters tree mode for a DIFFERENT issue (Epic B)
+	m = m.SetTreeRootIssueId("epic-1")
+
+	// m.tree should be nil to prevent handleTreeLoaded from restoring stale selection
+	assert.Nil(t, m.tree, "SetTreeRootIssueId should clear tree state")
+	assert.Equal(t, "epic-1", m.treeRoot.ID, "treeRoot should be set to new issue")
+	assert.Equal(t, mode.SubModeTree, m.subMode, "should remain in tree mode")
+	assert.Equal(t, FocusResults, m.focus, "focus should be on results")
+}
+
 // Key handling tests for tree sub-mode
 
 // createTreeTestModel creates a model in tree sub-mode with multiple children for key testing.

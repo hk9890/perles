@@ -501,6 +501,7 @@ func (m Model) SetQuery(query string) Model {
 func (m Model) SetTreeRootIssueId(issueID string) Model {
 	m.subMode = mode.SubModeTree
 	m.focus = FocusResults // Focus tree panel
+	m.tree = nil           // Clear old tree so handleTreeLoaded doesn't preserve stale selection
 	// Store issueID in treeRoot temporarily - we'll load full issue in Init
 	m.treeRoot = &beads.Issue{ID: issueID}
 	return m
