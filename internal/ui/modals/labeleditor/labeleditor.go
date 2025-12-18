@@ -26,12 +26,23 @@ type CancelMsg struct{}
 func New(issueID string, currentLabels []string) Model {
 	// Convert current labels to ListOptions (all initially enabled)
 	options := make([]formmodal.ListOption, len(currentLabels))
+	maxLabelLen := 0
 	for i, label := range currentLabels {
 		options[i] = formmodal.ListOption{
 			Label:    label,
 			Value:    label,
 			Selected: true,
 		}
+		if len(label) > maxLabelLen {
+			maxLabelLen = len(label)
+		}
+	}
+
+	// Calculate modal width to fit longest label
+	minWidth := 42
+	labelRowWidth := 6 + maxLabelLen + 4
+	if labelRowWidth > minWidth {
+		minWidth = labelRowWidth
 	}
 
 	m := Model{issueID: issueID}
@@ -51,7 +62,7 @@ func New(issueID string, currentLabels []string) Model {
 			},
 		},
 		SubmitLabel: "Save",
-		MinWidth:    42,
+		MinWidth:    minWidth,
 		OnSubmit: func(values map[string]any) tea.Msg {
 			return SaveMsg{
 				IssueID: m.issueID,
