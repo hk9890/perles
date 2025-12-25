@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"perles/internal/beads"
-	"perles/internal/bql"
-	"perles/internal/keys"
-	"perles/internal/ui/shared/markdown"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/ui/shared/markdown"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"

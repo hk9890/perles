@@ -1,4 +1,4 @@
-module perles
+module github.com/zjrosen/perles
 
 go 1.24.9
 

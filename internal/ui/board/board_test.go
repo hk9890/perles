@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/beads"
-	"perles/internal/config"
-	"perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/mocks"
 )
 
 func TestBoard_New_DefaultFocus(t *testing.T) {

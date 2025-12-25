@@ -4,9 +4,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"perles/internal/ui/shared/colorpicker"
 	"strings"
 	"testing"
+
+	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"

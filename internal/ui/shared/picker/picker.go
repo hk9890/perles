@@ -2,10 +2,11 @@
 package picker
 
 import (
-	"perles/internal/keys"
-	"perles/internal/ui/shared/overlay"
-	"perles/internal/ui/styles"
 	"strings"
+
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/ui/shared/overlay"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"

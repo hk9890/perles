@@ -1,12 +1,13 @@
 package coleditor
 
 import (
-	"perles/internal/beads"
-	"perles/internal/config"
-	"perles/internal/mocks"
-	"perles/internal/ui/shared/colorpicker"
-	"perles/internal/ui/shared/modal"
 	"testing"
+
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"

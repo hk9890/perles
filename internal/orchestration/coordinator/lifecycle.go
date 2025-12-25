@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/claude"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/events"
-	"perles/internal/orchestration/mcp"
-	"perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/claude"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/mcp"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
 )
 
 // generateMCPConfig returns the appropriate MCP config format based on client type.

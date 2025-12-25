@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"perles/internal/orchestration/claude"
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/claude"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 // TestCoordinatorServer_RegistersAllTools verifies all coordinator tools are registered.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/watcher"
+	"github.com/zjrosen/perles/internal/watcher"
 )
 
 func TestWatcher_DebounceMultipleWrites(t *testing.T) {

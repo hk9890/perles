@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/spf13/cobra"
 )

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/message"
 )
 
 // MessageStore defines the interface for message storage operations.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
 // View styles

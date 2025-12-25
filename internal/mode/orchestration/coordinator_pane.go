@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
-	"perles/internal/orchestration/coordinator"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/orchestration/coordinator"
+	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
 // Coordinator pane styles

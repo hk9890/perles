@@ -1,8 +1,8 @@
 package mcp
 
 import (
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 // GetPool returns the worker pool for test access.

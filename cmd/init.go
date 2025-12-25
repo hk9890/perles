@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"perles/internal/config"
+	"github.com/zjrosen/perles/internal/config"
 
 	"github.com/spf13/cobra"
 )

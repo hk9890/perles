@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/mocks"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/events"
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // testProcess is a test helper that wraps channels to simulate a HeadlessProcess.

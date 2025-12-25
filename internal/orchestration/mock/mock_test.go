@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 func TestClient_Type(t *testing.T) {

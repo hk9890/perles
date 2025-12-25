@@ -3,7 +3,7 @@ package amp
 import (
 	"time"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 // Config holds configuration for spawning an Amp process.

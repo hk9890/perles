@@ -17,15 +17,15 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"perles/internal/mode"
-	"perles/internal/orchestration/coordinator"
-	"perles/internal/orchestration/events"
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/metrics"
-	"perles/internal/orchestration/pool"
-	"perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/orchestration/coordinator"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // viewportKey is the map key for single-viewport panes (coordinator, message).

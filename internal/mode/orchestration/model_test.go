@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 // testNow is a fixed reference time for reproducible golden tests.

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"perles/internal/testutil"
+	"github.com/zjrosen/perles/internal/testutil"
 
 	"github.com/stretchr/testify/require"
 )

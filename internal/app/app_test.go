@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/config"
-	"perles/internal/mocks"
-	"perles/internal/mode"
-	"perles/internal/mode/kanban"
-	"perles/internal/mode/search"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/mode/kanban"
+	"github.com/zjrosen/perles/internal/mode/search"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

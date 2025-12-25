@@ -4,9 +4,9 @@ package help
 import (
 	"strings"
 
-	"perles/internal/keys"
-	"perles/internal/ui/shared/overlay"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/ui/shared/overlay"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"

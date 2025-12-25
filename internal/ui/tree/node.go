@@ -4,7 +4,7 @@ package tree
 import (
 	"fmt"
 
-	"perles/internal/beads"
+	"github.com/zjrosen/perles/internal/beads"
 )
 
 // Direction controls tree traversal direction.

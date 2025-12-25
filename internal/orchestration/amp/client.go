@@ -3,7 +3,7 @@ package amp
 import (
 	"context"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 func init() {

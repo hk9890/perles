@@ -2,9 +2,10 @@
 package bqlinput
 
 import (
-	"perles/internal/bql"
-	"perles/internal/ui/styles"
 	"strings"
+
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

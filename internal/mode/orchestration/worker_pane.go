@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
-	"perles/internal/orchestration/pool"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
 // Worker pane styles

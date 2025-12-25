@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"perles/internal/log"
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // Issue manages an in-memory message log for orchestration.

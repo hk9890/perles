@@ -6,13 +6,13 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"perles/internal/config"
-	"perles/internal/keys"
-	"perles/internal/mode"
-	"perles/internal/ui/coleditor"
-	"perles/internal/ui/shared/modal"
-	"perles/internal/ui/shared/picker"
-	"perles/internal/ui/shared/toaster"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/ui/coleditor"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/picker"
+	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 )
 
 // handleKey routes key messages to the appropriate handler based on view mode.

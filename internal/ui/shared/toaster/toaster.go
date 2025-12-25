@@ -2,9 +2,10 @@
 package toaster
 
 import (
-	"perles/internal/ui/shared/overlay"
-	"perles/internal/ui/styles"
 	"time"
+
+	"github.com/zjrosen/perles/internal/ui/shared/overlay"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 // Process is a mock implementation of client.HeadlessProcess for testing.

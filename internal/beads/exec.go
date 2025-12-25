@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // UpdateStatus changes an issue's status via bd CLI.

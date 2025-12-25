@@ -27,13 +27,13 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/events"
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/metrics"
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // Log category for coordinator operations.

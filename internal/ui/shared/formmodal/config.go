@@ -78,7 +78,7 @@
 package formmodal
 
 import (
-	"perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

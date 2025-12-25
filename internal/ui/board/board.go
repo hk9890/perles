@@ -2,12 +2,12 @@
 package board
 
 import (
-	"perles/internal/beads"
-	"perles/internal/bql"
-	"perles/internal/config"
-	"perles/internal/keys"
-	"perles/internal/mode/shared"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"

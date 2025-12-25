@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"

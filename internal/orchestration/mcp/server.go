@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // Log category for MCP operations.

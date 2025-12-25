@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 // Log category for amp operations.

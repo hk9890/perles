@@ -2,9 +2,9 @@
 package outdated
 
 import (
-	"perles/internal/keys"
-	"perles/internal/ui/shared/chainart"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/ui/shared/chainart"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"

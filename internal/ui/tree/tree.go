@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"perles/internal/beads"
-	"perles/internal/mode/shared"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )

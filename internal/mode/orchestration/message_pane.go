@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"perles/internal/orchestration/message"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
 // Message pane styles

@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	beads "perles/internal/beads"
+	beads "github.com/zjrosen/perles/internal/beads"
 
 	mock "github.com/stretchr/testify/mock"
 )

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // ColumnConfig defines a single kanban column.

@@ -4,8 +4,9 @@ package watcher
 import (
 	"fmt"
 	"path/filepath"
-	"perles/internal/log"
 	"time"
+
+	"github.com/zjrosen/perles/internal/log"
 
 	"github.com/fsnotify/fsnotify"
 )

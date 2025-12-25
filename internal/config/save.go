@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 
 	"gopkg.in/yaml.v3"
 )

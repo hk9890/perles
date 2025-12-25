@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"perles/internal/orchestration/claude"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/events"
-	"perles/internal/orchestration/metrics"
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/orchestration/claude"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // WorkerStatus is an alias to events.WorkerStatus for backward compatibility.

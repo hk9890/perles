@@ -3,7 +3,7 @@ package outdated
 import (
 	"testing"
 
-	"perles/internal/beads"
+	"github.com/zjrosen/perles/internal/beads"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"

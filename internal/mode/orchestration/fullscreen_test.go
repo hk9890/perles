@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 // TestToggleNavigationMode tests entering and exiting navigation mode.

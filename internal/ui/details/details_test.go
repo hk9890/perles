@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/beads"
-	"perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/mocks"
 )
 
 // stripANSI removes ANSI escape codes from a string for easier testing.

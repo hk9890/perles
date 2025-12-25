@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/beads"
-	"perles/internal/config"
-	"perles/internal/mocks"
-	"perles/internal/mode"
-	"perles/internal/mode/shared"
-	"perles/internal/ui/board"
-	"perles/internal/ui/details"
-	"perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/ui/board"
+	"github.com/zjrosen/perles/internal/ui/details"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.

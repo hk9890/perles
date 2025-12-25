@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"perles/internal/beads"
+	"github.com/zjrosen/perles/internal/beads"
 
 	"github.com/stretchr/testify/require"
 )

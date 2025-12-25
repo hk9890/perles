@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
 )
 
 // taskIDPattern validates bd task IDs to prevent command injection.

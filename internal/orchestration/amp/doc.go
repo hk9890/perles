@@ -8,7 +8,7 @@
 //
 // Import this package to register the Amp client with the client registry:
 //
-//	import _ "perles/internal/orchestration/amp"
+//	import _ "github.com/zjrosen/perles/internal/orchestration/amp"
 //
 // Then create a client using the registry:
 //

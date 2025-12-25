@@ -6,10 +6,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/events"
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // Log category for pool operations

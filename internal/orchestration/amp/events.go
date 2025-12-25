@@ -3,7 +3,7 @@ package amp
 import (
 	"encoding/json"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
 // ampEvent represents the raw Amp stream-json event structure.

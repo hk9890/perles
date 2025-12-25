@@ -1,9 +1,9 @@
 package shared
 
 import (
-	"perles/internal/beads"
-	"perles/internal/ui/shared/picker"
-	"perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/ui/shared/picker"
+	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
 // PriorityOptions returns picker options for priority levels.

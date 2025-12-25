@@ -1,6 +1,6 @@
 package events
 
-import "perles/internal/orchestration/metrics"
+import "github.com/zjrosen/perles/internal/orchestration/metrics"
 
 // CoordinatorEventType identifies the kind of coordinator event.
 type CoordinatorEventType string

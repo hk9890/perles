@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"perles/internal/app"
-	"perles/internal/beads"
-	"perles/internal/config"
-	"perles/internal/log"
-	"perles/internal/ui/nobeads"
-	"perles/internal/ui/outdated"
+	"github.com/zjrosen/perles/internal/app"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/ui/nobeads"
+	"github.com/zjrosen/perles/internal/ui/outdated"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

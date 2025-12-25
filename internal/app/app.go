@@ -9,20 +9,20 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"perles/internal/beads"
-	"perles/internal/bql"
-	"perles/internal/config"
-	"perles/internal/keys"
-	"perles/internal/log"
-	"perles/internal/mode"
-	"perles/internal/mode/kanban"
-	"perles/internal/mode/orchestration"
-	"perles/internal/mode/search"
-	"perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/mode/kanban"
+	"github.com/zjrosen/perles/internal/mode/orchestration"
+	"github.com/zjrosen/perles/internal/mode/search"
+	"github.com/zjrosen/perles/internal/mode/shared"
 
-	"perles/internal/ui/shared/logoverlay"
-	"perles/internal/ui/shared/toaster"
-	"perles/internal/watcher"
+	"github.com/zjrosen/perles/internal/ui/shared/logoverlay"
+	"github.com/zjrosen/perles/internal/ui/shared/toaster"
+	"github.com/zjrosen/perles/internal/watcher"
 )
 
 // DBChangedMsg signals that the database has changed.

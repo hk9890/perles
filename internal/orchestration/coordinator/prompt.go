@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // promptModeData holds data for rendering the prompt mode system prompt.

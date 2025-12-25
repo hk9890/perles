@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // TestMain initializes the logger for all tests in this package.

@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"perles/internal/orchestration/client"
-	poolevents "perles/internal/orchestration/events"
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	poolevents "github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // workerTestProcess is a test helper that implements HeadlessProcess for worker tests.

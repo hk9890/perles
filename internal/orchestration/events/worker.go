@@ -1,6 +1,6 @@
 package events
 
-import "perles/internal/orchestration/metrics"
+import "github.com/zjrosen/perles/internal/orchestration/metrics"
 
 // WorkerStatus represents the current state of a worker in the pool.
 // Note: This mirrors pool.WorkerStatus to avoid import cycle.

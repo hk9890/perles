@@ -1,9 +1,10 @@
 package formmodal
 
 import (
-	"perles/internal/ui/shared/overlay"
-	"perles/internal/ui/styles"
 	"strings"
+
+	"github.com/zjrosen/perles/internal/ui/shared/overlay"
+	"github.com/zjrosen/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )

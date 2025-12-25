@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"perles/cmd"
+	"github.com/zjrosen/perles/cmd"
 )
 
 // Build information injected via ldflags at build time.

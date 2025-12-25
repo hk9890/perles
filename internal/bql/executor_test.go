@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"perles/internal/beads"
-	"perles/internal/testutil"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/testutil"
 
 	"github.com/stretchr/testify/require"
 )

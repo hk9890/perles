@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"perles/internal/beads"
-	"perles/internal/log"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/log"
 )
 
 // BQLExecutor executes BQL queries and returns matching issues.

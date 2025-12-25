@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/message"
 )
 
 // mockMessageStore implements MessageStore for testing.

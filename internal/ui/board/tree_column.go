@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"perles/internal/beads"
-	"perles/internal/bql"
-	"perles/internal/mode/shared"
-	"perles/internal/ui/styles"
-	"perles/internal/ui/tree"
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/zjrosen/perles/internal/ui/tree"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

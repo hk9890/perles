@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 
 	"github.com/stretchr/testify/require"
 )

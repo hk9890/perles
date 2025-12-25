@@ -11,17 +11,17 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"perles/internal/log"
-	"perles/internal/orchestration/amp"
-	"perles/internal/orchestration/client"
-	"perles/internal/orchestration/coordinator"
-	"perles/internal/orchestration/events"
-	"perles/internal/orchestration/mcp"
-	"perles/internal/orchestration/message"
-	"perles/internal/orchestration/pool"
-	"perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/amp"
+	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/coordinator"
+	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/mcp"
+	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
-	"perles/internal/pubsub"
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // KeyMap defines the keybindings for orchestration mode.

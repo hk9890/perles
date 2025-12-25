@@ -2,7 +2,7 @@
 package styles
 
 import (
-	"perles/internal/beads"
+	"github.com/zjrosen/perles/internal/beads"
 
 	"github.com/charmbracelet/lipgloss"
 )

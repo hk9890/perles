@@ -2,7 +2,7 @@
 package labeleditor
 
 import (
-	"perles/internal/ui/shared/formmodal"
+	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
