@@ -34,7 +34,7 @@ func (c *Coordinator) Start() error {
 	}
 
 	c.setStatus(StatusStarting)
-	log.Debug(logCat, "Starting coordinator")
+	log.Debug(log.CatOrch, "Starting coordinator", "subsystem", "coord")
 
 	// Generate MCP config for coordinator tools
 	mcpConfig, err := c.generateMCPConfig()
@@ -76,7 +76,7 @@ func (c *Coordinator) Start() error {
 
 	c.process = process
 	c.sessionID = process.SessionRef()
-	log.Debug(logCat, "Coordinator started", "sessionID", c.sessionID)
+	log.Debug(log.CatOrch, "Coordinator started", "subsystem", "coord", "sessionID", c.sessionID)
 
 	// Start event processing
 	c.wg.Add(1)
@@ -124,7 +124,7 @@ func (c *Coordinator) SendUserMessage(content string) error {
 	c.emitCoordinatorEvent(events.CoordinatorWorking, events.CoordinatorEvent{})
 
 	// Resume the session with the user's message
-	log.Debug(logCat, "Sending user message to coordinator", "content", content)
+	log.Debug(log.CatOrch, "Sending user message to coordinator", "subsystem", "coord", "content", content)
 
 	// Generate MCP config for coordinator tools
 	mcpConfig, err := c.generateMCPConfig()
@@ -173,7 +173,7 @@ func (c *Coordinator) Pause() error {
 		return fmt.Errorf("coordinator not running (status: %s)", c.Status())
 	}
 
-	log.Debug(logCat, "Pausing coordinator")
+	log.Debug(log.CatOrch, "Pausing coordinator", "subsystem", "coord")
 	c.setStatus(StatusPaused)
 	return nil
 }
@@ -184,7 +184,7 @@ func (c *Coordinator) Resume() error {
 		return fmt.Errorf("coordinator not paused (status: %s)", c.Status())
 	}
 
-	log.Debug(logCat, "Resuming coordinator")
+	log.Debug(log.CatOrch, "Resuming coordinator", "subsystem", "coord")
 	c.setStatus(StatusRunning)
 	return nil
 }
@@ -206,7 +206,7 @@ func (c *Coordinator) Replace() error {
 		return fmt.Errorf("coordinator process not available")
 	}
 
-	log.Debug(logCat, "Replacing coordinator process with fresh session", "oldSessionID", c.sessionID)
+	log.Debug(log.CatOrch, "Replacing coordinator process with fresh session", "subsystem", "coord", "oldSessionID", c.sessionID)
 
 	// Cancel the old process (but NOT c.ctx - the coordinator stays alive)
 	// The old processEvents goroutine will exit when its channel closes
@@ -263,7 +263,7 @@ func (c *Coordinator) Replace() error {
 	// Coordinator is working (processing the refresh prompt)
 	c.emitCoordinatorEvent(events.CoordinatorWorking, events.CoordinatorEvent{})
 
-	log.Debug(logCat, "Coordinator process replaced with fresh session")
+	log.Debug(log.CatOrch, "Coordinator process replaced with fresh session", "subsystem", "coord")
 	return nil
 }
 
@@ -313,7 +313,7 @@ func (c *Coordinator) stop() error {
 		return nil
 	}
 
-	log.Debug(logCat, "Stopping coordinator")
+	log.Debug(log.CatOrch, "Stopping coordinator", "subsystem", "coord")
 	c.setStatus(StatusStopping)
 
 	// Cancel context (stops Claude process)
@@ -358,11 +358,11 @@ func (c *Coordinator) processEvents() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			log.Debug(logCat, "processEvents exiting - context cancelled")
+			log.Debug(log.CatOrch, "processEvents exiting - context cancelled", "subsystem", "coord")
 			return
 		case event, ok := <-aiEvents:
 			if !ok {
-				log.Debug(logCat, "processEvents exiting - channel closed")
+				log.Debug(log.CatOrch, "processEvents exiting - channel closed", "subsystem", "coord")
 				return
 			}
 
@@ -372,7 +372,7 @@ func (c *Coordinator) processEvents() {
 				c.mu.Lock()
 				c.sessionID = event.SessionID
 				c.mu.Unlock()
-				log.Debug(logCat, "Coordinator session initialized", "sessionID", event.SessionID)
+				log.Debug(log.CatOrch, "Coordinator session initialized", "subsystem", "coord", "sessionID", event.SessionID)
 
 			case event.IsAssistant() && event.Message != nil:
 				// Emit assistant text as chat message
@@ -397,7 +397,8 @@ func (c *Coordinator) processEvents() {
 
 			case event.IsResult():
 				// Handle result events - may be success or error (e.g., "Prompt is too long")
-				log.Debug(logCat, "Coordinator result event",
+				log.Debug(log.CatOrch, "Coordinator result event",
+					"subsystem", "coord",
 					"hasUsage", event.Usage != nil,
 					"isError", event.IsErrorResult,
 					"result", event.Result)
@@ -405,7 +406,7 @@ func (c *Coordinator) processEvents() {
 				// Check for error results first (e.g., context window exceeded)
 				if event.IsErrorResult {
 					errMsg := event.GetErrorMessage()
-					log.Debug(logCat, "Coordinator result error", "message", errMsg)
+					log.Debug(log.CatOrch, "Coordinator result error", "subsystem", "coord", "message", errMsg)
 					// Show error as a chat message so user sees it in the coordinator pane
 					c.emitCoordinatorEvent(events.CoordinatorChat, events.CoordinatorEvent{
 						Role:    "coordinator",
@@ -435,7 +436,8 @@ func (c *Coordinator) processEvents() {
 					m.TotalCostUSD = c.cumulativeMetrics.TotalCostUSD
 					c.mu.Unlock()
 
-					log.Debug(logCat, "Coordinator token usage from result",
+					log.Debug(log.CatOrch, "Coordinator token usage from result",
+						"subsystem", "coord",
 						"input", event.Usage.InputTokens,
 						"output", event.Usage.OutputTokens,
 						"cache_read", event.Usage.CacheReadInputTokens,
@@ -448,12 +450,13 @@ func (c *Coordinator) processEvents() {
 						c.emitCoordinatorEvent(events.CoordinatorTokenUsage, events.CoordinatorEvent{
 							Metrics: m,
 						})
-						log.Debug(logCat, "Emitted CoordinatorTokenUsage", "contextTokens", m.ContextTokens)
+						log.Debug(log.CatOrch, "Emitted CoordinatorTokenUsage", "subsystem", "coord", "contextTokens", m.ContextTokens)
 					}
 				}
 
 				// Process completed successfully - coordinator is now ready for input
-				log.Debug(logCat, "Coordinator process completed",
+				log.Debug(log.CatOrch, "Coordinator process completed",
+					"subsystem", "coord",
 					"cost", event.TotalCostUSD,
 					"durationMs", event.DurationMs)
 				c.emitCoordinatorEvent(events.CoordinatorReady, events.CoordinatorEvent{})
@@ -464,12 +467,12 @@ func (c *Coordinator) processEvents() {
 				if event.Tool != nil {
 					toolName = event.Tool.Name
 				}
-				log.Debug(logCat, "Coordinator tool result", "tool", toolName)
+				log.Debug(log.CatOrch, "Coordinator tool result", "subsystem", "coord", "tool", toolName)
 
 			case event.IsError():
 				// Handle explicit error events (type: "error")
 				errMsg := event.GetErrorMessage()
-				log.Debug(logCat, "Coordinator error event", "message", errMsg)
+				log.Debug(log.CatOrch, "Coordinator error event", "subsystem", "coord", "message", errMsg)
 				c.emitCoordinatorEvent(events.CoordinatorError, events.CoordinatorEvent{
 					Error: fmt.Errorf("%s", errMsg),
 				})

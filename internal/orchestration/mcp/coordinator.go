@@ -291,7 +291,7 @@ func (cs *CoordinatorServer) SpawnIdleWorker() (string, error) {
 	// Generate MCP config for worker with the actual worker ID
 	mcpConfig, err := cs.generateWorkerMCPConfig(workerID)
 	if err != nil {
-		log.Debug(logCat, "Failed to generate worker MCP config", "workerID", workerID, "error", err)
+		log.Debug(log.CatMCP, "Failed to generate worker MCP config", "workerID", workerID, "error", err)
 		return "", fmt.Errorf("failed to generate MCP config: %w", err)
 	}
 
@@ -309,11 +309,12 @@ func (cs *CoordinatorServer) SpawnIdleWorker() (string, error) {
 	// Spawn worker with the pre-generated ID
 	workerID, err = cs.pool.SpawnWorkerWithID(workerID, cfg)
 	if err != nil {
-		log.Debug(logCat, "Failed to spawn worker", "workerID", workerID, "error", err)
+		log.ErrorErr(log.CatMCP, "Failed to spawn worker", err,
+			"workerID", workerID)
 		return "", fmt.Errorf("failed to spawn worker: %w", err)
 	}
 
-	log.Debug(logCat, "Spawned idle worker", "workerID", workerID)
+	log.Debug(log.CatMCP, "Spawned idle worker", "workerID", workerID)
 
 	return workerID, nil
 }
@@ -325,7 +326,7 @@ func (cs *CoordinatorServer) handleSpawnWorker(_ context.Context, _ json.RawMess
 		return nil, fmt.Errorf("failed to spawn worker: %w", err)
 	}
 
-	log.Debug(logCat, "Spawned worker via MCP tool", "workerID", workerID)
+	log.Debug(log.CatMCP, "Spawned worker via MCP tool", "workerID", workerID)
 	return SuccessResult(fmt.Sprintf("Worker %s spawned and ready for task assignment", workerID)), nil
 }
 
@@ -349,6 +350,9 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 	// Get task details from bd
 	taskInfo, err := cs.getTaskInfo(args.TaskID)
 	if err != nil {
+		log.ErrorErr(log.CatMCP, "Failed to get task info", err,
+			"taskID", args.TaskID,
+			"workerID", args.WorkerID)
 		return nil, fmt.Errorf("failed to get task info: %w", err)
 	}
 
@@ -403,7 +407,7 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 	// Emit event for TUI
 	cs.pool.EmitIncomingMessage(args.WorkerID, args.TaskID, prompt)
 
-	log.Debug(logCat, "Assigned task to worker", "workerID", args.WorkerID, "taskID", args.TaskID)
+	log.Debug(log.CatMCP, "Assigned task to worker", "workerID", args.WorkerID, "taskID", args.TaskID)
 	return SuccessResult(fmt.Sprintf("Task %s assigned to %s", args.TaskID, args.WorkerID)), nil
 }
 
@@ -439,7 +443,7 @@ func (cs *CoordinatorServer) handleReplaceWorker(ctx context.Context, rawArgs js
 		reason = "manual replacement"
 	}
 
-	log.Debug(logCat, "Replaced worker", "oldWorkerID", args.WorkerID, "newWorkerID", newWorkerID, "reason", reason)
+	log.Debug(log.CatMCP, "Replaced worker", "oldWorkerID", args.WorkerID, "newWorkerID", newWorkerID, "reason", reason)
 	return SuccessResult(fmt.Sprintf("Worker %s retired (%s). Replacement: %s", args.WorkerID, reason, newWorkerID)), nil
 }
 
@@ -501,7 +505,7 @@ func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs jso
 	// Regenerate MCP config for the worker so it has access to tools when resumed
 	mcpConfig, err := cs.generateWorkerMCPConfig(args.WorkerID)
 	if err != nil {
-		log.Debug(logCat, "Failed to generate worker MCP config for resume", "workerID", args.WorkerID, "error", err)
+		log.Debug(log.CatMCP, "Failed to generate worker MCP config for resume", "workerID", args.WorkerID, "error", err)
 		return nil, fmt.Errorf("failed to generate MCP config: %w", err)
 	}
 
@@ -515,7 +519,7 @@ func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs jso
 		DisallowedTools: []string{"AskUserQuestion"},
 	})
 	if err != nil {
-		log.Debug(logCat, "Failed to send to worker", "workerID", args.WorkerID, "error", err)
+		log.Debug(log.CatMCP, "Failed to send to worker", "workerID", args.WorkerID, "error", err)
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
@@ -524,11 +528,11 @@ func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs jso
 
 	// Resume the worker in the pool so events are processed and visible in the TUI
 	if err := cs.pool.ResumeWorker(args.WorkerID, proc); err != nil {
-		log.Debug(logCat, "Failed to resume worker in pool", "workerID", args.WorkerID, "error", err)
+		log.Debug(log.CatMCP, "Failed to resume worker in pool", "workerID", args.WorkerID, "error", err)
 		return nil, fmt.Errorf("failed to resume worker: %w", err)
 	}
 
-	log.Debug(logCat, "Sent message to worker", "workerID", args.WorkerID)
+	log.Debug(log.CatMCP, "Sent message to worker", "workerID", args.WorkerID)
 	return SuccessResult(fmt.Sprintf("Message sent to %s", args.WorkerID)), nil
 }
 
@@ -552,11 +556,11 @@ func (cs *CoordinatorServer) handlePostMessage(_ context.Context, rawArgs json.R
 
 	_, err := cs.msgIssue.Append(message.ActorCoordinator, args.To, args.Content, message.MessageInfo)
 	if err != nil {
-		log.Debug(logCat, "Failed to post message", "to", args.To, "error", err)
+		log.Debug(log.CatMCP, "Failed to post message", "to", args.To, "error", err)
 		return nil, fmt.Errorf("failed to post message: %w", err)
 	}
 
-	log.Debug(logCat, "Posted message", "to", args.To)
+	log.Debug(log.CatMCP, "Posted message", "to", args.To)
 	return SuccessResult(fmt.Sprintf("Message posted to %s", args.To)), nil
 }
 
@@ -581,7 +585,7 @@ func (cs *CoordinatorServer) handleGetTaskStatus(_ context.Context, rawArgs json
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Debug(logCat, "bd show failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
+		log.Debug(log.CatMCP, "bd show failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
 		return nil, fmt.Errorf("bd show failed: %s", strings.TrimSpace(stderr.String()))
 	}
 
@@ -609,11 +613,11 @@ func (cs *CoordinatorServer) handleMarkTaskComplete(_ context.Context, rawArgs j
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		log.Debug(logCat, "bd update failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
+		log.Debug(log.CatMCP, "bd update failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
 		return nil, fmt.Errorf("bd update failed: %s", strings.TrimSpace(stderr.String()))
 	}
 
-	log.Debug(logCat, "Marked task complete", "taskID", args.TaskID)
+	log.Debug(log.CatMCP, "Marked task complete", "taskID", args.TaskID)
 	return SuccessResult(fmt.Sprintf("Task %s marked as closed", args.TaskID)), nil
 }
 
@@ -640,11 +644,11 @@ func (cs *CoordinatorServer) handleMarkTaskFailed(_ context.Context, rawArgs jso
 	commentCmd.Stderr = &commentStderr
 
 	if err := commentCmd.Run(); err != nil {
-		log.Debug(logCat, "bd comment failed", "taskID", args.TaskID, "error", err, "stderr", commentStderr.String())
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err, "stderr", commentStderr.String())
 		return nil, fmt.Errorf("bd comment failed: %s", strings.TrimSpace(commentStderr.String()))
 	}
 
-	log.Debug(logCat, "Marked task failed", "taskID", args.TaskID, "reason", args.Reason)
+	log.Debug(log.CatMCP, "Marked task failed", "taskID", args.TaskID, "reason", args.Reason)
 	return SuccessResult(fmt.Sprintf("Task %s marked as failed with comment: %s", args.TaskID, args.Reason)), nil
 }
 
@@ -802,7 +806,7 @@ func (cs *CoordinatorServer) handlePrepareHandoff(_ context.Context, rawArgs jso
 		return nil, fmt.Errorf("failed to post handoff: %w", err)
 	}
 
-	log.Debug(logCat, "Posted handoff message")
+	log.Debug(log.CatMCP, "Posted handoff message")
 	return SuccessResult("Handoff message posted. Refresh will proceed."), nil
 }
 

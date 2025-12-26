@@ -12,9 +12,6 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 )
 
-// Log category for MCP operations.
-const logCat = "mcp"
-
 // ToolHandler is a function that handles a tool call.
 // It receives the parsed arguments and returns a result or error.
 type ToolHandler func(ctx context.Context, args json.RawMessage) (*ToolCallResult, error)
@@ -74,7 +71,7 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandler) {
 	defer s.mu.Unlock()
 	s.tools[tool.Name] = tool
 	s.handlers[tool.Name] = handler
-	log.Debug(logCat, "Registered tool", "name", tool.Name)
+	log.Debug(log.CatMCP, "Registered tool", "name", tool.Name)
 }
 
 // Serve starts the server, reading from stdin and writing to stdout.
@@ -110,7 +107,7 @@ func (s *Server) ServeHTTP() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(response); err != nil {
-			log.Debug("mcp", "Failed to write response", "error", err)
+			log.Debug(log.CatMCP, "Failed to write response", "error", err)
 		}
 	})
 }
@@ -179,7 +176,7 @@ func (s *Server) run() error {
 			continue
 		}
 
-		log.Debug(logCat, "Received message", "raw", string(line))
+		log.Debug(log.CatMCP, "Received message", "raw", string(line))
 
 		// Check if it's a request or notification
 		var req Request
@@ -207,7 +204,7 @@ func (s *Server) run() error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Debug(logCat, "Scanner error", "error", err)
+		log.Debug(log.CatMCP, "Scanner error", "error", err)
 		return fmt.Errorf("reading input: %w", err)
 	}
 
@@ -216,7 +213,7 @@ func (s *Server) run() error {
 
 // handleRequest processes a JSON-RPC request and sends a response.
 func (s *Server) handleRequest(req *Request) {
-	log.Debug(logCat, "Handling request", "method", req.Method)
+	log.Debug(log.CatMCP, "Handling request", "method", req.Method)
 
 	var result any
 	var rpcErr *RPCError
@@ -247,22 +244,22 @@ func (s *Server) handleRequest(req *Request) {
 
 // handleNotification processes a JSON-RPC notification (no response needed).
 func (s *Server) handleNotification(req *Request) {
-	log.Debug(logCat, "Handling notification", "method", req.Method)
+	log.Debug(log.CatMCP, "Handling notification", "method", req.Method)
 
 	switch req.Method {
 	case "notifications/initialized":
 		s.mu.Lock()
 		s.initialized = true
 		s.mu.Unlock()
-		log.Debug(logCat, "Client initialized")
+		log.Debug(log.CatMCP, "Client initialized")
 
 	case "notifications/cancelled":
 		// Handle cancellation if needed
-		log.Debug(logCat, "Request cancelled")
+		log.Debug(log.CatMCP, "Request cancelled")
 
 	default:
 		// Unknown notifications are ignored per spec
-		log.Debug(logCat, "Unknown notification", "method", req.Method)
+		log.Debug(log.CatMCP, "Unknown notification", "method", req.Method)
 	}
 }
 
@@ -275,7 +272,7 @@ func (s *Server) handleInitialize(params json.RawMessage) (any, *RPCError) {
 		}
 	}
 
-	log.Debug(logCat, "Initialize request",
+	log.Debug(log.CatMCP, "Initialize request",
 		"clientVersion", p.ProtocolVersion,
 		"clientName", p.ClientInfo.Name)
 
@@ -321,11 +318,11 @@ func (s *Server) handleToolsCall(params json.RawMessage) (any, *RPCError) {
 		return nil, NewToolNotFound(p.Name)
 	}
 
-	log.Debug(logCat, "Calling tool", "name", p.Name)
+	log.Debug(log.CatMCP, "Calling tool", "name", p.Name)
 
 	result, err := handler(s.ctx, p.Arguments)
 	if err != nil {
-		log.Debug(logCat, "Tool execution failed", "name", p.Name, "error", err)
+		log.Debug(log.CatMCP, "Tool execution failed", "name", p.Name, "error", err)
 		// Return the error as a tool result, not an RPC error
 		return ErrorResult(err.Error()), nil
 	}
@@ -349,7 +346,7 @@ func (s *Server) sendError(id json.RawMessage, err *RPCError) {
 func (s *Server) send(resp *Response) {
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Debug(logCat, "Failed to marshal response", "error", err)
+		log.Debug(log.CatMCP, "Failed to marshal response", "error", err)
 		return
 	}
 
@@ -363,8 +360,8 @@ func (s *Server) send(resp *Response) {
 	// MCP uses newline-delimited JSON
 	data = append(data, '\n')
 	if _, err := s.writer.Write(data); err != nil {
-		log.Debug(logCat, "Failed to write response", "error", err)
+		log.Debug(log.CatMCP, "Failed to write response", "error", err)
 	}
 
-	log.Debug(logCat, "Sent response", "raw", string(data[:len(data)-1]))
+	log.Debug(log.CatMCP, "Sent response", "raw", string(data[:len(data)-1]))
 }

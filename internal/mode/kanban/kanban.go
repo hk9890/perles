@@ -10,6 +10,7 @@ import (
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/board"
@@ -688,6 +689,9 @@ func (m Model) deleteColumn() (Model, tea.Cmd) {
 
 	err := config.DeleteColumnInView(m.configPath(), viewIndex, colIndex, columns, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to delete column", err,
+			"viewIndex", viewIndex,
+			"columnIndex", colIndex)
 		m.err = err
 		m.errContext = "deleting column"
 		m.view = ViewBoard
@@ -721,6 +725,8 @@ func (m Model) createNewView(viewName string) (Model, tea.Cmd) {
 
 	err := config.AddView(m.configPath(), newView, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to create view", err,
+			"viewName", viewName)
 		m.err = err
 		m.errContext = "creating view"
 		m.view = ViewBoard
@@ -755,6 +761,9 @@ func (m Model) deleteCurrentView() (Model, tea.Cmd) {
 
 	err := config.DeleteView(m.configPath(), viewIndex, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to delete view", err,
+			"viewIndex", viewIndex,
+			"viewName", viewName)
 		m.err = err
 		m.errContext = "deleting view"
 		m.view = ViewBoard
@@ -790,6 +799,9 @@ func (m Model) renameCurrentView(newName string) (Model, tea.Cmd) {
 
 	err := config.RenameView(m.configPath(), viewIndex, newName, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to rename view", err,
+			"viewIndex", viewIndex,
+			"newName", newName)
 		m.err = err
 		m.errContext = "renaming view"
 		m.view = ViewBoard

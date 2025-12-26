@@ -16,9 +16,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
-// Log category for claude operations
-const logCat = "claude"
-
 // ProcessStatus is an alias to client.ProcessStatus for backward compatibility.
 // Deprecated: Use client.ProcessStatus directly.
 type ProcessStatus = client.ProcessStatus
@@ -185,7 +182,7 @@ func Spawn(ctx context.Context, cfg Config) (*Process, error) {
 	}
 
 	args := buildArgs(cfg)
-	log.Debug(logCat, "Spawning claude process", "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
+	log.Debug(log.CatOrch, "Spawning claude process", "subsystem", "claude", "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
 
 	// #nosec G204 -- args are built from Config struct, not user input
 	cmd := exec.CommandContext(procCtx, "claude", args...)
@@ -219,11 +216,11 @@ func Spawn(ctx context.Context, cfg Config) (*Process, error) {
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		log.Debug(logCat, "Failed to start claude process", "error", err)
+		log.Debug(log.CatOrch, "Failed to start claude process", "subsystem", "claude", "error", err)
 		return nil, fmt.Errorf("failed to start claude process: %w", err)
 	}
 
-	log.Debug(logCat, "Claude process started", "pid", cmd.Process.Pid)
+	log.Debug(log.CatOrch, "Claude process started", "subsystem", "claude", "pid", cmd.Process.Pid)
 	p.setStatus(client.StatusRunning)
 
 	// Start output parser goroutines
@@ -371,7 +368,7 @@ func (p *Process) sendError(err error) {
 		// Error sent successfully
 	default:
 		// Channel full, log the dropped error
-		log.Debug(logCat, "Error channel full, dropping error", "error", err)
+		log.Debug(log.CatOrch, "Error channel full, dropping error", "subsystem", "claude", "error", err)
 	}
 }
 
@@ -380,7 +377,7 @@ func (p *Process) parseOutput() {
 	defer p.wg.Done()
 	defer close(p.events)
 
-	log.Debug(logCat, "Starting output parser")
+	log.Debug(log.CatOrch, "Starting output parser", "subsystem", "claude")
 
 	scanner := bufio.NewScanner(p.stdout)
 	// Increase buffer size for large outputs
@@ -397,27 +394,29 @@ func (p *Process) parseOutput() {
 		}
 
 		// Log raw JSON for debugging - this helps us see what Claude actually outputs
-		log.Debug(logCat, "RAW_JSON", "lineNum", lineCount, "json", string(line))
+		log.Debug(log.CatOrch, "RAW_JSON", "subsystem", "claude", "lineNum", lineCount, "json", string(line))
 
 		var event client.OutputEvent
 		if err := json.Unmarshal(line, &event); err != nil {
-			log.Debug(logCat, "Failed to parse JSON", "error", err, "line", string(line[:min(100, len(line))]))
+			log.Debug(log.CatOrch, "Failed to parse JSON", "subsystem", "claude", "error", err, "line", string(line[:min(100, len(line))]))
 			continue
 		}
 
-		log.Debug(logCat, "Parsed event", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
+		log.Debug(log.CatOrch, "Parsed event", "subsystem", "claude", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
 
 		// Log Usage data specifically for result events to debug token tracking
 		if event.Type == client.EventResult {
 			hasUsage := event.Usage != nil
 			hasModelUsage := event.ModelUsage != nil
-			log.Debug(logCat, "RESULT_EVENT_USAGE",
+			log.Debug(log.CatOrch, "RESULT_EVENT_USAGE",
+				"subsystem", "claude",
 				"hasUsage", hasUsage,
 				"hasModelUsage", hasModelUsage,
 				"totalCostUSD", event.TotalCostUSD,
 				"durationMs", event.DurationMs)
 			if hasUsage {
-				log.Debug(logCat, "USAGE_DETAILS",
+				log.Debug(log.CatOrch, "USAGE_DETAILS",
+					"subsystem", "claude",
 					"inputTokens", event.Usage.InputTokens,
 					"outputTokens", event.Usage.OutputTokens,
 					"cacheReadInputTokens", event.Usage.CacheReadInputTokens,
@@ -425,7 +424,8 @@ func (p *Process) parseOutput() {
 			}
 			if hasModelUsage {
 				for modelName, usage := range event.ModelUsage {
-					log.Debug(logCat, "MODEL_USAGE_DETAILS",
+					log.Debug(log.CatOrch, "MODEL_USAGE_DETAILS",
+						"subsystem", "claude",
 						"model", modelName,
 						"inputTokens", usage.InputTokens,
 						"outputTokens", usage.OutputTokens,
@@ -445,22 +445,22 @@ func (p *Process) parseOutput() {
 			p.mu.Lock()
 			p.sessionID = event.SessionID
 			p.mu.Unlock()
-			log.Debug(logCat, "Got session ID", "sessionID", event.SessionID)
+			log.Debug(log.CatOrch, "Got session ID", "subsystem", "claude", "sessionID", event.SessionID)
 		}
 
 		select {
 		case p.events <- event:
-			log.Debug(logCat, "Sent event to channel", "type", event.Type)
+			log.Debug(log.CatOrch, "Sent event to channel", "subsystem", "claude", "type", event.Type)
 		case <-p.ctx.Done():
-			log.Debug(logCat, "Context done, stopping parser")
+			log.Debug(log.CatOrch, "Context done, stopping parser", "subsystem", "claude")
 			return
 		}
 	}
 
-	log.Debug(logCat, "Scanner finished", "totalLines", lineCount)
+	log.Debug(log.CatOrch, "Scanner finished", "subsystem", "claude", "totalLines", lineCount)
 
 	if err := scanner.Err(); err != nil {
-		log.Debug(logCat, "Scanner error", "error", err)
+		log.Debug(log.CatOrch, "Scanner error", "subsystem", "claude", "error", err)
 		p.sendError(fmt.Errorf("stdout scanner error: %w", err))
 	}
 }
@@ -472,10 +472,10 @@ func (p *Process) parseStderr() {
 	scanner := bufio.NewScanner(p.stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		log.Debug(logCat, "STDERR", "line", line)
+		log.Debug(log.CatOrch, "STDERR", "subsystem", "claude", "line", line)
 	}
 	if err := scanner.Err(); err != nil {
-		log.Debug(logCat, "Stderr scanner error", "error", err)
+		log.Debug(log.CatOrch, "Stderr scanner error", "subsystem", "claude", "error", err)
 	}
 }
 
@@ -483,34 +483,34 @@ func (p *Process) parseStderr() {
 func (p *Process) waitForCompletion() {
 	defer p.wg.Done()
 
-	log.Debug(logCat, "Waiting for process to complete")
+	log.Debug(log.CatOrch, "Waiting for process to complete", "subsystem", "claude")
 	err := p.cmd.Wait()
-	log.Debug(logCat, "Process completed", "error", err)
+	log.Debug(log.CatOrch, "Process completed", "subsystem", "claude", "error", err)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.status == client.StatusCancelled {
 		// Already cancelled, don't override
-		log.Debug(logCat, "Process was cancelled")
+		log.Debug(log.CatOrch, "Process was cancelled", "subsystem", "claude")
 		return
 	}
 
 	// Check if this was a timeout
 	if p.ctx.Err() == context.DeadlineExceeded {
 		p.status = client.StatusFailed
-		log.Debug(logCat, "Process timed out")
+		log.Debug(log.CatOrch, "Process timed out", "subsystem", "claude")
 		p.sendError(ErrTimeout)
 		return
 	}
 
 	if err != nil {
 		p.status = client.StatusFailed
-		log.Debug(logCat, "Process failed", "error", err)
+		log.Debug(log.CatOrch, "Process failed", "subsystem", "claude", "error", err)
 		p.sendError(fmt.Errorf("claude process exited: %w", err))
 	} else {
 		p.status = client.StatusCompleted
-		log.Debug(logCat, "Process completed successfully")
+		log.Debug(log.CatOrch, "Process completed successfully", "subsystem", "claude")
 	}
 }
 

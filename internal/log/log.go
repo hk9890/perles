@@ -52,6 +52,9 @@ const (
 	CatUI      Category = "ui"      // UI component updates
 	CatMode    Category = "mode"    // Mode controller events
 	CatBeads   Category = "beads"   // Beads CLI interactions
+	CatOrch    Category = "orch"    // Orchestration: coordinator, pool, amp, claude processes
+	CatMCP     Category = "mcp"     // MCP server and protocol communication
+	CatTree    Category = "tree"    // Tree view operations
 )
 
 // Logger provides structured logging.

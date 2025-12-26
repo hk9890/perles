@@ -36,9 +36,6 @@ import (
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
-// Log category for coordinator operations.
-const logCat = "coordinator"
-
 // Status represents the coordinator's current state.
 type Status int
 

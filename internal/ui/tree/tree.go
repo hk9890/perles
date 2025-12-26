@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/styles"
 
@@ -173,6 +174,10 @@ func (m *Model) Rebuild() error {
 	rootID := m.root.Issue.ID
 	root, err := BuildTree(m.issueMap, rootID, m.direction, m.mode)
 	if err != nil {
+		log.ErrorErr(log.CatTree, "Failed to rebuild tree", err,
+			"rootID", rootID,
+			"direction", string(m.direction),
+			"mode", string(m.mode))
 		return err
 	}
 	m.root = root
@@ -191,6 +196,10 @@ func (m *Model) Refocus(newRootID string) error {
 	}
 	root, err := BuildTree(m.issueMap, newRootID, m.direction, m.mode)
 	if err != nil {
+		log.ErrorErr(log.CatTree, "Failed to refocus tree", err,
+			"newRootID", newRootID,
+			"direction", string(m.direction),
+			"mode", string(m.mode))
 		return err
 	}
 	m.root = root
@@ -223,6 +232,10 @@ func (m *Model) GoBack() (needsRequery bool, requeriedID string) {
 
 	root, err := BuildTree(m.issueMap, prevID, m.direction, m.mode)
 	if err != nil {
+		log.ErrorErr(log.CatTree, "Failed to go back in tree", err,
+			"prevID", prevID,
+			"direction", string(m.direction),
+			"mode", string(m.mode))
 		return false, ""
 	}
 	m.root = root
@@ -236,6 +249,10 @@ func (m *Model) GoToOriginal() error {
 	m.rootStack = nil
 	root, err := BuildTree(m.issueMap, m.originalID, m.direction, m.mode)
 	if err != nil {
+		log.ErrorErr(log.CatTree, "Failed to go to original root", err,
+			"originalID", m.originalID,
+			"direction", string(m.direction),
+			"mode", string(m.mode))
 		return err
 	}
 	m.root = root

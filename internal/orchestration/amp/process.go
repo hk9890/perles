@@ -14,9 +14,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
-// Log category for amp operations.
-const logCat = "amp"
-
 // Process represents a headless Amp process.
 // Process implements client.HeadlessProcess.
 type Process struct {
@@ -61,7 +58,7 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 	}
 
 	args := buildArgs(cfg, isResume)
-	log.Debug(logCat, "Spawning amp process", "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
+	log.Debug(log.CatOrch, "Spawning amp process", "subsystem", "amp", "args", strings.Join(args, " "), "workDir", cfg.WorkDir)
 
 	// #nosec G204 -- args are built from Config struct, not user input
 	cmd := exec.CommandContext(procCtx, "amp", args...)
@@ -101,11 +98,11 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		log.Debug(logCat, "Failed to start amp process", "error", err)
+		log.Debug(log.CatOrch, "Failed to start amp process", "subsystem", "amp", "error", err)
 		return nil, fmt.Errorf("failed to start amp process: %w", err)
 	}
 
-	log.Debug(logCat, "Amp process started", "pid", cmd.Process.Pid)
+	log.Debug(log.CatOrch, "Amp process started", "subsystem", "amp", "pid", cmd.Process.Pid)
 	p.setStatus(client.StatusRunning)
 
 	// Write prompt to stdin if provided (Amp reads prompt from stdin in execute mode)
@@ -113,17 +110,17 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 		go func() {
 			defer func() {
 				if closeErr := stdin.Close(); closeErr != nil {
-					log.Debug(logCat, "Failed to close stdin", "error", closeErr)
+					log.Debug(log.CatOrch, "Failed to close stdin", "subsystem", "amp", "error", closeErr)
 				}
 			}()
 			_, err := io.WriteString(stdin, cfg.Prompt)
 			if err != nil {
-				log.Debug(logCat, "Failed to write prompt to stdin", "error", err)
+				log.Debug(log.CatOrch, "Failed to write prompt to stdin", "subsystem", "amp", "error", err)
 			}
 		}()
 	} else {
 		if closeErr := stdin.Close(); closeErr != nil {
-			log.Debug(logCat, "Failed to close stdin", "error", closeErr)
+			log.Debug(log.CatOrch, "Failed to close stdin", "subsystem", "amp", "error", closeErr)
 		}
 	}
 
@@ -212,7 +209,7 @@ func (p *Process) sendError(err error) {
 		// Error sent successfully
 	default:
 		// Channel full, log the dropped error
-		log.Debug(logCat, "Error channel full, dropping error", "error", err)
+		log.Debug(log.CatOrch, "Error channel full, dropping error", "subsystem", "amp", "error", err)
 	}
 }
 
@@ -221,7 +218,7 @@ func (p *Process) parseOutput() {
 	defer p.wg.Done()
 	defer close(p.events)
 
-	log.Debug(logCat, "Starting output parser")
+	log.Debug(log.CatOrch, "Starting output parser", "subsystem", "amp")
 
 	scanner := bufio.NewScanner(p.stdout)
 	// Increase buffer size for large outputs
@@ -238,25 +235,27 @@ func (p *Process) parseOutput() {
 		}
 
 		// Log raw JSON for debugging
-		log.Debug(logCat, "RAW_JSON", "lineNum", lineCount, "json", string(line))
+		log.Debug(log.CatOrch, "RAW_JSON", "subsystem", "amp", "lineNum", lineCount, "json", string(line))
 
 		event, err := parseEvent(line)
 		if err != nil {
-			log.Debug(logCat, "Failed to parse JSON", "error", err, "line", string(line[:min(100, len(line))]))
+			log.Debug(log.CatOrch, "Failed to parse JSON", "subsystem", "amp", "error", err, "line", string(line[:min(100, len(line))]))
 			continue
 		}
 
-		log.Debug(logCat, "Parsed event", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
+		log.Debug(log.CatOrch, "Parsed event", "subsystem", "amp", "type", event.Type, "subtype", event.SubType, "hasTool", event.Tool != nil, "hasMessage", event.Message != nil)
 
 		// Log Usage data for debugging token tracking
 		if event.Type == client.EventResult || event.Usage != nil {
-			log.Debug(logCat, "EVENT_USAGE",
+			log.Debug(log.CatOrch, "EVENT_USAGE",
+				"subsystem", "amp",
 				"type", event.Type,
 				"hasUsage", event.Usage != nil,
 				"totalCostUSD", event.TotalCostUSD,
 				"durationMs", event.DurationMs)
 			if event.Usage != nil {
-				log.Debug(logCat, "USAGE_DETAILS",
+				log.Debug(log.CatOrch, "USAGE_DETAILS",
+					"subsystem", "amp",
 					"inputTokens", event.Usage.InputTokens,
 					"outputTokens", event.Usage.OutputTokens,
 					"cacheReadInputTokens", event.Usage.CacheReadInputTokens,
@@ -271,22 +270,22 @@ func (p *Process) parseOutput() {
 			p.mu.Lock()
 			p.threadID = event.SessionID
 			p.mu.Unlock()
-			log.Debug(logCat, "Got thread ID", "threadID", event.SessionID)
+			log.Debug(log.CatOrch, "Got thread ID", "subsystem", "amp", "threadID", event.SessionID)
 		}
 
 		select {
 		case p.events <- event:
-			log.Debug(logCat, "Sent event to channel", "type", event.Type)
+			log.Debug(log.CatOrch, "Sent event to channel", "subsystem", "amp", "type", event.Type)
 		case <-p.ctx.Done():
-			log.Debug(logCat, "Context done, stopping parser")
+			log.Debug(log.CatOrch, "Context done, stopping parser", "subsystem", "amp")
 			return
 		}
 	}
 
-	log.Debug(logCat, "Scanner finished", "totalLines", lineCount)
+	log.Debug(log.CatOrch, "Scanner finished", "subsystem", "amp", "totalLines", lineCount)
 
 	if err := scanner.Err(); err != nil {
-		log.Debug(logCat, "Scanner error", "error", err)
+		log.Debug(log.CatOrch, "Scanner error", "subsystem", "amp", "error", err)
 		p.sendError(fmt.Errorf("stdout scanner error: %w", err))
 	}
 }
@@ -298,10 +297,10 @@ func (p *Process) parseStderr() {
 	scanner := bufio.NewScanner(p.stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		log.Debug(logCat, "STDERR", "line", line)
+		log.Debug(log.CatOrch, "STDERR", "subsystem", "amp", "line", line)
 	}
 	if err := scanner.Err(); err != nil {
-		log.Debug(logCat, "Stderr scanner error", "error", err)
+		log.Debug(log.CatOrch, "Stderr scanner error", "subsystem", "amp", "error", err)
 	}
 }
 
@@ -309,34 +308,34 @@ func (p *Process) parseStderr() {
 func (p *Process) waitForCompletion() {
 	defer p.wg.Done()
 
-	log.Debug(logCat, "Waiting for process to complete")
+	log.Debug(log.CatOrch, "Waiting for process to complete", "subsystem", "amp")
 	err := p.cmd.Wait()
-	log.Debug(logCat, "Process completed", "error", err)
+	log.Debug(log.CatOrch, "Process completed", "subsystem", "amp", "error", err)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if p.status == client.StatusCancelled {
 		// Already cancelled, don't override
-		log.Debug(logCat, "Process was cancelled")
+		log.Debug(log.CatOrch, "Process was cancelled", "subsystem", "amp")
 		return
 	}
 
 	// Check if this was a timeout
 	if p.ctx.Err() == context.DeadlineExceeded {
 		p.status = client.StatusFailed
-		log.Debug(logCat, "Process timed out")
+		log.Debug(log.CatOrch, "Process timed out", "subsystem", "amp")
 		p.sendError(ErrTimeout)
 		return
 	}
 
 	if err != nil {
 		p.status = client.StatusFailed
-		log.Debug(logCat, "Process failed", "error", err)
+		log.Debug(log.CatOrch, "Process failed", "subsystem", "amp", "error", err)
 		p.sendError(fmt.Errorf("amp process exited: %w", err))
 	} else {
 		p.status = client.StatusCompleted
-		log.Debug(logCat, "Process completed successfully")
+		log.Debug(log.CatOrch, "Process completed successfully", "subsystem", "amp")
 	}
 }
 

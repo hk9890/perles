@@ -17,6 +17,7 @@ import (
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/details"
@@ -1577,7 +1578,14 @@ func (m Model) executeSearch() tea.Cmd {
 	executor := m.services.Executor
 
 	return func() tea.Msg {
+		start := time.Now()
+		log.Debug(log.CatBQL, "Executing search", "query", query)
 		issues, err := executor.Execute(query)
+		log.Debug(log.CatBQL, "Search completed",
+			"query", query,
+			"resultCount", len(issues),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err)
 		return searchResultsMsg{issues: issues, err: err}
 	}
 }
@@ -1597,7 +1605,14 @@ func (m Model) loadTree(rootID string) tea.Cmd {
 	query := fmt.Sprintf(`id = "%s" expand %s depth *`, rootID, expandDir)
 
 	return func() tea.Msg {
+		start := time.Now()
+		log.Debug(log.CatTree, "Loading tree", "rootID", rootID, "direction", expandDir)
 		issues, err := executor.Execute(query)
+		log.Debug(log.CatTree, "Tree loaded",
+			"rootID", rootID,
+			"issueCount", len(issues),
+			"duration_ms", time.Since(start).Milliseconds(),
+			"error", err)
 		return treeLoadedMsg{
 			Issues: issues,
 			RootID: rootID,

@@ -161,7 +161,7 @@ func (ws *WorkerServer) handleCheckMessages(_ context.Context, _ json.RawMessage
 		return nil, fmt.Errorf("marshaling response: %w", err)
 	}
 
-	log.Debug(logCat, "Returned unread messages", "workerID", ws.workerID, "count", len(unread))
+	log.Debug(log.CatMCP, "Returned unread messages", "workerID", ws.workerID, "count", len(unread))
 	return SuccessResult(string(data)), nil
 }
 
@@ -185,11 +185,11 @@ func (ws *WorkerServer) handlePostMessage(_ context.Context, rawArgs json.RawMes
 
 	_, err := ws.msgStore.Append(ws.workerID, args.To, args.Content, message.MessageInfo)
 	if err != nil {
-		log.Debug(logCat, "Failed to send message", "workerID", ws.workerID, "to", args.To, "error", err)
+		log.Debug(log.CatMCP, "Failed to send message", "workerID", ws.workerID, "to", args.To, "error", err)
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	log.Debug(logCat, "Message sent", "workerID", ws.workerID, "to", args.To)
+	log.Debug(log.CatMCP, "Message sent", "workerID", ws.workerID, "to", args.To)
 
 	return SuccessResult(fmt.Sprintf("Message sent to %s", args.To)), nil
 }
@@ -213,11 +213,11 @@ func (ws *WorkerServer) handleSignalCoordinator(_ context.Context, rawArgs json.
 	signalContent := fmt.Sprintf("[URGENT SIGNAL] %s", args.Reason)
 	_, err := ws.msgStore.Append(ws.workerID, message.ActorCoordinator, signalContent, message.MessageRequest)
 	if err != nil {
-		log.Debug(logCat, "Failed to signal coordinator", "workerID", ws.workerID, "reason", args.Reason, "error", err)
+		log.Debug(log.CatMCP, "Failed to signal coordinator", "workerID", ws.workerID, "reason", args.Reason, "error", err)
 		return nil, fmt.Errorf("failed to signal coordinator: %w", err)
 	}
 
-	log.Debug(logCat, "Signaled coordinator", "workerID", ws.workerID, "reason", args.Reason)
+	log.Debug(log.CatMCP, "Signaled coordinator", "workerID", ws.workerID, "reason", args.Reason)
 
 	return SuccessResult(fmt.Sprintf("Urgent signal sent to coordinator: %s", args.Reason)), nil
 }

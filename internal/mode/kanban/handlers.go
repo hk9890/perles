@@ -8,6 +8,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/ui/coleditor"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
@@ -600,6 +601,9 @@ func (m Model) handleColEditorSave(msg coleditor.SaveMsg) (Model, tea.Cmd) {
 	columns := m.currentViewColumns()
 	err := config.UpdateColumnInView(m.configPath(), viewIndex, msg.ColumnIndex, msg.Config, columns, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to save column config", err,
+			"viewIndex", viewIndex,
+			"columnIndex", msg.ColumnIndex)
 		m.err = err
 		m.errContext = "saving column config"
 		m.view = ViewBoard
@@ -630,6 +634,9 @@ func (m Model) handleColEditorDelete(msg coleditor.DeleteMsg) (Model, tea.Cmd) {
 	columns := m.currentViewColumns()
 	err := config.DeleteColumnInView(m.configPath(), viewIndex, msg.ColumnIndex, columns, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to delete column", err,
+			"viewIndex", viewIndex,
+			"columnIndex", msg.ColumnIndex)
 		m.err = err
 		m.errContext = "deleting column"
 		m.view = ViewBoard
@@ -661,6 +668,9 @@ func (m Model) handleColEditorAdd(msg coleditor.AddMsg) (Model, tea.Cmd) {
 
 	err := config.AddColumnInView(m.configPath(), viewIndex, msg.InsertAfterIndex, msg.Config, columns, m.services.Config.Views)
 	if err != nil {
+		log.ErrorErr(log.CatConfig, "Failed to add column", err,
+			"viewIndex", viewIndex,
+			"insertAfterIndex", msg.InsertAfterIndex)
 		m.err = err
 		m.errContext = "adding column"
 		m.view = ViewBoard

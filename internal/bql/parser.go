@@ -1,6 +1,10 @@
 package bql
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/zjrosen/perles/internal/log"
+)
 
 // Parser parses BQL tokens into an AST.
 type Parser struct {
@@ -51,7 +55,11 @@ func (p *Parser) Parse() (*Query, error) {
 
 	// Should be at EOF now
 	if p.current.Type != TokenEOF {
-		return nil, fmt.Errorf("unexpected token %q at position %d", p.current.Literal, p.current.Pos)
+		err := fmt.Errorf("unexpected token %q at position %d", p.current.Literal, p.current.Pos)
+		log.ErrorErr(log.CatBQL, "Parse failed: unexpected token", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 
 	return query, nil
@@ -122,7 +130,11 @@ func (p *Parser) parseFactor() (Expr, error) {
 			return nil, err
 		}
 		if p.current.Type != TokenRParen {
-			return nil, fmt.Errorf("expected ')' at position %d, got %q", p.current.Pos, p.current.Literal)
+			err := fmt.Errorf("expected ')' at position %d, got %q", p.current.Pos, p.current.Literal)
+			log.ErrorErr(log.CatBQL, "Parse failed: missing closing paren", err,
+				"token", p.current.Literal,
+				"position", p.current.Pos)
+			return nil, err
 		}
 		p.nextToken() // consume )
 		return expr, nil
@@ -137,7 +149,11 @@ func (p *Parser) parseFactor() (Expr, error) {
 func (p *Parser) parseComparison() (Expr, error) {
 	// Expect field name
 	if p.current.Type != TokenIdent {
-		return nil, fmt.Errorf("expected field name at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected field name at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected field name", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	field := p.current.Literal
 	p.nextToken()
@@ -157,7 +173,11 @@ func (p *Parser) parseComparison() (Expr, error) {
 
 	// Must be comparison operator
 	if !p.current.Type.IsComparisonOp() {
-		return nil, fmt.Errorf("expected operator at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected operator at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected operator", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	op := p.current.Type
 	p.nextToken()
@@ -175,7 +195,12 @@ func (p *Parser) parseComparison() (Expr, error) {
 func (p *Parser) parseInExpr(field string, not bool) (Expr, error) {
 	// Expect (
 	if p.current.Type != TokenLParen {
-		return nil, fmt.Errorf("expected '(' at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected '(' at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected '(' for IN expression", err,
+			"field", field,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	p.nextToken()
 
@@ -197,7 +222,12 @@ func (p *Parser) parseInExpr(field string, not bool) (Expr, error) {
 
 	// Expect )
 	if p.current.Type != TokenRParen {
-		return nil, fmt.Errorf("expected ')' at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected ')' at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected ')' for IN expression", err,
+			"field", field,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	p.nextToken()
 
@@ -220,7 +250,11 @@ func (p *Parser) parseValue() (Value, error) {
 	case TokenIdent:
 		v = parseIdentValue(p.current.Literal)
 	default:
-		return v, fmt.Errorf("expected value at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected value at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected value", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return v, err
 	}
 
 	p.nextToken()
@@ -273,13 +307,21 @@ func parseIdentValue(literal string) Value {
 func (p *Parser) parseOrderBy() ([]OrderTerm, error) {
 	// Expect ORDER
 	if p.current.Type != TokenOrder {
-		return nil, fmt.Errorf("expected 'order' at position %d", p.current.Pos)
+		err := fmt.Errorf("expected 'order' at position %d", p.current.Pos)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected 'order' keyword", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	p.nextToken()
 
 	// Expect BY
 	if p.current.Type != TokenBy {
-		return nil, fmt.Errorf("expected 'by' at position %d, got %q", p.current.Pos, p.current.Literal)
+		err := fmt.Errorf("expected 'by' at position %d, got %q", p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected 'by' keyword", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 	p.nextToken()
 
@@ -287,7 +329,11 @@ func (p *Parser) parseOrderBy() ([]OrderTerm, error) {
 	for {
 		// Expect field name
 		if p.current.Type != TokenIdent {
-			return nil, fmt.Errorf("expected field name at position %d, got %q", p.current.Pos, p.current.Literal)
+			err := fmt.Errorf("expected field name at position %d, got %q", p.current.Pos, p.current.Literal)
+			log.ErrorErr(log.CatBQL, "Parse failed: expected field name in ORDER BY", err,
+				"token", p.current.Literal,
+				"position", p.current.Pos)
+			return nil, err
 		}
 		term := OrderTerm{Field: p.current.Literal}
 		p.nextToken()
@@ -320,14 +366,22 @@ func (p *Parser) parseExpand() (*ExpandClause, error) {
 	p.nextToken() // consume EXPAND
 
 	if p.current.Type != TokenIdent {
-		return nil, fmt.Errorf(
+		err := fmt.Errorf(
 			"expected expansion type at position %d, got %q (valid: up, down, all)",
 			p.current.Pos, p.current.Literal)
+		log.ErrorErr(log.CatBQL, "Parse failed: expected expansion type", err,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, err
 	}
 
 	expandType, err := parseExpandType(p.current.Literal)
 	if err != nil {
-		return nil, fmt.Errorf("%w at position %d", err, p.current.Pos)
+		wrappedErr := fmt.Errorf("%w at position %d", err, p.current.Pos)
+		log.ErrorErr(log.CatBQL, "Parse failed: invalid expansion type", wrappedErr,
+			"token", p.current.Literal,
+			"position", p.current.Pos)
+		return nil, wrappedErr
 	}
 	p.nextToken()
 

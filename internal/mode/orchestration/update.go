@@ -365,7 +365,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.mcpServer != nil {
 			go func() {
 				if err := m.mcpServer.Shutdown(context.Background()); err != nil {
-					log.Debug("orchestration", "MCP server shutdown error", "error", err)
+					log.Debug(log.CatOrch, "MCP server shutdown error", "subsystem", "update", "error", err)
 				}
 			}()
 		}
@@ -390,7 +390,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	// Handle worker errors from user input commands
 	case WorkerErrorMsg:
-		log.Debug("orchestration", "Worker error", "workerID", msg.WorkerID, "error", msg.Error)
+		log.Debug(log.CatOrch, "Worker error", "subsystem", "update", "workerID", msg.WorkerID, "error", msg.Error)
 		return m, nil
 
 	// Handle workflow picker selection
@@ -435,7 +435,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			coord := m.coord
 			msgLog := m.messageLog
 			return m, func() tea.Msg {
-				log.Debug("orchestration", "Handoff timeout - proceeding with generic handoff")
+				log.Debug(log.CatOrch, "Handoff timeout - proceeding with generic handoff", "subsystem", "update")
 				// Post fallback message
 				if msgLog != nil {
 					_, _ = msgLog.Append(
@@ -484,7 +484,8 @@ func (m Model) handleCoordinatorEvent(event pubsub.Event[events.CoordinatorEvent
 	case events.CoordinatorTokenUsage:
 		if payload.Metrics != nil {
 			m.coordinatorMetrics = payload.Metrics
-			log.Debug("orchestration", "Coordinator token usage updated",
+			log.Debug(log.CatOrch, "Coordinator token usage updated",
+				"subsystem", "update",
 				"contextTokens", payload.Metrics.ContextTokens,
 				"contextWindow", payload.Metrics.ContextWindow,
 				"totalCost", payload.Metrics.TotalCostUSD)
@@ -513,22 +514,23 @@ func (m Model) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) (Model,
 
 	switch payload.Type {
 	case events.WorkerSpawned:
-		log.Debug("orchestration", "Worker spawned in TUI", "workerID", payload.WorkerID, "taskID", payload.TaskID, "status", payload.Status)
+		log.Debug(log.CatOrch, "Worker spawned in TUI", "subsystem", "update", "workerID", payload.WorkerID, "taskID", payload.TaskID, "status", payload.Status)
 		m = m.UpdateWorker(payload.WorkerID, payload.Status)
 
 	case events.WorkerOutput:
-		log.Debug("orchestration", "Worker output received", "workerID", payload.WorkerID, "outputLen", len(payload.Output))
+		log.Debug(log.CatOrch, "Worker output received", "subsystem", "update", "workerID", payload.WorkerID, "outputLen", len(payload.Output))
 		if payload.Output != "" {
 			m = m.AddWorkerMessage(payload.WorkerID, payload.Output)
 		}
 
 	case events.WorkerStatusChange:
-		log.Debug("orchestration", "Worker status changed", "workerID", payload.WorkerID, "status", payload.Status)
+		log.Debug(log.CatOrch, "Worker status changed", "subsystem", "update", "workerID", payload.WorkerID, "status", payload.Status)
 		m = m.UpdateWorker(payload.WorkerID, payload.Status)
 
 	case events.WorkerTokenUsage:
 		if payload.Metrics != nil {
-			log.Debug("orchestration", "Worker token usage",
+			log.Debug(log.CatOrch, "Worker token usage",
+				"subsystem", "update",
 				"workerID", payload.WorkerID,
 				"contextTokens", payload.Metrics.ContextTokens,
 				"contextWindow", payload.Metrics.ContextWindow,
@@ -537,13 +539,14 @@ func (m Model) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) (Model,
 		}
 
 	case events.WorkerIncoming:
-		log.Debug("orchestration", "Coordinator message to worker",
+		log.Debug(log.CatOrch, "Coordinator message to worker",
+			"subsystem", "update",
 			"workerID", payload.WorkerID,
 			"messageLen", len(payload.Message))
 		m = m.AddWorkerMessageWithRole(payload.WorkerID, "coordinator", payload.Message)
 
 	case events.WorkerError:
-		log.Debug("orchestration", "Worker error", "workerID", payload.WorkerID, "error", payload.Error)
+		log.Debug(log.CatOrch, "Worker error", "subsystem", "update", "workerID", payload.WorkerID, "error", payload.Error)
 	}
 
 	// Always continue listening for more events
@@ -642,7 +645,7 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 						}
 
 						if err := m.coord.SendUserMessage(nudge); err != nil {
-							log.Debug("orchestration", "Failed to nudge coordinator", "error", err)
+							log.Debug(log.CatOrch, "Failed to nudge coordinator", "subsystem", "update", "error", err)
 						}
 					})
 				}
@@ -792,7 +795,7 @@ func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd
 
 	// Add message to worker pane immediately (optimistic update)
 	m = m.AddWorkerMessageWithRole(workerID, "user", content)
-	log.Debug("orchestration", "Sending message to worker", "workerID", workerID)
+	log.Debug(log.CatOrch, "Sending message to worker", "subsystem", "update", "workerID", workerID)
 
 	// Get worker from pool and validate before spawning goroutine
 	worker := m.pool.GetWorker(workerID)
@@ -832,7 +835,7 @@ func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd
 			return WorkerErrorMsg{WorkerID: workerID, Error: fmt.Errorf("failed to resume worker: %w", err)}
 		}
 
-		log.Debug("orchestration", "Message sent to worker", "workerID", workerID)
+		log.Debug(log.CatOrch, "Message sent to worker", "subsystem", "update", "workerID", workerID)
 		return nil
 	}
 }
@@ -877,7 +880,7 @@ func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
 			// Build spawn config using shared helper
 			cfg, err := m.buildWorkerSpawnConfig(workerID, sessionID, fmt.Sprintf("[BROADCAST FROM USER]\n%s", content))
 			if err != nil {
-				log.Debug("orchestration", "Failed to build worker config for broadcast", "workerID", workerID, "error", err)
+				log.Debug(log.CatOrch, "Failed to build worker config for broadcast", "subsystem", "update", "workerID", workerID, "error", err)
 				continue
 			}
 
@@ -902,7 +905,7 @@ func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
 		}
 	}
 
-	log.Debug("orchestration", "Broadcast message sent", "targets", len(cmds))
+	log.Debug(log.CatOrch, "Broadcast message sent", "subsystem", "update", "targets", len(cmds))
 	return m, tea.Batch(cmds...)
 }
 
@@ -1072,6 +1075,6 @@ func (c *workerServerCache) getOrCreate(workerID string) *mcp.WorkerServer {
 
 	ws = mcp.NewWorkerServer(workerID, c.msgIssue)
 	c.servers[workerID] = ws
-	log.Debug("orchestration", "Created worker server", "workerID", workerID)
+	log.Debug(log.CatOrch, "Created worker server", "subsystem", "update", "workerID", workerID)
 	return ws
 }

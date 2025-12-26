@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 
@@ -11,9 +12,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/pubsub"
 )
-
-// Log category for pool operations
-const logCat = "pool"
 
 // WorkerEvent is an alias to events.WorkerEvent for backward compatibility.
 type WorkerEvent = events.WorkerEvent
@@ -137,7 +135,7 @@ func (p *WorkerPool) SpawnWorkerWithID(workerID string, cfg client.Config) (stri
 	p.workers[workerID] = worker
 	p.mu.Unlock()
 
-	log.Debug(logCat, "Spawning worker", "workerID", workerID)
+	log.Debug(log.CatOrch, "Spawning worker", "subsystem", "pool", "workerID", workerID)
 
 	// Spawn AI process
 	proc, err := p.client.Spawn(p.ctx, cfg)
@@ -145,15 +143,27 @@ func (p *WorkerPool) SpawnWorkerWithID(workerID string, cfg client.Config) (stri
 		p.mu.Lock()
 		delete(p.workers, workerID)
 		p.mu.Unlock()
+		log.ErrorErr(log.CatOrch, "Failed to spawn AI process", err,
+			"subsystem", "pool",
+			"workerID", workerID)
 		return "", fmt.Errorf("failed to spawn AI process: %w", err)
 	}
 
 	// Start worker goroutine (worker.start() emits WorkerSpawned event with correct status)
 	p.wg.Add(1)
-	go func() {
+	go func(wID string) {
 		defer p.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(log.CatOrch, "Worker panic recovered",
+					"subsystem", "pool",
+					"panic", r,
+					"workerID", wID,
+					"stack", string(debug.Stack()))
+			}
+		}()
 		worker.start(p.ctx, proc, p.broker)
-	}()
+	}(workerID)
 
 	return workerID, nil
 }
@@ -174,14 +184,23 @@ func (p *WorkerPool) ResumeWorker(workerID string, proc client.HeadlessProcess) 
 		return fmt.Errorf("worker not found: %s", workerID)
 	}
 
-	log.Debug(logCat, "Resuming worker", "workerID", workerID)
+	log.Debug(log.CatOrch, "Resuming worker", "subsystem", "pool", "workerID", workerID)
 
 	// Start worker goroutine to process events from resumed process
 	p.wg.Add(1)
-	go func() {
+	go func(wID string) {
 		defer p.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(log.CatOrch, "Worker panic recovered",
+					"subsystem", "pool",
+					"panic", r,
+					"workerID", wID,
+					"stack", string(debug.Stack()))
+			}
+		}()
 		worker.resume(p.ctx, proc, p.broker)
-	}()
+	}(workerID)
 
 	return nil
 }
@@ -211,7 +230,7 @@ func (p *WorkerPool) CancelWorker(workerID string) error {
 		return fmt.Errorf("worker not found: %s", workerID)
 	}
 
-	log.Debug(logCat, "Cancelling worker", "workerID", workerID)
+	log.Debug(log.CatOrch, "Cancelling worker", "subsystem", "pool", "workerID", workerID)
 	return worker.Cancel()
 }
 
@@ -224,7 +243,7 @@ func (p *WorkerPool) RetireAll() {
 	}
 	p.mu.RUnlock()
 
-	log.Debug(logCat, "Retiring all workers", "count", len(workers))
+	log.Debug(log.CatOrch, "Retiring all workers", "subsystem", "pool", "count", len(workers))
 	for _, w := range workers {
 		w.Retire()
 	}
@@ -237,7 +256,7 @@ func (p *WorkerPool) Close() {
 		return // Already closed
 	}
 
-	log.Debug(logCat, "Closing worker pool")
+	log.Debug(log.CatOrch, "Closing worker pool", "subsystem", "pool")
 	p.RetireAll()
 	p.cancel()
 	p.wg.Wait()
@@ -328,7 +347,7 @@ func (p *WorkerPool) RetireWorker(workerID string) error {
 		Status:   WorkerRetired,
 	})
 
-	log.Debug(logCat, "Retired worker", "workerID", workerID)
+	log.Debug(log.CatOrch, "Retired worker", "subsystem", "pool", "workerID", workerID)
 	return nil
 }
 

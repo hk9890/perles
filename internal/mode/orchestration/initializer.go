@@ -375,7 +375,7 @@ func (i *Initializer) createWorkspace() error {
 		return fmt.Errorf("failed to get TCP address from listener")
 	}
 	port := tcpAddr.Port
-	log.Debug("initializer", "MCP server listening on dynamic port", "port", port)
+	log.Debug(log.CatOrch, "MCP server listening on dynamic port", "subsystem", "init", "port", port)
 
 	// Create coordinator server with the dynamic port
 	mcpCoordServer := mcp.NewCoordinatorServer(aiClient, workerPool, msgLog, i.cfg.WorkDir, port, extensions)
@@ -401,7 +401,7 @@ func (i *Initializer) createWorkspace() error {
 	// Start HTTP server in background using the listener
 	go func() {
 		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Error("initializer", "MCP server error", "error", err)
+			log.Error(log.CatOrch, "MCP server error", "subsystem", "init", "error", err)
 		}
 	}()
 
@@ -442,7 +442,7 @@ func (i *Initializer) spawnCoordinator() error {
 		return err
 	}
 
-	log.Debug("initializer", "Coordinator started")
+	log.Debug(log.CatOrch, "Coordinator started", "subsystem", "init")
 	return nil
 }
 
@@ -455,18 +455,18 @@ func (i *Initializer) spawnWorkers() {
 	i.mu.RUnlock()
 
 	if mcpCoordServer == nil {
-		log.Error("initializer", "Cannot spawn workers: MCP server not initialized")
+		log.Error(log.CatOrch, "Cannot spawn workers: MCP server not initialized", "subsystem", "init")
 		return
 	}
 
 	for j := range expected {
 		workerID, err := mcpCoordServer.SpawnIdleWorker()
 		if err != nil {
-			log.Error("initializer", "Failed to spawn worker", "index", j, "error", err)
+			log.Error(log.CatOrch, "Failed to spawn worker", "subsystem", "init", "index", j, "error", err)
 			// Continue trying to spawn remaining workers
 			continue
 		}
-		log.Debug("initializer", "Spawned worker programmatically", "workerID", workerID, "index", j)
+		log.Debug(log.CatOrch, "Spawned worker programmatically", "subsystem", "init", "workerID", workerID, "index", j)
 	}
 }
 
@@ -481,7 +481,7 @@ func (i *Initializer) handleCoordinatorEvent(event pubsub.Event[events.Coordinat
 
 	// Detect first coordinator message for phase transition
 	if phase == InitAwaitingFirstMessage && payload.Type == events.CoordinatorChat {
-		log.Debug("initializer", "First coordinator message received, spawning workers")
+		log.Debug(log.CatOrch, "First coordinator message received, spawning workers", "subsystem", "init")
 		i.transitionTo(InitSpawningWorkers)
 
 		// Spawn workers programmatically (don't rely on coordinator LLM)
@@ -507,7 +507,8 @@ func (i *Initializer) handleWorkerEvent(event pubsub.Event[events.WorkerEvent]) 
 	expected := i.cfg.ExpectedWorkers
 	i.mu.Unlock()
 
-	log.Debug("initializer", "Worker spawned",
+	log.Debug(log.CatOrch, "Worker spawned",
+		"subsystem", "init",
 		"workerID", payload.WorkerID,
 		"spawned", spawned,
 		"expected", expected)
@@ -549,7 +550,8 @@ func (i *Initializer) handleMessageEvent(event pubsub.Event[message.Event]) bool
 
 	if !i.confirmedWorkers[entry.From] {
 		i.confirmedWorkers[entry.From] = true
-		log.Debug("initializer", "Worker confirmed",
+		log.Debug(log.CatOrch, "Worker confirmed",
+			"subsystem", "init",
 			"workerID", entry.From,
 			"confirmed", len(i.confirmedWorkers),
 			"expected", i.cfg.ExpectedWorkers)
@@ -570,7 +572,7 @@ func (i *Initializer) checkWorkersConfirmed() bool {
 	i.mu.Unlock()
 
 	if phase == InitWorkersReady && confirmed >= expected {
-		log.Debug("initializer", "All workers confirmed, transitioning to ready")
+		log.Debug(log.CatOrch, "All workers confirmed, transitioning to ready", "subsystem", "init")
 		i.transitionTo(InitReady)
 		i.publishEvent(InitializerEvent{
 			Type:  InitEventReady,
@@ -589,7 +591,7 @@ func (i *Initializer) transitionTo(phase InitPhase) {
 	i.phase = phase
 	i.mu.Unlock()
 
-	log.Debug("initializer", "Phase transition", "from", oldPhase, "to", phase)
+	log.Debug(log.CatOrch, "Phase transition", "subsystem", "init", "from", oldPhase, "to", phase)
 
 	i.publishEvent(InitializerEvent{
 		Type:  InitEventPhaseChanged,
@@ -605,7 +607,7 @@ func (i *Initializer) fail(err error) {
 	i.err = err
 	i.mu.Unlock()
 
-	log.Error("initializer", "Initialization failed", "phase", i.failedAtPhase, "error", err)
+	log.Error(log.CatOrch, "Initialization failed", "subsystem", "init", "phase", i.failedAtPhase, "error", err)
 
 	i.publishEvent(InitializerEvent{
 		Type:  InitEventFailed,
@@ -621,7 +623,7 @@ func (i *Initializer) timeout() {
 	i.phase = InitTimedOut
 	i.mu.Unlock()
 
-	log.Error("initializer", "Initialization timed out", "phase", i.failedAtPhase)
+	log.Error(log.CatOrch, "Initialization timed out", "subsystem", "init", "phase", i.failedAtPhase)
 
 	i.publishEvent(InitializerEvent{
 		Type:  InitEventTimedOut,

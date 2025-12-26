@@ -115,7 +115,7 @@ func (c *Coordinator) buildSystemPrompt() (string, error) {
 // buildPromptModeSystemPrompt builds the prompt for free-form prompt mode.
 // No bd dependencies - coordinator waits for user instructions.
 func (c *Coordinator) buildPromptModeSystemPrompt() (string, error) {
-	log.Debug(logCat, "Building prompt mode system prompt")
+	log.Debug(log.CatOrch, "Building prompt mode system prompt", "subsystem", "coord")
 
 	var buf bytes.Buffer
 	if err := promptModeTemplate.Execute(&buf, promptModeData{}); err != nil {

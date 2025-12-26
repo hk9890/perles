@@ -93,9 +93,12 @@ func initConfig() {
 			if writeErr := config.WriteDefaultConfig(defaultPath); writeErr == nil {
 				viper.SetConfigFile(defaultPath)
 				_ = viper.ReadInConfig()
+				log.Info(log.CatConfig, "Config loaded", "path", defaultPath)
 			}
 			// If write fails, just continue with defaults (no config file)
 		}
+	} else {
+		log.Info(log.CatConfig, "Config loaded", "path", viper.ConfigFileUsed())
 	}
 
 	_ = viper.Unmarshal(&cfg)
