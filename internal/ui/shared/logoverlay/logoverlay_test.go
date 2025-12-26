@@ -1,6 +1,7 @@
 package logoverlay
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,13 +24,20 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmpDir)
 
 	logPath := filepath.Join(tmpDir, "test.log")
-	cleanup, err := log.Init(logPath, 100)
+	cleanup, err := log.Init(logPath)
 	if err != nil {
 		panic(err)
 	}
 	defer cleanup()
 
 	os.Exit(m.Run())
+}
+
+// helper to add entries directly to overlay
+func addEntries(m *Model, count int, prefix string) {
+	for i := 0; i < count; i++ {
+		m.addEntry(fmt.Sprintf("[INFO] [ui] %s entry %d\n", prefix, i))
+	}
 }
 
 // === Constructor Tests ===
@@ -124,18 +132,70 @@ func TestUpdate_FilterKeys(t *testing.T) {
 
 func TestUpdate_ClearBuffer(t *testing.T) {
 	m := NewWithSize(80, 24)
+	m.addEntry("[DEBUG] [ui] test log\n")
 	m.Show()
 
-	// Add some logs to buffer
-	log.Debug(log.CatUI, "test log")
+	require.Equal(t, 1, m.EntryCount())
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 
 	// Buffer should be cleared - overlay still visible
 	require.True(t, m.Visible())
-	// Get recent logs should be empty after clear
-	logs := log.GetRecentLogs(10)
-	require.Empty(t, logs)
+	require.Equal(t, 0, m.EntryCount())
+}
+
+func TestClearResetsScrollPosition(t *testing.T) {
+	m := NewWithSize(80, 24)
+	// Add enough log entries to enable scrolling
+	addEntries(&m, 30, "Log")
+	m.Show()
+
+	// Go to top to have a known starting position
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.Equal(t, 0, m.viewport.YOffset, "Should be at top")
+
+	// Scroll down to middle
+	for i := 0; i < 5; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	require.Greater(t, m.viewport.YOffset, 0, "Should have scrolled down")
+
+	// Set hasNewContent to verify it gets reset
+	m.hasNewContent = true
+
+	// Clear the buffer
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	// Verify scroll position is reset to top
+	require.Equal(t, 0, m.viewport.YOffset, "Clear should reset scroll position to top")
+	// Verify tracking fields are reset
+	require.False(t, m.hasNewContent, "Clear should reset hasNewContent to false")
+}
+
+func TestFilterChangeResetsToBottom(t *testing.T) {
+	m := NewWithSize(80, 24)
+	// Add log entries of different levels to enable scrolling and filtering
+	for i := 0; i < 20; i++ {
+		m.addEntry(fmt.Sprintf("[DEBUG] [ui] Debug entry %d\n", i))
+		m.addEntry(fmt.Sprintf("[INFO] [ui] Info entry %d\n", i))
+	}
+	m.Show()
+
+	// Go to top
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.Equal(t, 0, m.viewport.YOffset, "Should be at top")
+
+	// Change filter to INFO - should go to bottom
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	require.True(t, m.viewport.AtBottom(), "Filter change should scroll to bottom")
+
+	// Scroll up
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.Equal(t, 0, m.viewport.YOffset, "Should be at top")
+
+	// Change filter to WARN - should go to bottom again
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	require.True(t, m.viewport.AtBottom(), "Filter change should scroll to bottom")
 }
 
 func TestUpdate_CloseWithCtrlX(t *testing.T) {
@@ -200,13 +260,8 @@ func TestUpdate_UnhandledKeyReturnsNoCmd(t *testing.T) {
 // === Scrolling Tests ===
 
 func TestUpdate_ScrollDown(t *testing.T) {
-	log.ClearBuffer()
-	// Add enough log entries to enable scrolling
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	initialOffset := m.viewport.YOffset
@@ -216,13 +271,8 @@ func TestUpdate_ScrollDown(t *testing.T) {
 }
 
 func TestUpdate_ScrollUp(t *testing.T) {
-	log.ClearBuffer()
-	// Add enough log entries to enable scrolling
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	// Scroll down first
@@ -237,13 +287,8 @@ func TestUpdate_ScrollUp(t *testing.T) {
 }
 
 func TestUpdate_GotoTop(t *testing.T) {
-	log.ClearBuffer()
-	// Add enough log entries to enable scrolling
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	// Scroll down first
@@ -257,13 +302,8 @@ func TestUpdate_GotoTop(t *testing.T) {
 }
 
 func TestUpdate_GotoBottom(t *testing.T) {
-	log.ClearBuffer()
-	// Add enough log entries to enable scrolling
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	// Go to top first to ensure we're not at bottom
@@ -277,12 +317,8 @@ func TestUpdate_GotoBottom(t *testing.T) {
 }
 
 func TestUpdate_ScrollWithDownArrow(t *testing.T) {
-	log.ClearBuffer()
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	initialOffset := m.viewport.YOffset
@@ -292,12 +328,8 @@ func TestUpdate_ScrollWithDownArrow(t *testing.T) {
 }
 
 func TestUpdate_ScrollWithUpArrow(t *testing.T) {
-	log.ClearBuffer()
-	for i := 0; i < 20; i++ {
-		log.Info(log.CatUI, "Log entry")
-	}
-
 	m := NewWithSize(80, 24)
+	addEntries(&m, 20, "Log")
 	m.Show()
 
 	// Scroll down first
@@ -311,6 +343,116 @@ func TestUpdate_ScrollWithUpArrow(t *testing.T) {
 	require.LessOrEqual(t, m.viewport.YOffset, afterDown)
 }
 
+func TestUpdate_MouseWheelScroll(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 30, "Log")
+	m.Show()
+
+	// First scroll to top to ensure we can scroll both directions
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.Equal(t, 0, m.viewport.YOffset, "Should be at top after GotoTop")
+
+	// Test mouse wheel down scrolling
+	initialOffset := m.viewport.YOffset
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+
+	require.Greater(t, m.viewport.YOffset, initialOffset, "Mouse wheel down should scroll down")
+
+	// Test mouse wheel up scrolling
+	afterDown := m.viewport.YOffset
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+
+	require.Less(t, m.viewport.YOffset, afterDown, "Mouse wheel up should scroll up")
+
+	// Test that non-wheel mouse events are ignored
+	currentOffset := m.viewport.YOffset
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft})
+
+	require.Equal(t, currentOffset, m.viewport.YOffset, "Non-wheel mouse events should be ignored")
+}
+
+func TestUpdate_MouseWheelScroll_ClearsHasNewContent(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 30, "Log")
+	m.Show()
+
+	// Scroll up to not be at bottom
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}) // go to top
+	m.hasNewContent = true
+
+	// Scroll down to bottom using mouse wheel
+	for i := 0; i < 50; i++ {
+		m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	}
+
+	// When at bottom, hasNewContent should be cleared
+	if m.viewport.AtBottom() {
+		require.False(t, m.hasNewContent, "hasNewContent should be cleared when scrolled to bottom")
+	}
+}
+
+func TestScrollPositionPreservedOnToggle(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 30, "Log")
+	m.Show()
+
+	// Go to top first to ensure we start at a known position
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.Equal(t, 0, m.viewport.YOffset)
+
+	// Scroll down to middle position
+	for i := 0; i < 5; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	scrolledOffset := m.viewport.YOffset
+	require.Greater(t, scrolledOffset, 0, "Should have scrolled down from top")
+
+	// Toggle off (hide)
+	m.Toggle()
+	require.False(t, m.Visible())
+
+	// Toggle on (show)
+	m.Toggle()
+	require.True(t, m.Visible())
+
+	// Verify scroll position is preserved
+	require.Equal(t, scrolledOffset, m.viewport.YOffset, "Scroll position should be preserved after toggle")
+}
+
+func TestAddEntry_SetsHasNewContentWhenScrolledUp(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 30, "Initial")
+	m.Show()
+
+	// Scroll to top (not at bottom)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	require.False(t, m.viewport.AtBottom(), "Should not be at bottom after scrolling to top")
+	m.hasNewContent = false
+
+	// Add a new entry while visible and scrolled up
+	m.addEntry("[INFO] [ui] New entry\n")
+
+	// Verify hasNewContent is set
+	require.True(t, m.hasNewContent, "hasNewContent should be true when new logs arrive while scrolled up")
+}
+
+func TestAddEntry_NoHasNewContentWhenAtBottom(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 10, "Initial")
+	m.Show()
+
+	// Go to bottom
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	require.True(t, m.viewport.AtBottom(), "Should be at bottom after GotoBottom")
+	m.hasNewContent = false
+
+	// Add a new entry while at bottom
+	m.addEntry("[INFO] [ui] New entry\n")
+
+	// hasNewContent should still be false (we're at bottom)
+	require.False(t, m.hasNewContent, "hasNewContent should be false when at bottom")
+}
+
 // === View Tests ===
 
 func TestView_EmptyWhenNotVisible(t *testing.T) {
@@ -320,7 +462,6 @@ func TestView_EmptyWhenNotVisible(t *testing.T) {
 }
 
 func TestView_ContainsHeader(t *testing.T) {
-	log.ClearBuffer()
 	m := NewWithSize(80, 24)
 	m.Show()
 	view := m.View()
@@ -329,7 +470,6 @@ func TestView_ContainsHeader(t *testing.T) {
 }
 
 func TestView_ContainsFilterHints(t *testing.T) {
-	log.ClearBuffer()
 	m := NewWithSize(80, 24)
 	m.Show()
 	view := m.View()
@@ -342,7 +482,6 @@ func TestView_ContainsFilterHints(t *testing.T) {
 }
 
 func TestView_HasBorder(t *testing.T) {
-	log.ClearBuffer()
 	m := NewWithSize(80, 24)
 	m.Show()
 	view := m.View()
@@ -353,7 +492,6 @@ func TestView_HasBorder(t *testing.T) {
 }
 
 func TestView_EmptyLogsMessage(t *testing.T) {
-	log.ClearBuffer()
 	m := NewWithSize(80, 24)
 	m.Show()
 	view := m.View()
@@ -362,10 +500,8 @@ func TestView_EmptyLogsMessage(t *testing.T) {
 }
 
 func TestView_ShowsLogEntries(t *testing.T) {
-	log.ClearBuffer()
-	log.Info(log.CatUI, "Test info message")
-
 	m := NewWithSize(80, 24)
+	m.addEntry("[INFO] [ui] Test info message\n")
 	m.Show()
 	view := m.View()
 
@@ -384,7 +520,6 @@ func TestOverlay_NotVisibleReturnsBackground(t *testing.T) {
 }
 
 func TestOverlay_VisiblePlacesCentered(t *testing.T) {
-	log.ClearBuffer()
 	m := NewWithSize(60, 20)
 	m.Show()
 	bg := strings.Repeat(strings.Repeat(".", 60)+"\n", 20)
@@ -526,8 +661,6 @@ func TestCloseMsg(t *testing.T) {
 // tested via unit tests that check log count and content.
 
 func TestLogOverlay_View_Empty_Golden(t *testing.T) {
-	log.ClearBuffer()
-
 	m := NewWithSize(60, 20)
 	m.Show()
 
@@ -535,8 +668,6 @@ func TestLogOverlay_View_Empty_Golden(t *testing.T) {
 }
 
 func TestLogOverlay_Overlay_Empty_Golden(t *testing.T) {
-	log.ClearBuffer()
-
 	m := NewWithSize(50, 15)
 	m.Show()
 
@@ -552,16 +683,14 @@ func TestLogOverlay_Overlay_Empty_Golden(t *testing.T) {
 // because log entries contain timestamps.
 
 func TestView_FilteredContent(t *testing.T) {
-	log.ClearBuffer()
-	log.Debug(log.CatUI, "DebugMsg")
-	log.Info(log.CatUI, "InfoMsg")
-	log.Warn(log.CatUI, "WarnMsg")
-	log.Error(log.CatUI, "ErrorMsg")
+	m := NewWithSize(80, 24)
+	m.addEntry("[DEBUG] [ui] DebugMsg\n")
+	m.addEntry("[INFO] [ui] InfoMsg\n")
+	m.addEntry("[WARN] [ui] WarnMsg\n")
+	m.addEntry("[ERROR] [ui] ErrorMsg\n")
+	m.Show()
 
 	// Test INFO filter - should not contain DEBUG
-	m := NewWithSize(80, 24)
-	m.Show()
-	// Use Update handler to change filter (updates viewport content)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 
 	view := m.View()
@@ -580,10 +709,8 @@ func TestView_FilteredContent(t *testing.T) {
 }
 
 func TestOverlay_WithLogs(t *testing.T) {
-	log.ClearBuffer()
-	log.Info(log.CatUI, "Test entry")
-
 	m := NewWithSize(50, 15)
+	m.addEntry("[INFO] [ui] Test entry\n")
 	m.Show()
 
 	bg := strings.Repeat(strings.Repeat(".", 50)+"\n", 15)
@@ -594,4 +721,55 @@ func TestOverlay_WithLogs(t *testing.T) {
 	// Should contain overlay structure
 	require.Contains(t, result, "Logs")
 	require.Contains(t, result, "Test entry")
+}
+
+// === EntryCount and Clear Tests ===
+
+func TestEntryCount(t *testing.T) {
+	m := New()
+	require.Equal(t, 0, m.EntryCount())
+
+	m.addEntry("[INFO] test\n")
+	require.Equal(t, 1, m.EntryCount())
+
+	m.addEntry("[INFO] test2\n")
+	require.Equal(t, 2, m.EntryCount())
+}
+
+func TestClear(t *testing.T) {
+	m := NewWithSize(80, 24)
+	addEntries(&m, 10, "Test")
+	m.hasNewContent = true
+	m.Show()
+
+	require.Equal(t, 10, m.EntryCount())
+
+	m.Clear()
+
+	require.Equal(t, 0, m.EntryCount())
+	require.False(t, m.hasNewContent)
+}
+
+// === Listener Tests ===
+
+func TestStartListening_CreatesListener(t *testing.T) {
+	m := NewWithSize(80, 24)
+	require.Nil(t, m.listener)
+
+	cmd := m.StartListening()
+
+	require.NotNil(t, m.listener)
+	require.NotNil(t, m.cancel)
+	require.NotNil(t, cmd)
+}
+
+func TestStopListening_CleansUp(t *testing.T) {
+	m := NewWithSize(80, 24)
+	m.StartListening()
+	require.NotNil(t, m.listener)
+
+	m.StopListening()
+
+	require.Nil(t, m.listener)
+	require.Nil(t, m.cancel)
 }

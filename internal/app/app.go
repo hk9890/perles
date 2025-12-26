@@ -48,9 +48,9 @@ type Model struct {
 	// Centralized toaster - owned by app, not individual modes
 	toaster toaster.Model
 
-	// Log overlay for debug mode (Ctrl+X toggle)
-	logOverlay logoverlay.Model
-	debugMode  bool
+	debugMode    bool
+	logOverlay   logoverlay.Model
+	logListenCmd tea.Cmd
 
 	// File watcher for auto-refresh
 	dbWatcher     <-chan struct{}
@@ -91,13 +91,21 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath s
 		Clock:      shared.RealClock{},
 	}
 
+	// Create log overlay and start listening if debug mode is enabled
+	overlay := logoverlay.New()
+	var logListenCmd tea.Cmd
+	if debugMode {
+		logListenCmd = overlay.StartListening()
+	}
+
 	return Model{
 		currentMode:   mode.ModeKanban,
 		kanban:        kanban.New(services),
 		search:        search.New(services),
 		services:      services,
-		logOverlay:    logoverlay.New(),
+		logOverlay:    overlay,
 		debugMode:     debugMode,
+		logListenCmd:  logListenCmd,
 		dbWatcher:     dbWatcher,
 		watcherHandle: watcherHandle,
 	}
@@ -107,10 +115,15 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath s
 // Defaults the application Kanan mode and creates a subscription
 // to the beads database if we are watching for changes.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		m.kanban.Init(),
 		m.watchDatabase(),
-	)
+	}
+
+	if m.logListenCmd != nil {
+		cmds = append(cmds, m.logListenCmd)
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -128,11 +141,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case tea.MouseMsg:
+		// Route mouse events to log overlay when visible
+		if m.logOverlay.Visible() {
+			var cmd tea.Cmd
+			m.logOverlay, cmd = m.logOverlay.Update(msg)
+			return m, cmd
+		}
+
+	case log.LogEvent:
+		// Route to log overlay (handles accumulation and listening)
+		var cmd tea.Cmd
+		m.logOverlay, cmd = m.logOverlay.Update(msg)
+		return m, cmd
+
 	case tea.KeyMsg:
 		if m.debugMode && key.Matches(msg, keys.Component.Close) {
 			m.logOverlay.Toggle()
-			log.Debug(log.CatUI, "Log overlay toggled", "visible", m.logOverlay.Visible())
-
 			return m, nil
 		}
 
@@ -443,8 +468,6 @@ func (m Model) handleSaveTreeAsColumn(msg search.SaveTreeAsColumnMsg) (tea.Model
 
 // View implements tea.Model.
 func (m Model) View() string {
-	log.Debug(log.CatMode, "View: rendering mode", "current_mode", m.currentMode)
-
 	var view string
 	switch m.currentMode {
 	case mode.ModeSearch:
@@ -481,6 +504,8 @@ func (m Model) watchDatabase() tea.Cmd {
 
 // Close releases resources held by the application.
 func (m *Model) Close() error {
+	m.logOverlay.StopListening()
+
 	// Clean up orchestration mode resources if active
 	if m.currentMode == mode.ModeOrchestration {
 		if coord := m.orchestration.Coordinator(); coord != nil {

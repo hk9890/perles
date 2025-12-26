@@ -4,6 +4,7 @@
 package log
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // Level represents log severity.
@@ -56,9 +59,9 @@ type Logger struct {
 	mu       sync.Mutex
 	file     *os.File
 	writer   io.Writer
-	buffer   *RingBuffer
 	enabled  bool
 	minLevel Level
+	broker   *pubsub.Broker[string] // Pub/sub for log events
 }
 
 var (
@@ -68,10 +71,10 @@ var (
 
 // Init initializes the global logger.
 // Returns a cleanup function to close the log file.
-func Init(path string, bufferSize int) (func(), error) {
+func Init(path string) (func(), error) {
 	var initErr error
 	once.Do(func() {
-		defaultLogger, initErr = newLogger(path, bufferSize)
+		defaultLogger, initErr = newLogger(path)
 	})
 	if initErr != nil {
 		return nil, initErr
@@ -88,7 +91,7 @@ func Init(path string, bufferSize int) (func(), error) {
 }
 
 // InitWithTeaLog uses tea.LogToFile for initialization.
-func InitWithTeaLog(path string, prefix string, bufferSize int) (func(), error) {
+func InitWithTeaLog(path string, prefix string) (func(), error) {
 	f, err := tea.LogToFile(path, prefix)
 	if err != nil {
 		return nil, err
@@ -97,15 +100,15 @@ func InitWithTeaLog(path string, prefix string, bufferSize int) (func(), error) 
 	defaultLogger = &Logger{
 		file:     f,
 		writer:   f,
-		buffer:   NewRingBuffer(bufferSize),
 		enabled:  true,
 		minLevel: LevelDebug,
+		broker:   pubsub.NewBroker[string](),
 	}
 
 	return func() { _ = f.Close() }, nil
 }
 
-func newLogger(path string, bufferSize int) (*Logger, error) {
+func newLogger(path string) (*Logger, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G304: path is user-controlled debug log path
 	if err != nil {
 		return nil, err
@@ -114,9 +117,9 @@ func newLogger(path string, bufferSize int) (*Logger, error) {
 	return &Logger{
 		file:     f,
 		writer:   f,
-		buffer:   NewRingBuffer(bufferSize),
 		enabled:  true,
 		minLevel: LevelDebug,
+		broker:   pubsub.NewBroker[string](),
 	}, nil
 }
 
@@ -200,26 +203,23 @@ func log(level Level, cat Category, msg string, fields ...any) {
 		_, _ = defaultLogger.writer.Write([]byte(entry))
 	}
 
-	// Store in ring buffer for overlay
-	if defaultLogger.buffer != nil {
-		defaultLogger.buffer.Add(entry)
+	// Publish event to subscribers (non-blocking)
+	if defaultLogger.broker != nil {
+		defaultLogger.broker.Publish(pubsub.CreatedEvent, entry)
 	}
 }
 
-// GetRecentLogs returns recent log entries from the ring buffer.
-func GetRecentLogs(count int) []string {
-	if defaultLogger == nil || defaultLogger.buffer == nil {
+// LogEvent is a pubsub event containing a log entry.
+type LogEvent = pubsub.Event[string]
+
+// LogListener wraps a continuous listener for log events.
+type LogListener = pubsub.ContinuousListener[string]
+
+// NewListener creates a new log event listener.
+// The listener is automatically cleaned up when the context is cancelled.
+func NewListener(ctx context.Context) *LogListener {
+	if defaultLogger == nil || defaultLogger.broker == nil {
 		return nil
 	}
-	return defaultLogger.buffer.GetLast(count)
-}
-
-// ClearBuffer clears the ring buffer.
-func ClearBuffer() {
-	if defaultLogger == nil || defaultLogger.buffer == nil {
-		return
-	}
-	defaultLogger.mu.Lock()
-	defer defaultLogger.mu.Unlock()
-	defaultLogger.buffer.Clear()
+	return pubsub.NewContinuousListener(ctx, defaultLogger.broker)
 }

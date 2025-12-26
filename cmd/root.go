@@ -110,7 +110,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 			logPath = "debug.log"
 		}
 
-		cleanup, err := log.InitWithTeaLog(logPath, "perles", 100)
+		cleanup, err := log.InitWithTeaLog(logPath, "perles")
 		if err != nil {
 			return fmt.Errorf("initializing logging: %w", err)
 		}

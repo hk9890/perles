@@ -62,12 +62,6 @@ func TestLogger_NilSafety_ErrorErr(t *testing.T) {
 	ErrorErr(CatMode, "test message", nil, "key", "value")
 }
 
-func TestLogger_NilSafety_GetRecentLogs(t *testing.T) {
-	resetLogger()
-	logs := GetRecentLogs(10)
-	require.Nil(t, logs)
-}
-
 func TestLogger_NilSafety_SetEnabled(t *testing.T) {
 	resetLogger()
 	// Should not panic
@@ -86,7 +80,7 @@ func TestLogger_Init(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "test.log")
 
-	cleanup, err := Init(logPath, 10)
+	cleanup, err := Init(logPath)
 	require.NoError(t, err)
 	require.NotNil(t, cleanup)
 	defer cleanup()
@@ -98,7 +92,7 @@ func TestLogger_Init(t *testing.T) {
 func TestLogger_Init_InvalidPath(t *testing.T) {
 	resetLogger()
 	// Try to create log in non-existent directory
-	_, err := Init("/nonexistent/path/test.log", 10)
+	_, err := Init("/nonexistent/path/test.log")
 	require.Error(t, err)
 }
 
@@ -107,7 +101,6 @@ func TestLogger_LevelFiltering(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelInfo, // DEBUG should be filtered
 	}
@@ -129,7 +122,6 @@ func TestLogger_LevelFiltering_WarnOnly(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelWarn,
 	}
@@ -151,7 +143,6 @@ func TestLogger_LevelFiltering_ErrorOnly(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelError,
 	}
@@ -173,7 +164,6 @@ func TestLogger_CategoryOutput(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -211,7 +201,6 @@ func TestLogger_FieldFormatting(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -225,7 +214,6 @@ func TestLogger_FieldFormatting_MultipleFields(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -243,7 +231,6 @@ func TestLogger_FieldFormatting_OddFieldCount(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -261,7 +248,6 @@ func TestLogger_FieldFormatting_NoFields(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -278,7 +264,6 @@ func TestLogger_SetEnabled_Toggle(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -300,7 +285,6 @@ func TestLogger_SetMinLevel_Dynamic(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -326,7 +310,6 @@ func TestLogger_ErrorErr_WithError(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -345,7 +328,6 @@ func TestLogger_ErrorErr_NilError(t *testing.T) {
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -358,56 +340,11 @@ func TestLogger_ErrorErr_NilError(t *testing.T) {
 	require.Contains(t, output, "op=save")
 }
 
-func TestLogger_BufferIntegration(t *testing.T) {
-	resetLogger()
-	writer := &captureWriter{}
-	defaultLogger = &Logger{
-		writer:   writer,
-		buffer:   NewRingBuffer(5),
-		enabled:  true,
-		minLevel: LevelDebug,
-	}
-
-	Info(CatBQL, "msg1")
-	Info(CatBQL, "msg2")
-	Info(CatBQL, "msg3")
-
-	logs := GetRecentLogs(3)
-	require.Len(t, logs, 3)
-	require.Contains(t, logs[0], "msg1")
-	require.Contains(t, logs[1], "msg2")
-	require.Contains(t, logs[2], "msg3")
-}
-
-func TestLogger_BufferIntegration_Overflow(t *testing.T) {
-	resetLogger()
-	writer := &captureWriter{}
-	defaultLogger = &Logger{
-		writer:   writer,
-		buffer:   NewRingBuffer(3),
-		enabled:  true,
-		minLevel: LevelDebug,
-	}
-
-	Info(CatBQL, "msg1")
-	Info(CatBQL, "msg2")
-	Info(CatBQL, "msg3")
-	Info(CatBQL, "msg4") // overwrites msg1
-
-	logs := GetRecentLogs(3)
-	require.Len(t, logs, 3)
-	require.NotContains(t, logs[0], "msg1") // msg1 overwritten
-	require.Contains(t, logs[0], "msg2")
-	require.Contains(t, logs[1], "msg3")
-	require.Contains(t, logs[2], "msg4")
-}
-
 func TestLogger_OutputFormat(t *testing.T) {
 	resetLogger()
 	writer := &captureWriter{}
 	defaultLogger = &Logger{
 		writer:   writer,
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
@@ -445,7 +382,7 @@ func TestLogger_InitWithTeaLog_Integration(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "tea.log")
 
-	cleanup, err := InitWithTeaLog(logPath, "test", 10)
+	cleanup, err := InitWithTeaLog(logPath, "test")
 	require.NoError(t, err)
 	require.NotNil(t, cleanup)
 	defer cleanup()
@@ -464,35 +401,10 @@ func TestLogger_NilWriter(t *testing.T) {
 	resetLogger()
 	defaultLogger = &Logger{
 		writer:   nil, // nil writer
-		buffer:   NewRingBuffer(10),
 		enabled:  true,
 		minLevel: LevelDebug,
 	}
 
 	// Should not panic with nil writer
 	Info(CatBQL, "test", "key", "value")
-
-	// Buffer should still have the entry
-	logs := GetRecentLogs(1)
-	require.Len(t, logs, 1)
-	require.Contains(t, logs[0], "test")
-}
-
-func TestLogger_NilBuffer(t *testing.T) {
-	resetLogger()
-	writer := &captureWriter{}
-	defaultLogger = &Logger{
-		writer:   writer,
-		buffer:   nil, // nil buffer
-		enabled:  true,
-		minLevel: LevelDebug,
-	}
-
-	// Should not panic with nil buffer
-	Info(CatBQL, "test", "key", "value")
-	require.Contains(t, writer.String(), "test")
-
-	// GetRecentLogs should return nil
-	logs := GetRecentLogs(1)
-	require.Nil(t, logs)
 }

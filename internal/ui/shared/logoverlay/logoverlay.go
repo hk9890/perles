@@ -3,6 +3,8 @@
 package logoverlay
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -18,10 +20,21 @@ import (
 )
 
 const (
-	viewportMaxHeight = 25  // Fixed viewport height in lines
-	viewportMinHeight = 5   // Minimum viewport height for very small screens
-	boxMaxWidth       = 160 // Maximum box width in characters
-	boxMinWidth       = 40  // Minimum box width in characters
+	viewportMaxHeight = 25   // Fixed viewport height in lines
+	viewportMinHeight = 5    // Minimum viewport height for very small screens
+	boxMaxWidth       = 160  // Maximum box width in characters
+	boxMinWidth       = 40   // Minimum box width in characters
+	maxLogEntries     = 1000 // Maximum log entries to keep in buffer
+)
+
+// Scroll indicator styles
+var (
+	newContentIndicatorStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Light: "#FECA57", Dark: "#FECA57"}). // Yellow/amber for attention
+					Bold(true)
+
+	scrollIndicatorStyle = lipgloss.NewStyle().
+				Foreground(styles.TextMutedColor) // Muted color for scroll position
 )
 
 // CloseMsg is sent when the overlay should be closed.
@@ -34,6 +47,13 @@ type Model struct {
 	width    int
 	height   int
 	viewport viewport.Model
+	entries  []string // Local buffer of log entries
+	// Scroll state fields for smart auto-scroll and new content indicators
+	contentDirty  bool // True when content changed, enables auto-scroll
+	hasNewContent bool // True when new logs arrived while scrolled up
+	// Log subscription
+	listener *log.LogListener
+	cancel   context.CancelFunc
 }
 
 // New creates a new log overlay model.
@@ -61,6 +81,12 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles messages for the log overlay.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	// Handle log events regardless of visibility (accumulate entries)
+	if event, ok := msg.(log.LogEvent); ok {
+		m.addEntry(event.Payload)
+		return m, m.listen()
+	}
+
 	if !m.visible {
 		return m, nil
 	}
@@ -69,8 +95,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Component.Clear):
-			// Clear buffer
-			log.ClearBuffer()
+			// Clear local buffer and reset scroll state
+			m.entries = nil
+			m.viewport.GotoTop()
+			m.hasNewContent = false
 			m.refreshViewport()
 			return m, nil
 
@@ -78,24 +106,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			// Filter to DEBUG and above
 			m.minLevel = log.LevelDebug
 			m.refreshViewport()
+			m.viewport.GotoBottom() // Reset to bottom on filter change
 			return m, nil
 
 		case key.Matches(msg, keys.LogOverlay.FilterInfo):
 			// Filter to INFO and above
 			m.minLevel = log.LevelInfo
 			m.refreshViewport()
+			m.viewport.GotoBottom() // Reset to bottom on filter change
 			return m, nil
 
 		case key.Matches(msg, keys.LogOverlay.FilterWarn):
 			// Filter to WARN and above
 			m.minLevel = log.LevelWarn
 			m.refreshViewport()
+			m.viewport.GotoBottom() // Reset to bottom on filter change
 			return m, nil
 
 		case key.Matches(msg, keys.LogOverlay.FilterError):
 			// Filter to ERROR only
 			m.minLevel = log.LevelError
 			m.refreshViewport()
+			m.viewport.GotoBottom() // Reset to bottom on filter change
 			return m, nil
 
 		case key.Matches(msg, keys.Common.Down):
@@ -123,6 +155,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.visible = false
 			return m, func() tea.Msg { return CloseMsg{} }
 		}
+
+	case tea.MouseMsg:
+		// Only handle wheel events for scrolling
+		if msg.Button != tea.MouseButtonWheelUp && msg.Button != tea.MouseButtonWheelDown {
+			return m, nil
+		}
+		scrollLines := 1
+		if msg.Button == tea.MouseButtonWheelUp {
+			m.viewport.ScrollUp(scrollLines)
+		} else {
+			m.viewport.ScrollDown(scrollLines)
+		}
+		// Clear new content indicator when scrolled to bottom
+		if m.viewport.AtBottom() {
+			m.hasNewContent = false
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -184,10 +233,8 @@ func (m Model) View() string {
 
 // getFilteredLogs returns log entries matching the current filter level.
 func (m Model) getFilteredLogs() []string {
-	// Get all logs (pass large number to get entire buffer)
-	logs := log.GetRecentLogs(10000)
 	var filtered []string
-	for _, entry := range logs {
+	for _, entry := range m.entries {
 		if m.matchesLevel(entry) {
 			filtered = append(filtered, entry)
 		}
@@ -213,6 +260,15 @@ func (m Model) buildLogContent(contentWidth int) string {
 	return strings.Join(lines, "\n")
 }
 
+// calculateViewportHeight returns the viewport height constrained by screen size.
+func (m Model) calculateViewportHeight() int {
+	// Use fixed 25-line height, constrained by screen size
+	// Account for header (2 lines), footer (2 lines), borders (2 lines) = 6 lines overhead
+	maxAllowed := m.height - 6
+	viewportHeight := min(viewportMaxHeight, maxAllowed)
+	return max(viewportHeight, viewportMinHeight)
+}
+
 // refreshViewport initializes or updates the viewport with current log content.
 func (m *Model) refreshViewport() {
 	if m.width == 0 || m.height == 0 {
@@ -220,15 +276,22 @@ func (m *Model) refreshViewport() {
 	}
 
 	contentWidth := m.contentWidth()
+	viewportHeight := m.calculateViewportHeight()
 
-	// Use fixed 25-line height, constrained by screen size
-	// Account for header (2 lines), footer (2 lines), borders (2 lines) = 6 lines overhead
-	maxAllowed := m.height - 6
-	viewportHeight := min(viewportMaxHeight, maxAllowed)
-	viewportHeight = max(viewportHeight, viewportMinHeight)
+	// Update dimensions without recreating viewport
+	m.viewport.Width = contentWidth
+	m.viewport.Height = viewportHeight
 
-	m.viewport = viewport.New(contentWidth, viewportHeight)
+	// CRITICAL: Capture scroll state BEFORE SetContent()
+	wasAtBottom := m.viewport.AtBottom()
+
 	m.viewport.SetContent(m.buildLogContent(contentWidth))
+
+	// Smart auto-scroll: only follow new content if user was at bottom
+	if m.contentDirty && wasAtBottom {
+		m.viewport.GotoBottom()
+	}
+	m.contentDirty = false
 }
 
 // Overlay renders the log overlay centered on the given background.
@@ -270,6 +333,7 @@ func (m *Model) Toggle() {
 // Show makes the overlay visible.
 func (m *Model) Show() {
 	m.visible = true
+	m.contentDirty = true
 	m.refreshViewport()
 }
 
@@ -283,6 +347,66 @@ func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	m.refreshViewport()
+}
+
+// addEntry adds a new log entry to the buffer.
+// If the buffer exceeds maxLogEntries, oldest entries are removed.
+func (m *Model) addEntry(entry string) {
+	m.entries = append(m.entries, entry)
+	// Trim to max size
+	if len(m.entries) > maxLogEntries {
+		m.entries = m.entries[len(m.entries)-maxLogEntries:]
+	}
+	// Track new content if scrolled up
+	if m.visible && !m.viewport.AtBottom() {
+		m.hasNewContent = true
+	}
+	// Refresh viewport if visible
+	if m.visible {
+		m.contentDirty = true
+		m.refreshViewport()
+	}
+}
+
+// StartListening subscribes to log events and returns the listen command.
+// Call this once when the overlay should start receiving log events.
+func (m *Model) StartListening() tea.Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+	m.listener = log.NewListener(ctx)
+	return m.listen()
+}
+
+// StopListening cancels the log subscription.
+func (m *Model) StopListening() {
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+		m.listener = nil
+	}
+}
+
+// listen returns a command to wait for the next log event.
+func (m Model) listen() tea.Cmd {
+	if m.listener == nil {
+		return nil
+	}
+	return m.listener.Listen()
+}
+
+// Clear removes all log entries from the buffer.
+func (m *Model) Clear() {
+	m.entries = nil
+	m.hasNewContent = false
+	if m.visible {
+		m.viewport.GotoTop()
+		m.refreshViewport()
+	}
+}
+
+// EntryCount returns the number of entries in the buffer.
+func (m Model) EntryCount() int {
+	return len(m.entries)
 }
 
 // matchesLevel checks if a log entry matches the current filter level.
@@ -337,6 +461,7 @@ func (m Model) colorizeEntry(entry string, maxWidth int) string {
 
 // buildFilterHint creates the footer hint showing filter options.
 // The active filter level is highlighted with bold styling.
+// Also includes scroll position indicators when applicable.
 func (m Model) buildFilterHint() string {
 	hintStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 	activeStyle := lipgloss.NewStyle().
@@ -370,5 +495,16 @@ func (m Model) buildFilterHint() string {
 		hints = append(hints, hintStyle.Render("[e] Error"))
 	}
 
+	// Build scroll info section
+	var scrollInfo string
+	if m.hasNewContent {
+		scrollInfo = newContentIndicatorStyle.Render("↓New")
+	} else if m.viewport.TotalLineCount() > m.viewport.Height && !m.viewport.AtBottom() {
+		scrollInfo = scrollIndicatorStyle.Render(fmt.Sprintf("↑%.0f%%", m.viewport.ScrollPercent()*100))
+	}
+
+	if scrollInfo != "" {
+		return strings.Join(hints, "  ") + "    " + scrollInfo
+	}
 	return strings.Join(hints, "  ")
 }
