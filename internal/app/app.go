@@ -20,15 +20,12 @@ import (
 	"github.com/zjrosen/perles/internal/mode/search"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/zjrosen/perles/internal/pubsub"
 
 	"github.com/zjrosen/perles/internal/ui/shared/logoverlay"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 	"github.com/zjrosen/perles/internal/watcher"
 )
-
-// DBChangedMsg signals that the database has changed.
-// This message is sent by the app-level watcher and routed to the active mode.
-type DBChangedMsg struct{}
 
 // Model is the root application state.
 type Model struct {
@@ -52,9 +49,11 @@ type Model struct {
 	logOverlay   logoverlay.Model
 	logListenCmd tea.Cmd
 
-	// File watcher for auto-refresh
-	dbWatcher     <-chan struct{}
-	watcherHandle *watcher.Watcher
+	// File watcher for auto-refresh (pubsub-based)
+	watcherHandle   *watcher.Watcher
+	watcherCtx      context.Context
+	watcherCancel   context.CancelFunc
+	watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
 }
 
 // NewWithConfig creates a new application model with the provided configuration.
@@ -63,15 +62,20 @@ type Model struct {
 // debugMode enables the log overlay (Ctrl+X toggle).
 func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath string, debugMode bool) Model {
 	// Initialize file watcher if auto-refresh is enabled
-	var dbWatcher <-chan struct{}
-	var watcherHandle *watcher.Watcher
+	var (
+		watcherHandle   *watcher.Watcher
+		watcherCtx      context.Context
+		watcherCancel   context.CancelFunc
+		watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
+	)
+
 	if cfg.AutoRefresh && dbPath != "" {
 		w, err := watcher.New(watcher.DefaultConfig(dbPath))
 		if err == nil {
-			onChange, err := w.Start()
-			if err == nil {
+			if err := w.Start(); err == nil {
 				watcherHandle = w
-				dbWatcher = onChange
+				watcherCtx, watcherCancel = context.WithCancel(context.Background())
+				watcherListener = pubsub.NewContinuousListener(watcherCtx, w.Broker())
 			} else {
 				// Cleanup on start failure
 				_ = w.Stop()
@@ -99,25 +103,31 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath s
 	}
 
 	return Model{
-		currentMode:   mode.ModeKanban,
-		kanban:        kanban.New(services),
-		search:        search.New(services),
-		services:      services,
-		logOverlay:    overlay,
-		debugMode:     debugMode,
-		logListenCmd:  logListenCmd,
-		dbWatcher:     dbWatcher,
-		watcherHandle: watcherHandle,
+		currentMode:     mode.ModeKanban,
+		kanban:          kanban.New(services),
+		search:          search.New(services),
+		services:        services,
+		logOverlay:      overlay,
+		debugMode:       debugMode,
+		logListenCmd:    logListenCmd,
+		watcherHandle:   watcherHandle,
+		watcherCtx:      watcherCtx,
+		watcherCancel:   watcherCancel,
+		watcherListener: watcherListener,
 	}
 }
 
 // Init implements tea.Model interface.
-// Defaults the application Kanan mode and creates a subscription
-// to the beads database if we are watching for changes.
+// Defaults the application to Kanban mode and starts the watcher listener
+// if auto-refresh is enabled.
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.kanban.Init(),
-		m.watchDatabase(),
+	}
+
+	// Start watcher listener if available
+	if m.watcherListener != nil {
+		cmds = append(cmds, m.watcherListener.Listen())
 	}
 
 	if m.logListenCmd != nil {
@@ -264,18 +274,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case search.SaveTreeAsColumnMsg:
 		return m.handleSaveTreeAsColumn(msg)
 
-	case DBChangedMsg:
-		// Route to active mode and re-subscribe
-		log.Debug(log.CatMode, "DB changed, refreshing active mode", "mode", m.currentMode)
-		var modeCmd tea.Cmd
-		switch m.currentMode {
-		case mode.ModeKanban:
-			m.kanban, modeCmd = m.kanban.HandleDBChanged()
-		case mode.ModeSearch:
-			m.search, modeCmd = m.search.HandleDBChanged()
+	case pubsub.Event[watcher.WatcherEvent]:
+		switch msg.Payload.Type {
+		case watcher.DBChanged:
+			log.Debug(log.CatMode, "DB changed, refreshing active mode", "mode", m.currentMode)
+			var modeCmd tea.Cmd
+			switch m.currentMode {
+			case mode.ModeKanban:
+				m.kanban, modeCmd = m.kanban.HandleDBChanged()
+			case mode.ModeSearch:
+				m.search, modeCmd = m.search.HandleDBChanged()
+			}
+			return m, tea.Batch(modeCmd, m.watcherListener.Listen())
+
+		case watcher.WatcherError:
+			log.Warn(log.CatWatcher, "Watcher error received", "error", msg.Payload.Error)
+			return m, m.watcherListener.Listen()
 		}
 
-		return m, tea.Batch(modeCmd, m.watchDatabase())
+		// Continue listening for unknown event types
+		return m, m.watcherListener.Listen()
 
 	case mode.ShowToastMsg:
 		m.toaster = m.toaster.Show(msg.Message, msg.Style)
@@ -491,17 +509,6 @@ func (m Model) View() string {
 	return view
 }
 
-// watchDatabase returns a command that waits for database changes.
-func (m Model) watchDatabase() tea.Cmd {
-	if m.dbWatcher == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		<-m.dbWatcher
-		return DBChangedMsg{}
-	}
-}
-
 // Close releases resources held by the application.
 func (m *Model) Close() error {
 	m.logOverlay.StopListening()
@@ -521,7 +528,12 @@ func (m *Model) Close() error {
 		return err
 	}
 
-	// Close watcher if we own it (kanban mode may also have one)
+	// Cancel watcher subscription context (stops listener)
+	if m.watcherCancel != nil {
+		m.watcherCancel()
+	}
+
+	// Close watcher if we own it
 	if m.watcherHandle != nil {
 		if err := m.watcherHandle.Stop(); err != nil {
 			return err
