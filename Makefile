@@ -38,7 +38,6 @@ test-update:
 		./internal/ui/coleditor/... \
 		./internal/ui/commandpalette/... \
 		./internal/ui/details/... \
-		./internal/ui/forms/bqlinput/... \
 		./internal/ui/modals/help/... \
 		./internal/ui/modals/labeleditor/... \
 		./internal/ui/nobeads/... \
@@ -49,6 +48,7 @@ test-update:
 		./internal/ui/shared/overlay/... \
 		./internal/ui/shared/picker/... \
 		./internal/ui/shared/toaster/... \
+		./internal/ui/shared/vimtextarea/... \
 		./internal/ui/styles/... \
 		./internal/ui/tree/... \
 		./internal/mode/search/... \

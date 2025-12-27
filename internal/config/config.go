@@ -39,6 +39,7 @@ type Config struct {
 type UIConfig struct {
 	ShowCounts    bool `mapstructure:"show_counts"`
 	ShowStatusBar bool `mapstructure:"show_status_bar"`
+	VimMode       bool `mapstructure:"vim_mode"` // Enable vim keybindings in text input areas
 }
 
 // ThemeConfig holds all theme customization options.
@@ -259,6 +260,7 @@ func Defaults() Config {
 		UI: UIConfig{
 			ShowCounts:    true,
 			ShowStatusBar: true,
+			VimMode:       false, // Disabled by default for non-vim users
 		},
 		Theme: ThemeConfig{
 			// Default theme uses the "default" preset
@@ -292,6 +294,7 @@ auto_refresh: true
 ui:
   show_counts: true      # Show issue counts in column headers
   show_status_bar: true  # Show status bar at bottom
+  vim_mode: false        # Enable vim keybindings in text input areas (orchestration mode)
 
 # Theme configuration
 # Use a preset theme or customize individual colors

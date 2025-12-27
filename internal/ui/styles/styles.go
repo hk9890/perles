@@ -142,6 +142,12 @@ var (
 
 	// Loading spinner color
 	SpinnerColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#FFF"}
+
+	// Vim mode indicator colors
+	VimNormalModeColor  = lipgloss.AdaptiveColor{Light: "#1E66F5", Dark: "#89B4FA"} // blue
+	VimInsertModeColor  = lipgloss.AdaptiveColor{Light: "#40A02B", Dark: "#A6E3A1"} // green
+	VimVisualModeColor  = lipgloss.AdaptiveColor{Light: "#8839EF", Dark: "#CBA6F7"} // mauve/purple
+	VimReplaceModeColor = lipgloss.AdaptiveColor{Light: "#FE640B", Dark: "#FAB387"} // peach/orange - danger/overwrite
 )
 
 // GetTypeIndicator returns the letter indicator for an issue type.

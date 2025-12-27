@@ -29,6 +29,30 @@ func TestNew(t *testing.T) {
 	require.Equal(t, "", m.CurrentWorkerID())
 }
 
+func TestNew_VimModeDisabledByDefault(t *testing.T) {
+	// When VimMode is not set in config, it defaults to false
+	m := New(Config{})
+
+	// The input textarea should NOT have vim mode enabled
+	require.False(t, m.input.VimEnabled(), "vim mode should be disabled by default")
+}
+
+func TestNew_VimModeEnabled(t *testing.T) {
+	// When VimMode is explicitly set to true
+	m := New(Config{VimMode: true})
+
+	// The input textarea should have vim mode enabled
+	require.True(t, m.input.VimEnabled(), "vim mode should be enabled when configured")
+}
+
+func TestNew_VimModeExplicitlyDisabled(t *testing.T) {
+	// When VimMode is explicitly set to false
+	m := New(Config{VimMode: false})
+
+	// The input textarea should NOT have vim mode enabled
+	require.False(t, m.input.VimEnabled(), "vim mode should be disabled when configured")
+}
+
 func TestSetSize(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)

@@ -229,6 +229,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			AmpModel:         orchConfig.Amp.Model,
 			AmpMode:          orchConfig.Amp.Mode,
 			WorkflowRegistry: workflowRegistry,
+			VimMode:          m.services.Config.UI.VimMode,
 		}).SetSize(m.width, m.height)
 		return m, m.orchestration.Init()
 

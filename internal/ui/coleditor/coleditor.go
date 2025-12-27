@@ -12,11 +12,11 @@ import (
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/board"
-	"github.com/zjrosen/perles/internal/ui/forms/bqlinput"
 	"github.com/zjrosen/perles/internal/ui/modals/help"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
 	"github.com/zjrosen/perles/internal/ui/tree"
 
@@ -84,10 +84,11 @@ type Model struct {
 	// Form inputs
 	nameInput    textinput.Model
 	columnType   string // "bql" (default) or "tree"
-	queryInput   bqlinput.Model
+	queryInput   vimtextarea.Model
 	issueIDInput textinput.Model
 	treeMode     string // "deps" (default) or "children" - for tree columns
 	colorValue   string // Stores the current color hex value
+	vimEnabled   bool   // Whether vim mode is enabled for query input
 
 	// Color picker overlay
 	showColorPicker bool
@@ -118,7 +119,8 @@ type Model struct {
 
 // New creates a new editor for the given column.
 // executor is used to run BQL queries for live preview.
-func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExecutor) Model {
+// vimEnabled controls whether vim mode is used for BQL query input.
+func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExecutor, vimEnabled bool) Model {
 	cfg := allColumns[columnIndex]
 
 	nameInput := textinput.New()
@@ -139,10 +141,18 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExec
 		treeMode = "deps" // Default to deps mode
 	}
 
-	queryInput := bqlinput.New()
+	// Create vimtextarea for BQL query input with syntax highlighting
+	defaultMode := vimtextarea.ModeInsert
+	if vimEnabled {
+		defaultMode = vimtextarea.ModeNormal
+	}
+	queryInput := vimtextarea.New(vimtextarea.Config{
+		VimEnabled:  vimEnabled,
+		DefaultMode: defaultMode,
+		Placeholder: "status = open and ready = true",
+	})
 	queryInput.SetValue(cfg.Query)
-	queryInput.SetWidth(49)
-	queryInput.SetPlaceholder("status = open and ready = true")
+	queryInput.SetLexer(bql.NewSyntaxLexer())
 
 	issueIDInput := textinput.New()
 	issueIDInput.SetValue(cfg.IssueID)
@@ -172,6 +182,7 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExec
 		colorPicker:     picker,
 		focused:         FieldName,
 		executor:        executor,
+		vimEnabled:      vimEnabled,
 	}
 
 	// Initialize preview with current config
@@ -181,7 +192,8 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExec
 
 // NewForCreate creates an editor for adding a new column.
 // insertAfterIndex specifies where to insert the new column (to the right of this index).
-func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, executor bql.BQLExecutor) Model {
+// vimEnabled controls whether vim mode is used for BQL query input.
+func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, executor bql.BQLExecutor, vimEnabled bool) Model {
 	// Default config for new column
 	cfg := config.ColumnConfig{
 		Name:  "",
@@ -197,10 +209,18 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 	nameInput.Focus()
 	nameInput.Placeholder = "Column Name"
 
-	queryInput := bqlinput.New()
+	// Create vimtextarea for BQL query input with syntax highlighting
+	defaultMode := vimtextarea.ModeInsert
+	if vimEnabled {
+		defaultMode = vimtextarea.ModeNormal
+	}
+	queryInput := vimtextarea.New(vimtextarea.Config{
+		VimEnabled:  vimEnabled,
+		DefaultMode: defaultMode,
+		Placeholder: "status = open and ready = true",
+	})
 	queryInput.SetValue(cfg.Query)
-	queryInput.SetWidth(49)
-	queryInput.SetPlaceholder("status = open and ready = true")
+	queryInput.SetLexer(bql.NewSyntaxLexer())
 
 	issueIDInput := textinput.New()
 	issueIDInput.SetValue("")
@@ -227,6 +247,7 @@ func NewForCreate(insertAfterIndex int, allColumns []config.ColumnConfig, execut
 		colorPicker:     picker,
 		focused:         FieldName,
 		executor:        executor,
+		vimEnabled:      vimEnabled,
 	}
 
 	m = m.updatePreview()
@@ -243,7 +264,7 @@ func (m Model) SetSize(width, height int) Model {
 	const leftPanelWidth = 75
 	inputWidth := max(leftPanelWidth-6, 20) // Account for borders and padding
 	m.nameInput.Width = inputWidth
-	m.queryInput.SetWidth(inputWidth)
+	m.queryInput.SetSize(inputWidth, 5) // Height of 5 allows multi-line queries
 	m.issueIDInput.Width = inputWidth
 
 	return m
@@ -489,6 +510,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 
 		case key.Matches(msg, keys.Common.Escape):
+			// For query input with vim enabled in insert mode, ESC switches to normal mode
+			// Otherwise ESC cancels the editor
+			if m.focused == FieldQuery && m.vimEnabled && !m.queryInput.InNormalMode() {
+				// Let vimtextarea handle ESC to switch from insert to normal mode
+				m.queryInput, _ = m.queryInput.Update(msg)
+				return m, nil
+			}
 			return m, cancelCmd()
 		}
 
@@ -578,6 +606,11 @@ func (m Model) updateFocus() Model {
 		m.issueIDInput.Focus()
 	}
 	return m
+}
+
+// VimEnabled returns whether vim mode is enabled for the query input.
+func (m Model) VimEnabled() bool {
+	return m.vimEnabled
 }
 
 func (m Model) updateTextInput(msg tea.KeyMsg) Model {
@@ -720,12 +753,22 @@ func (m Model) renderConfigForm(width int) string {
 	var sections []string
 
 	// Section: Name (focus indicated by border highlight, no prefix needed)
-	nameRows := []string{m.nameInput.View()}
-	sections = append(sections, styles.RenderFormSection(nameRows, "Name", "", sectionWidth, m.focused == FieldName, styles.BorderHighlightFocusColor))
+	sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+		Content:            []string{m.nameInput.View()},
+		Width:              sectionWidth,
+		TopLeft:            "Name",
+		Focused:            m.focused == FieldName,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	}))
 
 	// Section: Type selector (BQL Query or Tree View)
-	typeRows := []string{m.renderTypeSelector()}
-	sections = append(sections, styles.RenderFormSection(typeRows, "Type", "", sectionWidth, m.focused == FieldType, styles.BorderHighlightFocusColor))
+	sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+		Content:            []string{m.renderTypeSelector()},
+		Width:              sectionWidth,
+		TopLeft:            "Type",
+		Focused:            m.focused == FieldType,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	}))
 
 	// Section: Color (shows swatch and hex, press Enter to open picker)
 	colorSwatch := "   "
@@ -735,22 +778,44 @@ func (m Model) renderConfigForm(width int) string {
 			Render("   ")
 	}
 	colorHint := lipgloss.NewStyle().Foreground(styles.TextMutedColor).Render(" [Enter to change]")
-	colorRows := []string{colorSwatch + " " + m.colorValue + colorHint}
-	sections = append(sections, styles.RenderFormSection(colorRows, "Color", "", sectionWidth, m.focused == FieldColor, styles.BorderHighlightFocusColor))
+	sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+		Content:            []string{colorSwatch + " " + m.colorValue + colorHint},
+		Width:              sectionWidth,
+		TopLeft:            "Color",
+		Focused:            m.focused == FieldColor,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	}))
 
 	// Section: BQL Query or Issue ID + Tree Mode (conditional based on type)
 	if m.columnType == "tree" {
 		// Show Issue ID input for tree columns
-		issueIDRows := []string{m.issueIDInput.View()}
-		sections = append(sections, styles.RenderFormSection(issueIDRows, "Root Issue ID", "", sectionWidth, m.focused == FieldIssueID, styles.BorderHighlightFocusColor))
+		sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+			Content:            []string{m.issueIDInput.View()},
+			Width:              sectionWidth,
+			TopLeft:            "Root Issue ID",
+			Focused:            m.focused == FieldIssueID,
+			FocusedBorderColor: styles.BorderHighlightFocusColor,
+		}))
 
 		// Show Tree Mode selector for tree columns
-		treeModeRows := []string{m.renderTreeModeSelector()}
-		sections = append(sections, styles.RenderFormSection(treeModeRows, "Tree Mode", "", sectionWidth, m.focused == FieldTreeMode, styles.BorderHighlightFocusColor))
+		sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+			Content:            []string{m.renderTreeModeSelector()},
+			Width:              sectionWidth,
+			TopLeft:            "Tree Mode",
+			Focused:            m.focused == FieldTreeMode,
+			FocusedBorderColor: styles.BorderHighlightFocusColor,
+		}))
 	} else {
 		// Show BQL Query input for BQL columns
-		queryRows := m.renderQuerySection(sectionWidth - 4) // Account for borders
-		sections = append(sections, styles.RenderFormSection(queryRows, "BQL Query", "", sectionWidth, m.focused == FieldQuery, styles.BorderHighlightFocusColor))
+		queryRows, modeIndicator := m.renderQuerySection(sectionWidth - 2) // Account for borders
+		sections = append(sections, styles.FormSection(styles.FormSectionConfig{
+			Content:            queryRows,
+			Width:              sectionWidth,
+			TopLeft:            "BQL Query",
+			BottomLeft:         modeIndicator,
+			Focused:            m.focused == FieldQuery,
+			FocusedBorderColor: styles.BorderHighlightFocusColor,
+		}))
 	}
 
 	// Actions (Save and Delete on same line) - no border, standalone buttons
@@ -794,20 +859,27 @@ func (m Model) renderConfigForm(width int) string {
 }
 
 // renderQuerySection renders the BQL query input with syntax highlighting.
-// The bqlinput component handles highlighting, cursor, and wrapping internally.
+// The vimtextarea component handles highlighting, cursor, and wrapping internally.
 // Focus is indicated by border highlight, no prefix needed.
-func (m Model) renderQuerySection(maxWidth int) []string {
-	// Set width for wrapping
-	m.queryInput.SetWidth(maxWidth)
+// Returns the content lines and the vim mode indicator (for bottom border).
+func (m Model) renderQuerySection(maxWidth int) ([]string, string) {
+	// Set size for wrapping (height of 5 allows multi-line queries)
+	m.queryInput.SetSize(maxWidth, 5)
 
-	// Get wrapped view from bqlinput (handles highlighting, cursor, and wrapping)
+	// Get wrapped view from vimtextarea (handles highlighting, cursor, and wrapping)
 	wrapped := m.queryInput.View()
 	lines := strings.Split(wrapped, "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		return []string{""}
+		lines = []string{""}
 	}
 
-	return lines
+	// Get vim mode indicator if vim is enabled (always show, not just when focused)
+	var modeIndicator string
+	if m.vimEnabled {
+		modeIndicator = m.queryInput.ModeIndicator()
+	}
+
+	return lines, modeIndicator
 }
 
 // renderTypeSelector renders the type toggle selector.
@@ -1072,7 +1144,7 @@ func (m Model) NameInput() textinput.Model {
 }
 
 // QueryInput returns the query input (for testing).
-func (m Model) QueryInput() bqlinput.Model {
+func (m Model) QueryInput() vimtextarea.Model {
 	return m.queryInput
 }
 

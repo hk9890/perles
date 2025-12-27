@@ -20,6 +20,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/pool"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 
 	"github.com/zjrosen/perles/internal/pubsub"
 )
@@ -248,22 +249,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Normal mode: input is focused, most keys go to input
-		switch {
-		case key.Matches(msg, keys.Enter):
-			content := strings.TrimSpace(m.input.Value())
-			if content != "" {
-				target := m.messageTarget
-				m.input.Reset()
-				return m, func() tea.Msg {
-					return UserInputMsg{Content: content, Target: target}
-				}
-			}
-			return m, nil
-
-		case key.Matches(msg, keys.Quit), msg.Type == tea.KeyCtrlC:
+		// When vim is disabled, or we are in normal mode, ESC should show quit confirmation directly
+		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyEsc {
 			return m.showQuitConfirmation(), nil
+		}
 
+		// When vim is disabled, or we are in normal mode, ctrl+c should show quit confirmation directly
+		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyCtrlC {
+			return m.showQuitConfirmation(), nil
+		}
+
+		switch {
 		case key.Matches(msg, keys.Pause):
 			return m, func() tea.Msg { return PauseMsg{} }
 
@@ -279,7 +275,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Forward other keys to text input
+		// Forward all other keys to vimtextarea (including ESC which switches to Normal when vim enabled)
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
@@ -394,6 +390,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}()
 		}
+		return m, nil
+
+	// Handle vimtextarea submit (Shift+Enter)
+	case vimtextarea.SubmitMsg:
+		content := strings.TrimSpace(msg.Content)
+		if content != "" {
+			target := m.messageTarget
+			m.input.Reset()
+			return m, func() tea.Msg {
+				return UserInputMsg{Content: content, Target: target}
+			}
+		}
+		return m, nil
+
+	// Handle vimtextarea mode change
+	case vimtextarea.ModeChangeMsg:
+		m.vimMode = msg.Mode
 		return m, nil
 
 	// Wire UserInputMsg to target (coordinator or worker)

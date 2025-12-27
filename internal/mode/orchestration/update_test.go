@@ -15,6 +15,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 )
 
 func TestUpdate_WindowSize(t *testing.T) {
@@ -102,13 +103,14 @@ func TestUpdate_InputSubmit(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Focus and type in input
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Type in input (starts in Insert mode)
 	m.input.SetValue("Hello coordinator")
 
-	// Submit with Enter
+	// Submit with Shift+Enter (vim mode uses Shift+Enter for submit, Enter for newline)
 	var cmd tea.Cmd
-	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}, Alt: false})
+	// Shift+Enter sends SubmitMsg which triggers UserInputMsg
+	m, cmd = m.Update(vimtextarea.SubmitMsg{Content: "Hello coordinator"})
 
 	// Input should be cleared
 	require.Equal(t, "", m.input.Value())
@@ -129,23 +131,38 @@ func TestUpdate_InputEmpty_NoSubmit(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.True(t, m.input.Focused())
 
-	// Submit with empty input should not produce command
+	// With vim disabled, Enter submits which emits SubmitMsg
+	// Then SubmitMsg handler checks if content is empty
 	var cmd tea.Cmd
-	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	require.Nil(t, cmd)
+	// First phase: vimtextarea emits SubmitMsg
+	require.NotNil(t, cmd)
+	submitMsg := cmd()
+	_, isSubmitMsg := submitMsg.(vimtextarea.SubmitMsg)
+	require.True(t, isSubmitMsg, "expected SubmitMsg")
+
+	// Second phase: SubmitMsg handler returns nil for empty content
+	_, cmd = m.Update(submitMsg)
+	require.Nil(t, cmd, "empty input should not produce UserInputMsg")
 }
 
 func TestUpdate_QuitMsg(t *testing.T) {
-	m := New(Config{})
+	m := New(Config{VimMode: true})
 	m = m.SetSize(120, 40)
 	m.initializer = newTestInitializer(InitReady, nil)
 
-	// ESC shows modal, doesn't immediately quit
+	// Start in Insert mode, first ESC switches to Normal mode
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "First ESC should switch to Normal mode")
+	require.Nil(t, m.quitModal, "quit modal should NOT be shown after first ESC")
+
+	// Second ESC (in Normal mode) shows quit modal
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
-	require.Nil(t, cmd, "ESC should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC")
+	require.Nil(t, cmd, "ESC in Normal mode should not return a command (modal shown instead)")
+	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit triggers QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -156,16 +173,20 @@ func TestUpdate_QuitMsg(t *testing.T) {
 }
 
 func TestUpdate_EscQuits(t *testing.T) {
-	m := New(Config{})
+	m := New(Config{VimMode: true})
 	m = m.SetSize(120, 40)
 	m.initializer = newTestInitializer(InitReady, nil)
 
-	// ESC shows quit confirmation modal (when initPhase is InitReady)
+	// With vim mode, ESC in Insert mode first switches to Normal mode
+	// Then ESC in Normal mode shows quit confirmation modal
+	m.input.SetMode(vimtextarea.ModeNormal) // Start in Normal mode to test quit directly
+
+	// ESC shows quit confirmation modal (when in Normal mode)
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 
 	require.Nil(t, cmd, "ESC should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC")
+	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit to get QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -176,20 +197,24 @@ func TestUpdate_EscQuits(t *testing.T) {
 }
 
 func TestUpdate_EscFromInputQuits(t *testing.T) {
-	m := New(Config{})
+	m := New(Config{VimMode: true})
 	m = m.SetSize(120, 40)
 	m.initializer = newTestInitializer(InitReady, nil)
 
-	// Focus input
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Input is always focused in orchestration mode, and starts in Insert mode
 	require.True(t, m.input.Focused())
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
 
-	// Esc should show quit confirmation modal (not just unfocus or immediately quit)
+	// First ESC switches to Normal mode (vim behavior)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "First ESC should switch to Normal mode")
+	require.Nil(t, m.quitModal, "quit modal should NOT be shown after first ESC")
+
+	// Second ESC (in Normal mode) shows quit confirmation modal
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
-
-	require.Nil(t, cmd, "ESC should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC from input")
+	require.Nil(t, cmd, "ESC in Normal mode should not return a command (modal shown instead)")
+	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit to get QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -246,6 +271,202 @@ func TestUpdate_TabKeepsInputFocused(t *testing.T) {
 	// Tab keeps input focused (just cycles message target)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	require.True(t, m.input.Focused())
+}
+
+// ========================================================================
+// Vim Mode Integration Tests
+// ========================================================================
+
+func TestVim_VimTextareaRendersInOrchestrationMode(t *testing.T) {
+	// Integration test: vimtextarea renders in orchestration mode when vim mode is enabled
+	m := New(Config{VimMode: true})
+	m = m.SetSize(120, 30)
+
+	// Verify vimtextarea is used (starts in Insert mode with vim enabled)
+	require.True(t, m.input.VimEnabled(), "vim mode should be enabled")
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode(), "should start in Insert mode")
+
+	// Render the view
+	view := m.View()
+	require.NotEmpty(t, view, "view should not be empty")
+	// Note: Mode indicator is now the client's responsibility (not rendered by vimtextarea)
+	// Mode can be queried via input.Mode() method
+}
+
+func TestVim_HjklTypesInInsertMode(t *testing.T) {
+	// Integration test: hjkl types characters when textarea is in Insert mode
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Starts in Insert mode
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
+
+	// Type 'h' - should insert the character
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	require.Contains(t, m.input.Value(), "h", "h should be typed as character in Insert mode")
+
+	// Type 'j' - should insert the character
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Contains(t, m.input.Value(), "hj", "j should be typed as character in Insert mode")
+
+	// Type 'k' - should insert the character
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	require.Contains(t, m.input.Value(), "hjk", "k should be typed as character in Insert mode")
+
+	// Type 'l' - should insert the character
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, "hjkl", m.input.Value(), "l should be typed as character in Insert mode")
+}
+
+func TestVim_HjklNavigatesInNormalMode(t *testing.T) {
+	// Integration test: hjkl moves cursor when textarea is in Normal mode (focused)
+	m := New(Config{VimMode: true})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Set some text and switch to Normal mode
+	m.input.SetValue("hello world")
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Move cursor to position 5 (middle of text) using 'l' repeatedly
+	for i := 0; i < 5; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	}
+
+	// Get cursor position before pressing 'h'
+	initialPos := m.input.CursorPosition()
+	require.Equal(t, 5, initialPos.Col, "cursor should be at column 5")
+
+	// Press 'h' - should move cursor left (NOT type 'h')
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+
+	// Content should NOT change
+	require.Equal(t, "hello world", m.input.Value(), "content should not change in Normal mode")
+
+	// Cursor should have moved left
+	newPos := m.input.CursorPosition()
+	require.Equal(t, 4, newPos.Col, "cursor should move left on 'h' in Normal mode")
+}
+
+func TestVim_EscInInsertModeSwitchesToNormal(t *testing.T) {
+	// Integration test: ESC in Insert mode switches to Normal (not quit)
+	m := New(Config{VimMode: true})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Starts in Insert mode
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
+	require.Nil(t, m.quitModal, "no quit modal initially")
+
+	// Press ESC
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+
+	// Should switch to Normal mode, NOT show quit modal
+	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "ESC should switch to Normal mode")
+	require.Nil(t, m.quitModal, "quit modal should NOT be shown when ESC exits Insert mode")
+}
+
+func TestVim_EscInNormalModeTriggersQuit(t *testing.T) {
+	// Integration test: ESC in Normal mode triggers quit confirmation
+	m := New(Config{VimMode: true})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Switch to Normal mode
+	m.input.SetMode(vimtextarea.ModeNormal)
+	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode())
+	require.Nil(t, m.quitModal, "no quit modal initially")
+
+	// Press ESC in Normal mode
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+
+	// Should show quit modal
+	require.NotNil(t, m.quitModal, "ESC in Normal mode should show quit confirmation")
+}
+
+func TestVim_ShiftEnterSubmitsMessage(t *testing.T) {
+	// Integration test: Shift+Enter submits message (sends Alt+Enter in terminal)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Type a message
+	m.input.SetValue("Test message")
+
+	// Send SubmitMsg (which is what Shift+Enter produces from vimtextarea)
+	var cmd tea.Cmd
+	m, cmd = m.Update(vimtextarea.SubmitMsg{Content: "Test message"})
+
+	// Input should be cleared
+	require.Equal(t, "", m.input.Value(), "input should be cleared after submit")
+
+	// Should produce UserInputMsg command
+	require.NotNil(t, cmd, "should return a command")
+	msg := cmd()
+	userMsg, ok := msg.(UserInputMsg)
+	require.True(t, ok, "should produce UserInputMsg")
+	require.Equal(t, "Test message", userMsg.Content)
+}
+
+func TestVim_EnterSubmitsMessage_VimDisabled(t *testing.T) {
+	// Integration test: With vim disabled, Enter submits message
+	m := New(Config{}) // VimMode: false by default
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Type some text
+	m.input.SetValue("Line 1")
+
+	// Press Enter (vim disabled, so Enter submits)
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// First phase: vimtextarea emits SubmitMsg
+	require.NotNil(t, cmd, "Enter should produce a command")
+	msg := cmd()
+	submitMsg, isSubmitMsg := msg.(vimtextarea.SubmitMsg)
+	require.True(t, isSubmitMsg, "Enter should produce SubmitMsg")
+	require.Equal(t, "Line 1", submitMsg.Content)
+
+	// Second phase: SubmitMsg handler produces UserInputMsg
+	m, cmd = m.Update(submitMsg)
+	require.NotNil(t, cmd, "SubmitMsg should produce UserInputMsg command")
+	msg = cmd()
+	userInput, isUserInput := msg.(UserInputMsg)
+	require.True(t, isUserInput, "SubmitMsg handler should produce UserInputMsg")
+	require.Equal(t, "Line 1", userInput.Content)
+
+	// Input should be cleared after submit
+	require.Empty(t, m.input.Value(), "Input should be cleared after submit")
+}
+
+func TestVim_MessageSubmissionWorksEndToEnd(t *testing.T) {
+	// Integration test: Message submission works end-to-end
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// 1. Type a message character by character (in Insert mode)
+	for _, r := range "Hello coordinator" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	require.Equal(t, "Hello coordinator", m.input.Value())
+
+	// 2. Submit via Shift+Enter (simulated by SubmitMsg)
+	var cmd tea.Cmd
+	m, cmd = m.Update(vimtextarea.SubmitMsg{Content: m.input.Value()})
+
+	// 3. Verify input cleared
+	require.Equal(t, "", m.input.Value())
+
+	// 4. Verify command produced
+	require.NotNil(t, cmd)
+	msg := cmd()
+	userMsg, ok := msg.(UserInputMsg)
+	require.True(t, ok)
+	require.Equal(t, "Hello coordinator", userMsg.Content)
+	require.Equal(t, "COORDINATOR", userMsg.Target)
 }
 
 func TestHandleReplaceCoordinator_SetsPendingRefresh(t *testing.T) {
@@ -854,11 +1075,14 @@ func TestQuitConfirmation_CtrlC_ShowsModal(t *testing.T) {
 
 func TestQuitConfirmation_Cancel(t *testing.T) {
 	// Test that cancelling the modal (ESC or CancelMsg) dismisses without quitting
-	m := New(Config{})
+	m := New(Config{VimMode: true})
 	m = m.SetSize(120, 40)
 	m.initializer = newTestInitializer(InitReady, nil)
 
-	// First, trigger the quit modal
+	// Start in Normal mode to directly trigger quit modal with ESC
+	m.input.SetMode(vimtextarea.ModeNormal)
+
+	// Trigger the quit modal (ESC in Normal mode)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	require.NotNil(t, m.quitModal, "quit modal should be shown")
 
