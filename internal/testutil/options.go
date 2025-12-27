@@ -29,6 +29,7 @@ type issueData struct {
 	labels      []string
 	comments    []CommentData
 	createdAt   time.Time
+	createdBy   string
 	updatedAt   time.Time
 	closedAt    *time.Time
 	deletedAt   *time.Time
@@ -100,6 +101,11 @@ func Comments(comments ...CommentData) IssueOption {
 // CreatedAt sets the created_at timestamp.
 func CreatedAt(t time.Time) IssueOption {
 	return func(i *issueData) { i.createdAt = t }
+}
+
+// CreatedBy sets the created_by field for the issue.
+func CreatedBy(s string) IssueOption {
+	return func(i *issueData) { i.createdBy = s }
 }
 
 // UpdatedAt sets the updated_at timestamp.

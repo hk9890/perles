@@ -32,9 +32,17 @@ func BQLFields() []BQLField {
 		{Name: "priority", Values: "p0, p1, p2, p3, p4"},
 		{Name: "blocked", Values: "true, false"},
 		{Name: "ready", Values: "true, false"},
+		{Name: "pinned", Values: "true, false"},
+		{Name: "is_template", Values: "true, false"},
 		{Name: "label", Values: "string (use ~ for contains)"},
 		{Name: "title", Values: "string (use ~ for contains)"},
+		{Name: "description", Values: "string (use ~ for contains)"},
+		{Name: "design", Values: "string (use ~ for contains)"},
+		{Name: "notes", Values: "string (use ~ for contains)"},
 		{Name: "id", Values: "string"},
+		{Name: "assignee", Values: "string"},
+		{Name: "sender", Values: "string"},
+		{Name: "created_by", Values: "string"},
 		{Name: "created", Values: "date (today, yesterday, -7d)"},
 		{Name: "updated", Values: "date (today, yesterday, -7d)"},
 	}
@@ -307,7 +315,7 @@ func (m Model) renderSearchContent() string {
 
 	// BQL Syntax section - two columns for fields/operators
 	bqlStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
-	bqlLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(10)
+	bqlLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(12)
 	bqlValueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 
 	// Fields column - use shared BQL data
@@ -318,11 +326,9 @@ func (m Model) renderSearchContent() string {
 		// For compact display in overlay, use shorter values for some fields
 		values := f.Values
 		switch f.Name {
-		case "id", "updated": // Skip these in compact overlay view
-			continue
 		case "label", "title":
 			values = "string (~ for contains)"
-		case "created":
+		case "created", "updated":
 			values = "today, -7d"
 		}
 		fieldsCol.WriteString(bqlLabelStyle.Render(f.Name) + bqlValueStyle.Render(values) + "\n")

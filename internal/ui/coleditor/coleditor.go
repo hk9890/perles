@@ -1109,7 +1109,7 @@ func (m Model) ShowDeleteModal() bool {
 // buildBQLHelpRows builds the BQL syntax help rows using shared help data.
 // Returns a two-column layout (Fields | Operators) with Examples below.
 func (m Model) buildBQLHelpRows() []string {
-	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(10)
+	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(12)
 	valueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextSecondaryColor)
 	columnStyle := lipgloss.NewStyle().MarginRight(4)

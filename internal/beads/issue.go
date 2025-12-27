@@ -60,6 +60,7 @@ type Issue struct {
 	IsTemplate         *bool     `json:"is_template,omitempty"`
 	Labels             []string  `json:"labels"`
 	CreatedAt          time.Time `json:"created_at"`
+	CreatedBy          string    `json:"created_by,omitempty"`
 	UpdatedAt          time.Time `json:"updated_at"`
 	ClosedAt           time.Time `json:"closed_at"`
 

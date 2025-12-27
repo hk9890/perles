@@ -29,6 +29,7 @@ CREATE TABLE issues (
 	pinned INTEGER,
 	is_template INTEGER,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	created_by TEXT DEFAULT '',
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	closed_at DATETIME,
 	deleted_at DATETIME,

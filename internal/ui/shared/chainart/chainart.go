@@ -11,7 +11,7 @@ import (
 var (
 	link1Color      = lipgloss.Color("#54A0FF") // Blue
 	link2Color      = lipgloss.Color("#73F59F") // Green
-	brokenColor     = lipgloss.Color("#696969") // Grey - broken/inactive
+	brokenColor     = lipgloss.Color("#FF6B6B") // Red - for failed phase broken link
 	link4Color      = lipgloss.Color("#FECA57") // Yellow
 	link5Color      = lipgloss.Color("#7D56F4") // Purple
 	connectorColor  = lipgloss.Color("#CCCCCC") // Light - consistent connectors

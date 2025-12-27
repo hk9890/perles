@@ -1,6 +1,3 @@
-                                                                                                    
-                                                                                                    
-                                                                                                    
        ╭────────────────────────────────────────────────────────────────────────────────────╮       
        │  Search Mode Help                                                                  │       
        │────────────────────────────────────────────────────────────────────────────────────│       
@@ -14,15 +11,25 @@
        │  esc        exit to kanban                                                         │       
        │                                                                                    │       
        │                                                                                    │       
-       │  BQL Fields                                   BQL Operators                        │       
-       │  status    open, in_progress, closed          =  !=     equality                   │       
-       │  type      bug, feature, task, epic, chore    <  >      comparison                 │       
-       │  priority  p0, p1, p2, p3, p4                 ~  !~     contains                   │       
-       │  blocked   true, false                        in        match any: in (a, b)       │       
-       │  ready     true, false                        and or    logical                    │       
-       │  label     string (~ for contains)            expand    up, down, all              │       
-       │  title     string (~ for contains)            depth     1-10 or * (unlimited)      │       
-       │  created   today, -7d                         not       negation                   │       
+       │  BQL Fields                                     BQL Operators                      │       
+       │  status      open, in_progress, closed          =  !=       equality               │       
+       │  type        bug, feature, task, epic, chore    <  >        comparison             │       
+       │  priority    p0, p1, p2, p3, p4                 ~  !~       contains               │       
+       │  blocked     true, false                        in          match any: in (a, b)   │       
+       │  ready       true, false                        and or      logical                │       
+       │  pinned      true, false                        expand      up, down, all          │       
+       │  is_template true, false                        depth       1-10 or * (unlimited)  │       
+       │  label       string (~ for contains)            not         negation               │       
+       │  title       string (~ for contains)                                               │       
+       │  description string (use ~ for contains)                                           │       
+       │  design      string (use ~ for contains)                                           │       
+       │  notes       string (use ~ for contains)                                           │       
+       │  id          string                                                                │       
+       │  assignee    string                                                                │       
+       │  sender      string                                                                │       
+       │  created_by  string                                                                │       
+       │  created     today, -7d                                                            │       
+       │  updated     today, -7d                                                            │       
        │                                                                                    │       
        │                                                                                    │       
        │  Examples                                                                          │       
@@ -34,7 +41,3 @@
        │                                                                                    │       
        │  Press ? or Esc to close                                                           │       
        ╰────────────────────────────────────────────────────────────────────────────────────╯       
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    

@@ -549,6 +549,14 @@ func (m Model) renderMetadataColumn() string {
 		sb.WriteString("\n")
 	}
 
+	// CeratedBy (if set)
+	if issue.CreatedBy != "" {
+		sb.WriteString(indent)
+		sb.WriteString(labelStyle.Render("Creator"))
+		sb.WriteString(valueStyle.Render(issue.CreatedBy))
+		sb.WriteString("\n")
+	}
+
 	// Timestamps
 	sb.WriteString(indent)
 	sb.WriteString(labelStyle.Render("Created"))

@@ -22,6 +22,7 @@ var ValidFields = map[string]FieldType{
 	"description": FieldString,
 	"design":      FieldString,
 	"notes":       FieldString,
+	"created_by":  FieldString,
 	"created":     FieldDate,
 	"updated":     FieldDate,
 }

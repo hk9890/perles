@@ -1627,3 +1627,39 @@ func TestExecutor_QueryByIsTemplateFalse(t *testing.T) {
 	require.Len(t, issues, 1)
 	require.Equal(t, "not-template", issues[0].ID)
 }
+
+// =============================================================================
+// CreatedBy Field Tests
+// =============================================================================
+
+func TestExecutor_CreatedByPopulated(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue with creator"), testutil.CreatedBy("alice"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, "alice", issues[0].CreatedBy)
+}
+
+func TestExecutor_CreatedByEmptyByDefault(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("issue-1", testutil.Title("Issue without creator"))
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := NewExecutor(db)
+
+	issues, err := executor.Execute("id = issue-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, "", issues[0].CreatedBy, "default created_by should be empty string")
+}

@@ -92,6 +92,7 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 			i.pinned,
 			i.is_template,
 			i.created_at,
+			i.created_by,
 			i.updated_at,
 			i.closed_at,
 			COALESCE((
@@ -192,6 +193,7 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			ephemeral          sql.NullBool
 			pinned             sql.NullBool
 			isTemplate         sql.NullBool
+			createdBy          sql.NullString
 			closedAt           sql.NullTime
 			parentId           string
 			childrenIDs        string
@@ -218,6 +220,7 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			&pinned,
 			&isTemplate,
 			&issue.CreatedAt,
+			&createdBy,
 			&issue.UpdatedAt,
 			&closedAt,
 			&parentId,
@@ -260,6 +263,9 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 		}
 		if isTemplate.Valid {
 			issue.IsTemplate = &isTemplate.Bool
+		}
+		if createdBy.Valid {
+			issue.CreatedBy = createdBy.String
 		}
 		if closedAt.Valid {
 			issue.ClosedAt = closedAt.Time
