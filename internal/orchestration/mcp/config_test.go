@@ -7,29 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGenerateCoordinatorConfig(t *testing.T) {
-	configJSON, err := GenerateCoordinatorConfig("/project")
-	require.NoError(t, err, "GenerateCoordinatorConfig failed")
-
-	// Parse and verify the config
-	var config MCPConfig
-	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
-
-	server, ok := config.MCPServers["perles-orchestrator"]
-	require.True(t, ok, "Missing perles-orchestrator server in config")
-
-	// Check HTTP transport
-	if server.Type != "http" {
-		t.Errorf("Type = %q, want \"http\"", server.Type)
-	}
-
-	// Check URL
-	expectedURL := "http://localhost:8765/mcp"
-	if server.URL != expectedURL {
-		t.Errorf("URL = %q, want %q", server.URL, expectedURL)
-	}
-}
-
 func TestGenerateWorkerConfig(t *testing.T) {
 	// GenerateWorkerConfig now returns HTTP config
 	configJSON, err := GenerateWorkerConfig("worker-1", "/work")

@@ -5,6 +5,7 @@ packages:
   github.com/zjrosen/perles/internal/beads:
     interfaces:
       BeadsClient:
+      BeadsExecutor:
   github.com/zjrosen/perles/internal/bql:
     interfaces:
       BQLExecutor:

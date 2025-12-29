@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -23,7 +24,7 @@ func TestEdge_EmptyPool(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	t.Run("list_workers_empty", func(t *testing.T) {
 		handler := cs.handlers["list_workers"]
@@ -76,7 +77,7 @@ func TestEdge_AllWorkersRetired(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers and retire them
 	worker1 := workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -147,7 +148,7 @@ func TestEdge_TaskIDFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := IsValidTaskID(tt.taskID)
+			result := isValidTaskID(tt.taskID)
 			if result != tt.isValid {
 				t.Errorf("IsValidTaskID(%q) = %v, want %v", tt.taskID, result, tt.isValid)
 			}
@@ -160,7 +161,7 @@ func TestEdge_WorkerIDFormats(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	tests := []struct {
 		name     string
@@ -191,7 +192,7 @@ func TestEdge_MaxTaskDurationBoundary(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	tests := []struct {
 		name        string
@@ -229,7 +230,7 @@ func TestEdge_AssignmentMapsConsistency(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create worker
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -295,7 +296,7 @@ func TestEdge_NilMessageIssue(t *testing.T) {
 	defer workerPool.Close()
 
 	// Create server with nil message issue
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	t.Run("post_message_fails", func(t *testing.T) {
 		handler := cs.handlers["post_message"]
@@ -329,7 +330,7 @@ func TestEdge_LargeNumberOfWorkers(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create 100 workers
 	for i := 0; i < 100; i++ {
@@ -380,7 +381,7 @@ func TestEdge_LargeNumberOfTasks(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create 100 tasks (more than workers)
 	for i := 0; i < 100; i++ {
@@ -424,7 +425,7 @@ func TestEdge_MalformedJSON(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	malformedCases := []string{
 		`not json`,
@@ -459,7 +460,7 @@ func TestEdge_UnicodeContent(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	unicodeStrings := []string{
 		"Hello 世界",
@@ -498,7 +499,7 @@ func TestEdge_WorkerPhaseTransitions(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// All valid phase values
 	phases := []events.WorkerPhase{
@@ -543,7 +544,7 @@ func TestEdge_TaskStatusTransitions(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	statuses := []TaskWorkflowStatus{
 		TaskImplementing,

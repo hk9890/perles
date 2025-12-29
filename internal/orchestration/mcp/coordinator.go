@@ -1,16 +1,14 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/events"
@@ -74,18 +72,15 @@ type TaskAssignment struct {
 // It provides tools for spawning workers, managing tasks, and communicating via message issues.
 type CoordinatorServer struct {
 	*Server
-	client     client.HeadlessClient
-	pool       *pool.WorkerPool
-	msgIssue   *message.Issue
-	workDir    string
-	port       int            // HTTP server port for MCP config generation
-	extensions map[string]any // Provider-specific extensions (model, mode, etc.)
+	client        client.HeadlessClient
+	pool          *pool.WorkerPool
+	msgIssue      *message.Issue
+	workDir       string
+	port          int                 // HTTP server port for MCP config generation
+	extensions    map[string]any      // Provider-specific extensions (model, mode, etc.)
+	beadsExecutor beads.BeadsExecutor // BD command executor
 
-	// workerTaskMap maps workerID -> taskID for lookup
-	workerTaskMap map[string]string
-	taskMapMu     sync.RWMutex // protects workerTaskMap
-
-	// Enhanced state tracking for deterministic orchestration
+	// State tracking for deterministic orchestration
 	workerAssignments map[string]*WorkerAssignment // workerID -> assignment
 	taskAssignments   map[string]*TaskAssignment   // taskID -> assignment
 	assignmentsMu     sync.RWMutex                 // protects workerAssignments and taskAssignments
@@ -99,7 +94,16 @@ type CoordinatorServer struct {
 // The port is the HTTP server port used for MCP config generation.
 // The extensions map holds provider-specific configuration (model, mode, etc.)
 // that will be passed to workers when they are spawned.
-func NewCoordinatorServer(aiClient client.HeadlessClient, workerPool *pool.WorkerPool, msgIssue *message.Issue, workDir string, port int, extensions map[string]any) *CoordinatorServer {
+// The beadsExec parameter is required and must not be nil.
+func NewCoordinatorServer(
+	aiClient client.HeadlessClient,
+	workerPool *pool.WorkerPool,
+	msgIssue *message.Issue,
+	workDir string,
+	port int,
+	extensions map[string]any,
+	beadsExec beads.BeadsExecutor,
+) *CoordinatorServer {
 	cs := &CoordinatorServer{
 		Server:            NewServer("perles-orchestrator", "1.0.0", WithInstructions(coordinatorInstructions)),
 		client:            aiClient,
@@ -108,7 +112,7 @@ func NewCoordinatorServer(aiClient client.HeadlessClient, workerPool *pool.Worke
 		workDir:           workDir,
 		port:              port,
 		extensions:        extensions,
-		workerTaskMap:     make(map[string]string),
+		beadsExecutor:     beadsExec,
 		workerAssignments: make(map[string]*WorkerAssignment),
 		taskAssignments:   make(map[string]*TaskAssignment),
 		dedup:             NewMessageDeduplicator(DefaultDeduplicationWindow),
@@ -500,7 +504,7 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 	}
 
 	// Get task details from bd
-	taskInfo, err := cs.getTaskInfo(args.TaskID)
+	taskInfo, err := cs.beadsExecutor.ShowIssue(args.TaskID)
 	if err != nil {
 		log.ErrorErr(log.CatMCP, "Failed to get task info", err,
 			"taskID", args.TaskID,
@@ -513,12 +517,7 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 		return nil, fmt.Errorf("failed to assign task: %w", err)
 	}
 
-	// Track worker → task mapping (legacy, kept for backward compatibility)
-	cs.taskMapMu.Lock()
-	cs.workerTaskMap[args.WorkerID] = args.TaskID
-	cs.taskMapMu.Unlock()
-
-	// Create assignment records for new state tracking
+	// Create assignment records for state tracking
 	now := time.Now()
 	cs.assignmentsMu.Lock()
 	cs.workerAssignments[args.WorkerID] = &WorkerAssignment{
@@ -548,7 +547,9 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 	}
 
 	// Update BD status to in_progress (best-effort)
-	cs.updateBDStatus(args.TaskID, "in_progress")
+	if err := cs.beadsExecutor.UpdateStatus(args.TaskID, beads.StatusInProgress); err != nil {
+		log.Warn(log.CatMCP, "Failed to update BD status", "taskID", args.TaskID, "status", "in_progress", "error", err)
+	}
 
 	// Generate MCP config for worker
 	mcpConfig, err := cs.generateWorkerMCPConfig(args.WorkerID)
@@ -557,7 +558,7 @@ func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.
 	}
 
 	// Build task assignment prompt
-	prompt := TaskAssignmentPrompt(args.TaskID, taskInfo.Title, args.Summary)
+	prompt := TaskAssignmentPrompt(args.TaskID, taskInfo.TitleText, args.Summary)
 
 	// Resume worker with task assignment
 	proc, err := cs.client.Spawn(ctx, client.Config{
@@ -614,11 +615,6 @@ func (cs *CoordinatorServer) handleReplaceWorker(ctx context.Context, rawArgs js
 		return nil, fmt.Errorf("failed to retire worker: %w", err)
 	}
 
-	// Clear task mapping for old worker (legacy, kept for backward compatibility)
-	cs.taskMapMu.Lock()
-	delete(cs.workerTaskMap, args.WorkerID)
-	cs.taskMapMu.Unlock()
-
 	// Spawn a fresh replacement
 	newWorkerID, err := cs.SpawnIdleWorker()
 	if err != nil {
@@ -632,37 +628,6 @@ func (cs *CoordinatorServer) handleReplaceWorker(ctx context.Context, rawArgs js
 
 	log.Debug(log.CatMCP, "Replaced worker", "oldWorkerID", args.WorkerID, "newWorkerID", newWorkerID, "reason", reason)
 	return SuccessResult(fmt.Sprintf("Worker %s retired (%s). Replacement: %s", args.WorkerID, reason, newWorkerID)), nil
-}
-
-// taskDetails holds task information from bd.
-type taskDetails struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Acceptance  string `json:"acceptance"`
-}
-
-// getTaskInfo fetches task details from bd.
-func (cs *CoordinatorServer) getTaskInfo(taskID string) (*taskDetails, error) {
-	// Run bd show to get task details
-	cmd := exec.Command("bd", "show", taskID, "--json")
-	cmd.Dir = cs.workDir
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("bd show failed: %w", err)
-	}
-
-	// bd show returns an array
-	var issues []taskDetails
-	if err := json.Unmarshal(output, &issues); err != nil {
-		return nil, fmt.Errorf("parsing bd output: %w", err)
-	}
-
-	if len(issues) == 0 {
-		return nil, fmt.Errorf("task %s not found", taskID)
-	}
-
-	return &issues[0], nil
 }
 
 // handleSendToWorker sends a message to a worker by resuming its session.
@@ -771,19 +736,20 @@ func (cs *CoordinatorServer) handleGetTaskStatus(_ context.Context, rawArgs json
 		return nil, fmt.Errorf("invalid task_id format: %s", args.TaskID)
 	}
 
-	// Run bd show to get task info
-	cmd := exec.Command("bd", "show", args.TaskID, "--json") //nolint:gosec // G204: TaskID validated above
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		log.Debug(log.CatMCP, "bd show failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
-		return nil, fmt.Errorf("bd show failed: %s", strings.TrimSpace(stderr.String()))
+	// Get task info using BeadsExecutor
+	issue, err := cs.beadsExecutor.ShowIssue(args.TaskID)
+	if err != nil {
+		log.Debug(log.CatMCP, "bd show failed", "taskID", args.TaskID, "error", err)
+		return nil, fmt.Errorf("bd show failed: %w", err)
 	}
 
-	// Return the JSON output directly
-	return SuccessResult(strings.TrimSpace(stdout.String())), nil
+	// Return the issue as JSON wrapped in an array (for backward compatibility with bd show output)
+	data, err := json.MarshalIndent([]*beads.Issue{issue}, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling issue: %w", err)
+	}
+
+	return SuccessResult(string(data)), nil
 }
 
 // handleMarkTaskComplete marks a task as complete in bd and updates internal state.
@@ -815,14 +781,10 @@ func (cs *CoordinatorServer) handleMarkTaskComplete(_ context.Context, rawArgs j
 	implementerID := ta.Implementer
 	cs.assignmentsMu.RUnlock()
 
-	// Run bd update to set status to closed (external state first)
-	cmd := exec.Command("bd", "update", args.TaskID, "--status", "closed", "--json") //nolint:gosec // G204: TaskID validated above
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		log.Debug(log.CatMCP, "bd update failed", "taskID", args.TaskID, "error", err, "stderr", stderr.String())
-		return nil, fmt.Errorf("bd update failed: %s", strings.TrimSpace(stderr.String()))
+	// Update bd status to closed using BeadsExecutor (external state first)
+	if err := cs.beadsExecutor.UpdateStatus(args.TaskID, beads.StatusClosed); err != nil {
+		log.Debug(log.CatMCP, "bd update failed", "taskID", args.TaskID, "error", err)
+		return nil, fmt.Errorf("bd update failed: %w", err)
 	}
 
 	// Update internal state atomically
@@ -842,7 +804,9 @@ func (cs *CoordinatorServer) handleMarkTaskComplete(_ context.Context, rawArgs j
 	}
 
 	// Add BD comment for audit trail
-	cs.addBDComment(args.TaskID, "Task completed")
+	if err := cs.beadsExecutor.AddComment(args.TaskID, "coordinator", "Task completed"); err != nil {
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err)
+	}
 
 	log.Debug(log.CatMCP, "Marked task complete", "taskID", args.TaskID, "implementerID", implementerID)
 
@@ -880,14 +844,11 @@ func (cs *CoordinatorServer) handleMarkTaskFailed(_ context.Context, rawArgs jso
 		return nil, fmt.Errorf("reason is required")
 	}
 
-	// Add comment with failure reason (TaskID already validated above)
-	commentCmd := exec.Command("bd", "comment", args.TaskID, "--author", "coordinator", "--", fmt.Sprintf("⚠️ Task failed: %s", args.Reason)) //nolint:gosec // G204: TaskID validated above
-	var commentStderr bytes.Buffer
-	commentCmd.Stderr = &commentStderr
-
-	if err := commentCmd.Run(); err != nil {
-		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err, "stderr", commentStderr.String())
-		return nil, fmt.Errorf("bd comment failed: %s", strings.TrimSpace(commentStderr.String()))
+	// Add comment with failure reason using BeadsExecutor
+	failureComment := fmt.Sprintf("⚠️ Task failed: %s", args.Reason)
+	if err := cs.beadsExecutor.AddComment(args.TaskID, "coordinator", failureComment); err != nil {
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err)
+		return nil, fmt.Errorf("bd comment failed: %w", err)
 	}
 
 	log.Debug(log.CatMCP, "Marked task failed", "taskID", args.TaskID, "reason", args.Reason)
@@ -1423,7 +1384,9 @@ func (cs *CoordinatorServer) handleAssignTaskReview(ctx context.Context, rawArgs
 	cs.pool.EmitIncomingMessage(args.ReviewerID, args.TaskID, prompt)
 
 	// Add BD comment for audit trail
-	cs.addBDComment(args.TaskID, fmt.Sprintf("Review assigned to %s", args.ReviewerID))
+	if err := cs.beadsExecutor.AddComment(args.TaskID, "coordinator", fmt.Sprintf("Review assigned to %s", args.ReviewerID)); err != nil {
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err)
+	}
 
 	log.Debug(log.CatMCP, "Assigned review", "reviewerID", args.ReviewerID, "taskID", args.TaskID, "implementerID", args.ImplementerID)
 
@@ -1528,7 +1491,9 @@ func (cs *CoordinatorServer) handleAssignReviewFeedback(ctx context.Context, raw
 	cs.pool.EmitIncomingMessage(args.ImplementerID, args.TaskID, prompt)
 
 	// Add BD comment for audit trail
-	cs.addBDComment(args.TaskID, fmt.Sprintf("Review feedback sent to %s: %s", args.ImplementerID, args.Feedback))
+	if err := cs.beadsExecutor.AddComment(args.TaskID, "coordinator", fmt.Sprintf("Review feedback sent to %s: %s", args.ImplementerID, args.Feedback)); err != nil {
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err)
+	}
 
 	log.Debug(log.CatMCP, "Sent review feedback", "implementerID", args.ImplementerID, "taskID", args.TaskID)
 
@@ -1633,7 +1598,9 @@ func (cs *CoordinatorServer) handleApproveCommit(ctx context.Context, rawArgs js
 	cs.pool.EmitIncomingMessage(args.ImplementerID, args.TaskID, prompt)
 
 	// Add BD comment for audit trail
-	cs.addBDComment(args.TaskID, "Commit approved")
+	if err := cs.beadsExecutor.AddComment(args.TaskID, "coordinator", "Commit approved"); err != nil {
+		log.Debug(log.CatMCP, "bd comment failed", "taskID", args.TaskID, "error", err)
+	}
 
 	log.Debug(log.CatMCP, "Approved commit", "implementerID", args.ImplementerID, "taskID", args.TaskID)
 
@@ -1649,26 +1616,6 @@ func (cs *CoordinatorServer) handleApproveCommit(ctx context.Context, rawArgs js
 	}
 	data, _ := json.MarshalIndent(response, "", "  ")
 	return StructuredResult(string(data), response), nil
-}
-
-// addBDComment adds a comment to a task in bd for audit trail.
-// Errors are logged but not returned (best-effort).
-func (cs *CoordinatorServer) addBDComment(taskID, comment string) {
-	cmd := exec.Command("bd", "comment", taskID, "--author", "coordinator", "--", comment) //nolint:gosec // G204: TaskID validated by caller
-	cmd.Dir = cs.workDir
-	if err := cmd.Run(); err != nil {
-		log.Warn(log.CatMCP, "Failed to add BD comment", "taskID", taskID, "error", err)
-	}
-}
-
-// updateBDStatus updates a task's status in bd.
-// Errors are logged but not returned (best-effort).
-func (cs *CoordinatorServer) updateBDStatus(taskID, status string) {
-	cmd := exec.Command("bd", "update", taskID, "--status", status) //nolint:gosec // G204: TaskID validated by caller
-	cmd.Dir = cs.workDir
-	if err := cmd.Run(); err != nil {
-		log.Warn(log.CatMCP, "Failed to update BD status", "taskID", taskID, "status", status, "error", err)
-	}
 }
 
 // WorkerStateCallback implementation - allows workers to update coordinator state.
@@ -1715,7 +1662,9 @@ func (cs *CoordinatorServer) OnImplementationComplete(workerID, summary string) 
 
 	// Add BD comment for audit trail
 	if wa.TaskID != "" {
-		cs.addBDComment(wa.TaskID, fmt.Sprintf("Implementation complete by %s: %s", workerID, summary))
+		if err := cs.beadsExecutor.AddComment(wa.TaskID, "coordinator", fmt.Sprintf("Implementation complete by %s: %s", workerID, summary)); err != nil {
+			log.Debug(log.CatMCP, "bd comment failed", "taskID", wa.TaskID, "error", err)
+		}
 	}
 
 	log.Debug(log.CatMCP, "Worker implementation complete", "workerID", workerID, "taskID", wa.TaskID, "summary", summary)
@@ -1768,9 +1717,25 @@ func (cs *CoordinatorServer) OnReviewVerdict(workerID, verdict, comments string)
 
 	// Add BD comment for audit trail
 	if taskID != "" {
-		cs.addBDComment(taskID, fmt.Sprintf("Review verdict by %s: %s - %s", workerID, verdict, comments))
+		if err := cs.beadsExecutor.AddComment(taskID, "coordinator", fmt.Sprintf("Review verdict by %s: %s - %s", workerID, verdict, comments)); err != nil {
+			log.Debug(log.CatMCP, "bd comment failed", "taskID", taskID, "error", err)
+		}
 	}
 
 	log.Debug(log.CatMCP, "Worker review verdict", "workerID", workerID, "taskID", taskID, "verdict", verdict, "comments", comments)
 	return nil
+}
+
+// SetWorkerAssignment allows tests to set worker assignments directly.
+func (cs *CoordinatorServer) SetWorkerAssignment(workerID string, assignment *WorkerAssignment) {
+	cs.assignmentsMu.Lock()
+	defer cs.assignmentsMu.Unlock()
+	cs.workerAssignments[workerID] = assignment
+}
+
+// SetTaskAssignment allows tests to set task assignments directly.
+func (cs *CoordinatorServer) SetTaskAssignment(taskID string, assignment *TaskAssignment) {
+	cs.assignmentsMu.Lock()
+	defer cs.assignmentsMu.Unlock()
+	cs.taskAssignments[taskID] = assignment
 }

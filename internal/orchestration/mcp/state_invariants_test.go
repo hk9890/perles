@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -22,11 +23,12 @@ import (
 
 // TestProperty_NoWorkerHasMultipleTasks verifies that a worker can only have one task at a time.
 func TestProperty_NoWorkerHasMultipleTasks(t *testing.T) {
+	mockExec := mocks.NewMockBeadsExecutor(t)
 	rapid.Check(t, func(t *rapid.T) {
 		workerPool := pool.NewWorkerPool(pool.Config{})
 		defer workerPool.Close()
 
-		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 
 		// Generate random number of workers and tasks
 		numWorkers := rapid.IntRange(1, 10).Draw(t, "numWorkers")
@@ -84,11 +86,12 @@ func TestProperty_NoWorkerHasMultipleTasks(t *testing.T) {
 
 // TestProperty_NoTaskHasMultipleImplementers verifies that a task can only have one implementer.
 func TestProperty_NoTaskHasMultipleImplementers(t *testing.T) {
+	mockExec := mocks.NewMockBeadsExecutor(t)
 	rapid.Check(t, func(t *rapid.T) {
 		workerPool := pool.NewWorkerPool(pool.Config{})
 		defer workerPool.Close()
 
-		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 
 		numTasks := rapid.IntRange(1, 10).Draw(t, "numTasks")
 
@@ -125,11 +128,12 @@ func TestProperty_NoTaskHasMultipleImplementers(t *testing.T) {
 
 // TestProperty_ReviewerCannotBeSameAsImplementer verifies reviewer != implementer.
 func TestProperty_ReviewerCannotBeSameAsImplementer(t *testing.T) {
+	mockExec := mocks.NewMockBeadsExecutor(t)
 	rapid.Check(t, func(t *rapid.T) {
 		workerPool := pool.NewWorkerPool(pool.Config{})
 		defer workerPool.Close()
 
-		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 
 		// Generate workers
 		workerID := rapid.StringMatching("worker-[0-9]+").Draw(t, "workerID")
@@ -210,11 +214,12 @@ func TestProperty_PhaseTransitionsAreValid(t *testing.T) {
 
 // TestProperty_TaskStatusConsistentWithPhase verifies task status matches worker phase.
 func TestProperty_TaskStatusConsistentWithPhase(t *testing.T) {
+	mockExec := mocks.NewMockBeadsExecutor(t)
 	rapid.Check(t, func(t *rapid.T) {
 		workerPool := pool.NewWorkerPool(pool.Config{})
 		defer workerPool.Close()
 
-		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+		cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 
 		// Create workers and assign with consistent phases
 		phases := []events.WorkerPhase{
@@ -276,7 +281,7 @@ func TestRace_ConcurrentTaskAssignment(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 1; i <= 10; i++ {
@@ -359,7 +364,7 @@ func TestRace_ConcurrentQueryAndModify(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 1; i <= 5; i++ {
@@ -422,7 +427,7 @@ func TestRace_ConcurrentOrphanDetection(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 1; i <= 5; i++ {
@@ -466,7 +471,7 @@ func TestRace_ConcurrentStuckWorkerCheck(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	var wg sync.WaitGroup
 
@@ -507,7 +512,7 @@ func TestEdge_EmptyTaskID(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 
 	tests := []struct {
@@ -540,7 +545,7 @@ func TestEdge_EmptyWorkerID(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	tests := []struct {
 		name     string
@@ -569,7 +574,7 @@ func TestEdge_VeryLongTaskID(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 
 	// Task ID with very long suffix (more than 10 chars)
@@ -588,7 +593,7 @@ func TestEdge_SpecialCharactersInTaskID(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 
 	specialChars := []string{
@@ -640,7 +645,7 @@ func TestEdge_NilMessageStore(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	handler := cs.handlers["post_message"]
 	_, err := handler(context.Background(), json.RawMessage(`{"to": "ALL", "content": "test"}`))
@@ -654,7 +659,7 @@ func TestEdge_WorkerStateWithNoAssignment(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Add worker without any assignment
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -684,7 +689,7 @@ func TestEdge_OrphanDetectionWithMissingWorker(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create task assignment pointing to non-existent worker
 	cs.taskAssignments["perles-abc.1"] = &TaskAssignment{
@@ -704,7 +709,7 @@ func TestEdge_StuckWorkerWithZeroTaskDuration(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Worker assigned just now
 	cs.workerAssignments["worker-1"] = &WorkerAssignment{
@@ -723,7 +728,7 @@ func TestEdge_StuckWorkerAtExactThreshold(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Worker assigned with 1 second margin before threshold (will not be exceeded due to > comparison)
 	// We use a small margin to avoid timing issues in the test.
@@ -744,7 +749,7 @@ func TestEdge_DuplicateTaskAssignment(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -775,7 +780,7 @@ func TestEdge_ReviewAssignmentToRetiredWorker(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create implementer and setup task
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -809,7 +814,7 @@ func TestStateMachine_ImplementerLifecycle(t *testing.T) {
 	defer workerPool.Close()
 
 	msgStore := newMockMessageStore()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	workerID := "worker-1"
 	taskID := "perles-abc.1"
@@ -873,7 +878,7 @@ func TestStateMachine_ReviewerLifecycle(t *testing.T) {
 	defer workerPool.Close()
 
 	msgStore := newMockMessageStore()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	implementerID := "worker-1"
 	reviewerID := "worker-2"
@@ -939,7 +944,7 @@ func TestStateMachine_DeniedReviewCycle(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	implementerID := "worker-1"
 	taskID := "perles-abc.1"
@@ -990,7 +995,7 @@ func TestStateMachine_ApprovalToCommit(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	implementerID := "worker-1"
 	taskID := "perles-abc.1"
@@ -1046,7 +1051,7 @@ func TestStateMachine_InvalidTransitionRejected(t *testing.T) {
 	defer workerPool.Close()
 
 	msgStore := newMockMessageStore()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	workerID := "worker-1"
 	taskID := "perles-abc.1"

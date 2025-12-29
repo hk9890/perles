@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
@@ -151,7 +152,7 @@ func TestStateTransition_ImplementerWorkflow(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("implementer", pool.WorkerReady)
 	_ = workerPool.AddTestWorker("reviewer", pool.WorkerReady)
 
@@ -273,7 +274,7 @@ func TestStateTransition_ReviewerWorkflow(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("reviewer", pool.WorkerReady)
 
 	steps := []struct {
@@ -333,7 +334,7 @@ func TestStateTransition_DenialWorkflow(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("implementer", pool.WorkerReady)
 	_ = workerPool.AddTestWorker("reviewer", pool.WorkerReady)
 
@@ -413,7 +414,7 @@ func TestStateTransition_InvalidTransitionsRejected(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 	_ = workerPool.AddTestWorker("worker-2", pool.WorkerReady)
 
@@ -567,7 +568,7 @@ func TestMarkTaskComplete_HappyPath(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("implementer", pool.WorkerReady)
 
 	// Setup: task in committing state
@@ -632,7 +633,7 @@ func TestMarkTaskComplete_TaskStatusTransition(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("implementer", pool.WorkerReady)
 
 	// Setup: task in committing state
@@ -661,7 +662,7 @@ func TestMarkTaskComplete_WorkerAssignmentCleanup(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 
 	// Setup: worker implementing task
@@ -696,7 +697,7 @@ func TestMarkTaskComplete_ErrorNotCommitting(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	testCases := []struct {
 		name   string
@@ -736,7 +737,7 @@ func TestMarkTaskComplete_ErrorNonExistentTask(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Don't set up any task assignment
 
@@ -755,7 +756,7 @@ func TestMarkTaskComplete_WorkerCleanupBestEffort(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	// Don't add the worker to pool - simulating retired/gone worker
 
 	// Setup: task assignment exists but worker is gone
@@ -803,7 +804,7 @@ func TestMarkTaskComplete_PoolWorkerPhaseUpdate(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	worker := workerPool.AddTestWorker("implementer", pool.WorkerReady)
 
 	// Set worker to committing phase

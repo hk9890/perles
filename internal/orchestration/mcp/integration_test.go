@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -24,7 +26,7 @@ func TestIntegration_FullTaskLifecycle(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	implementerID := "worker-1"
 	reviewerID := "worker-2"
@@ -139,7 +141,7 @@ func TestIntegration_DenialCycle(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	implementerID := "worker-1"
 	reviewerID := "worker-2"
@@ -266,7 +268,7 @@ func TestIntegration_MultipleWorkersMultipleTasks(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create 4 workers
 	for i := 1; i <= 4; i++ {
@@ -335,7 +337,7 @@ func TestIntegration_OrphanRecovery(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	taskID := "perles-abc.1"
 
@@ -371,7 +373,7 @@ func TestIntegration_ConcurrentToolCalls(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 1; i <= 5; i++ {
@@ -450,7 +452,7 @@ func TestIntegration_MessageFlow(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	_ = NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	_ = NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	workerID := "worker-1"
 	_ = workerPool.AddTestWorker(workerID, pool.WorkerReady)
@@ -482,7 +484,7 @@ func TestIntegration_ValidateAssignmentConstraints(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -526,7 +528,7 @@ func TestIntegration_StuckWorkerDetection(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers with different assignment times
 	cs.workerAssignments["worker-1"] = &WorkerAssignment{

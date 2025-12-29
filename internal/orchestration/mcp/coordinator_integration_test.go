@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -26,7 +28,7 @@ func TestStateMachine_CompleteTaskWorkflow(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	implementer := workerPool.AddTestWorker("implementer", pool.WorkerReady)
@@ -249,7 +251,7 @@ func TestStateMachine_ReviewDenialAndRework(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	_ = workerPool.AddTestWorker("implementer", pool.WorkerReady)
@@ -353,7 +355,7 @@ func TestStateMachine_MessagingDuringWorkflow(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	ctx := context.Background()
 
@@ -400,7 +402,7 @@ func TestStateMachine_OrphanDetection(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create a worker and assign a task
 	worker := workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -457,7 +459,7 @@ func TestStateMachine_StuckWorkerDetection(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers with different assignment times
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -491,7 +493,7 @@ func TestStateMachine_PrepareHandoff(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Setup some state
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -536,7 +538,7 @@ func TestStateMachine_MultipleTasksMultipleWorkers(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create 5 workers
 	for i := 1; i <= 5; i++ {
@@ -604,7 +606,7 @@ func TestStateMachine_WorkerReplacementFlow(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Setup: worker with task
 	worker := workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -620,11 +622,6 @@ func TestStateMachine_WorkerReplacementFlow(t *testing.T) {
 		Status:      TaskImplementing,
 	})
 
-	// Also set legacy task map
-	cs.taskMapMu.Lock()
-	cs.workerTaskMap["worker-1"] = "perles-abc.1"
-	cs.taskMapMu.Unlock()
-
 	// Simulate worker retirement (as replace_worker would do before spawning)
 	worker.Retire()
 
@@ -632,10 +629,6 @@ func TestStateMachine_WorkerReplacementFlow(t *testing.T) {
 	cs.assignmentsMu.Lock()
 	delete(cs.workerAssignments, "worker-1")
 	cs.assignmentsMu.Unlock()
-
-	cs.taskMapMu.Lock()
-	delete(cs.workerTaskMap, "worker-1")
-	cs.taskMapMu.Unlock()
 
 	// Task should now be orphaned
 	orphans := cs.detectOrphanedTasks()

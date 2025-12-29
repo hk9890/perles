@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/mock"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
@@ -57,7 +58,7 @@ func TestCoordinatorServer_SendToWorker_Deduplication(t *testing.T) {
 	mockClient.Reset()
 
 	// Create coordinator server with the mock client and pool
-	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	ctx := context.Background()
 	messageArgs := `{"worker_id": "` + workerID + `", "message": "test message content"}`
@@ -116,7 +117,7 @@ func TestCoordinatorServer_SendToWorker_DifferentMessages(t *testing.T) {
 	mockClient.Reset()
 
 	// Create coordinator server
-	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	ctx := context.Background()
 
@@ -184,7 +185,7 @@ func TestCoordinatorServer_SendToWorker_DifferentWorkers(t *testing.T) {
 	mockClient.Reset()
 
 	// Create coordinator server
-	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	ctx := context.Background()
 	sameMessage := "identical message content"
@@ -240,7 +241,7 @@ func TestCoordinatorServer_SendToWorker_Deduplication_Concurrent(t *testing.T) {
 	mockClient.Reset()
 
 	// Create coordinator server
-	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(mockClient, workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	ctx := context.Background()
 	messageArgs := `{"worker_id": "` + workerID + `", "message": "concurrent test message"}`

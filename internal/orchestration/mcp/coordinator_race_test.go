@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -25,7 +26,7 @@ func TestRace_ConcurrentWorkerAssignments(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create multiple workers
 	for i := 0; i < 10; i++ {
@@ -96,7 +97,7 @@ func TestRace_ConcurrentTaskAssignments(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	var wg sync.WaitGroup
 
@@ -155,7 +156,7 @@ func TestRace_ConcurrentToolCalls(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 0; i < 5; i++ {
@@ -218,7 +219,7 @@ func TestRace_AssignTaskWhileValidating(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 0; i < 10; i++ {
@@ -287,7 +288,7 @@ func TestRace_ReviewAssignmentWhileImplementing(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	for i := 0; i < 10; i++ {
@@ -354,74 +355,13 @@ func TestRace_ReviewAssignmentWhileImplementing(t *testing.T) {
 	}
 }
 
-// TestRace_WorkerTaskMapAccess tests concurrent access to workerTaskMap.
-func TestRace_WorkerTaskMapAccess(t *testing.T) {
-	workerPool := pool.NewWorkerPool(pool.Config{})
-	defer workerPool.Close()
-
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
-
-	var wg sync.WaitGroup
-
-	// Writers
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			for j := 0; j < 50; j++ {
-				wID := workerID(idx)
-				tID := taskID(j)
-
-				cs.taskMapMu.Lock()
-				cs.workerTaskMap[wID] = tID
-				cs.taskMapMu.Unlock()
-				time.Sleep(100 * time.Microsecond)
-			}
-		}(i)
-	}
-
-	// Readers
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			for j := 0; j < 50; j++ {
-				wID := workerID(idx)
-
-				cs.taskMapMu.RLock()
-				_ = cs.workerTaskMap[wID]
-				cs.taskMapMu.RUnlock()
-				time.Sleep(100 * time.Microsecond)
-			}
-		}(i)
-	}
-
-	// Deleters
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			for j := 0; j < 25; j++ {
-				wID := workerID(idx)
-
-				cs.taskMapMu.Lock()
-				delete(cs.workerTaskMap, wID)
-				cs.taskMapMu.Unlock()
-				time.Sleep(200 * time.Microsecond)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-}
-
 // TestRace_MessagePostWhileRead tests concurrent message posting and reading.
 func TestRace_MessagePostWhileRead(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	var wg sync.WaitGroup
 	ctx := context.Background()

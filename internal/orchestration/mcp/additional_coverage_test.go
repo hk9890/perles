@@ -3,11 +3,16 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -18,77 +23,248 @@ import (
 // Additional Tests for Coverage
 // ============================================================================
 
-// TestHandleAssignTask_PoolAssignmentFails tests assign_task when pool assignment fails.
-func TestHandleAssignTask_PoolAssignmentFails(t *testing.T) {
+// TestHandleAssignTask_BDShowFails tests assign_task when ShowIssue (getTaskInfo) fails.
+func TestHandleAssignTask_BDShowFails(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		ShowIssue("perles-abc.1").
+		Return(nil, errors.New("bd show failed: issue not found"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mockExec)
 
 	// Create a ready worker
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
 
 	handler := cs.handlers["assign_task"]
 
-	// Valid input but the full flow won't work without bd, so validation passes but execution fails
 	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
 	_, err := handler(context.Background(), json.RawMessage(args))
-	// The assignment should fail somewhere in the flow (bd not available)
-	if err == nil {
-		t.Log("Expected error or completion - checking state")
-	}
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to get task info")
 }
 
-// TestHandleGetTaskStatus_BDNotAvailable tests get_task_status when bd is not available.
-func TestHandleGetTaskStatus_BDNotAvailable(t *testing.T) {
+// TestHandleAssignTask_WithMock tests assign_task with a mock that returns valid task info.
+// The test demonstrates mock usage for the getTaskInfo flow but doesn't test full worker spawn.
+func TestHandleAssignTask_WithMock(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	msgIssue := message.New()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		ShowIssue("perles-abc.1").
+		Return(&beads.Issue{
+			ID:        "perles-abc.1",
+			TitleText: "Implement feature X",
+			Status:    beads.StatusOpen,
+			Priority:  beads.PriorityMedium,
+			Type:      beads.TypeTask,
+		}, nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mockExec)
+
+	// Create a ready worker - but no session ID set, so spawn will fail
+	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
+
+	handler := cs.handlers["assign_task"]
+
+	args := `{"worker_id": "worker-1", "task_id": "perles-abc.1"}`
+	_, err := handler(context.Background(), json.RawMessage(args))
+
+	// Will fail at worker session ID check, but BD mock was called correctly
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no session ID")
+}
+
+// TestHandleGetTaskStatus_BDError tests get_task_status when ShowIssue returns an error.
+func TestHandleGetTaskStatus_BDError(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		ShowIssue("perles-abc.1").
+		Return(nil, errors.New("bd command failed: issue not found"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 	handler := cs.handlers["get_task_status"]
 
-	// Valid task ID - will try to run bd which won't work in test
 	args := `{"task_id": "perles-abc.1"}`
 	_, err := handler(context.Background(), json.RawMessage(args))
-	// Error expected since bd command fails
-	if err == nil {
-		t.Log("Handler completed without bd error")
-	}
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bd show failed")
 }
 
-// TestHandleMarkTaskComplete_BDNotAvailable tests mark_task_complete when bd is not available.
-func TestHandleMarkTaskComplete_BDNotAvailable(t *testing.T) {
+// TestHandleGetTaskStatus_Success tests get_task_status returns valid issue data.
+func TestHandleGetTaskStatus_Success(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		ShowIssue("perles-abc.1").
+		Return(&beads.Issue{
+			ID:        "perles-abc.1",
+			TitleText: "Test Task",
+			Status:    beads.StatusOpen,
+			Priority:  beads.PriorityMedium,
+			Type:      beads.TypeTask,
+		}, nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+	handler := cs.handlers["get_task_status"]
+
+	args := `{"task_id": "perles-abc.1"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content)
+
+	// Verify response contains issue data
+	var issues []*beads.Issue
+	err = json.Unmarshal([]byte(result.Content[0].Text), &issues)
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "perles-abc.1", issues[0].ID)
+	require.Equal(t, "Test Task", issues[0].TitleText)
+	require.Equal(t, beads.StatusOpen, issues[0].Status)
+}
+
+// TestHandleMarkTaskComplete_BDError tests mark_task_complete when UpdateStatus returns an error.
+func TestHandleMarkTaskComplete_BDError(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		UpdateStatus("perles-abc.1", beads.StatusClosed).
+		Return(errors.New("bd update failed: database error"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Setup task assignment in committing state (required for mark_task_complete)
+	taskID := "perles-abc.1"
+	cs.assignmentsMu.Lock()
+	cs.taskAssignments[taskID] = &TaskAssignment{
+		TaskID:      taskID,
+		Implementer: "worker-1",
+		Status:      TaskCommitting,
+	}
+	cs.assignmentsMu.Unlock()
+
 	handler := cs.handlers["mark_task_complete"]
 
-	// Valid task ID - will try to run bd which won't work in test
 	args := `{"task_id": "perles-abc.1"}`
 	_, err := handler(context.Background(), json.RawMessage(args))
-	// Error expected since bd command fails
-	if err == nil {
-		t.Log("Handler completed without bd error")
-	}
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bd update failed")
 }
 
-// TestHandleMarkTaskFailed_BDNotAvailable tests mark_task_failed when bd is not available.
-func TestHandleMarkTaskFailed_BDNotAvailable(t *testing.T) {
+// TestHandleMarkTaskComplete_Success tests mark_task_complete successfully closes a task.
+func TestHandleMarkTaskComplete_Success(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		UpdateStatus("perles-abc.1", beads.StatusClosed).
+		Return(nil)
+	mockExec.EXPECT().
+		AddComment("perles-abc.1", "coordinator", "Task completed").
+		Return(nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Create a worker in the pool
+	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
+
+	// Setup task assignment in committing state
+	taskID := "perles-abc.1"
+	cs.assignmentsMu.Lock()
+	cs.taskAssignments[taskID] = &TaskAssignment{
+		TaskID:      taskID,
+		Implementer: "worker-1",
+		Status:      TaskCommitting,
+	}
+	cs.workerAssignments["worker-1"] = &WorkerAssignment{
+		TaskID: taskID,
+		Role:   RoleImplementer,
+		Phase:  events.PhaseCommitting,
+	}
+	cs.assignmentsMu.Unlock()
+
+	handler := cs.handlers["mark_task_complete"]
+
+	args := `{"task_id": "perles-abc.1"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content)
+
+	// Verify response contains success message
+	var response map[string]any
+	err = json.Unmarshal([]byte(result.Content[0].Text), &response)
+	require.NoError(t, err)
+	require.Equal(t, "success", response["status"])
+
+	// Verify internal state was updated
+	cs.assignmentsMu.RLock()
+	defer cs.assignmentsMu.RUnlock()
+	require.Equal(t, TaskCompleted, cs.taskAssignments[taskID].Status)
+	require.Equal(t, events.PhaseIdle, cs.workerAssignments["worker-1"].Phase)
+}
+
+// TestHandleMarkTaskFailed_BDError tests mark_task_failed when AddComment returns an error.
+func TestHandleMarkTaskFailed_BDError(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		AddComment("perles-abc.1", "coordinator", "⚠️ Task failed: blocked by dependency").
+		Return(errors.New("bd comment failed: database error"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 	handler := cs.handlers["mark_task_failed"]
 
-	// Valid task ID - will try to run bd which won't work in test
-	args := `{"task_id": "perles-abc.1", "reason": "blocked"}`
+	args := `{"task_id": "perles-abc.1", "reason": "blocked by dependency"}`
 	_, err := handler(context.Background(), json.RawMessage(args))
-	// Error expected since bd command fails
-	if err == nil {
-		t.Log("Handler completed without bd error")
-	}
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bd comment failed")
+}
+
+// TestHandleMarkTaskFailed_Success tests mark_task_failed successfully adds a failure comment.
+func TestHandleMarkTaskFailed_Success(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		AddComment("perles-abc.1", "coordinator", "⚠️ Task failed: tests failing").
+		Return(nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+	handler := cs.handlers["mark_task_failed"]
+
+	args := `{"task_id": "perles-abc.1", "reason": "tests failing"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content)
+	require.Contains(t, result.Content[0].Text, "marked as failed")
 }
 
 // TestHandleAssignTaskReview_FullValidation tests assign_task_review with full validation.
@@ -97,7 +273,7 @@ func TestHandleAssignTaskReview_FullValidation(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -135,7 +311,7 @@ func TestHandleAssignReviewFeedback_FullValidation(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create implementer
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerReady)
@@ -171,7 +347,7 @@ func TestHandleApproveCommit_FullValidation(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create implementer
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -206,7 +382,7 @@ func TestQueryWorkerState_WithFilters(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers with different states
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
@@ -287,7 +463,7 @@ func TestListWorkers_AllPhases(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create workers in different phases
 	phases := []events.WorkerPhase{
@@ -347,15 +523,10 @@ func TestSendToWorker_WorkerExists(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 
 	// Create worker
 	_ = workerPool.AddTestWorker("worker-1", pool.WorkerWorking)
-
-	// Assign task to worker
-	cs.taskMapMu.Lock()
-	cs.workerTaskMap["worker-1"] = "perles-abc.1"
-	cs.taskMapMu.Unlock()
 
 	handler := cs.handlers["send_to_worker"]
 
@@ -380,7 +551,7 @@ func TestReadMessageLog_WithMessages(t *testing.T) {
 	_, _ = msgIssue.Append("WORKER.1", "COORDINATOR", "Ready for task", message.MessageWorkerReady)
 	_, _ = msgIssue.Append("COORDINATOR", "WORKER.1", "Here is your task", message.MessageInfo)
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["read_message_log"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
@@ -407,7 +578,7 @@ func TestReadMessageLog_WithLimit(t *testing.T) {
 		_, _ = msgIssue.Append("COORDINATOR", "ALL", "Message "+string(rune('0'+i)), message.MessageInfo)
 	}
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["read_message_log"]
 
 	// Request only last 3 messages
@@ -424,7 +595,7 @@ func TestPrepareHandoff_WithLongSummary(t *testing.T) {
 	defer workerPool.Close()
 
 	msgIssue := message.New()
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil)
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
 	handler := cs.handlers["prepare_handoff"]
 
 	// Long summary
@@ -448,7 +619,12 @@ func TestCoordinatorServer_WorkerStateCallbackImpl(t *testing.T) {
 	workerPool := pool.NewWorkerPool(pool.Config{})
 	defer workerPool.Close()
 
-	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil)
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	// Set up expectations for AddComment calls made during callback implementation
+	mockExec.EXPECT().AddComment("perles-abc.1", "coordinator", mock.Anything).Return(nil).Maybe()
+	mockExec.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
 
 	// Test GetWorkerPhase for non-existent worker
 	phase, err := cs.GetWorkerPhase("nonexistent")
@@ -571,7 +747,7 @@ func TestPrompts(t *testing.T) {
 // TestConfigGeneration tests MCP config generation functions.
 func TestConfigGeneration(t *testing.T) {
 	// Test GenerateCoordinatorConfig (workDir string)
-	coordConfig, err := GenerateCoordinatorConfig("/tmp/test")
+	coordConfig, err := GenerateCoordinatorConfigHTTP(8765)
 	if err != nil {
 		t.Errorf("GenerateCoordinatorConfig error: %v", err)
 	}
@@ -713,4 +889,76 @@ func findPercent(s string) int {
 		}
 	}
 	return -1
+}
+
+// ============================================================================
+// BD Helper Functions Tests with Mocks
+// ============================================================================
+
+// TestUpdateBDStatus_Success tests updateBDStatus with successful mock.
+func TestUpdateBDStatus_Success(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		UpdateStatus("perles-abc.1", beads.StatusInProgress).
+		Return(nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Call the exported function - should not panic on success
+	err := cs.beadsExecutor.UpdateStatus("perles-abc.1", beads.StatusInProgress)
+	require.NoError(t, err)
+}
+
+// TestUpdateBDStatus_Error tests updateBDStatus when mock returns error (best-effort, no crash).
+func TestUpdateBDStatus_Error(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		UpdateStatus("perles-abc.1", beads.StatusInProgress).
+		Return(errors.New("database error"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Call the exported function - should not panic even on error (best-effort)
+	err := cs.beadsExecutor.UpdateStatus("perles-abc.1", beads.StatusInProgress)
+	require.Error(t, err)
+}
+
+// TestAddBDComment_Success tests addBDComment with successful mock.
+func TestAddBDComment_Success(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		AddComment("perles-abc.1", "coordinator", "Task assigned to worker-1").
+		Return(nil)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Call the exported function - should not panic on success
+	err := cs.beadsExecutor.AddComment("perles-abc.1", "coordinator", "Task assigned to worker-1")
+	require.NoError(t, err)
+}
+
+// TestAddBDComment_Error tests addBDComment when mock returns error (best-effort, no crash).
+func TestAddBDComment_Error(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	mockExec := mocks.NewMockBeadsExecutor(t)
+	mockExec.EXPECT().
+		AddComment("perles-abc.1", "coordinator", "Task assigned to worker-1").
+		Return(errors.New("database error"))
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, nil, "/tmp/test", 8765, nil, mockExec)
+
+	// Call the exported function - should not panic even on error (best-effort)
+	err := cs.beadsExecutor.AddComment("perles-abc.1", "coordinator", "Task assigned to worker-1")
+	require.Error(t, err)
 }

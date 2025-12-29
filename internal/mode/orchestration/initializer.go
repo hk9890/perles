@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
@@ -377,7 +378,7 @@ func (i *Initializer) createWorkspace() error {
 	log.Debug(log.CatOrch, "MCP server listening on dynamic port", "subsystem", "init", "port", port)
 
 	// Create coordinator server with the dynamic port
-	mcpCoordServer := mcp.NewCoordinatorServer(aiClient, workerPool, msgLog, i.cfg.WorkDir, port, extensions)
+	mcpCoordServer := mcp.NewCoordinatorServer(aiClient, workerPool, msgLog, i.cfg.WorkDir, port, extensions, beads.NewRealExecutor(i.cfg.WorkDir))
 	// Pass the coordinator server as the state callback so workers can update coordinator state
 	workerServers := newWorkerServerCache(msgLog, mcpCoordServer)
 
