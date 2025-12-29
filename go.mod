@@ -50,6 +50,7 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
+	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect

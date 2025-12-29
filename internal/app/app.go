@@ -10,6 +10,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/cachemanager"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/log"
@@ -48,6 +49,10 @@ type Model struct {
 	logOverlay   logoverlay.Model
 	logListenCmd tea.Cmd
 
+	// Cache Managers
+	bqlCache      cachemanager.CacheManager[string, []beads.Issue]
+	depGraphCache cachemanager.CacheManager[string, *bql.DependencyGraph]
+
 	// File watcher for auto-refresh (pubsub-based)
 	watcherHandle   *watcher.Watcher
 	watcherCtx      context.Context
@@ -59,7 +64,16 @@ type Model struct {
 // dbPath is the path to the database file for watching changes.
 // configPath is the path to the config file for saving column changes.
 // debugMode enables the log overlay (Ctrl+X toggle).
-func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath, workDir string, debugMode bool) Model {
+func NewWithConfig(
+	client *beads.Client,
+	cfg config.Config,
+	bqlCache cachemanager.CacheManager[string, []beads.Issue],
+	depGraphCache cachemanager.CacheManager[string, *bql.DependencyGraph],
+	dbPath,
+	configPath,
+	workDir string,
+	debugMode bool,
+) Model {
 	// Initialize file watcher if auto-refresh is enabled
 	var (
 		watcherHandle   *watcher.Watcher
@@ -90,7 +104,7 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath, 
 		ConfigPath: configPath,
 		DBPath:     dbPath,
 		WorkDir:    workDir,
-		Executor:   bql.NewExecutor(client.DB()),
+		Executor:   bql.NewExecutor(client.DB(), bqlCache, depGraphCache),
 		Clipboard:  shared.SystemClipboard{},
 		Clock:      shared.RealClock{},
 	}
@@ -107,6 +121,8 @@ func NewWithConfig(client *beads.Client, cfg config.Config, dbPath, configPath, 
 		kanban:          kanban.New(services),
 		search:          search.New(services),
 		services:        services,
+		bqlCache:        bqlCache,
+		depGraphCache:   depGraphCache,
 		logOverlay:      overlay,
 		debugMode:       debugMode,
 		logListenCmd:    logListenCmd,
@@ -274,6 +290,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pubsub.Event[watcher.WatcherEvent]:
 		switch msg.Payload.Type {
 		case watcher.DBChanged:
+			if err := m.bqlCache.Flush(context.Background()); err != nil {
+				log.Warn(log.CatCache, "Failed to flush BQL cache on DB change", "error", err)
+			}
+			if err := m.depGraphCache.Flush(context.Background()); err != nil {
+				log.Warn(log.CatCache, "Failed to flush dep graph cache on DB change", "error", err)
+			}
+
 			log.Debug(log.CatMode, "DB changed, refreshing active mode", "mode", m.currentMode)
 			var modeCmd tea.Cmd
 			switch m.currentMode {

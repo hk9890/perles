@@ -8,6 +8,8 @@ import (
 
 	"github.com/zjrosen/perles/internal/app"
 	"github.com/zjrosen/perles/internal/beads"
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/cachemanager"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/ui/nobeads"
@@ -174,8 +176,29 @@ func runApp(cmd *cobra.Command, args []string) error {
 		configFilePath = ".perles/config.yaml"
 	}
 
+	// Initialize BQL cache managers
+	bqlCache := cachemanager.NewInMemoryCacheManager[string, []beads.Issue](
+		"bql-cache",
+		cachemanager.DefaultExpiration,
+		cachemanager.DefaultCleanupInterval,
+	)
+	depGraphCache := cachemanager.NewInMemoryCacheManager[string, *bql.DependencyGraph](
+		"bql-dep-cache",
+		cachemanager.DefaultExpiration,
+		cachemanager.DefaultCleanupInterval,
+	)
+
 	// Pass config to app with database and config paths (debug for log overlay)
-	model := app.NewWithConfig(client, cfg, dbPath+"/.beads/beads.db", configFilePath, workDir, debug)
+	model := app.NewWithConfig(
+		client,
+		cfg,
+		bqlCache,
+		depGraphCache,
+		dbPath+"/.beads/beads.db",
+		configFilePath,
+		workDir,
+		debug,
+	)
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),
