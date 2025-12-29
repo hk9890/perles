@@ -385,12 +385,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, keys.Component.Tab), key.Matches(msg, keys.Common.Down):
+		case key.Matches(msg, keys.Component.Tab):
 			m.focused = m.nextField()
 			m = m.updateFocus()
 			return m, nil
 
-		case key.Matches(msg, keys.Component.ShiftTab), key.Matches(msg, keys.Common.Up):
+		case key.Matches(msg, keys.Component.ShiftTab):
 			m.focused = m.prevField()
 			m = m.updateFocus()
 			return m, nil
@@ -405,19 +405,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m = m.updateFocus()
 			return m, nil
 
-		case msg.String() == "j":
-			// j only navigates when not in a text input field
-			// Keep as msg.String() to allow typing 'j' in text inputs
-			if !m.isTextInputField() {
+		case key.Matches(msg, keys.Common.Down):
+			// Arrow keys always navigate; j/k only navigate when not in a text input field
+			isArrowKey := msg.Type == tea.KeyDown
+			if isArrowKey || !m.isTextInputField() {
 				m.focused = m.nextField()
 				m = m.updateFocus()
 				return m, nil
 			}
 
-		case msg.String() == "k":
-			// k only navigates when not in a text input field
-			// Keep as msg.String() to allow typing 'k' in text inputs
-			if !m.isTextInputField() {
+		case key.Matches(msg, keys.Common.Up):
+			// Arrow keys always navigate; j/k only navigate when not in a text input field
+			isArrowKey := msg.Type == tea.KeyUp
+			if isArrowKey || !m.isTextInputField() {
 				m.focused = m.prevField()
 				m = m.updateFocus()
 				return m, nil
@@ -530,8 +530,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) isTextInputField() bool {
 	switch m.focused {
-	case FieldName, FieldQuery, FieldIssueID:
+	case FieldName, FieldIssueID:
 		return true
+	case FieldQuery:
+		// For vimtextarea, only treat as text input when in insert mode
+		// In normal mode, j/k should navigate between fields
+		return m.queryInput.InInsertMode()
 	}
 	return false
 }

@@ -110,6 +110,36 @@ func TestNavigation_Wraps(t *testing.T) {
 	require.Equal(t, FieldName, ed.Focused())
 }
 
+func TestNavigation_JK_OnNonTextFields(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil, false)
+
+	// Move to Type field (not a text input)
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Equal(t, FieldType, ed.Focused())
+
+	// 'j' should navigate down when on non-text field
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, FieldColor, ed.Focused(), "j should navigate to Color from Type")
+
+	// 'k' should navigate up
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	require.Equal(t, FieldType, ed.Focused(), "k should navigate to Type from Color")
+}
+
+func TestNavigation_JK_OnNameField_ShouldType(t *testing.T) {
+	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
+	ed := New(0, columns, nil, false)
+
+	// Start on FieldName
+	require.Equal(t, FieldName, ed.Focused())
+
+	// 'j' should type 'j' in the name field, not navigate
+	ed, _ = ed.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	require.Equal(t, FieldName, ed.Focused(), "should stay on FieldName")
+	require.Contains(t, ed.NameInput().Value(), "j", "should have typed 'j'")
+}
+
 func TestNavigation_CtrlN(t *testing.T) {
 	columns := []config.ColumnConfig{{Name: "Test", Query: "status = open"}}
 	ed := New(0, columns, nil, false)

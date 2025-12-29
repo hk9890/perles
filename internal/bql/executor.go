@@ -95,6 +95,12 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 			i.created_by,
 			i.updated_at,
 			i.closed_at,
+			i.hook_bead,
+			i.role_bead,
+			i.agent_state,
+			i.last_activity,
+			i.role_type,
+			i.rig,
 			COALESCE((
 				SELECT d.depends_on_id
 				FROM dependencies d
@@ -195,6 +201,12 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			isTemplate         sql.NullBool
 			createdBy          sql.NullString
 			closedAt           sql.NullTime
+			hookBead           sql.NullString
+			roleBead           sql.NullString
+			agentState         sql.NullString
+			lastActivity       sql.NullTime
+			roleType           sql.NullString
+			rig                sql.NullString
 			parentId           string
 			childrenIDs        string
 			blockerIDs         string
@@ -223,6 +235,12 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 			&createdBy,
 			&issue.UpdatedAt,
 			&closedAt,
+			&hookBead,
+			&roleBead,
+			&agentState,
+			&lastActivity,
+			&roleType,
+			&rig,
 			&parentId,
 			&blockerIDs,
 			&blocksIDs,
@@ -269,6 +287,24 @@ func (e *Executor) scanIssues(rows *sql.Rows) ([]beads.Issue, error) {
 		}
 		if closedAt.Valid {
 			issue.ClosedAt = closedAt.Time
+		}
+		if hookBead.Valid {
+			issue.HookBead = hookBead.String
+		}
+		if roleBead.Valid {
+			issue.RoleBead = roleBead.String
+		}
+		if agentState.Valid {
+			issue.AgentState = agentState.String
+		}
+		if lastActivity.Valid {
+			issue.LastActivity = lastActivity.Time
+		}
+		if roleType.Valid {
+			issue.RoleType = roleType.String
+		}
+		if rig.Valid {
+			issue.Rig = rig.String
 		}
 
 		if parentId != "" {

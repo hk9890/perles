@@ -64,6 +64,14 @@ type Issue struct {
 	UpdatedAt          time.Time `json:"updated_at"`
 	ClosedAt           time.Time `json:"closed_at"`
 
+	// Agent fields (agent-as-bead pattern)
+	HookBead     string    `json:"hook_bead,omitempty"`    // Current work attached to agent's hook
+	RoleBead     string    `json:"role_bead,omitempty"`    // Reference to role definition bead
+	AgentState   string    `json:"agent_state,omitempty"`  // Agent-reported state (idle|running|stuck|stopped)
+	LastActivity time.Time `json:"last_activity,omitzero"` // Timestamp for timeout detection
+	RoleType     string    `json:"role_type,omitempty"`    // Agent role (polecat|crew|witness|refinery|mayor|deacon)
+	Rig          string    `json:"rig,omitempty"`          // Rig name (empty for town-level agents)
+
 	// Dependency tracking
 	BlockedBy      []string `json:"blocked_by"`
 	Blocks         []string `json:"blocks"`
