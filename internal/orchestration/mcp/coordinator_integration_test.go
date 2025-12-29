@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -36,9 +37,7 @@ func TestStateMachine_CompleteTaskWorkflow(t *testing.T) {
 	// Step 1: Validate task assignment
 	t.Run("step1_validate_assignment", func(t *testing.T) {
 		err := cs.validateTaskAssignment("implementer", "perles-abc.1")
-		if err != nil {
-			t.Fatalf("Failed to validate task assignment: %v", err)
-		}
+		require.NoError(t, err, "Failed to validate task assignment")
 	})
 
 	// Step 2: Simulate assign_task (without actual bd call)
@@ -60,21 +59,17 @@ func TestStateMachine_CompleteTaskWorkflow(t *testing.T) {
 		})
 
 		// Update pool worker state
-		if err := implementer.AssignTask("perles-abc.1"); err != nil {
-			t.Fatalf("Failed to assign task to worker: %v", err)
-		}
+		err := implementer.AssignTask("perles-abc.1")
+		require.NoError(t, err, "Failed to assign task to worker")
 
 		// Verify via query_worker_state
 		handler := cs.handlers["query_worker_state"]
 		result, err := handler(ctx, json.RawMessage(`{}`))
-		if err != nil {
-			t.Fatalf("query_worker_state failed: %v", err)
-		}
+		require.NoError(t, err, "query_worker_state failed")
 
 		var response workerStateResponse
-		if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
-			t.Fatalf("Failed to parse response: %v", err)
-		}
+		err = json.Unmarshal([]byte(result.Content[0].Text), &response)
+		require.NoError(t, err, "Failed to parse response")
 
 		// Check implementer is in implementing phase
 		var foundImplementer bool
@@ -123,9 +118,7 @@ func TestStateMachine_CompleteTaskWorkflow(t *testing.T) {
 	// Step 4: Validate and assign reviewer
 	t.Run("step4_assign_reviewer", func(t *testing.T) {
 		err := cs.validateReviewAssignment("reviewer", "perles-abc.1", "implementer")
-		if err != nil {
-			t.Fatalf("Failed to validate review assignment: %v", err)
-		}
+		require.NoError(t, err, "Failed to validate review assignment")
 
 		// Update state
 		cs.assignmentsMu.Lock()
@@ -391,14 +384,11 @@ func TestStateMachine_MessagingDuringWorkflow(t *testing.T) {
 	// Read messages back
 	readHandler := cs.handlers["read_message_log"]
 	result, err := readHandler(ctx, json.RawMessage(`{"limit": 10}`))
-	if err != nil {
-		t.Fatalf("Failed to read message log: %v", err)
-	}
+	require.NoError(t, err, "Failed to read message log")
 
 	var response messageLogResponse
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	err = json.Unmarshal([]byte(result.Content[0].Text), &response)
+	require.NoError(t, err, "Failed to parse response")
 
 	if response.TotalCount != 4 {
 		t.Errorf("Expected 4 messages, got %d", response.TotalCount)
@@ -522,9 +512,7 @@ func TestStateMachine_PrepareHandoff(t *testing.T) {
 	args := `{"summary": "` + summary + `"}`
 
 	result, err := handler(context.Background(), json.RawMessage(args))
-	if err != nil {
-		t.Fatalf("prepare_handoff failed: %v", err)
-	}
+	require.NoError(t, err, "prepare_handoff failed")
 
 	if result.Content[0].Text != "Handoff message posted. Refresh will proceed." {
 		t.Errorf("Unexpected result: %q", result.Content[0].Text)
@@ -532,9 +520,7 @@ func TestStateMachine_PrepareHandoff(t *testing.T) {
 
 	// Verify message was posted
 	entries := msgIssue.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(entries))
-	}
+	require.Len(t, entries, 1)
 
 	entry := entries[0]
 	if entry.Type != message.MessageHandoff {
@@ -570,9 +556,7 @@ func TestStateMachine_MultipleTasksMultipleWorkers(t *testing.T) {
 
 	for _, task := range tasks {
 		err := cs.validateTaskAssignment(task.workerID, task.taskID)
-		if err != nil {
-			t.Fatalf("Failed to validate assignment for %s: %v", task.taskID, err)
-		}
+		require.NoError(t, err, "Failed to validate assignment for %s", task.taskID)
 
 		cs.SetWorkerAssignment(task.workerID, &WorkerAssignment{
 			TaskID:     task.taskID,

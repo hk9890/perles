@@ -430,7 +430,7 @@ func TestWorker_HandleError(t *testing.T) {
 		require.Equal(t, testErr, event.Payload.Error)
 		require.Equal(t, "worker-1", event.Payload.WorkerID)
 	case <-time.After(100 * time.Millisecond):
-		t.Error("Expected error event to be sent")
+		require.Fail(t, "Expected error event to be sent")
 	}
 }
 
@@ -506,7 +506,7 @@ func TestWorker_Start_ContextCancellation(t *testing.T) {
 		require.Equal(t, poolevents.WorkerSpawned, event.Payload.Type)
 		require.Equal(t, WorkerWorking, event.Payload.Status)
 	case <-time.After(time.Second):
-		t.Error("Timeout waiting for spawned event")
+		require.Fail(t, "Timeout waiting for spawned event")
 	}
 
 	// Cancel context
@@ -517,7 +517,7 @@ func TestWorker_Start_ContextCancellation(t *testing.T) {
 	case <-done:
 		// Expected
 	case <-time.After(time.Second):
-		t.Error("Worker did not exit after context cancellation")
+		require.Fail(t, "Worker did not exit after context cancellation")
 	}
 }
 
@@ -545,7 +545,7 @@ func TestWorker_Start_WithMockProcess(t *testing.T) {
 	case event := <-events:
 		require.Equal(t, poolevents.WorkerSpawned, event.Payload.Type)
 	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for spawned event")
+		require.Fail(t, "Timeout waiting for spawned event")
 	}
 
 	// Send init event
@@ -560,7 +560,7 @@ func TestWorker_Start_WithMockProcess(t *testing.T) {
 		require.Equal(t, poolevents.WorkerOutput, event.Payload.Type)
 		require.Equal(t, "Hello from mock AI", event.Payload.Output)
 	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for output event")
+		require.Fail(t, "Timeout waiting for output event")
 	}
 
 	// Complete the process
@@ -571,7 +571,7 @@ func TestWorker_Start_WithMockProcess(t *testing.T) {
 	case <-done:
 		// Expected
 	case <-time.After(time.Second):
-		t.Fatal("Worker did not exit after process completion")
+		require.Fail(t, "Worker did not exit after process completion")
 	}
 
 	// Verify worker returned to Ready status

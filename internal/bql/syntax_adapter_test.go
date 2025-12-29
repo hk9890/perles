@@ -3,6 +3,7 @@ package bql
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 )
 
@@ -269,9 +270,7 @@ func TestBQLSyntaxLexer_StringWithSingleQuotes(t *testing.T) {
 	tokens := lexer.Tokenize(input)
 
 	// Should have 3 tokens: "title", "~", "'test'"
-	if len(tokens) != 3 {
-		t.Fatalf("expected 3 tokens, got %d", len(tokens))
-	}
+	require.Len(t, tokens, 3)
 
 	// String token with single quotes at position 8-14
 	stringTok := tokens[2]
@@ -307,9 +306,7 @@ func TestBQLSyntaxLexer_NotOperator(t *testing.T) {
 	tokens := lexer.Tokenize(input)
 
 	// Should have: "not", "status", "="; "closed" is plain
-	if len(tokens) != 3 {
-		t.Fatalf("expected 3 tokens, got %d", len(tokens))
-	}
+	require.Len(t, tokens, 3)
 
 	// "not" at position 0-3
 	if tokens[0].Start != 0 || tokens[0].End != 3 {
@@ -331,9 +328,7 @@ func TestBQLSyntaxLexer_ContainsOperator(t *testing.T) {
 	tokens := lexer.Tokenize(input)
 
 	// Should have: "title", "~"; "bug" is plain (value after operator)
-	if len(tokens) != 2 {
-		t.Fatalf("expected 2 tokens, got %d", len(tokens))
-	}
+	require.Len(t, tokens, 2)
 
 	// "~" at position 6-7
 	if tokens[1].Start != 6 || tokens[1].End != 7 {
@@ -349,9 +344,7 @@ func TestBQLSyntaxLexer_NotContainsOperator(t *testing.T) {
 	tokens := lexer.Tokenize(input)
 
 	// Should have: "title", "!~"; "spam" is plain
-	if len(tokens) != 2 {
-		t.Fatalf("expected 2 tokens, got %d", len(tokens))
-	}
+	require.Len(t, tokens, 2)
 
 	// "!~" at position 6-8
 	if tokens[1].Start != 6 || tokens[1].End != 8 {

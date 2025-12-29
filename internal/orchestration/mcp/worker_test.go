@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 )
@@ -185,9 +186,7 @@ func TestWorkerServer_DifferentWorkerIDs(t *testing.T) {
 	_, _ = handler2(context.Background(), json.RawMessage(`{"to": "ALL", "content": "from worker 2"}`))
 
 	// Verify messages were sent with correct worker IDs
-	if len(store.appendCalls) != 2 {
-		t.Fatalf("Expected 2 append calls, got %d", len(store.appendCalls))
-	}
+	require.Len(t, store.appendCalls, 2, "Expected 2 append calls")
 	if store.appendCalls[0].From != "WORKER.1" {
 		t.Errorf("First message from = %q, want %q", store.appendCalls[0].From, "WORKER.1")
 	}
@@ -220,9 +219,7 @@ func TestWorkerServer_CheckMessagesHappyPath(t *testing.T) {
 	handler := ws.handlers["check_messages"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify UnreadFor was called with correct worker ID
 	if len(store.unreadForCalls) != 1 || store.unreadForCalls[0] != "WORKER.1" {
@@ -235,16 +232,13 @@ func TestWorkerServer_CheckMessagesHappyPath(t *testing.T) {
 	}
 
 	// Verify result contains message count
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result, "Expected result with content")
+	require.NotEmpty(t, result.Content, "Expected result with content")
 	text := result.Content[0].Text
 
 	// Parse JSON response
 	var response checkMessagesResponse
-	if err := json.Unmarshal([]byte(text), &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
 
 	if response.UnreadCount != 2 {
 		t.Errorf("Expected unread_count=2, got: %d", response.UnreadCount)
@@ -264,20 +258,15 @@ func TestWorkerServer_CheckMessagesNoMessages(t *testing.T) {
 	handler := ws.handlers["check_messages"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result, "Expected result with content")
+	require.NotEmpty(t, result.Content, "Expected result with content")
 	text := result.Content[0].Text
 
 	// Parse JSON response
 	var response checkMessagesResponse
-	if err := json.Unmarshal([]byte(text), &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
 
 	if response.UnreadCount != 0 {
 		t.Errorf("Expected unread_count=0, got: %d", response.UnreadCount)
@@ -299,17 +288,13 @@ func TestWorkerServer_CheckMessagesSeesAllMessages(t *testing.T) {
 	handler := ws.handlers["check_messages"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	text := result.Content[0].Text
 
 	// Parse JSON response
 	var response checkMessagesResponse
-	if err := json.Unmarshal([]byte(text), &response); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
 
 	// Workers see ALL messages (no filtering by recipient)
 	if response.UnreadCount != 3 {
@@ -343,9 +328,7 @@ func TestWorkerServer_CheckMessagesReadTracking(t *testing.T) {
 	// First call should return the message
 	result1, _ := handler(context.Background(), json.RawMessage(`{}`))
 	var response1 checkMessagesResponse
-	if err := json.Unmarshal([]byte(result1.Content[0].Text), &response1); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(result1.Content[0].Text), &response1), "Failed to parse JSON response")
 	if response1.UnreadCount != 1 || response1.Messages[0].Content != "First message" {
 		t.Error("First call should return the message")
 	}
@@ -353,9 +336,7 @@ func TestWorkerServer_CheckMessagesReadTracking(t *testing.T) {
 	// Second call should return no new messages
 	result2, _ := handler(context.Background(), json.RawMessage(`{}`))
 	var response2 checkMessagesResponse
-	if err := json.Unmarshal([]byte(result2.Content[0].Text), &response2); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(result2.Content[0].Text), &response2), "Failed to parse JSON response")
 	if response2.UnreadCount != 0 {
 		t.Errorf("Second call should return 0 unread messages, got: %d", response2.UnreadCount)
 	}
@@ -366,9 +347,7 @@ func TestWorkerServer_CheckMessagesReadTracking(t *testing.T) {
 	// Third call should return only the new message
 	result3, _ := handler(context.Background(), json.RawMessage(`{}`))
 	var response3 checkMessagesResponse
-	if err := json.Unmarshal([]byte(result3.Content[0].Text), &response3); err != nil {
-		t.Fatalf("Failed to parse JSON response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(result3.Content[0].Text), &response3), "Failed to parse JSON response")
 	if response3.UnreadCount != 1 {
 		t.Errorf("Third call should return 1 new message, got: %d", response3.UnreadCount)
 	}
@@ -440,14 +419,10 @@ func TestWorkerServer_SendMessageHappyPath(t *testing.T) {
 	handler := ws.handlers["post_message"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Task complete"}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify Append was called with correct parameters
-	if len(store.appendCalls) != 1 {
-		t.Fatalf("Expected 1 append call, got %d", len(store.appendCalls))
-	}
+	require.Len(t, store.appendCalls, 1, "Expected 1 append call")
 	call := store.appendCalls[0]
 	if call.From != "WORKER.1" {
 		t.Errorf("From = %q, want %q", call.From, "WORKER.1")
@@ -490,14 +465,10 @@ func TestWorkerServer_SignalReadyHappyPath(t *testing.T) {
 	handler := ws.handlers["signal_ready"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify Append was called with correct parameters
-	if len(store.appendCalls) != 1 {
-		t.Fatalf("Expected 1 append call, got %d", len(store.appendCalls))
-	}
+	require.Len(t, store.appendCalls, 1, "Expected 1 append call")
 	call := store.appendCalls[0]
 	if call.From != "WORKER.1" {
 		t.Errorf("From = %q, want %q", call.From, "WORKER.1")
@@ -581,9 +552,7 @@ func TestWorkerServer_CheckMessagesSchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	tool, ok := ws.tools["check_messages"]
-	if !ok {
-		t.Fatal("check_messages tool not registered")
-	}
+	require.True(t, ok, "check_messages tool not registered")
 
 	if len(tool.InputSchema.Required) != 0 {
 		t.Error("check_messages should not have required parameters")
@@ -595,9 +564,7 @@ func TestWorkerServer_SendMessageSchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	tool, ok := ws.tools["post_message"]
-	if !ok {
-		t.Fatal("post_message tool not registered")
-	}
+	require.True(t, ok, "post_message tool not registered")
 
 	if len(tool.InputSchema.Required) != 2 {
 		t.Errorf("post_message should have 2 required parameters, got %d", len(tool.InputSchema.Required))
@@ -620,9 +587,7 @@ func TestWorkerServer_SignalReadySchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	tool, ok := ws.tools["signal_ready"]
-	if !ok {
-		t.Fatal("signal_ready tool not registered")
-	}
+	require.True(t, ok, "signal_ready tool not registered")
 
 	if len(tool.InputSchema.Required) != 0 {
 		t.Errorf("signal_ready should have 0 required parameters, got %d", len(tool.InputSchema.Required))
@@ -710,9 +675,7 @@ func TestWorkerServer_ReportImplementationComplete_NoCallback(t *testing.T) {
 	handler := ws.handlers["report_implementation_complete"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"summary": "completed feature X"}`))
-	if err == nil {
-		t.Fatal("Expected error when callback not configured")
-	}
+	require.Error(t, err, "Expected error when callback not configured")
 	if !strings.Contains(err.Error(), "state callback not configured") {
 		t.Errorf("Expected 'state callback not configured' error, got: %v", err)
 	}
@@ -727,9 +690,7 @@ func TestWorkerServer_ReportImplementationComplete_MissingSummary(t *testing.T) 
 	handler := ws.handlers["report_implementation_complete"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err == nil {
-		t.Fatal("Expected error for missing summary")
-	}
+	require.Error(t, err, "Expected error for missing summary")
 	if !strings.Contains(err.Error(), "summary is required") {
 		t.Errorf("Expected 'summary is required' error, got: %v", err)
 	}
@@ -746,9 +707,7 @@ func TestWorkerServer_ReportImplementationComplete_WrongPhase(t *testing.T) {
 	handler := ws.handlers["report_implementation_complete"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"summary": "done"}`))
-	if err == nil {
-		t.Fatal("Expected error for wrong phase")
-	}
+	require.Error(t, err, "Expected error for wrong phase")
 	if !strings.Contains(err.Error(), "not in implementing or addressing_feedback phase") {
 		t.Errorf("Expected phase error, got: %v", err)
 	}
@@ -765,9 +724,7 @@ func TestWorkerServer_ReportImplementationComplete_HappyPath(t *testing.T) {
 	handler := ws.handlers["report_implementation_complete"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{"summary": "Added feature X with tests"}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify callback was called
 	if len(callback.calls) != 2 { // GetWorkerPhase + OnImplementationComplete
@@ -799,9 +756,8 @@ func TestWorkerServer_ReportImplementationComplete_HappyPath(t *testing.T) {
 	}
 
 	// Verify structured response
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result, "Expected result with content")
+	require.NotEmpty(t, result.Content, "Expected result with content")
 	if !strings.Contains(result.Content[0].Text, "awaiting_review") {
 		t.Errorf("Response should contain 'awaiting_review', got: %s", result.Content[0].Text)
 	}
@@ -830,9 +786,7 @@ func TestWorkerServer_ReportReviewVerdict_NoCallback(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
-	if err == nil {
-		t.Fatal("Expected error when callback not configured")
-	}
+	require.Error(t, err, "Expected error when callback not configured")
 	if !strings.Contains(err.Error(), "state callback not configured") {
 		t.Errorf("Expected 'state callback not configured' error, got: %v", err)
 	}
@@ -847,9 +801,7 @@ func TestWorkerServer_ReportReviewVerdict_MissingVerdict(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"comments": "LGTM"}`))
-	if err == nil {
-		t.Fatal("Expected error for missing verdict")
-	}
+	require.Error(t, err, "Expected error for missing verdict")
 	if !strings.Contains(err.Error(), "verdict is required") {
 		t.Errorf("Expected 'verdict is required' error, got: %v", err)
 	}
@@ -864,9 +816,7 @@ func TestWorkerServer_ReportReviewVerdict_MissingComments(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED"}`))
-	if err == nil {
-		t.Fatal("Expected error for missing comments")
-	}
+	require.Error(t, err, "Expected error for missing comments")
 	if !strings.Contains(err.Error(), "comments is required") {
 		t.Errorf("Expected 'comments is required' error, got: %v", err)
 	}
@@ -882,9 +832,7 @@ func TestWorkerServer_ReportReviewVerdict_InvalidVerdict(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "MAYBE", "comments": "Not sure"}`))
-	if err == nil {
-		t.Fatal("Expected error for invalid verdict")
-	}
+	require.Error(t, err, "Expected error for invalid verdict")
 	if !strings.Contains(err.Error(), "must be 'APPROVED' or 'DENIED'") {
 		t.Errorf("Expected verdict validation error, got: %v", err)
 	}
@@ -901,9 +849,7 @@ func TestWorkerServer_ReportReviewVerdict_WrongPhase(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	_, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
-	if err == nil {
-		t.Fatal("Expected error for wrong phase")
-	}
+	require.Error(t, err, "Expected error for wrong phase")
 	if !strings.Contains(err.Error(), "not in reviewing phase") {
 		t.Errorf("Expected phase error, got: %v", err)
 	}
@@ -920,9 +866,7 @@ func TestWorkerServer_ReportReviewVerdict_Approved(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "Code looks great, tests pass"}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify callback was called
 	found := false
@@ -950,9 +894,8 @@ func TestWorkerServer_ReportReviewVerdict_Approved(t *testing.T) {
 	}
 
 	// Verify structured response
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result, "Expected result with content")
+	require.NotEmpty(t, result.Content, "Expected result with content")
 	if !strings.Contains(result.Content[0].Text, "APPROVED") {
 		t.Errorf("Response should contain 'APPROVED', got: %s", result.Content[0].Text)
 	}
@@ -972,9 +915,7 @@ func TestWorkerServer_ReportReviewVerdict_Denied(t *testing.T) {
 	handler := ws.handlers["report_review_verdict"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{"verdict": "DENIED", "comments": "Missing error handling in line 50"}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err, "Unexpected error")
 
 	// Verify callback was called with DENIED
 	found := false
@@ -1001,9 +942,7 @@ func TestWorkerServer_ReportImplementationCompleteSchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	tool, ok := ws.tools["report_implementation_complete"]
-	if !ok {
-		t.Fatal("report_implementation_complete tool not registered")
-	}
+	require.True(t, ok, "report_implementation_complete tool not registered")
 
 	if len(tool.InputSchema.Required) != 1 {
 		t.Errorf("report_implementation_complete should have 1 required parameter, got %d", len(tool.InputSchema.Required))
@@ -1022,9 +961,7 @@ func TestWorkerServer_ReportReviewVerdictSchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1", nil)
 
 	tool, ok := ws.tools["report_review_verdict"]
-	if !ok {
-		t.Fatal("report_review_verdict tool not registered")
-	}
+	require.True(t, ok, "report_review_verdict tool not registered")
 
 	if len(tool.InputSchema.Required) != 2 {
 		t.Errorf("report_review_verdict should have 2 required parameters, got %d", len(tool.InputSchema.Required))

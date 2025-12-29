@@ -3,7 +3,7 @@ package vimtextarea
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ============================================================================
@@ -20,10 +20,10 @@ func TestPasteAfterCommand_CharacterwiseInsert(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "helloXX world", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "helloXX world", m.content[0])
 	// Cursor should be on last pasted character
-	assert.Equal(t, 6, m.cursorCol) // 'X' at position 6 (last char of "XX")
+	require.Equal(t, 6, m.cursorCol) // 'X' at position 6 (last char of "XX")
 }
 
 // TestPasteAfterCommand_LinewiseInsert tests p with line-wise yank inserts new line below
@@ -37,14 +37,14 @@ func TestPasteAfterCommand_LinewiseInsert(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 3, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "new line", m.content[1])
-	assert.Equal(t, "line2", m.content[2])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 3, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "new line", m.content[1])
+	require.Equal(t, "line2", m.content[2])
 	// Cursor should be on first non-blank of new line
-	assert.Equal(t, 1, m.cursorRow)
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, 1, m.cursorRow)
+	require.Equal(t, 0, m.cursorCol)
 }
 
 // TestPasteAfterCommand_EmptyRegister tests p with empty register returns Skipped
@@ -56,8 +56,8 @@ func TestPasteAfterCommand_EmptyRegister(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello", m.content[0])
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello", m.content[0])
 }
 
 // TestPasteAfterCommand_AtEndOfBuffer tests p at end of buffer (line-wise)
@@ -70,11 +70,11 @@ func TestPasteAfterCommand_AtEndOfBuffer(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "only line", m.content[0])
-	assert.Equal(t, "new line", m.content[1])
-	assert.Equal(t, 1, m.cursorRow)
+	require.Equal(t, Executed, result)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "only line", m.content[0])
+	require.Equal(t, "new line", m.content[1])
+	require.Equal(t, 1, m.cursorRow)
 }
 
 // TestPasteAfterCommand_MultiLineCharacterwise tests multi-line character-wise paste
@@ -87,10 +87,10 @@ func TestPasteAfterCommand_MultiLineCharacterwise(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "hellofoo", m.content[0])
-	assert.Equal(t, "bar world", m.content[1])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "hellofoo", m.content[0])
+	require.Equal(t, "bar world", m.content[1])
 }
 
 // TestPasteAfterCommand_Undo tests undo removes pasted text
@@ -104,13 +104,13 @@ func TestPasteAfterCommand_Undo(t *testing.T) {
 	cmd.Execute(m)
 
 	// Verify pasted
-	assert.Equal(t, "helloXX world", m.content[0])
+	require.Equal(t, "helloXX world", m.content[0])
 
 	// Undo
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, 4, m.cursorCol) // Cursor restored
+	require.NoError(t, err)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, 4, m.cursorCol) // Cursor restored
 }
 
 // TestPasteAfterCommand_UndoLinewise tests undo removes pasted lines
@@ -123,44 +123,44 @@ func TestPasteAfterCommand_UndoLinewise(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 3, len(m.content))
+	require.Equal(t, 3, len(m.content))
 
 	// Undo
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "line2", m.content[1])
+	require.NoError(t, err)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "line2", m.content[1])
 }
 
 // TestPasteAfterCommand_Keys tests command keys
 func TestPasteAfterCommand_Keys(t *testing.T) {
 	cmd := &PasteAfterCommand{}
-	assert.Equal(t, []string{"p"}, cmd.Keys())
+	require.Equal(t, []string{"p"}, cmd.Keys())
 }
 
 // TestPasteAfterCommand_Mode tests command mode
 func TestPasteAfterCommand_Mode(t *testing.T) {
 	cmd := &PasteAfterCommand{}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 // TestPasteAfterCommand_ID tests command ID
 func TestPasteAfterCommand_ID(t *testing.T) {
 	cmd := &PasteAfterCommand{}
-	assert.Equal(t, "paste.after", cmd.ID())
+	require.Equal(t, "paste.after", cmd.ID())
 }
 
 // TestPasteAfterCommand_IsUndoable tests paste is undoable
 func TestPasteAfterCommand_IsUndoable(t *testing.T) {
 	cmd := &PasteAfterCommand{}
-	assert.True(t, cmd.IsUndoable())
+	require.True(t, cmd.IsUndoable())
 }
 
 // TestPasteAfterCommand_ChangesContent tests paste changes content
 func TestPasteAfterCommand_ChangesContent(t *testing.T) {
 	cmd := &PasteAfterCommand{}
-	assert.True(t, cmd.ChangesContent())
+	require.True(t, cmd.ChangesContent())
 }
 
 // ============================================================================
@@ -177,10 +177,10 @@ func TestPasteBeforeCommand_CharacterwiseInsert(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "helloXX world", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "helloXX world", m.content[0])
 	// Cursor should be on last pasted character
-	assert.Equal(t, 6, m.cursorCol)
+	require.Equal(t, 6, m.cursorCol)
 }
 
 // TestPasteBeforeCommand_LinewiseInsert tests P with line-wise yank inserts new line above
@@ -194,14 +194,14 @@ func TestPasteBeforeCommand_LinewiseInsert(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 3, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "new line", m.content[1])
-	assert.Equal(t, "line2", m.content[2])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 3, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "new line", m.content[1])
+	require.Equal(t, "line2", m.content[2])
 	// Cursor should be on first non-blank of new line
-	assert.Equal(t, 1, m.cursorRow)
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, 1, m.cursorRow)
+	require.Equal(t, 0, m.cursorCol)
 }
 
 // TestPasteBeforeCommand_EmptyRegister tests P with empty register returns Skipped
@@ -213,8 +213,8 @@ func TestPasteBeforeCommand_EmptyRegister(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello", m.content[0])
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello", m.content[0])
 }
 
 // TestPasteBeforeCommand_AtBeginningOfBuffer tests P at beginning of buffer (line-wise)
@@ -227,11 +227,11 @@ func TestPasteBeforeCommand_AtBeginningOfBuffer(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "new line", m.content[0])
-	assert.Equal(t, "only line", m.content[1])
-	assert.Equal(t, 0, m.cursorRow)
+	require.Equal(t, Executed, result)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "new line", m.content[0])
+	require.Equal(t, "only line", m.content[1])
+	require.Equal(t, 0, m.cursorRow)
 }
 
 // TestPasteBeforeCommand_MultiLineCharacterwise tests multi-line character-wise paste
@@ -244,10 +244,10 @@ func TestPasteBeforeCommand_MultiLineCharacterwise(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "hellofoo", m.content[0])
-	assert.Equal(t, "bar world", m.content[1])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "hellofoo", m.content[0])
+	require.Equal(t, "bar world", m.content[1])
 }
 
 // TestPasteBeforeCommand_Undo tests undo removes pasted text
@@ -261,13 +261,13 @@ func TestPasteBeforeCommand_Undo(t *testing.T) {
 	cmd.Execute(m)
 
 	// Verify pasted
-	assert.Equal(t, "helloXX world", m.content[0])
+	require.Equal(t, "helloXX world", m.content[0])
 
 	// Undo
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, 5, m.cursorCol) // Cursor restored
+	require.NoError(t, err)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, 5, m.cursorCol) // Cursor restored
 }
 
 // TestPasteBeforeCommand_UndoLinewise tests undo removes pasted lines
@@ -280,32 +280,32 @@ func TestPasteBeforeCommand_UndoLinewise(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 3, len(m.content))
+	require.Equal(t, 3, len(m.content))
 
 	// Undo
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "line2", m.content[1])
+	require.NoError(t, err)
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "line2", m.content[1])
 }
 
 // TestPasteBeforeCommand_Keys tests command keys
 func TestPasteBeforeCommand_Keys(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
-	assert.Equal(t, []string{"P"}, cmd.Keys())
+	require.Equal(t, []string{"P"}, cmd.Keys())
 }
 
 // TestPasteBeforeCommand_Mode tests command mode
 func TestPasteBeforeCommand_Mode(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 // TestPasteBeforeCommand_ID tests command ID
 func TestPasteBeforeCommand_ID(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
-	assert.Equal(t, "paste.before", cmd.ID())
+	require.Equal(t, "paste.before", cmd.ID())
 }
 
 // ============================================================================
@@ -322,16 +322,16 @@ func TestYankYankPasteDuplicatesLine(t *testing.T) {
 	yankCmd := &YankLineCommand{}
 	yankCmd.Execute(m)
 
-	assert.Equal(t, "hello world", m.lastYankedText)
-	assert.True(t, m.lastYankWasLinewise)
+	require.Equal(t, "hello world", m.lastYankedText)
+	require.True(t, m.lastYankWasLinewise)
 
 	// p - paste after
 	pasteCmd := &PasteAfterCommand{}
 	pasteCmd.Execute(m)
 
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, "hello world", m.content[1])
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "hello world", m.content[1])
 }
 
 // TestDeletePasteRestoresCharacter tests x + P restores original character
@@ -343,15 +343,15 @@ func TestDeletePasteRestoresCharacter(t *testing.T) {
 	deleteCmd := &DeleteCharCommand{}
 	deleteCmd.Execute(m)
 
-	assert.Equal(t, "helo", m.content[0])
-	assert.Equal(t, "l", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, "helo", m.content[0])
+	require.Equal(t, "l", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 
 	// P - paste before (restores)
 	pasteCmd := &PasteBeforeCommand{}
 	pasteCmd.Execute(m)
 
-	assert.Equal(t, "hello", m.content[0])
+	require.Equal(t, "hello", m.content[0])
 }
 
 // TestVisualLineYankPastesOnNewLine tests visual line yank followed by p pastes on new line
@@ -375,11 +375,11 @@ func TestVisualLineYankPastesOnNewLine(t *testing.T) {
 	pasteCmd := &PasteAfterCommand{}
 	pasteCmd.Execute(m)
 
-	assert.Equal(t, 4, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "line2", m.content[1])
-	assert.Equal(t, "line1", m.content[2]) // Pasted below line2
-	assert.Equal(t, "line3", m.content[3])
+	require.Equal(t, 4, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "line2", m.content[1])
+	require.Equal(t, "line1", m.content[2]) // Pasted below line2
+	require.Equal(t, "line3", m.content[3])
 }
 
 // ============================================================================
@@ -390,13 +390,13 @@ func TestVisualLineYankPastesOnNewLine(t *testing.T) {
 func TestDefaultRegistry_HasPasteCommands(t *testing.T) {
 	// p should be registered
 	cmd, ok := DefaultRegistry.Get(ModeNormal, "p")
-	assert.True(t, ok, "p command should be registered")
-	assert.Equal(t, "paste.after", cmd.ID())
+	require.True(t, ok, "p command should be registered")
+	require.Equal(t, "paste.after", cmd.ID())
 
 	// P should be registered
 	cmd, ok = DefaultRegistry.Get(ModeNormal, "P")
-	assert.True(t, ok, "P command should be registered")
-	assert.Equal(t, "paste.before", cmd.ID())
+	require.True(t, ok, "P command should be registered")
+	require.Equal(t, "paste.before", cmd.ID())
 }
 
 // ============================================================================
@@ -412,8 +412,8 @@ func TestPasteAfterCommand_EmptyLine(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "text", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "text", m.content[0])
 }
 
 // TestPasteBeforeCommand_EmptyLine tests P on empty line
@@ -425,8 +425,8 @@ func TestPasteBeforeCommand_EmptyLine(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "text", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "text", m.content[0])
 }
 
 // TestPasteAfterCommand_AtEndOfLine tests p at end of line
@@ -439,8 +439,8 @@ func TestPasteAfterCommand_AtEndOfLine(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "helloXX", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "helloXX", m.content[0])
 }
 
 // TestPasteBeforeCommand_AtStartOfLine tests P at start of line
@@ -453,8 +453,8 @@ func TestPasteBeforeCommand_AtStartOfLine(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "XXhello", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "XXhello", m.content[0])
 }
 
 // TestPasteAfterCommand_LinewiseWithIndentation tests p preserves indentation for first non-blank
@@ -467,11 +467,11 @@ func TestPasteAfterCommand_LinewiseWithIndentation(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 2, len(m.content))
-	assert.Equal(t, "    indented", m.content[1])
+	require.Equal(t, 2, len(m.content))
+	require.Equal(t, "    indented", m.content[1])
 	// Cursor should be at first non-blank (position 4)
-	assert.Equal(t, 1, m.cursorRow)
-	assert.Equal(t, 4, m.cursorCol)
+	require.Equal(t, 1, m.cursorRow)
+	require.Equal(t, 4, m.cursorCol)
 }
 
 // TestPasteAfterCommand_MultiLineLinewise tests linewise paste with multiple lines
@@ -484,12 +484,12 @@ func TestPasteAfterCommand_MultiLineLinewise(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 4, len(m.content))
-	assert.Equal(t, "original", m.content[0])
-	assert.Equal(t, "line1", m.content[1])
-	assert.Equal(t, "line2", m.content[2])
-	assert.Equal(t, "line3", m.content[3])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 4, len(m.content))
+	require.Equal(t, "original", m.content[0])
+	require.Equal(t, "line1", m.content[1])
+	require.Equal(t, "line2", m.content[2])
+	require.Equal(t, "line3", m.content[3])
 }
 
 // TestPasteBeforeCommand_MultiLineLinewise tests linewise paste before with multiple lines
@@ -502,12 +502,12 @@ func TestPasteBeforeCommand_MultiLineLinewise(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, 4, len(m.content))
-	assert.Equal(t, "line1", m.content[0])
-	assert.Equal(t, "line2", m.content[1])
-	assert.Equal(t, "line3", m.content[2])
-	assert.Equal(t, "original", m.content[3])
+	require.Equal(t, Executed, result)
+	require.Equal(t, 4, len(m.content))
+	require.Equal(t, "line1", m.content[0])
+	require.Equal(t, "line2", m.content[1])
+	require.Equal(t, "line3", m.content[2])
+	require.Equal(t, "original", m.content[3])
 }
 
 // TestFindFirstNonBlank tests the helper function
@@ -527,7 +527,7 @@ func TestFindFirstNonBlank(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
 			result := findFirstNonBlank(tt.line)
-			assert.Equal(t, tt.expected, result)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

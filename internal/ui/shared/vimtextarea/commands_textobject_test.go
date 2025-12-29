@@ -3,7 +3,7 @@ package vimtextarea
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ============================================================================
@@ -17,9 +17,9 @@ func TestDeleteTextObjectCommand_InnerWord_DeletesWordWithoutWhitespace(t *testi
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, 0, m.cursorCol) // cursor at start of deleted region
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, 0, m.cursorCol) // cursor at start of deleted region
 }
 
 func TestDeleteTextObjectCommand_AroundWord_DeletesWordWithTrailingWhitespace(t *testing.T) {
@@ -29,9 +29,9 @@ func TestDeleteTextObjectCommand_AroundWord_DeletesWordWithTrailingWhitespace(t 
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "world", m.content[0])
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "world", m.content[0])
+	require.Equal(t, 0, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_CursorAtWordStart(t *testing.T) {
@@ -41,8 +41,8 @@ func TestDeleteTextObjectCommand_CursorAtWordStart(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
@@ -52,8 +52,8 @@ func TestDeleteTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_CursorAtWordEnd(t *testing.T) {
@@ -63,8 +63,8 @@ func TestDeleteTextObjectCommand_CursorAtWordEnd(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_PunctuationAsSeparateWord(t *testing.T) {
@@ -74,8 +74,8 @@ func TestDeleteTextObjectCommand_PunctuationAsSeparateWord(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobar", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobar", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
@@ -85,8 +85,8 @@ func TestDeleteTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "", m.content[0])
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
@@ -96,8 +96,8 @@ func TestDeleteTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello world", m.content[0])
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello world", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Undo_RestoresContent(t *testing.T) {
@@ -106,12 +106,12 @@ func TestDeleteTextObjectCommand_Undo_RestoresContent(t *testing.T) {
 
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, " world", m.content[0])
+	require.Equal(t, " world", m.content[0])
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, 2, m.cursorCol) // cursor restored
+	require.NoError(t, err)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, 2, m.cursorCol) // cursor restored
 }
 
 func TestDeleteTextObjectCommand_Undo_RestoresCursorPosition(t *testing.T) {
@@ -122,9 +122,9 @@ func TestDeleteTextObjectCommand_Undo_RestoresCursorPosition(t *testing.T) {
 	cmd.Execute(m)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, m.cursorRow)
-	assert.Equal(t, 5, m.cursorCol) // original cursor position restored
+	require.NoError(t, err)
+	require.Equal(t, 0, m.cursorRow)
+	require.Equal(t, 5, m.cursorCol) // original cursor position restored
 }
 
 func TestDeleteTextObjectCommand_Redo_RestoresExecutedState(t *testing.T) {
@@ -138,12 +138,12 @@ func TestDeleteTextObjectCommand_Redo_RestoresExecutedState(t *testing.T) {
 
 	// Undo
 	cmd.Undo(m)
-	assert.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "hello world", m.content[0])
 
 	// Redo (re-execute)
 	cmd.Execute(m)
-	assert.Equal(t, executedContent, m.content[0])
-	assert.Equal(t, executedCursorCol, m.cursorCol)
+	require.Equal(t, executedContent, m.content[0])
+	require.Equal(t, executedCursorCol, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_YankRegister_Populated(t *testing.T) {
@@ -153,36 +153,36 @@ func TestDeleteTextObjectCommand_YankRegister_Populated(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	cmd.Execute(m)
 
-	assert.Equal(t, "hello", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, "hello", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 func TestDeleteTextObjectCommand_Keys(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, []string{"diw"}, cmd.Keys())
+	require.Equal(t, []string{"diw"}, cmd.Keys())
 
 	cmd2 := &DeleteTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, []string{"daw"}, cmd2.Keys())
+	require.Equal(t, []string{"daw"}, cmd2.Keys())
 }
 
 func TestDeleteTextObjectCommand_ID(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, "delete.textobject.inner_w", cmd.ID())
+	require.Equal(t, "delete.textobject.inner_w", cmd.ID())
 
 	cmd2 := &DeleteTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, "delete.textobject.around_w", cmd2.ID())
+	require.Equal(t, "delete.textobject.around_w", cmd2.ID())
 }
 
 func TestDeleteTextObjectCommand_Mode(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 func TestDeleteTextObjectCommand_BaseProperties(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
-	assert.True(t, cmd.IsUndoable())
-	assert.True(t, cmd.ChangesContent())
-	assert.False(t, cmd.IsModeChange())
+	require.True(t, cmd.IsUndoable())
+	require.True(t, cmd.ChangesContent())
+	require.False(t, cmd.IsModeChange())
 }
 
 // ============================================================================
@@ -196,10 +196,10 @@ func TestChangeTextObjectCommand_InnerWord_DeletesWordAndEntersInsertMode(t *tes
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 0, m.cursorCol) // cursor at deletion point
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 0, m.cursorCol) // cursor at deletion point
 }
 
 func TestChangeTextObjectCommand_AroundWord_DeletesWordWithWhitespaceAndEntersInsertMode(t *testing.T) {
@@ -209,10 +209,10 @@ func TestChangeTextObjectCommand_AroundWord_DeletesWordWithWhitespaceAndEntersIn
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 0, m.cursorCol)
 }
 
 func TestChangeTextObjectCommand_AroundWordAtLineEnd_IncludesLeadingWhitespace(t *testing.T) {
@@ -222,10 +222,10 @@ func TestChangeTextObjectCommand_AroundWordAtLineEnd_IncludesLeadingWhitespace(t
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 	// "world" is at end, so aw includes leading whitespace
-	assert.Equal(t, "hello", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, "hello", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_CursorAtWordStart(t *testing.T) {
@@ -235,9 +235,9 @@ func TestChangeTextObjectCommand_CursorAtWordStart(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
@@ -247,9 +247,9 @@ func TestChangeTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_CursorAtWordEnd(t *testing.T) {
@@ -259,9 +259,9 @@ func TestChangeTextObjectCommand_CursorAtWordEnd(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_PunctuationAsSeparateWord(t *testing.T) {
@@ -271,9 +271,9 @@ func TestChangeTextObjectCommand_PunctuationAsSeparateWord(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobar", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobar", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
@@ -283,9 +283,9 @@ func TestChangeTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "", m.content[0])
-	assert.Equal(t, ModeNormal, m.mode) // mode should not change on skip
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "", m.content[0])
+	require.Equal(t, ModeNormal, m.mode) // mode should not change on skip
 }
 
 func TestChangeTextObjectCommand_Undo_RestoresContentAndMode(t *testing.T) {
@@ -294,14 +294,14 @@ func TestChangeTextObjectCommand_Undo_RestoresContentAndMode(t *testing.T) {
 
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, " world", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, " world", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, ModeNormal, m.mode) // mode restored
-	assert.Equal(t, 2, m.cursorCol)     // cursor restored
+	require.NoError(t, err)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, ModeNormal, m.mode) // mode restored
+	require.Equal(t, 2, m.cursorCol)     // cursor restored
 }
 
 func TestChangeTextObjectCommand_Undo_RestoresCursorPosition(t *testing.T) {
@@ -312,9 +312,9 @@ func TestChangeTextObjectCommand_Undo_RestoresCursorPosition(t *testing.T) {
 	cmd.Execute(m)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, m.cursorRow)
-	assert.Equal(t, 5, m.cursorCol) // original cursor position restored
+	require.NoError(t, err)
+	require.Equal(t, 0, m.cursorRow)
+	require.Equal(t, 5, m.cursorCol) // original cursor position restored
 }
 
 func TestChangeTextObjectCommand_Redo_RestoresExecutedState(t *testing.T) {
@@ -329,42 +329,42 @@ func TestChangeTextObjectCommand_Redo_RestoresExecutedState(t *testing.T) {
 
 	// Undo
 	cmd.Undo(m)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, ModeNormal, m.mode)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, ModeNormal, m.mode)
 
 	// Redo (re-execute)
 	cmd.Execute(m)
-	assert.Equal(t, executedContent, m.content[0])
-	assert.Equal(t, executedCursorCol, m.cursorCol)
-	assert.Equal(t, executedMode, m.mode)
+	require.Equal(t, executedContent, m.content[0])
+	require.Equal(t, executedCursorCol, m.cursorCol)
+	require.Equal(t, executedMode, m.mode)
 }
 
 func TestChangeTextObjectCommand_Keys(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, []string{"ciw"}, cmd.Keys())
+	require.Equal(t, []string{"ciw"}, cmd.Keys())
 
 	cmd2 := &ChangeTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, []string{"caw"}, cmd2.Keys())
+	require.Equal(t, []string{"caw"}, cmd2.Keys())
 }
 
 func TestChangeTextObjectCommand_ID(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, "change.textobject.inner_w", cmd.ID())
+	require.Equal(t, "change.textobject.inner_w", cmd.ID())
 
 	cmd2 := &ChangeTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, "change.textobject.around_w", cmd2.ID())
+	require.Equal(t, "change.textobject.around_w", cmd2.ID())
 }
 
 func TestChangeTextObjectCommand_Mode(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 func TestChangeTextObjectCommand_BaseProperties(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
-	assert.True(t, cmd.IsUndoable())
-	assert.True(t, cmd.ChangesContent())
-	assert.True(t, cmd.IsModeChange()) // ChangeBase marks as mode change
+	require.True(t, cmd.IsUndoable())
+	require.True(t, cmd.ChangesContent())
+	require.True(t, cmd.IsModeChange()) // ChangeBase marks as mode change
 }
 
 // ============================================================================
@@ -387,8 +387,8 @@ func TestTextObjectCommands_RegisteredInPendingRegistry(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(string(tc.operator)+tc.sequence, func(t *testing.T) {
 			cmd, ok := DefaultPendingRegistry.Get(tc.operator, tc.sequence)
-			assert.True(t, ok, "command should be registered")
-			assert.NotNil(t, cmd)
+			require.True(t, ok, "command should be registered")
+			require.NotNil(t, cmd)
 		})
 	}
 }
@@ -404,8 +404,8 @@ func TestDeleteTextObjectCommand_SecondWordOnLine(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "one  three", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "one  three", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
@@ -415,8 +415,8 @@ func TestDeleteTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "one three", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "one three", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_UnknownTextObject(t *testing.T) {
@@ -426,8 +426,8 @@ func TestDeleteTextObjectCommand_UnknownTextObject(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'X', inner: true} // unknown object
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello world", m.content[0]) // unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello world", m.content[0]) // unchanged
 }
 
 func TestChangeTextObjectCommand_UnknownTextObject(t *testing.T) {
@@ -437,9 +437,9 @@ func TestChangeTextObjectCommand_UnknownTextObject(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'X', inner: true} // unknown object
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello world", m.content[0]) // unchanged
-	assert.Equal(t, ModeNormal, m.mode)          // mode unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello world", m.content[0]) // unchanged
+	require.Equal(t, ModeNormal, m.mode)          // mode unchanged
 }
 
 func TestDeleteTextObjectCommand_SingleCharacterWord(t *testing.T) {
@@ -449,8 +449,8 @@ func TestDeleteTextObjectCommand_SingleCharacterWord(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "a  c", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "a  c", m.content[0])
 }
 
 func TestChangeTextObjectCommand_SingleCharacterWord(t *testing.T) {
@@ -460,9 +460,9 @@ func TestChangeTextObjectCommand_SingleCharacterWord(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "a  c", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "a  c", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestDeleteTextObjectCommand_CursorClamping(t *testing.T) {
@@ -473,9 +473,9 @@ func TestDeleteTextObjectCommand_CursorClamping(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.content[0])
-	assert.Equal(t, 0, m.cursorCol) // clamped to 0
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.content[0])
+	require.Equal(t, 0, m.cursorCol) // clamped to 0
 }
 
 // ============================================================================
@@ -489,10 +489,10 @@ func TestYankTextObjectCommand_InnerWord_YanksWordToRegisterWithoutModifyingCont
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.content[0]) // content unchanged
-	assert.Equal(t, "hello", m.lastYankedText)   // yanked word
-	assert.False(t, m.lastYankWasLinewise)       // character-wise yank
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.content[0]) // content unchanged
+	require.Equal(t, "hello", m.lastYankedText)   // yanked word
+	require.False(t, m.lastYankWasLinewise)       // character-wise yank
 }
 
 func TestYankTextObjectCommand_AroundWord_YanksWordWithWhitespaceToRegister(t *testing.T) {
@@ -502,10 +502,10 @@ func TestYankTextObjectCommand_AroundWord_YanksWordWithWhitespaceToRegister(t *t
 	cmd := &YankTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.content[0]) // content unchanged
-	assert.Equal(t, "hello ", m.lastYankedText)  // yanked word with trailing whitespace
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.content[0]) // content unchanged
+	require.Equal(t, "hello ", m.lastYankedText)  // yanked word with trailing whitespace
+	require.False(t, m.lastYankWasLinewise)
 }
 
 func TestYankTextObjectCommand_CursorAtWordStart(t *testing.T) {
@@ -515,9 +515,9 @@ func TestYankTextObjectCommand_CursorAtWordStart(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, "hello", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "hello", m.lastYankedText)
 }
 
 func TestYankTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
@@ -527,9 +527,9 @@ func TestYankTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, "hello", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "hello", m.lastYankedText)
 }
 
 func TestYankTextObjectCommand_CursorAtWordEnd(t *testing.T) {
@@ -539,9 +539,9 @@ func TestYankTextObjectCommand_CursorAtWordEnd(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, "hello", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "hello", m.lastYankedText)
 }
 
 func TestYankTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
@@ -552,9 +552,9 @@ func TestYankTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "", m.content[0])
-	assert.Equal(t, "previous", m.lastYankedText) // register unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "", m.content[0])
+	require.Equal(t, "previous", m.lastYankedText) // register unchanged
 }
 
 func TestYankTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
@@ -565,45 +565,45 @@ func TestYankTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "hello world", m.content[0])
-	assert.Equal(t, "previous", m.lastYankedText) // register unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "hello world", m.content[0])
+	require.Equal(t, "previous", m.lastYankedText) // register unchanged
 }
 
 func TestYankTextObjectCommand_IsNotUndoable(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.False(t, cmd.IsUndoable())
+	require.False(t, cmd.IsUndoable())
 }
 
 func TestYankTextObjectCommand_DoesNotChangeContent(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.False(t, cmd.ChangesContent())
+	require.False(t, cmd.ChangesContent())
 }
 
 func TestYankTextObjectCommand_IsNotModeChange(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.False(t, cmd.IsModeChange())
+	require.False(t, cmd.IsModeChange())
 }
 
 func TestYankTextObjectCommand_Keys(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, []string{"yiw"}, cmd.Keys())
+	require.Equal(t, []string{"yiw"}, cmd.Keys())
 
 	cmd2 := &YankTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, []string{"yaw"}, cmd2.Keys())
+	require.Equal(t, []string{"yaw"}, cmd2.Keys())
 }
 
 func TestYankTextObjectCommand_ID(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, "yank.textobject.inner_w", cmd.ID())
+	require.Equal(t, "yank.textobject.inner_w", cmd.ID())
 
 	cmd2 := &YankTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, "yank.textobject.around_w", cmd2.ID())
+	require.Equal(t, "yank.textobject.around_w", cmd2.ID())
 }
 
 func TestYankTextObjectCommand_Mode(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 func TestYankTextObjectCommand_LastYankWasLinewise_IsFalse(t *testing.T) {
@@ -614,7 +614,7 @@ func TestYankTextObjectCommand_LastYankWasLinewise_IsFalse(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	cmd.Execute(m)
 
-	assert.False(t, m.lastYankWasLinewise) // should be false for word objects
+	require.False(t, m.lastYankWasLinewise) // should be false for word objects
 }
 
 func TestYankTextObjectCommand_SecondWordOnLine(t *testing.T) {
@@ -624,9 +624,9 @@ func TestYankTextObjectCommand_SecondWordOnLine(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "one two three", m.content[0]) // unchanged
-	assert.Equal(t, "two", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "one two three", m.content[0]) // unchanged
+	require.Equal(t, "two", m.lastYankedText)
 }
 
 func TestYankTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
@@ -636,9 +636,9 @@ func TestYankTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "one two three", m.content[0]) // unchanged
-	assert.Equal(t, "two ", m.lastYankedText)      // includes trailing whitespace
+	require.Equal(t, Executed, result)
+	require.Equal(t, "one two three", m.content[0]) // unchanged
+	require.Equal(t, "two ", m.lastYankedText)      // includes trailing whitespace
 }
 
 func TestYankTextObjectCommand_YankHighlightRegion_ReturnsCorrectPositions(t *testing.T) {
@@ -648,13 +648,13 @@ func TestYankTextObjectCommand_YankHighlightRegion_ReturnsCorrectPositions(t *te
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 
 	start, end, linewise, show := cmd.YankHighlightRegion()
-	assert.Equal(t, Position{Row: 0, Col: 0}, start) // start of "hello"
-	assert.Equal(t, Position{Row: 0, Col: 4}, end)   // end of "hello"
-	assert.False(t, linewise)                        // word yank is not linewise
-	assert.True(t, show)                             // should show highlight
+	require.Equal(t, Position{Row: 0, Col: 0}, start) // start of "hello"
+	require.Equal(t, Position{Row: 0, Col: 4}, end)   // end of "hello"
+	require.False(t, linewise)                        // word yank is not linewise
+	require.True(t, show)                             // should show highlight
 }
 
 func TestYankTextObjectCommand_YankHighlightRegion_ShowFalseWhenNoMatch(t *testing.T) {
@@ -664,10 +664,10 @@ func TestYankTextObjectCommand_YankHighlightRegion_ShowFalseWhenNoMatch(t *testi
 	cmd := &YankTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
+	require.Equal(t, Skipped, result)
 
 	_, _, _, show := cmd.YankHighlightRegion()
-	assert.False(t, show) // no highlight when skipped
+	require.False(t, show) // no highlight when skipped
 }
 
 func TestYankTextObjectCommand_YankHighlightRegion_BracketObject(t *testing.T) {
@@ -677,13 +677,13 @@ func TestYankTextObjectCommand_YankHighlightRegion_BracketObject(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 
 	start, end, linewise, show := cmd.YankHighlightRegion()
-	assert.Equal(t, Position{Row: 0, Col: 4}, start) // after '('
-	assert.Equal(t, Position{Row: 0, Col: 6}, end)   // before ')'
-	assert.False(t, linewise)
-	assert.True(t, show)
+	require.Equal(t, Position{Row: 0, Col: 4}, start) // after '('
+	require.Equal(t, Position{Row: 0, Col: 6}, end)   // before ')'
+	require.False(t, linewise)
+	require.True(t, show)
 }
 
 func TestYankTextObjectCommand_YankHighlightRegion_AroundBracket(t *testing.T) {
@@ -693,13 +693,13 @@ func TestYankTextObjectCommand_YankHighlightRegion_AroundBracket(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 
 	start, end, linewise, show := cmd.YankHighlightRegion()
-	assert.Equal(t, Position{Row: 0, Col: 3}, start) // at '('
-	assert.Equal(t, Position{Row: 0, Col: 7}, end)   // at ')'
-	assert.False(t, linewise)
-	assert.True(t, show)
+	require.Equal(t, Position{Row: 0, Col: 3}, start) // at '('
+	require.Equal(t, Position{Row: 0, Col: 7}, end)   // at ')'
+	require.False(t, linewise)
+	require.True(t, show)
 }
 
 func TestYankTextObjectCommand_YankHighlightRegion_QuoteObject(t *testing.T) {
@@ -709,20 +709,20 @@ func TestYankTextObjectCommand_YankHighlightRegion_QuoteObject(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 
 	start, end, linewise, show := cmd.YankHighlightRegion()
-	assert.Equal(t, Position{Row: 0, Col: 5}, start) // after opening "
-	assert.Equal(t, Position{Row: 0, Col: 9}, end)   // before closing "
-	assert.False(t, linewise)
-	assert.True(t, show)
+	require.Equal(t, Position{Row: 0, Col: 5}, start) // after opening "
+	require.Equal(t, Position{Row: 0, Col: 9}, end)   // before closing "
+	require.False(t, linewise)
+	require.True(t, show)
 }
 
 func TestYankTextObjectCommand_ImplementsYankHighlighter(t *testing.T) {
 	// This test verifies that YankTextObjectCommand implements the YankHighlighter interface
 	var cmd interface{} = &YankTextObjectCommand{object: 'w', inner: true}
 	_, ok := cmd.(YankHighlighter)
-	assert.True(t, ok, "YankTextObjectCommand should implement YankHighlighter interface")
+	require.True(t, ok, "YankTextObjectCommand should implement YankHighlighter interface")
 }
 
 // ============================================================================
@@ -736,11 +736,11 @@ func TestVisualSelectTextObjectCommand_InnerWord_EntersVisualModeWithWordSelecte
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at word start
-	assert.Equal(t, 0, m.cursorRow)
-	assert.Equal(t, 4, m.cursorCol) // cursor at word end (inclusive)
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at word start
+	require.Equal(t, 0, m.cursorRow)
+	require.Equal(t, 4, m.cursorCol) // cursor at word end (inclusive)
 }
 
 func TestVisualSelectTextObjectCommand_AroundWord_EntersVisualModeWithWordAndWhitespaceSelected(t *testing.T) {
@@ -750,11 +750,11 @@ func TestVisualSelectTextObjectCommand_AroundWord_EntersVisualModeWithWordAndWhi
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at word start
-	assert.Equal(t, 0, m.cursorRow)
-	assert.Equal(t, 5, m.cursorCol) // cursor includes trailing space
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at word start
+	require.Equal(t, 0, m.cursorRow)
+	require.Equal(t, 5, m.cursorCol) // cursor includes trailing space
 }
 
 func TestVisualSelectTextObjectCommand_CursorAtWordStart(t *testing.T) {
@@ -764,10 +764,10 @@ func TestVisualSelectTextObjectCommand_CursorAtWordStart(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
-	assert.Equal(t, 4, m.cursorCol) // cursor at word end
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
+	require.Equal(t, 4, m.cursorCol) // cursor at word end
 }
 
 func TestVisualSelectTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
@@ -777,10 +777,10 @@ func TestVisualSelectTextObjectCommand_CursorAtWordMiddle(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
-	assert.Equal(t, 4, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
+	require.Equal(t, 4, m.cursorCol)
 }
 
 func TestVisualSelectTextObjectCommand_CursorAtWordEnd(t *testing.T) {
@@ -790,10 +790,10 @@ func TestVisualSelectTextObjectCommand_CursorAtWordEnd(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
-	assert.Equal(t, 4, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
+	require.Equal(t, 4, m.cursorCol)
 }
 
 func TestVisualSelectTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
@@ -803,8 +803,8 @@ func TestVisualSelectTextObjectCommand_EmptyLineIsNoOp(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, ModeNormal, m.mode) // mode should not change on skip
+	require.Equal(t, Skipped, result)
+	require.Equal(t, ModeNormal, m.mode) // mode should not change on skip
 }
 
 func TestVisualSelectTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
@@ -814,8 +814,8 @@ func TestVisualSelectTextObjectCommand_CursorOnWhitespaceIsNoOp(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, ModeNormal, m.mode)
+	require.Equal(t, Skipped, result)
+	require.Equal(t, ModeNormal, m.mode)
 }
 
 func TestVisualSelectTextObjectCommand_VisualAnchorPositionedCorrectly(t *testing.T) {
@@ -826,9 +826,9 @@ func TestVisualSelectTextObjectCommand_VisualAnchorPositionedCorrectly(t *testin
 	cmd.Execute(m)
 
 	// Anchor should be at start of "two" (col 4)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor)
 	// Cursor should be at end of "two" (col 6)
-	assert.Equal(t, 6, m.cursorCol)
+	require.Equal(t, 6, m.cursorCol)
 }
 
 func TestVisualSelectTextObjectCommand_FollowedByDeleteDeletesWord(t *testing.T) {
@@ -839,45 +839,45 @@ func TestVisualSelectTextObjectCommand_FollowedByDeleteDeletesWord(t *testing.T)
 	viwCmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	viwCmd.Execute(m)
 
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
-	assert.Equal(t, 4, m.cursorCol)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
+	require.Equal(t, 4, m.cursorCol)
 
 	// Now delete the selection
 	deleteCmd := &VisualDeleteCommand{mode: ModeVisual}
 	result := deleteCmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " world", m.content[0]) // "hello" deleted
-	assert.Equal(t, ModeNormal, m.mode)     // back to normal mode
+	require.Equal(t, Executed, result)
+	require.Equal(t, " world", m.content[0]) // "hello" deleted
+	require.Equal(t, ModeNormal, m.mode)     // back to normal mode
 }
 
 func TestVisualSelectTextObjectCommand_Keys(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, []string{"viw"}, cmd.Keys())
+	require.Equal(t, []string{"viw"}, cmd.Keys())
 
 	cmd2 := &VisualSelectTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, []string{"vaw"}, cmd2.Keys())
+	require.Equal(t, []string{"vaw"}, cmd2.Keys())
 }
 
 func TestVisualSelectTextObjectCommand_ID(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, "visual.textobject.inner_w", cmd.ID())
+	require.Equal(t, "visual.textobject.inner_w", cmd.ID())
 
 	cmd2 := &VisualSelectTextObjectCommand{object: 'w', inner: false}
-	assert.Equal(t, "visual.textobject.around_w", cmd2.ID())
+	require.Equal(t, "visual.textobject.around_w", cmd2.ID())
 }
 
 func TestVisualSelectTextObjectCommand_Mode(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 func TestVisualSelectTextObjectCommand_BaseProperties(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
-	assert.False(t, cmd.IsUndoable())
-	assert.False(t, cmd.ChangesContent())
-	assert.True(t, cmd.IsModeChange()) // ModeEntryBase marks as mode change
+	require.False(t, cmd.IsUndoable())
+	require.False(t, cmd.ChangesContent())
+	require.True(t, cmd.IsModeChange()) // ModeEntryBase marks as mode change
 }
 
 func TestVisualSelectTextObjectCommand_ClearsPendingBuilder(t *testing.T) {
@@ -889,8 +889,8 @@ func TestVisualSelectTextObjectCommand_ClearsPendingBuilder(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	cmd.Execute(m)
 
-	assert.Equal(t, rune(0), m.pendingBuilder.operator)
-	assert.Equal(t, "", m.pendingBuilder.keyBuffer)
+	require.Equal(t, rune(0), m.pendingBuilder.operator)
+	require.Equal(t, "", m.pendingBuilder.keyBuffer)
 }
 
 func TestVisualSelectTextObjectCommand_SecondWordOnLine(t *testing.T) {
@@ -900,10 +900,10 @@ func TestVisualSelectTextObjectCommand_SecondWordOnLine(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // start of "two"
-	assert.Equal(t, 6, m.cursorCol)                           // end of "two"
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // start of "two"
+	require.Equal(t, 6, m.cursorCol)                           // end of "two"
 }
 
 func TestVisualSelectTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
@@ -913,10 +913,10 @@ func TestVisualSelectTextObjectCommand_AroundSecondWordOnLine(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'w', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // start of "two"
-	assert.Equal(t, 7, m.cursorCol)                           // includes trailing space
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // start of "two"
+	require.Equal(t, 7, m.cursorCol)                           // includes trailing space
 }
 
 // ============================================================================
@@ -937,8 +937,8 @@ func TestYankAndVisualSelectTextObjectCommands_RegisteredInPendingRegistry(t *te
 	for _, tc := range tests {
 		t.Run(string(tc.operator)+tc.sequence, func(t *testing.T) {
 			cmd, ok := DefaultPendingRegistry.Get(tc.operator, tc.sequence)
-			assert.True(t, ok, "command should be registered")
-			assert.NotNil(t, cmd)
+			require.True(t, ok, "command should be registered")
+			require.NotNil(t, cmd)
 		})
 	}
 }
@@ -955,9 +955,9 @@ func TestDeleteTextObjectCommand_InnerWORD_DeletesEntireNonWhitespaceSequence(t 
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " baz", m.content[0]) // entire foo.bar deleted
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, " baz", m.content[0]) // entire foo.bar deleted
+	require.Equal(t, 0, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_AroundWORD_IncludesTrailingWhitespace(t *testing.T) {
@@ -967,9 +967,9 @@ func TestDeleteTextObjectCommand_AroundWORD_IncludesTrailingWhitespace(t *testin
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "baz", m.content[0]) // foo.bar + space deleted
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "baz", m.content[0]) // foo.bar + space deleted
+	require.Equal(t, 0, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_WORD_FooDotBarIsOneWORD(t *testing.T) {
@@ -980,8 +980,8 @@ func TestDeleteTextObjectCommand_WORD_FooDotBarIsOneWORD(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "x  y", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "x  y", m.content[0])
 }
 
 func TestChangeTextObjectCommand_InnerWORD_DeletesEntireSequenceAndEntersInsertMode(t *testing.T) {
@@ -991,10 +991,10 @@ func TestChangeTextObjectCommand_InnerWORD_DeletesEntireSequenceAndEntersInsertM
 	cmd := &ChangeTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, " qux", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 0, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, " qux", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 0, m.cursorCol)
 }
 
 func TestYankTextObjectCommand_InnerWORD_YanksNonWhitespaceSequence(t *testing.T) {
@@ -1004,10 +1004,10 @@ func TestYankTextObjectCommand_InnerWORD_YanksNonWhitespaceSequence(t *testing.T
 	cmd := &YankTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo.bar baz", m.content[0]) // content unchanged
-	assert.Equal(t, "foo.bar", m.lastYankedText) // yanked the WORD
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo.bar baz", m.content[0]) // content unchanged
+	require.Equal(t, "foo.bar", m.lastYankedText) // yanked the WORD
+	require.False(t, m.lastYankWasLinewise)
 }
 
 func TestYankTextObjectCommand_AroundWORD_YanksWithTrailingWhitespace(t *testing.T) {
@@ -1017,9 +1017,9 @@ func TestYankTextObjectCommand_AroundWORD_YanksWithTrailingWhitespace(t *testing
 	cmd := &YankTextObjectCommand{object: 'W', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo.bar baz", m.content[0])  // content unchanged
-	assert.Equal(t, "foo.bar ", m.lastYankedText) // yanked WORD + space
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo.bar baz", m.content[0])  // content unchanged
+	require.Equal(t, "foo.bar ", m.lastYankedText) // yanked WORD + space
 }
 
 func TestVisualSelectTextObjectCommand_InnerWORD_SelectsNonWhitespaceSequence(t *testing.T) {
@@ -1029,10 +1029,10 @@ func TestVisualSelectTextObjectCommand_InnerWORD_SelectsNonWhitespaceSequence(t 
 	cmd := &VisualSelectTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at WORD start
-	assert.Equal(t, 6, m.cursorCol)                           // cursor at WORD end
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor) // anchor at WORD start
+	require.Equal(t, 6, m.cursorCol)                           // cursor at WORD end
 }
 
 func TestVisualSelectTextObjectCommand_AroundWORD_SelectsWithWhitespace(t *testing.T) {
@@ -1042,10 +1042,10 @@ func TestVisualSelectTextObjectCommand_AroundWORD_SelectsWithWhitespace(t *testi
 	cmd := &VisualSelectTextObjectCommand{object: 'W', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
-	assert.Equal(t, 7, m.cursorCol) // includes trailing space
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 0}, m.visualAnchor)
+	require.Equal(t, 7, m.cursorCol) // includes trailing space
 }
 
 func TestWORDTextObject_AtLineEnd_UsesLeadingWhitespaceForAround(t *testing.T) {
@@ -1055,9 +1055,9 @@ func TestWORDTextObject_AtLineEnd_UsesLeadingWhitespaceForAround(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 	// "bar.baz" is at end, so aW includes leading whitespace
-	assert.Equal(t, "foo", m.content[0])
+	require.Equal(t, "foo", m.content[0])
 }
 
 func TestWORDTextObject_WhitespaceOnlyLine_ReturnsFalse(t *testing.T) {
@@ -1067,8 +1067,8 @@ func TestWORDTextObject_WhitespaceOnlyLine_ReturnsFalse(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "   ", m.content[0]) // unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "   ", m.content[0]) // unchanged
 }
 
 func TestDeleteTextObjectCommand_WORD_Undo(t *testing.T) {
@@ -1077,12 +1077,12 @@ func TestDeleteTextObjectCommand_WORD_Undo(t *testing.T) {
 
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, " baz", m.content[0])
+	require.Equal(t, " baz", m.content[0])
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "foo.bar baz", m.content[0])
-	assert.Equal(t, 2, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, "foo.bar baz", m.content[0])
+	require.Equal(t, 2, m.cursorCol)
 }
 
 func TestChangeTextObjectCommand_WORD_Undo_RestoresContentAndMode(t *testing.T) {
@@ -1091,46 +1091,46 @@ func TestChangeTextObjectCommand_WORD_Undo_RestoresContentAndMode(t *testing.T) 
 
 	cmd := &ChangeTextObjectCommand{object: 'W', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, " baz", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, " baz", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "foo.bar baz", m.content[0])
-	assert.Equal(t, ModeNormal, m.mode)
-	assert.Equal(t, 2, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, "foo.bar baz", m.content[0])
+	require.Equal(t, ModeNormal, m.mode)
+	require.Equal(t, 2, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_WORD_Keys(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'W', inner: true}
-	assert.Equal(t, []string{"diW"}, cmd.Keys())
+	require.Equal(t, []string{"diW"}, cmd.Keys())
 
 	cmd2 := &DeleteTextObjectCommand{object: 'W', inner: false}
-	assert.Equal(t, []string{"daW"}, cmd2.Keys())
+	require.Equal(t, []string{"daW"}, cmd2.Keys())
 }
 
 func TestChangeTextObjectCommand_WORD_Keys(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'W', inner: true}
-	assert.Equal(t, []string{"ciW"}, cmd.Keys())
+	require.Equal(t, []string{"ciW"}, cmd.Keys())
 
 	cmd2 := &ChangeTextObjectCommand{object: 'W', inner: false}
-	assert.Equal(t, []string{"caW"}, cmd2.Keys())
+	require.Equal(t, []string{"caW"}, cmd2.Keys())
 }
 
 func TestYankTextObjectCommand_WORD_Keys(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'W', inner: true}
-	assert.Equal(t, []string{"yiW"}, cmd.Keys())
+	require.Equal(t, []string{"yiW"}, cmd.Keys())
 
 	cmd2 := &YankTextObjectCommand{object: 'W', inner: false}
-	assert.Equal(t, []string{"yaW"}, cmd2.Keys())
+	require.Equal(t, []string{"yaW"}, cmd2.Keys())
 }
 
 func TestVisualSelectTextObjectCommand_WORD_Keys(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'W', inner: true}
-	assert.Equal(t, []string{"viW"}, cmd.Keys())
+	require.Equal(t, []string{"viW"}, cmd.Keys())
 
 	cmd2 := &VisualSelectTextObjectCommand{object: 'W', inner: false}
-	assert.Equal(t, []string{"vaW"}, cmd2.Keys())
+	require.Equal(t, []string{"vaW"}, cmd2.Keys())
 }
 
 // ============================================================================
@@ -1155,8 +1155,8 @@ func TestWORDTextObjectCommands_RegisteredInPendingRegistry(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(string(tc.operator)+tc.sequence, func(t *testing.T) {
 			cmd, ok := DefaultPendingRegistry.Get(tc.operator, tc.sequence)
-			assert.True(t, ok, "command should be registered")
-			assert.NotNil(t, cmd)
+			require.True(t, ok, "command should be registered")
+			require.NotNil(t, cmd)
 		})
 	}
 }
@@ -1172,9 +1172,9 @@ func TestDeleteTextObjectCommand_InnerDoubleQuote_DeletesContentInsideQuotes(t *
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
-	assert.Equal(t, 5, m.cursorCol) // cursor positioned after opening "
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, 5, m.cursorCol) // cursor positioned after opening "
 }
 
 func TestDeleteTextObjectCommand_AroundDoubleQuote_DeletesContentIncludingQuotes(t *testing.T) {
@@ -1184,9 +1184,9 @@ func TestDeleteTextObjectCommand_AroundDoubleQuote_DeletesContentIncludingQuotes
 	cmd := &DeleteTextObjectCommand{object: '"', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say  now`, m.content[0])
-	assert.Equal(t, 4, m.cursorCol)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say  now`, m.content[0])
+	require.Equal(t, 4, m.cursorCol)
 }
 
 func TestChangeTextObjectCommand_InnerSingleQuote_DeletesAndEntersInsertMode(t *testing.T) {
@@ -1196,10 +1196,10 @@ func TestChangeTextObjectCommand_InnerSingleQuote_DeletesAndEntersInsertMode(t *
 	cmd := &ChangeTextObjectCommand{object: '\'', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say '' now`, m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 5, m.cursorCol) // cursor positioned inside empty quotes
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say '' now`, m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 5, m.cursorCol) // cursor positioned inside empty quotes
 }
 
 func TestDeleteTextObjectCommand_Quote_CursorInsideQuotes(t *testing.T) {
@@ -1209,8 +1209,8 @@ func TestDeleteTextObjectCommand_Quote_CursorInsideQuotes(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `""`, m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, `""`, m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Quote_CursorOnOpeningQuote(t *testing.T) {
@@ -1220,8 +1220,8 @@ func TestDeleteTextObjectCommand_Quote_CursorOnOpeningQuote(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Quote_CursorOnClosingQuote(t *testing.T) {
@@ -1231,8 +1231,8 @@ func TestDeleteTextObjectCommand_Quote_CursorOnClosingQuote(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Quote_EscapedQuoteNotDelimiter(t *testing.T) {
@@ -1243,9 +1243,9 @@ func TestDeleteTextObjectCommand_Quote_EscapedQuoteNotDelimiter(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
-	assert.Equal(t, `hello \"world\" end`, m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, `hello \"world\" end`, m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_Quote_ConsecutiveEscapes(t *testing.T) {
@@ -1256,9 +1256,9 @@ func TestDeleteTextObjectCommand_Quote_ConsecutiveEscapes(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
-	assert.Equal(t, `foo\\`, m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, `foo\\`, m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_Quote_UnclosedQuoteIsNoOp(t *testing.T) {
@@ -1268,8 +1268,8 @@ func TestDeleteTextObjectCommand_Quote_UnclosedQuoteIsNoOp(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, `say "hello world`, m.content[0]) // unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, `say "hello world`, m.content[0]) // unchanged
 }
 
 func TestDeleteTextObjectCommand_Quote_CursorOutsideQuotesIsNoOp(t *testing.T) {
@@ -1279,8 +1279,8 @@ func TestDeleteTextObjectCommand_Quote_CursorOutsideQuotesIsNoOp(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, `say "hello" now`, m.content[0]) // unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, `say "hello" now`, m.content[0]) // unchanged
 }
 
 func TestDeleteTextObjectCommand_Quote_NestedSingleInsideDouble(t *testing.T) {
@@ -1291,9 +1291,9 @@ func TestDeleteTextObjectCommand_Quote_NestedSingleInsideDouble(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "" now`, m.content[0])
-	assert.Equal(t, "foo 'bar' baz", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, "foo 'bar' baz", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_Quote_SingleQuoteInsideDouble_SelectsSingleQuote(t *testing.T) {
@@ -1304,9 +1304,9 @@ func TestDeleteTextObjectCommand_Quote_SingleQuoteInsideDouble_SelectsSingleQuot
 	cmd := &DeleteTextObjectCommand{object: '\'', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "foo '' baz" now`, m.content[0])
-	assert.Equal(t, "bar", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "foo '' baz" now`, m.content[0])
+	require.Equal(t, "bar", m.lastYankedText)
 }
 
 func TestYankTextObjectCommand_InnerQuote_YanksQuotedContent(t *testing.T) {
@@ -1316,10 +1316,10 @@ func TestYankTextObjectCommand_InnerQuote_YanksQuotedContent(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "hello world" now`, m.content[0]) // unchanged
-	assert.Equal(t, "hello world", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "hello world" now`, m.content[0]) // unchanged
+	require.Equal(t, "hello world", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 func TestYankTextObjectCommand_AroundQuote_YanksWithQuotes(t *testing.T) {
@@ -1329,9 +1329,9 @@ func TestYankTextObjectCommand_AroundQuote_YanksWithQuotes(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: '"', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say "hello" now`, m.content[0]) // unchanged
-	assert.Equal(t, `"hello"`, m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say "hello" now`, m.content[0]) // unchanged
+	require.Equal(t, `"hello"`, m.lastYankedText)
 }
 
 func TestVisualSelectTextObjectCommand_InnerQuote_SelectsQuotedContent(t *testing.T) {
@@ -1341,10 +1341,10 @@ func TestVisualSelectTextObjectCommand_InnerQuote_SelectsQuotedContent(t *testin
 	cmd := &VisualSelectTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 5}, m.visualAnchor) // after opening "
-	assert.Equal(t, 9, m.cursorCol)                           // before closing "
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 5}, m.visualAnchor) // after opening "
+	require.Equal(t, 9, m.cursorCol)                           // before closing "
 }
 
 func TestVisualSelectTextObjectCommand_AroundQuote_SelectsWithQuotes(t *testing.T) {
@@ -1354,10 +1354,10 @@ func TestVisualSelectTextObjectCommand_AroundQuote_SelectsWithQuotes(t *testing.
 	cmd := &VisualSelectTextObjectCommand{object: '"', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // opening "
-	assert.Equal(t, 10, m.cursorCol)                          // closing "
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // opening "
+	require.Equal(t, 10, m.cursorCol)                          // closing "
 }
 
 func TestDeleteTextObjectCommand_Quote_Undo_RestoresContent(t *testing.T) {
@@ -1366,12 +1366,12 @@ func TestDeleteTextObjectCommand_Quote_Undo_RestoresContent(t *testing.T) {
 
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, `say "" now`, m.content[0])
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, `say "hello" now`, m.content[0])
-	assert.Equal(t, 6, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, `say "hello" now`, m.content[0])
+	require.Equal(t, 6, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_Quote_Redo_RestoresExecutedState(t *testing.T) {
@@ -1384,11 +1384,11 @@ func TestDeleteTextObjectCommand_Quote_Redo_RestoresExecutedState(t *testing.T) 
 
 	// Undo
 	cmd.Undo(m)
-	assert.Equal(t, `say "hello" now`, m.content[0])
+	require.Equal(t, `say "hello" now`, m.content[0])
 
 	// Redo (re-execute)
 	cmd.Execute(m)
-	assert.Equal(t, executedContent, m.content[0])
+	require.Equal(t, executedContent, m.content[0])
 }
 
 func TestChangeTextObjectCommand_Quote_Undo_RestoresContentAndMode(t *testing.T) {
@@ -1397,14 +1397,14 @@ func TestChangeTextObjectCommand_Quote_Undo_RestoresContentAndMode(t *testing.T)
 
 	cmd := &ChangeTextObjectCommand{object: '"', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, `say "" now`, m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, `say "hello" now`, m.content[0])
-	assert.Equal(t, ModeNormal, m.mode)
-	assert.Equal(t, 6, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, `say "hello" now`, m.content[0])
+	require.Equal(t, ModeNormal, m.mode)
+	require.Equal(t, 6, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_Quote_EmptyQuotes(t *testing.T) {
@@ -1416,9 +1416,9 @@ func TestDeleteTextObjectCommand_Quote_EmptyQuotes(t *testing.T) {
 	result := cmd.Execute(m)
 
 	// For empty quotes, we get start > end, so deletion should handle it gracefully
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 	// Nothing to delete inside empty quotes
-	assert.Equal(t, `say "" now`, m.content[0])
+	require.Equal(t, `say "" now`, m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Quote_AroundEmptyQuotes(t *testing.T) {
@@ -1428,8 +1428,8 @@ func TestDeleteTextObjectCommand_Quote_AroundEmptyQuotes(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `say  now`, m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, `say  now`, m.content[0])
 }
 
 func TestDeleteTextObjectCommand_Quote_MultipleQuotePairs_SecondPair(t *testing.T) {
@@ -1439,9 +1439,9 @@ func TestDeleteTextObjectCommand_Quote_MultipleQuotePairs_SecondPair(t *testing.
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `"first" and ""`, m.content[0])
-	assert.Equal(t, "second", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `"first" and ""`, m.content[0])
+	require.Equal(t, "second", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_Quote_MultipleQuotePairs_FirstPair(t *testing.T) {
@@ -1451,47 +1451,47 @@ func TestDeleteTextObjectCommand_Quote_MultipleQuotePairs_FirstPair(t *testing.T
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, `"" and "second"`, m.content[0])
-	assert.Equal(t, "first", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, `"" and "second"`, m.content[0])
+	require.Equal(t, "first", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_Quote_Keys(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: '"', inner: true}
-	assert.Equal(t, []string{`di"`}, cmd.Keys())
+	require.Equal(t, []string{`di"`}, cmd.Keys())
 
 	cmd2 := &DeleteTextObjectCommand{object: '"', inner: false}
-	assert.Equal(t, []string{`da"`}, cmd2.Keys())
+	require.Equal(t, []string{`da"`}, cmd2.Keys())
 
 	cmd3 := &DeleteTextObjectCommand{object: '\'', inner: true}
-	assert.Equal(t, []string{`di'`}, cmd3.Keys())
+	require.Equal(t, []string{`di'`}, cmd3.Keys())
 
 	cmd4 := &DeleteTextObjectCommand{object: '\'', inner: false}
-	assert.Equal(t, []string{`da'`}, cmd4.Keys())
+	require.Equal(t, []string{`da'`}, cmd4.Keys())
 }
 
 func TestChangeTextObjectCommand_Quote_Keys(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: '"', inner: true}
-	assert.Equal(t, []string{`ci"`}, cmd.Keys())
+	require.Equal(t, []string{`ci"`}, cmd.Keys())
 
 	cmd2 := &ChangeTextObjectCommand{object: '"', inner: false}
-	assert.Equal(t, []string{`ca"`}, cmd2.Keys())
+	require.Equal(t, []string{`ca"`}, cmd2.Keys())
 }
 
 func TestYankTextObjectCommand_Quote_Keys(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: '"', inner: true}
-	assert.Equal(t, []string{`yi"`}, cmd.Keys())
+	require.Equal(t, []string{`yi"`}, cmd.Keys())
 
 	cmd2 := &YankTextObjectCommand{object: '"', inner: false}
-	assert.Equal(t, []string{`ya"`}, cmd2.Keys())
+	require.Equal(t, []string{`ya"`}, cmd2.Keys())
 }
 
 func TestVisualSelectTextObjectCommand_Quote_Keys(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: '"', inner: true}
-	assert.Equal(t, []string{`vi"`}, cmd.Keys())
+	require.Equal(t, []string{`vi"`}, cmd.Keys())
 
 	cmd2 := &VisualSelectTextObjectCommand{object: '"', inner: false}
-	assert.Equal(t, []string{`va"`}, cmd2.Keys())
+	require.Equal(t, []string{`va"`}, cmd2.Keys())
 }
 
 // ============================================================================
@@ -1524,8 +1524,8 @@ func TestQuoteTextObjectCommands_RegisteredInPendingRegistry(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(string(tc.operator)+tc.sequence, func(t *testing.T) {
 			cmd, ok := DefaultPendingRegistry.Get(tc.operator, tc.sequence)
-			assert.True(t, ok, "command should be registered")
-			assert.NotNil(t, cmd)
+			require.True(t, ok, "command should be registered")
+			require.NotNil(t, cmd)
 		})
 	}
 }
@@ -1552,8 +1552,8 @@ func TestBracketTextObjectCommands_RegisteredInPendingRegistry(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(string(tc.operator)+tc.sequence, func(t *testing.T) {
 			cmd, ok := DefaultPendingRegistry.Get(tc.operator, tc.sequence)
-			assert.True(t, ok, "command should be registered")
-			assert.NotNil(t, cmd)
+			require.True(t, ok, "command should be registered")
+			require.NotNil(t, cmd)
 		})
 	}
 }
@@ -1569,9 +1569,9 @@ func TestDeleteTextObjectCommand_InnerBracket_Parentheses(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo()baz", m.content[0])
-	assert.Equal(t, "bar", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, "bar", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
@@ -1581,9 +1581,9 @@ func TestDeleteTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo[]baz", m.content[0])
-	assert.Equal(t, "bar", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo[]baz", m.content[0])
+	require.Equal(t, "bar", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_CurlyBraces(t *testing.T) {
@@ -1593,9 +1593,9 @@ func TestDeleteTextObjectCommand_InnerBracket_CurlyBraces(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo{}baz", m.content[0])
-	assert.Equal(t, "bar", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo{}baz", m.content[0])
+	require.Equal(t, "bar", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_NestedSelectsInnermost(t *testing.T) {
@@ -1606,9 +1606,9 @@ func TestDeleteTextObjectCommand_InnerBracket_NestedSelectsInnermost(t *testing.
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "{[]}", m.content[0])
-	assert.Equal(t, "foo", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "{[]}", m.content[0])
+	require.Equal(t, "foo", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_NestedSameType(t *testing.T) {
@@ -1619,9 +1619,9 @@ func TestDeleteTextObjectCommand_InnerBracket_NestedSameType(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "(())", m.content[0])
-	assert.Equal(t, "foo", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "(())", m.content[0])
+	require.Equal(t, "foo", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_NoBrackets_Skipped(t *testing.T) {
@@ -1631,8 +1631,8 @@ func TestDeleteTextObjectCommand_InnerBracket_NoBrackets_Skipped(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Skipped, result)
-	assert.Equal(t, "foo bar baz", m.content[0]) // unchanged
+	require.Equal(t, Skipped, result)
+	require.Equal(t, "foo bar baz", m.content[0]) // unchanged
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_CursorOnOpeningDelimiter(t *testing.T) {
@@ -1642,8 +1642,8 @@ func TestDeleteTextObjectCommand_InnerBracket_CursorOnOpeningDelimiter(t *testin
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo()baz", m.content[0])
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_CursorOnClosingDelimiter(t *testing.T) {
@@ -1653,8 +1653,8 @@ func TestDeleteTextObjectCommand_InnerBracket_CursorOnClosingDelimiter(t *testin
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo()baz", m.content[0])
 }
 
 // ============================================================================
@@ -1668,9 +1668,9 @@ func TestDeleteTextObjectCommand_AroundBracket_Parentheses(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobaz", m.content[0])
-	assert.Equal(t, "(bar)", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobaz", m.content[0])
+	require.Equal(t, "(bar)", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_AroundBracket_SquareBrackets(t *testing.T) {
@@ -1680,9 +1680,9 @@ func TestDeleteTextObjectCommand_AroundBracket_SquareBrackets(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobaz", m.content[0])
-	assert.Equal(t, "[bar]", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobaz", m.content[0])
+	require.Equal(t, "[bar]", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_AroundBracket_CurlyBraces(t *testing.T) {
@@ -1692,9 +1692,9 @@ func TestDeleteTextObjectCommand_AroundBracket_CurlyBraces(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobaz", m.content[0])
-	assert.Equal(t, "{bar}", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobaz", m.content[0])
+	require.Equal(t, "{bar}", m.lastYankedText)
 }
 
 func TestDeleteTextObjectCommand_AroundBracket_NestedSelectsInnermost(t *testing.T) {
@@ -1705,9 +1705,9 @@ func TestDeleteTextObjectCommand_AroundBracket_NestedSelectsInnermost(t *testing
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "{}", m.content[0])
-	assert.Equal(t, "[foo]", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "{}", m.content[0])
+	require.Equal(t, "[foo]", m.lastYankedText)
 }
 
 // ============================================================================
@@ -1721,10 +1721,10 @@ func TestChangeTextObjectCommand_InnerBracket_DeletesAndEntersInsertMode(t *test
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo()baz", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 4, m.cursorCol) // cursor inside empty brackets
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 4, m.cursorCol) // cursor inside empty brackets
 }
 
 func TestChangeTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
@@ -1734,9 +1734,9 @@ func TestChangeTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "arr[]", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "arr[]", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 func TestChangeTextObjectCommand_InnerBracket_CurlyBraces(t *testing.T) {
@@ -1746,9 +1746,9 @@ func TestChangeTextObjectCommand_InnerBracket_CurlyBraces(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "obj{}", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "obj{}", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 }
 
 // ============================================================================
@@ -1762,10 +1762,10 @@ func TestChangeTextObjectCommand_AroundBracket_DeletesAllAndEntersInsertMode(t *
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foobaz", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
-	assert.Equal(t, 3, m.cursorCol) // cursor where brackets were
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foobaz", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, 3, m.cursorCol) // cursor where brackets were
 }
 
 // ============================================================================
@@ -1779,10 +1779,10 @@ func TestYankTextObjectCommand_InnerBracket_YanksContentWithoutModifying(t *test
 	cmd := &YankTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo(bar)baz", m.content[0]) // content unchanged
-	assert.Equal(t, "bar", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo(bar)baz", m.content[0]) // content unchanged
+	require.Equal(t, "bar", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 func TestYankTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
@@ -1792,9 +1792,9 @@ func TestYankTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "arr[index]", m.content[0]) // unchanged
-	assert.Equal(t, "index", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "arr[index]", m.content[0]) // unchanged
+	require.Equal(t, "index", m.lastYankedText)
 }
 
 // ============================================================================
@@ -1808,9 +1808,9 @@ func TestYankTextObjectCommand_AroundBracket_YanksBracketsAndContent(t *testing.
 	cmd := &YankTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "foo(bar)baz", m.content[0]) // content unchanged
-	assert.Equal(t, "(bar)", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "foo(bar)baz", m.content[0]) // content unchanged
+	require.Equal(t, "(bar)", m.lastYankedText)
 }
 
 // ============================================================================
@@ -1824,10 +1824,10 @@ func TestVisualSelectTextObjectCommand_InnerBracket_EntersVisualWithSelection(t 
 	cmd := &VisualSelectTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // after '('
-	assert.Equal(t, 6, m.cursorCol)                           // before ')'
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // after '('
+	require.Equal(t, 6, m.cursorCol)                           // before ')'
 }
 
 func TestVisualSelectTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T) {
@@ -1837,10 +1837,10 @@ func TestVisualSelectTextObjectCommand_InnerBracket_SquareBrackets(t *testing.T)
 	cmd := &VisualSelectTextObjectCommand{object: 'b', inner: true}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // after '['
-	assert.Equal(t, 8, m.cursorCol)                           // before ']'
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 4}, m.visualAnchor) // after '['
+	require.Equal(t, 8, m.cursorCol)                           // before ']'
 }
 
 // ============================================================================
@@ -1854,10 +1854,10 @@ func TestVisualSelectTextObjectCommand_AroundBracket_EntersVisualWithSelection(t
 	cmd := &VisualSelectTextObjectCommand{object: 'b', inner: false}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, ModeVisual, m.mode)
-	assert.Equal(t, Position{Row: 0, Col: 3}, m.visualAnchor) // at '('
-	assert.Equal(t, 7, m.cursorCol)                           // at ')'
+	require.Equal(t, Executed, result)
+	require.Equal(t, ModeVisual, m.mode)
+	require.Equal(t, Position{Row: 0, Col: 3}, m.visualAnchor) // at '('
+	require.Equal(t, 7, m.cursorCol)                           // at ')'
 }
 
 // ============================================================================
@@ -1870,12 +1870,12 @@ func TestDeleteTextObjectCommand_InnerBracket_Undo(t *testing.T) {
 
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, "foo()baz", m.content[0])
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "foo(bar)baz", m.content[0])
-	assert.Equal(t, 5, m.cursorCol) // cursor restored
+	require.NoError(t, err)
+	require.Equal(t, "foo(bar)baz", m.content[0])
+	require.Equal(t, 5, m.cursorCol) // cursor restored
 }
 
 func TestDeleteTextObjectCommand_AroundBracket_Undo(t *testing.T) {
@@ -1884,12 +1884,12 @@ func TestDeleteTextObjectCommand_AroundBracket_Undo(t *testing.T) {
 
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: false}
 	cmd.Execute(m)
-	assert.Equal(t, "foobaz", m.content[0])
+	require.Equal(t, "foobaz", m.content[0])
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "foo(bar)baz", m.content[0])
-	assert.Equal(t, 5, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, "foo(bar)baz", m.content[0])
+	require.Equal(t, 5, m.cursorCol)
 }
 
 func TestChangeTextObjectCommand_InnerBracket_Undo_RestoresContentAndMode(t *testing.T) {
@@ -1898,14 +1898,14 @@ func TestChangeTextObjectCommand_InnerBracket_Undo_RestoresContentAndMode(t *tes
 
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: true}
 	cmd.Execute(m)
-	assert.Equal(t, "foo()baz", m.content[0])
-	assert.Equal(t, ModeInsert, m.mode)
+	require.Equal(t, "foo()baz", m.content[0])
+	require.Equal(t, ModeInsert, m.mode)
 
 	err := cmd.Undo(m)
-	assert.NoError(t, err)
-	assert.Equal(t, "foo(bar)baz", m.content[0])
-	assert.Equal(t, ModeNormal, m.mode)
-	assert.Equal(t, 5, m.cursorCol)
+	require.NoError(t, err)
+	require.Equal(t, "foo(bar)baz", m.content[0])
+	require.Equal(t, ModeNormal, m.mode)
+	require.Equal(t, 5, m.cursorCol)
 }
 
 func TestDeleteTextObjectCommand_InnerBracket_Redo(t *testing.T) {
@@ -1918,11 +1918,11 @@ func TestDeleteTextObjectCommand_InnerBracket_Redo(t *testing.T) {
 
 	// Undo
 	cmd.Undo(m)
-	assert.Equal(t, "foo(bar)baz", m.content[0])
+	require.Equal(t, "foo(bar)baz", m.content[0])
 
 	// Redo (re-execute)
 	cmd.Execute(m)
-	assert.Equal(t, executedContent, m.content[0])
+	require.Equal(t, executedContent, m.content[0])
 }
 
 // ============================================================================
@@ -1931,32 +1931,32 @@ func TestDeleteTextObjectCommand_InnerBracket_Redo(t *testing.T) {
 
 func TestDeleteTextObjectCommand_Bracket_Keys(t *testing.T) {
 	cmd := &DeleteTextObjectCommand{object: 'b', inner: true}
-	assert.Equal(t, []string{"dib"}, cmd.Keys())
+	require.Equal(t, []string{"dib"}, cmd.Keys())
 
 	cmd2 := &DeleteTextObjectCommand{object: 'b', inner: false}
-	assert.Equal(t, []string{"dab"}, cmd2.Keys())
+	require.Equal(t, []string{"dab"}, cmd2.Keys())
 }
 
 func TestChangeTextObjectCommand_Bracket_Keys(t *testing.T) {
 	cmd := &ChangeTextObjectCommand{object: 'b', inner: true}
-	assert.Equal(t, []string{"cib"}, cmd.Keys())
+	require.Equal(t, []string{"cib"}, cmd.Keys())
 
 	cmd2 := &ChangeTextObjectCommand{object: 'b', inner: false}
-	assert.Equal(t, []string{"cab"}, cmd2.Keys())
+	require.Equal(t, []string{"cab"}, cmd2.Keys())
 }
 
 func TestYankTextObjectCommand_Bracket_Keys(t *testing.T) {
 	cmd := &YankTextObjectCommand{object: 'b', inner: true}
-	assert.Equal(t, []string{"yib"}, cmd.Keys())
+	require.Equal(t, []string{"yib"}, cmd.Keys())
 
 	cmd2 := &YankTextObjectCommand{object: 'b', inner: false}
-	assert.Equal(t, []string{"yab"}, cmd2.Keys())
+	require.Equal(t, []string{"yab"}, cmd2.Keys())
 }
 
 func TestVisualSelectTextObjectCommand_Bracket_Keys(t *testing.T) {
 	cmd := &VisualSelectTextObjectCommand{object: 'b', inner: true}
-	assert.Equal(t, []string{"vib"}, cmd.Keys())
+	require.Equal(t, []string{"vib"}, cmd.Keys())
 
 	cmd2 := &VisualSelectTextObjectCommand{object: 'b', inner: false}
-	assert.Equal(t, []string{"vab"}, cmd2.Keys())
+	require.Equal(t, []string{"vab"}, cmd2.Keys())
 }

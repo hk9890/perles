@@ -9,13 +9,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewServer(t *testing.T) {
 	s := NewServer("test-server", "1.0.0")
-	if s == nil {
-		t.Fatal("NewServer returned nil")
-	}
+	require.NotNil(t, s, "NewServer returned nil")
 	if s.info.Name != "test-server" {
 		t.Errorf("info.Name = %q, want %q", s.info.Name, "test-server")
 	}
@@ -89,25 +89,17 @@ func TestServerInitialize(t *testing.T) {
 
 	// Parse response
 	respData := output.Bytes()
-	if len(respData) == 0 {
-		t.Fatal("No response received")
-	}
+	require.NotEmpty(t, respData, "No response received")
 
 	var resp Response
-	if err := json.Unmarshal(respData, &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v (data: %s)", err, string(respData))
-	}
+	require.NoError(t, json.Unmarshal(respData, &resp), "Failed to parse response (data: %s)", string(respData))
 
-	if resp.Error != nil {
-		t.Fatalf("Unexpected error: %v", resp.Error)
-	}
+	require.Nil(t, resp.Error, "Unexpected error: %v", resp.Error)
 
 	// Verify the result contains server info
 	resultData, _ := json.Marshal(resp.Result)
 	var initResult InitializeResult
-	if err := json.Unmarshal(resultData, &initResult); err != nil {
-		t.Fatalf("Failed to parse InitializeResult: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(resultData, &initResult), "Failed to parse InitializeResult")
 
 	if initResult.ProtocolVersion != ProtocolVersion {
 		t.Errorf("ProtocolVersion = %q, want %q", initResult.ProtocolVersion, ProtocolVersion)
@@ -163,19 +155,13 @@ func TestServerToolsList(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error != nil {
-		t.Fatalf("Unexpected error: %v", resp.Error)
-	}
+	require.Nil(t, resp.Error, "Unexpected error: %v", resp.Error)
 
 	resultData, _ := json.Marshal(resp.Result)
 	var listResult ToolsListResult
-	if err := json.Unmarshal(resultData, &listResult); err != nil {
-		t.Fatalf("Failed to parse ToolsListResult: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(resultData, &listResult), "Failed to parse ToolsListResult")
 
 	if len(listResult.Tools) != 2 {
 		t.Errorf("Tools length = %d, want 2", len(listResult.Tools))
@@ -229,26 +215,18 @@ func TestServerToolsCall(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error != nil {
-		t.Fatalf("Unexpected error: %v", resp.Error)
-	}
+	require.Nil(t, resp.Error, "Unexpected error: %v", resp.Error)
 
 	resultData, _ := json.Marshal(resp.Result)
 	var callResult ToolCallResult
-	if err := json.Unmarshal(resultData, &callResult); err != nil {
-		t.Fatalf("Failed to parse ToolCallResult: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(resultData, &callResult), "Failed to parse ToolCallResult")
 
 	if callResult.IsError {
 		t.Error("Expected success result")
 	}
-	if len(callResult.Content) != 1 {
-		t.Fatalf("Content length = %d, want 1", len(callResult.Content))
-	}
+	require.Len(t, callResult.Content, 1, "Content length = %d, want 1", len(callResult.Content))
 	if callResult.Content[0].Text != "Echo: hello" {
 		t.Errorf("Content[0].Text = %q, want %q", callResult.Content[0].Text, "Echo: hello")
 	}
@@ -280,13 +258,9 @@ func TestServerToolNotFound(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error == nil {
-		t.Fatal("Expected error for nonexistent tool")
-	}
+	require.NotNil(t, resp.Error, "Expected error for nonexistent tool")
 	if resp.Error.Code != ErrCodeToolNotFound {
 		t.Errorf("Error.Code = %d, want %d", resp.Error.Code, ErrCodeToolNotFound)
 	}
@@ -318,13 +292,9 @@ func TestServerMethodNotFound(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error == nil {
-		t.Fatal("Expected error for unknown method")
-	}
+	require.NotNil(t, resp.Error, "Expected error for unknown method")
 	if resp.Error.Code != ErrCodeMethodNotFound {
 		t.Errorf("Error.Code = %d, want %d", resp.Error.Code, ErrCodeMethodNotFound)
 	}
@@ -393,13 +363,9 @@ func TestServerPing(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error != nil {
-		t.Fatalf("Unexpected error: %v", resp.Error)
-	}
+	require.Nil(t, resp.Error, "Unexpected error: %v", resp.Error)
 	// Ping should return empty object
 	if resp.Result == nil {
 		t.Error("Expected non-nil result for ping")
@@ -448,13 +414,9 @@ func TestServerParseError(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
-	if resp.Error == nil {
-		t.Fatal("Expected parse error")
-	}
+	require.NotNil(t, resp.Error, "Expected parse error")
 	if resp.Error.Code != ErrCodeParseError {
 		t.Errorf("Error.Code = %d, want %d", resp.Error.Code, ErrCodeParseError)
 	}
@@ -494,20 +456,14 @@ func TestServerToolHandlerError(t *testing.T) {
 	}
 
 	var resp Response
-	if err := json.Unmarshal(output.Bytes(), &resp); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(output.Bytes(), &resp), "Failed to parse response")
 
 	// Tool errors are returned as successful responses with isError=true
-	if resp.Error != nil {
-		t.Fatalf("Unexpected RPC error: %v", resp.Error)
-	}
+	require.Nil(t, resp.Error, "Unexpected RPC error: %v", resp.Error)
 
 	resultData, _ := json.Marshal(resp.Result)
 	var callResult ToolCallResult
-	if err := json.Unmarshal(resultData, &callResult); err != nil {
-		t.Fatalf("Failed to parse ToolCallResult: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(resultData, &callResult), "Failed to parse ToolCallResult")
 
 	if !callResult.IsError {
 		t.Error("Expected IsError to be true for tool error")

@@ -509,7 +509,7 @@ func TestWorkerPool_WorkerLifecycle_WithMockProcess(t *testing.T) {
 	case event := <-eventsCh:
 		require.Equal(t, events.WorkerSpawned, event.Payload.Type)
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for spawn event")
+		require.Fail(t, "timeout waiting for spawn event")
 	}
 
 	// Send init event
@@ -524,7 +524,7 @@ func TestWorkerPool_WorkerLifecycle_WithMockProcess(t *testing.T) {
 		require.Equal(t, events.WorkerOutput, event.Payload.Type)
 		require.Equal(t, "Hello!", event.Payload.Output)
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for output event")
+		require.Fail(t, "timeout waiting for output event")
 	}
 
 	// Complete process
@@ -536,7 +536,7 @@ func TestWorkerPool_WorkerLifecycle_WithMockProcess(t *testing.T) {
 		require.Equal(t, events.WorkerStatusChange, event.Payload.Type)
 		require.Equal(t, WorkerReady, event.Payload.Status)
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for status change event")
+		require.Fail(t, "timeout waiting for status change event")
 	}
 
 	// Verify worker is ready
@@ -674,6 +674,6 @@ func TestWorkerPool_EmitIncomingMessage(t *testing.T) {
 		require.Equal(t, "task-1", event.Payload.TaskID)
 		require.Equal(t, "Hello worker", event.Payload.Message)
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for incoming message event")
+		require.Fail(t, "timeout waiting for incoming message event")
 	}
 }

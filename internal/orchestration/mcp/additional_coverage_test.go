@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -268,14 +269,11 @@ func TestQueryWorkerState_WithFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := handler(context.Background(), json.RawMessage(tt.args))
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
+			require.NoError(t, err)
 
 			var response workerStateResponse
-			if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
-				t.Fatalf("Failed to parse response: %v", err)
-			}
+			err = json.Unmarshal([]byte(result.Content[0].Text), &response)
+			require.NoError(t, err, "Failed to parse response")
 
 			if checkErr := tt.checkFunc(response); checkErr != nil {
 				t.Error(checkErr)
@@ -315,9 +313,7 @@ func TestListWorkers_AllPhases(t *testing.T) {
 
 	handler := cs.handlers["list_workers"]
 	result, err := handler(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	type workerInfo struct {
 		WorkerID string `json:"worker_id"`
@@ -325,9 +321,8 @@ func TestListWorkers_AllPhases(t *testing.T) {
 		Role     string `json:"role,omitempty"`
 	}
 	var infos []workerInfo
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &infos); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	err = json.Unmarshal([]byte(result.Content[0].Text), &infos)
+	require.NoError(t, err, "Failed to parse response")
 
 	if len(infos) != len(phases) {
 		t.Errorf("Expected %d workers, got %d", len(phases), len(infos))
@@ -389,14 +384,11 @@ func TestReadMessageLog_WithMessages(t *testing.T) {
 	handler := cs.handlers["read_message_log"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Should contain all messages
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content, "Expected result with content")
 	text := result.Content[0].Text
 	if len(text) < 10 {
 		t.Error("Expected message log content")
@@ -420,13 +412,10 @@ func TestReadMessageLog_WithLimit(t *testing.T) {
 
 	// Request only last 3 messages
 	result, err := handler(context.Background(), json.RawMessage(`{"limit": 3}`))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if result == nil || len(result.Content) == 0 {
-		t.Fatal("Expected result with content")
-	}
+	require.NotNil(t, result)
+	require.NotEmpty(t, result.Content, "Expected result with content")
 }
 
 // TestPrepareHandoff_WithLongSummary tests prepare_handoff with a long summary.
@@ -447,9 +436,7 @@ func TestPrepareHandoff_WithLongSummary(t *testing.T) {
 
 	args := `{"summary": "` + summary + `"}`
 	result, err := handler(context.Background(), json.RawMessage(args))
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	if result.Content[0].Text != "Handoff message posted. Refresh will proceed." {
 		t.Errorf("Unexpected result: %s", result.Content[0].Text)

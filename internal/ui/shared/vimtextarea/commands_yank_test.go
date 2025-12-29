@@ -3,7 +3,7 @@ package vimtextarea
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ============================================================================
@@ -17,9 +17,9 @@ func TestYankLineCommand_Execute(t *testing.T) {
 	cmd := &YankLineCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello world", m.lastYankedText)
-	assert.True(t, m.lastYankWasLinewise, "yy should set lastYankWasLinewise = true")
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello world", m.lastYankedText)
+	require.True(t, m.lastYankWasLinewise, "yy should set lastYankWasLinewise = true")
 }
 
 // TestYankLineCommand_SetsLinewiseTrue verifies lastYankWasLinewise is true
@@ -30,7 +30,7 @@ func TestYankLineCommand_SetsLinewiseTrue(t *testing.T) {
 	cmd := &YankLineCommand{}
 	cmd.Execute(m)
 
-	assert.True(t, m.lastYankWasLinewise)
+	require.True(t, m.lastYankWasLinewise)
 }
 
 // TestYankLineCommand_EmptyLine tests yanking an empty line
@@ -40,9 +40,9 @@ func TestYankLineCommand_EmptyLine(t *testing.T) {
 	cmd := &YankLineCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.lastYankedText)
-	assert.True(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.lastYankedText)
+	require.True(t, m.lastYankWasLinewise)
 }
 
 // TestYankLineCommand_CursorUnchanged tests that cursor doesn't move after yy
@@ -54,8 +54,8 @@ func TestYankLineCommand_CursorUnchanged(t *testing.T) {
 	cmd := &YankLineCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 0, m.cursorRow, "cursor row should not change")
-	assert.Equal(t, 5, m.cursorCol, "cursor col should not change")
+	require.Equal(t, 0, m.cursorRow, "cursor row should not change")
+	require.Equal(t, 5, m.cursorCol, "cursor col should not change")
 }
 
 // TestYankLineCommand_MultiLine tests yanking from middle of multi-line content
@@ -66,37 +66,37 @@ func TestYankLineCommand_MultiLine(t *testing.T) {
 	cmd := &YankLineCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, "line2", m.lastYankedText)
+	require.Equal(t, "line2", m.lastYankedText)
 }
 
 // TestYankLineCommand_Keys tests command keys
 func TestYankLineCommand_Keys(t *testing.T) {
 	cmd := &YankLineCommand{}
-	assert.Equal(t, []string{"yy"}, cmd.Keys())
+	require.Equal(t, []string{"yy"}, cmd.Keys())
 }
 
 // TestYankLineCommand_Mode tests command mode
 func TestYankLineCommand_Mode(t *testing.T) {
 	cmd := &YankLineCommand{}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 // TestYankLineCommand_ID tests command ID
 func TestYankLineCommand_ID(t *testing.T) {
 	cmd := &YankLineCommand{}
-	assert.Equal(t, "yank.line", cmd.ID())
+	require.Equal(t, "yank.line", cmd.ID())
 }
 
 // TestYankLineCommand_IsUndoable tests yank is not undoable
 func TestYankLineCommand_IsUndoable(t *testing.T) {
 	cmd := &YankLineCommand{}
-	assert.False(t, cmd.IsUndoable(), "yank should not be undoable")
+	require.False(t, cmd.IsUndoable(), "yank should not be undoable")
 }
 
 // TestYankLineCommand_ChangesContent tests yank doesn't change content
 func TestYankLineCommand_ChangesContent(t *testing.T) {
 	cmd := &YankLineCommand{}
-	assert.False(t, cmd.ChangesContent(), "yank should not change content")
+	require.False(t, cmd.ChangesContent(), "yank should not change content")
 }
 
 // ============================================================================
@@ -111,9 +111,9 @@ func TestYankWordCommand_Execute(t *testing.T) {
 	cmd := &YankWordCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "hello ", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise, "yw should set lastYankWasLinewise = false")
+	require.Equal(t, Executed, result)
+	require.Equal(t, "hello ", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise, "yw should set lastYankWasLinewise = false")
 }
 
 // TestYankWordCommand_SetsLinewiseFalse verifies lastYankWasLinewise is false
@@ -124,7 +124,7 @@ func TestYankWordCommand_SetsLinewiseFalse(t *testing.T) {
 	cmd := &YankWordCommand{}
 	cmd.Execute(m)
 
-	assert.False(t, m.lastYankWasLinewise)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 // TestYankWordCommand_AtEndOfLine tests yw at end of line yanks remaining characters
@@ -135,8 +135,8 @@ func TestYankWordCommand_AtEndOfLine(t *testing.T) {
 	cmd := &YankWordCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "world", m.lastYankedText) // Should yank to end of line
+	require.Equal(t, Executed, result)
+	require.Equal(t, "world", m.lastYankedText) // Should yank to end of line
 }
 
 // TestYankWordCommand_MiddleOfWord tests yw from middle of word
@@ -147,7 +147,7 @@ func TestYankWordCommand_MiddleOfWord(t *testing.T) {
 	cmd := &YankWordCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, "llo ", m.lastYankedText) // Should yank from 'l' to start of next word
+	require.Equal(t, "llo ", m.lastYankedText) // Should yank from 'l' to start of next word
 }
 
 // TestYankWordCommand_EmptyLine tests yw on empty line
@@ -157,9 +157,9 @@ func TestYankWordCommand_EmptyLine(t *testing.T) {
 	cmd := &YankWordCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 // TestYankWordCommand_CursorAtEOL tests yw when cursor is past end of line
@@ -170,8 +170,8 @@ func TestYankWordCommand_CursorAtEOL(t *testing.T) {
 	cmd := &YankWordCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.lastYankedText)
 }
 
 // TestYankWordCommand_CursorUnchanged tests cursor doesn't move after yw
@@ -183,8 +183,8 @@ func TestYankWordCommand_CursorUnchanged(t *testing.T) {
 	cmd := &YankWordCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 0, m.cursorRow, "cursor row should not change")
-	assert.Equal(t, 3, m.cursorCol, "cursor col should not change")
+	require.Equal(t, 0, m.cursorRow, "cursor row should not change")
+	require.Equal(t, 3, m.cursorCol, "cursor col should not change")
 }
 
 // TestYankWordCommand_LastWord tests yanking the last word on line
@@ -196,25 +196,25 @@ func TestYankWordCommand_LastWord(t *testing.T) {
 	cmd.Execute(m)
 
 	// Last word should yank to end of line
-	assert.Equal(t, "world", m.lastYankedText)
+	require.Equal(t, "world", m.lastYankedText)
 }
 
 // TestYankWordCommand_Keys tests command keys
 func TestYankWordCommand_Keys(t *testing.T) {
 	cmd := &YankWordCommand{}
-	assert.Equal(t, []string{"yw"}, cmd.Keys())
+	require.Equal(t, []string{"yw"}, cmd.Keys())
 }
 
 // TestYankWordCommand_Mode tests command mode
 func TestYankWordCommand_Mode(t *testing.T) {
 	cmd := &YankWordCommand{}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 // TestYankWordCommand_ID tests command ID
 func TestYankWordCommand_ID(t *testing.T) {
 	cmd := &YankWordCommand{}
-	assert.Equal(t, "yank.word", cmd.ID())
+	require.Equal(t, "yank.word", cmd.ID())
 }
 
 // ============================================================================
@@ -229,9 +229,9 @@ func TestYankToEOLCommand_Execute(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "world", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise, "y$ should set lastYankWasLinewise = false")
+	require.Equal(t, Executed, result)
+	require.Equal(t, "world", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise, "y$ should set lastYankWasLinewise = false")
 }
 
 // TestYankToEOLCommand_SetsLinewiseFalse verifies lastYankWasLinewise is false
@@ -242,7 +242,7 @@ func TestYankToEOLCommand_SetsLinewiseFalse(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	cmd.Execute(m)
 
-	assert.False(t, m.lastYankWasLinewise)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 // TestYankToEOLCommand_FromStart tests y$ from start of line
@@ -253,7 +253,7 @@ func TestYankToEOLCommand_FromStart(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, "hello world", m.lastYankedText)
+	require.Equal(t, "hello world", m.lastYankedText)
 }
 
 // TestYankToEOLCommand_AtEOL tests y$ when cursor is at/past end of line
@@ -264,8 +264,8 @@ func TestYankToEOLCommand_AtEOL(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.lastYankedText)
 }
 
 // TestYankToEOLCommand_EmptyLine tests y$ on empty line
@@ -275,8 +275,8 @@ func TestYankToEOLCommand_EmptyLine(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "", m.lastYankedText)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "", m.lastYankedText)
 }
 
 // TestYankToEOLCommand_CursorUnchanged tests cursor doesn't move after y$
@@ -288,8 +288,8 @@ func TestYankToEOLCommand_CursorUnchanged(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	cmd.Execute(m)
 
-	assert.Equal(t, 0, m.cursorRow, "cursor row should not change")
-	assert.Equal(t, 3, m.cursorCol, "cursor col should not change")
+	require.Equal(t, 0, m.cursorRow, "cursor row should not change")
+	require.Equal(t, 3, m.cursorCol, "cursor col should not change")
 }
 
 // TestYankToEOLCommand_Keys tests command keys (y$ and Y alias)
@@ -297,20 +297,20 @@ func TestYankToEOLCommand_Keys(t *testing.T) {
 	cmd := &YankToEOLCommand{}
 	// This command has both y$ and Y as keys (Y is alias for y$)
 	keys := cmd.Keys()
-	assert.Contains(t, keys, "y$")
-	assert.Contains(t, keys, "Y")
+	require.Contains(t, keys, "y$")
+	require.Contains(t, keys, "Y")
 }
 
 // TestYankToEOLCommand_Mode tests command mode
 func TestYankToEOLCommand_Mode(t *testing.T) {
 	cmd := &YankToEOLCommand{}
-	assert.Equal(t, ModeNormal, cmd.Mode())
+	require.Equal(t, ModeNormal, cmd.Mode())
 }
 
 // TestYankToEOLCommand_ID tests command ID
 func TestYankToEOLCommand_ID(t *testing.T) {
 	cmd := &YankToEOLCommand{}
-	assert.Equal(t, "yank.to_eol", cmd.ID())
+	require.Equal(t, "yank.to_eol", cmd.ID())
 }
 
 // ============================================================================
@@ -324,13 +324,13 @@ func TestYCommand_WorksAsAliasForY(t *testing.T) {
 
 	// Y is registered as YankToEOLCommand
 	cmd, ok := DefaultRegistry.Get(ModeNormal, "Y")
-	assert.True(t, ok, "Y command should be registered")
-	assert.NotNil(t, cmd)
+	require.True(t, ok, "Y command should be registered")
+	require.NotNil(t, cmd)
 
 	result := cmd.Execute(m)
-	assert.Equal(t, Executed, result)
-	assert.Equal(t, "world", m.lastYankedText)
-	assert.False(t, m.lastYankWasLinewise)
+	require.Equal(t, Executed, result)
+	require.Equal(t, "world", m.lastYankedText)
+	require.False(t, m.lastYankWasLinewise)
 }
 
 // ============================================================================
@@ -341,34 +341,34 @@ func TestYCommand_WorksAsAliasForY(t *testing.T) {
 func TestDefaultPendingRegistry_HasYankCommands(t *testing.T) {
 	// yy should be registered
 	cmd, ok := DefaultPendingRegistry.Get('y', "y")
-	assert.True(t, ok, "yy should be registered")
-	assert.Equal(t, "yank.line", cmd.ID())
+	require.True(t, ok, "yy should be registered")
+	require.Equal(t, "yank.line", cmd.ID())
 
 	// yw should be registered
 	cmd, ok = DefaultPendingRegistry.Get('y', "w")
-	assert.True(t, ok, "yw should be registered")
-	assert.Equal(t, "yank.word", cmd.ID())
+	require.True(t, ok, "yw should be registered")
+	require.Equal(t, "yank.word", cmd.ID())
 
 	// y$ should be registered
 	cmd, ok = DefaultPendingRegistry.Get('y', "$")
-	assert.True(t, ok, "y$ should be registered")
-	assert.Equal(t, "yank.to_eol", cmd.ID())
+	require.True(t, ok, "y$ should be registered")
+	require.Equal(t, "yank.to_eol", cmd.ID())
 }
 
 // TestDefaultRegistry_HasYPendingOperator verifies y operator is registered
 func TestDefaultRegistry_HasYPendingOperator(t *testing.T) {
 	cmd, ok := DefaultRegistry.Get(ModeNormal, "y")
-	assert.True(t, ok, "y operator should be registered as pending command")
-	assert.NotNil(t, cmd)
-	assert.Equal(t, "pending.y", cmd.ID())
+	require.True(t, ok, "y operator should be registered as pending command")
+	require.NotNil(t, cmd)
+	require.Equal(t, "pending.y", cmd.ID())
 }
 
 // TestDefaultRegistry_HasYAlias verifies Y (alias for y$) is registered
 func TestDefaultRegistry_HasYAlias(t *testing.T) {
 	cmd, ok := DefaultRegistry.Get(ModeNormal, "Y")
-	assert.True(t, ok, "Y command should be registered")
-	assert.NotNil(t, cmd)
-	assert.Equal(t, "yank.to_eol", cmd.ID())
+	require.True(t, ok, "Y command should be registered")
+	require.NotNil(t, cmd)
+	require.Equal(t, "yank.to_eol", cmd.ID())
 }
 
 // ============================================================================
@@ -400,7 +400,7 @@ func TestYankCommands_ContentUnchanged(t *testing.T) {
 
 			tt.cmd.Execute(m)
 
-			assert.Equal(t, tt.content, m.content, "content should not be modified")
+			require.Equal(t, tt.content, m.content, "content should not be modified")
 		})
 	}
 }

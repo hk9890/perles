@@ -3,7 +3,7 @@ package vimtextarea
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestPasteAfterCommand_Emoji tests pasting emoji does not corrupt UTF-8
@@ -16,10 +16,10 @@ func TestPasteAfterCommand_Emoji(t *testing.T) {
 	cmd := &PasteAfterCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 	// Should paste emoji without corruption
-	assert.Equal(t, "i know wat 😀", m.content[0], "emoji should paste without UTF-8 corruption")
-	assert.Equal(t, 11, m.cursorCol, "cursor should be on the pasted emoji (grapheme index 11)")
+	require.Equal(t, "i know wat 😀", m.content[0], "emoji should paste without UTF-8 corruption")
+	require.Equal(t, 11, m.cursorCol, "cursor should be on the pasted emoji (grapheme index 11)")
 }
 
 // TestPasteBeforeCommand_Emoji tests pasting emoji before cursor
@@ -32,8 +32,8 @@ func TestPasteBeforeCommand_Emoji(t *testing.T) {
 	cmd := &PasteBeforeCommand{}
 	result := cmd.Execute(m)
 
-	assert.Equal(t, Executed, result)
+	require.Equal(t, Executed, result)
 	// Should paste emoji without corruption
-	assert.Equal(t, "i know wat 😀", m.content[0], "emoji should paste without UTF-8 corruption")
-	assert.Equal(t, 11, m.cursorCol, "cursor should be on the pasted emoji")
+	require.Equal(t, "i know wat 😀", m.content[0], "emoji should paste without UTF-8 corruption")
+	require.Equal(t, 11, m.cursorCol, "cursor should be on the pasted emoji")
 }

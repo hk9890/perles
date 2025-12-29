@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/orchestration/claude"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
@@ -64,9 +65,7 @@ func TestIntegration_FullTaskLifecycle(t *testing.T) {
 
 	handler := ws.handlers["report_implementation_complete"]
 	_, err := handler(context.Background(), json.RawMessage(`{"summary": "Implemented feature X"}`))
-	if err != nil {
-		t.Fatalf("report_implementation_complete failed: %v", err)
-	}
+	require.NoError(t, err, "report_implementation_complete failed")
 
 	// Verify transition to awaiting review
 	cs.assignmentsMu.RLock()
@@ -96,9 +95,7 @@ func TestIntegration_FullTaskLifecycle(t *testing.T) {
 
 	reviewHandler := reviewerWs.handlers["report_review_verdict"]
 	_, err = reviewHandler(context.Background(), json.RawMessage(`{"verdict": "APPROVED", "comments": "LGTM"}`))
-	if err != nil {
-		t.Fatalf("report_review_verdict failed: %v", err)
-	}
+	require.NoError(t, err, "report_review_verdict failed")
 
 	// Verify reviewer back to idle
 	cs.assignmentsMu.RLock()
@@ -185,9 +182,7 @@ func TestIntegration_DenialCycle(t *testing.T) {
 
 	reviewHandler := reviewerWs.handlers["report_review_verdict"]
 	_, err := reviewHandler(context.Background(), json.RawMessage(`{"verdict": "DENIED", "comments": "Missing error handling"}`))
-	if err != nil {
-		t.Fatalf("report_review_verdict failed: %v", err)
-	}
+	require.NoError(t, err, "report_review_verdict failed")
 
 	// Verify task status is denied and implementer gets feedback assignment
 	cs.assignmentsMu.RLock()
@@ -209,9 +204,7 @@ func TestIntegration_DenialCycle(t *testing.T) {
 
 	implHandler := implementerWs.handlers["report_implementation_complete"]
 	_, err = implHandler(context.Background(), json.RawMessage(`{"summary": "Fixed error handling"}`))
-	if err != nil {
-		t.Fatalf("report_implementation_complete after feedback failed: %v", err)
-	}
+	require.NoError(t, err, "report_implementation_complete after feedback failed")
 
 	// Verify back to awaiting review
 	cs.assignmentsMu.RLock()
@@ -314,14 +307,11 @@ func TestIntegration_MultipleWorkersMultipleTasks(t *testing.T) {
 	// Query state - should show both workers with tasks
 	handler := cs.handlers["query_worker_state"]
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("query_worker_state failed: %v", err)
-	}
+	require.NoError(t, err, "query_worker_state failed")
 
 	var response workerStateResponse
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
+	err = json.Unmarshal([]byte(result.Content[0].Text), &response)
+	require.NoError(t, err, "Failed to parse response")
 
 	// Count workers in implementing phase
 	implementingCount := 0
@@ -471,14 +461,10 @@ func TestIntegration_MessageFlow(t *testing.T) {
 
 	readyHandler := ws.handlers["signal_ready"]
 	_, err := readyHandler(context.Background(), json.RawMessage(`{}`))
-	if err != nil {
-		t.Fatalf("signal_ready failed: %v", err)
-	}
+	require.NoError(t, err, "signal_ready failed")
 
 	// Verify ready message was posted
-	if len(workerStore.appendCalls) != 1 {
-		t.Fatalf("Expected 1 message, got %d", len(workerStore.appendCalls))
-	}
+	require.Len(t, workerStore.appendCalls, 1)
 	if workerStore.appendCalls[0].Type != message.MessageWorkerReady {
 		t.Errorf("Expected message type %v, got %v", message.MessageWorkerReady, workerStore.appendCalls[0].Type)
 	}
@@ -486,13 +472,9 @@ func TestIntegration_MessageFlow(t *testing.T) {
 	// Worker posts status update
 	postHandler := ws.handlers["post_message"]
 	_, err = postHandler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Task 50% complete"}`))
-	if err != nil {
-		t.Fatalf("post_message failed: %v", err)
-	}
+	require.NoError(t, err, "post_message failed")
 
-	if len(workerStore.appendCalls) != 2 {
-		t.Fatalf("Expected 2 messages, got %d", len(workerStore.appendCalls))
-	}
+	require.Len(t, workerStore.appendCalls, 2)
 }
 
 // TestIntegration_ValidateAssignmentConstraints tests that all assignment constraints are enforced.

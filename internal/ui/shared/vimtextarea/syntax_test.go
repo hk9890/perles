@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,8 +36,8 @@ func TestMockLexer_ReturnsConfiguredTokens(t *testing.T) {
 	result := lexer.Tokenize("hello")
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 0, result[0].Start)
-	assert.Equal(t, 5, result[0].End)
+	require.Equal(t, 0, result[0].Start)
+	require.Equal(t, 5, result[0].End)
 }
 
 // ============================================================================
@@ -57,9 +56,9 @@ func TestSyntaxToken_FieldsAccessible(t *testing.T) {
 	}
 
 	// Verify all fields are correctly set and accessible
-	assert.Equal(t, 10, token.Start)
-	assert.Equal(t, 20, token.End)
-	assert.NotEmpty(t, token.Style.Render("test"))
+	require.Equal(t, 10, token.Start)
+	require.Equal(t, 20, token.End)
+	require.NotEmpty(t, token.Style.Render("test"))
 }
 
 func TestSyntaxToken_StartEndByteOffsets(t *testing.T) {
@@ -73,7 +72,7 @@ func TestSyntaxToken_StartEndByteOffsets(t *testing.T) {
 
 	// Token should extract "hello" using Go slice semantics
 	extracted := line[token.Start:token.End]
-	assert.Equal(t, "hello", extracted)
+	require.Equal(t, "hello", extracted)
 }
 
 // ============================================================================
@@ -86,8 +85,8 @@ func TestSyntaxLexer_EmptySliceReturn(t *testing.T) {
 
 	result := lexer.Tokenize("no highlighting")
 
-	assert.Empty(t, result)
-	assert.Len(t, result, 0)
+	require.Empty(t, result)
+	require.Len(t, result, 0)
 }
 
 func TestSyntaxLexer_NilSliceReturn(t *testing.T) {
@@ -96,7 +95,7 @@ func TestSyntaxLexer_NilSliceReturn(t *testing.T) {
 
 	result := lexer.Tokenize("also no highlighting")
 
-	assert.Nil(t, result)
+	require.Nil(t, result)
 }
 
 func TestSyntaxLexer_SingleTokenEntireLine(t *testing.T) {
@@ -111,10 +110,10 @@ func TestSyntaxLexer_SingleTokenEntireLine(t *testing.T) {
 	result := lexer.Tokenize(line)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 0, result[0].Start)
-	assert.Equal(t, 7, result[0].End) // "keyword" is 7 bytes
+	require.Equal(t, 0, result[0].Start)
+	require.Equal(t, 7, result[0].End) // "keyword" is 7 bytes
 	// Verify the token covers the entire line
-	assert.Equal(t, line, line[result[0].Start:result[0].End])
+	require.Equal(t, line, line[result[0].Start:result[0].End])
 }
 
 func TestSyntaxLexer_MultipleTokensWithGaps(t *testing.T) {
@@ -139,17 +138,17 @@ func TestSyntaxLexer_MultipleTokensWithGaps(t *testing.T) {
 	require.Len(t, result, 2)
 
 	// First token: "status"
-	assert.Equal(t, 0, result[0].Start)
-	assert.Equal(t, 6, result[0].End)
-	assert.Equal(t, "status", line[result[0].Start:result[0].End])
+	require.Equal(t, 0, result[0].Start)
+	require.Equal(t, 6, result[0].End)
+	require.Equal(t, "status", line[result[0].Start:result[0].End])
 
 	// Second token: "="
-	assert.Equal(t, 7, result[1].Start)
-	assert.Equal(t, 8, result[1].End)
-	assert.Equal(t, "=", line[result[1].Start:result[1].End])
+	require.Equal(t, 7, result[1].Start)
+	require.Equal(t, 8, result[1].End)
+	require.Equal(t, "=", line[result[1].Start:result[1].End])
 
 	// Verify tokens are sorted by Start (ascending)
-	assert.Less(t, result[0].Start, result[1].Start)
+	require.Less(t, result[0].Start, result[1].Start)
 }
 
 // ============================================================================
@@ -162,7 +161,7 @@ func TestModel_SetLexer_StoresLexerCorrectly(t *testing.T) {
 
 	m.SetLexer(lexer)
 
-	assert.Same(t, lexer, m.Lexer())
+	require.Same(t, lexer, m.Lexer())
 }
 
 func TestModel_Lexer_ReturnsConfiguredLexer(t *testing.T) {
@@ -179,8 +178,8 @@ func TestModel_Lexer_ReturnsConfiguredLexer(t *testing.T) {
 	// Verify the lexer works correctly
 	returnedTokens := result.Tokenize("hello")
 	require.Len(t, returnedTokens, 1)
-	assert.Equal(t, 0, returnedTokens[0].Start)
-	assert.Equal(t, 5, returnedTokens[0].End)
+	require.Equal(t, 0, returnedTokens[0].Start)
+	require.Equal(t, 5, returnedTokens[0].End)
 }
 
 func TestModel_SetLexerNil_DisablesHighlighting(t *testing.T) {
@@ -195,14 +194,14 @@ func TestModel_SetLexerNil_DisablesHighlighting(t *testing.T) {
 	// Disable by setting nil
 	m.SetLexer(nil)
 
-	assert.Nil(t, m.Lexer())
+	require.Nil(t, m.Lexer())
 }
 
 func TestModel_DefaultLexerIsNil(t *testing.T) {
 	// New Model instances should have nil lexer by default (no highlighting)
 	m := New(Config{})
 
-	assert.Nil(t, m.Lexer())
+	require.Nil(t, m.Lexer())
 }
 
 // ============================================================================
@@ -214,7 +213,7 @@ func TestMapTokensToSegment_EmptyTokens_ReturnsNil(t *testing.T) {
 
 	result := m.mapTokensToSegment([]SyntaxToken{}, 0, 10)
 
-	assert.Nil(t, result)
+	require.Nil(t, result)
 }
 
 func TestMapTokensToSegment_ZeroSegmentLen_ReturnsNil(t *testing.T) {
@@ -224,7 +223,7 @@ func TestMapTokensToSegment_ZeroSegmentLen_ReturnsNil(t *testing.T) {
 
 	result := m.mapTokensToSegment(tokens, 0, 0)
 
-	assert.Nil(t, result)
+	require.Nil(t, result)
 }
 
 func TestMapTokensToSegment_TokenFullyInSegment_MapsCorrectly(t *testing.T) {
@@ -238,8 +237,8 @@ func TestMapTokensToSegment_TokenFullyInSegment_MapsCorrectly(t *testing.T) {
 	result := m.mapTokensToSegment(tokens, 0, 10)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 0, result[0].Start)
-	assert.Equal(t, 5, result[0].End)
+	require.Equal(t, 0, result[0].Start)
+	require.Equal(t, 5, result[0].End)
 }
 
 func TestMapTokensToSegment_TokenPartiallyInSegment_ClampsBounds(t *testing.T) {
@@ -253,8 +252,8 @@ func TestMapTokensToSegment_TokenPartiallyInSegment_ClampsBounds(t *testing.T) {
 	result := m.mapTokensToSegment(tokens, 0, 10)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 5, result[0].Start) // Token starts at 5 in first segment
-	assert.Equal(t, 10, result[0].End)  // Clamped to segment end
+	require.Equal(t, 5, result[0].Start) // Token starts at 5 in first segment
+	require.Equal(t, 10, result[0].End)  // Clamped to segment end
 }
 
 func TestMapTokensToSegment_TokenInSecondSegment_MapsCorrectly(t *testing.T) {
@@ -268,8 +267,8 @@ func TestMapTokensToSegment_TokenInSecondSegment_MapsCorrectly(t *testing.T) {
 	result := m.mapTokensToSegment(tokens, 10, 10)
 
 	require.Len(t, result, 1)
-	assert.Equal(t, 5, result[0].Start) // 15-10=5 in segment coords
-	assert.Equal(t, 10, result[0].End)  // 20-10=10, clamped to segment len
+	require.Equal(t, 5, result[0].Start) // 15-10=5 in segment coords
+	require.Equal(t, 10, result[0].End)  // 20-10=10, clamped to segment len
 }
 
 func TestMapTokensToSegment_TokenBeforeSegment_Skipped(t *testing.T) {
@@ -282,7 +281,7 @@ func TestMapTokensToSegment_TokenBeforeSegment_Skipped(t *testing.T) {
 	// Second segment: columns 10-20 (token is before this segment)
 	result := m.mapTokensToSegment(tokens, 10, 10)
 
-	assert.Nil(t, result)
+	require.Nil(t, result)
 }
 
 func TestMapTokensToSegment_TokenAfterSegment_Skipped(t *testing.T) {
@@ -295,7 +294,7 @@ func TestMapTokensToSegment_TokenAfterSegment_Skipped(t *testing.T) {
 	// First segment: columns 0-10 (token is after this segment)
 	result := m.mapTokensToSegment(tokens, 0, 10)
 
-	assert.Nil(t, result)
+	require.Nil(t, result)
 }
 
 func TestMapTokensToSegment_TokenSpansWrapBoundary_SplitAcrossSegments(t *testing.T) {
@@ -308,14 +307,14 @@ func TestMapTokensToSegment_TokenSpansWrapBoundary_SplitAcrossSegments(t *testin
 	// First segment: columns 0-10
 	result1 := m.mapTokensToSegment(tokens, 0, 10)
 	require.Len(t, result1, 1)
-	assert.Equal(t, 5, result1[0].Start) // Token starts at 5
-	assert.Equal(t, 10, result1[0].End)  // Clamped to segment end
+	require.Equal(t, 5, result1[0].Start) // Token starts at 5
+	require.Equal(t, 10, result1[0].End)  // Clamped to segment end
 
 	// Second segment: columns 10-20
 	result2 := m.mapTokensToSegment(tokens, 10, 10)
 	require.Len(t, result2, 1)
-	assert.Equal(t, 0, result2[0].Start) // Token continues from segment start
-	assert.Equal(t, 5, result2[0].End)   // Token ends at 15, mapped to 15-10=5
+	require.Equal(t, 0, result2[0].Start) // Token continues from segment start
+	require.Equal(t, 5, result2[0].End)   // Token ends at 15, mapped to 15-10=5
 }
 
 // ============================================================================
@@ -329,7 +328,7 @@ func TestApplySyntaxToSegment_NilLexer_ReturnsUnchanged(t *testing.T) {
 
 	result := m.applySyntaxToSegment("hello worl", 0, 0, 0)
 
-	assert.Equal(t, "hello worl", result)
+	require.Equal(t, "hello worl", result)
 }
 
 func TestApplySyntaxToSegment_EmptySegment_ReturnsEmpty(t *testing.T) {
@@ -342,7 +341,7 @@ func TestApplySyntaxToSegment_EmptySegment_ReturnsEmpty(t *testing.T) {
 
 	result := m.applySyntaxToSegment("", 0, 0, 0)
 
-	assert.Equal(t, "", result)
+	require.Equal(t, "", result)
 }
 
 func TestApplySyntaxToSegment_WithTokens_AppliesStyles(t *testing.T) {
@@ -357,9 +356,9 @@ func TestApplySyntaxToSegment_WithTokens_AppliesStyles(t *testing.T) {
 	result := m.applySyntaxToSegment("hello world", 0, 0, 0)
 
 	// Should contain ANSI escape sequences
-	assert.Contains(t, result, "\x1b[")
-	assert.Contains(t, result, "hello")
-	assert.Contains(t, result, "world")
+	require.Contains(t, result, "\x1b[")
+	require.Contains(t, result, "hello")
+	require.Contains(t, result, "world")
 }
 
 // ============================================================================
@@ -375,8 +374,8 @@ func TestRenderLineWithSyntaxAndCursor_NilLexer_UsesSimpleRendering(t *testing.T
 	result := m.renderLineWithSyntaxAndCursor("hello", 0, 0, 0)
 
 	// Should have cursor at first position (reverse video)
-	assert.Contains(t, result, cursorOn)
-	assert.Contains(t, result, cursorOff)
+	require.Contains(t, result, cursorOn)
+	require.Contains(t, result, cursorOff)
 }
 
 func TestRenderLineWithSyntaxAndCursor_WithLexer_AppliesBothSyntaxAndCursor(t *testing.T) {
@@ -393,10 +392,10 @@ func TestRenderLineWithSyntaxAndCursor_WithLexer_AppliesBothSyntaxAndCursor(t *t
 	result := m.renderLineWithSyntaxAndCursor("hello world", 0, 0, 6)
 
 	// Should have both cursor and syntax highlighting
-	assert.Contains(t, result, cursorOn)
-	assert.Contains(t, result, cursorOff)
+	require.Contains(t, result, cursorOn)
+	require.Contains(t, result, cursorOff)
 	// Should have ANSI codes for syntax highlighting
-	assert.Contains(t, result, "\x1b[")
+	require.Contains(t, result, "\x1b[")
 }
 
 func TestRenderLineWithSyntaxAndCursor_CursorAtEnd_ShowsBlockCursor(t *testing.T) {
@@ -412,7 +411,7 @@ func TestRenderLineWithSyntaxAndCursor_CursorAtEnd_ShowsBlockCursor(t *testing.T
 	result := m.renderLineWithSyntaxAndCursor("hello", 0, 0, 5)
 
 	// Should have cursor block at end
-	assert.Contains(t, result, cursorOn+" "+cursorOff)
+	require.Contains(t, result, cursorOn+" "+cursorOff)
 }
 
 func TestRenderLineWithSyntaxAndCursor_EmptyLine_ShowsCursorBlock(t *testing.T) {
@@ -426,7 +425,7 @@ func TestRenderLineWithSyntaxAndCursor_EmptyLine_ShowsCursorBlock(t *testing.T) 
 	result := m.renderLineWithSyntaxAndCursor("", 0, 0, 0)
 
 	// Should show cursor block for empty line
-	assert.Equal(t, cursorOn+" "+cursorOff, result)
+	require.Equal(t, cursorOn+" "+cursorOff, result)
 }
 
 // ============================================================================
@@ -454,8 +453,8 @@ func TestRenderWithSelection_SyntaxAppliedOutsideSelection(t *testing.T) {
 	result := m.renderWrappedLineWithSelection("hello world test", 0, 0, 10, true, 0)
 
 	// Should contain selection markers
-	assert.Contains(t, result, selectionOn)
-	assert.Contains(t, result, selectionOff)
+	require.Contains(t, result, selectionOn)
+	require.Contains(t, result, selectionOff)
 	// Should contain syntax highlighting (outside selection)
-	assert.Contains(t, result, "\x1b[")
+	require.Contains(t, result, "\x1b[")
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,7 +31,7 @@ func TestView_EmptyContent_NotFocused(t *testing.T) {
 	view := m.View()
 
 	// Should show empty content (no cursor, no mode indicator - mode is client's responsibility)
-	assert.Empty(t, view)
+	require.Empty(t, view)
 }
 
 func TestView_EmptyContent_Focused(t *testing.T) {
@@ -41,8 +40,8 @@ func TestView_EmptyContent_Focused(t *testing.T) {
 	view := m.View()
 
 	// Should show cursor (mode indicator is client's responsibility)
-	assert.Contains(t, view, cursorOn)
-	assert.Contains(t, view, cursorOff)
+	require.Contains(t, view, cursorOn)
+	require.Contains(t, view, cursorOff)
 }
 
 func TestView_WithContent_NotFocused(t *testing.T) {
@@ -51,9 +50,9 @@ func TestView_WithContent_NotFocused(t *testing.T) {
 	view := m.View()
 
 	// Should show content (mode indicator is client's responsibility)
-	assert.Contains(t, view, "hello world")
+	require.Contains(t, view, "hello world")
 	// Should NOT show cursor when not focused
-	assert.NotContains(t, view, cursorOn)
+	require.NotContains(t, view, cursorOn)
 }
 
 func TestView_WithContent_Focused(t *testing.T) {
@@ -63,7 +62,7 @@ func TestView_WithContent_Focused(t *testing.T) {
 	view := m.View()
 
 	// Should show content with cursor (mode indicator is client's responsibility)
-	assert.Contains(t, view, cursorOn)
+	require.Contains(t, view, cursorOn)
 }
 
 // ============================================================================
@@ -79,7 +78,7 @@ func TestView_CursorAtStart(t *testing.T) {
 
 	// Cursor should be on 'h'
 	// Expected: [reverse]h[/reverse]ello
-	assert.Contains(t, view, cursorOn+"h"+cursorOff+"ello")
+	require.Contains(t, view, cursorOn+"h"+cursorOff+"ello")
 }
 
 func TestView_CursorInMiddle(t *testing.T) {
@@ -91,7 +90,7 @@ func TestView_CursorInMiddle(t *testing.T) {
 
 	// Cursor should be on 'l' (index 2)
 	// Expected: he[reverse]l[/reverse]lo
-	assert.Contains(t, view, "he"+cursorOn+"l"+cursorOff+"lo")
+	require.Contains(t, view, "he"+cursorOn+"l"+cursorOff+"lo")
 }
 
 func TestView_CursorAtEnd_InsertMode(t *testing.T) {
@@ -103,7 +102,7 @@ func TestView_CursorAtEnd_InsertMode(t *testing.T) {
 
 	// Cursor should be after 'o' (append cursor)
 	// Expected: hello[reverse] [/reverse]
-	assert.Contains(t, view, "hello"+cursorOn+" "+cursorOff)
+	require.Contains(t, view, "hello"+cursorOn+" "+cursorOff)
 }
 
 func TestView_CursorOnEmptyLine(t *testing.T) {
@@ -113,7 +112,7 @@ func TestView_CursorOnEmptyLine(t *testing.T) {
 	view := m.View()
 
 	// Cursor should be a space in reverse video
-	assert.Contains(t, view, cursorOn+" "+cursorOff)
+	require.Contains(t, view, cursorOn+" "+cursorOff)
 }
 
 // ============================================================================
@@ -124,39 +123,39 @@ func TestView_Mode_NormalMode(t *testing.T) {
 	m := New(Config{VimEnabled: true, DefaultMode: ModeNormal})
 
 	// Mode should be accessible via Mode() method
-	assert.Equal(t, ModeNormal, m.Mode())
+	require.Equal(t, ModeNormal, m.Mode())
 
 	// View should NOT contain mode indicator (client's responsibility)
 	view := m.View()
-	assert.NotContains(t, view, "[NORMAL]")
-	assert.NotContains(t, view, "[INSERT]")
+	require.NotContains(t, view, "[NORMAL]")
+	require.NotContains(t, view, "[INSERT]")
 }
 
 func TestView_Mode_InsertMode(t *testing.T) {
 	m := New(Config{VimEnabled: true, DefaultMode: ModeInsert})
 
 	// Mode should be accessible via Mode() method
-	assert.Equal(t, ModeInsert, m.Mode())
+	require.Equal(t, ModeInsert, m.Mode())
 
 	// View should NOT contain mode indicator (client's responsibility)
 	view := m.View()
-	assert.NotContains(t, view, "[INSERT]")
-	assert.NotContains(t, view, "[NORMAL]")
+	require.NotContains(t, view, "[INSERT]")
+	require.NotContains(t, view, "[NORMAL]")
 }
 
 func TestView_Mode_NoIndicatorInOutput(t *testing.T) {
 	// Test that mode indicator is never in output, regardless of vim setting
 	m := New(Config{VimEnabled: true})
 	view := m.View()
-	assert.NotContains(t, view, "[NORMAL]")
-	assert.NotContains(t, view, "[INSERT]")
-	assert.NotContains(t, view, "[VISUAL]")
+	require.NotContains(t, view, "[NORMAL]")
+	require.NotContains(t, view, "[INSERT]")
+	require.NotContains(t, view, "[VISUAL]")
 
 	m2 := New(Config{VimEnabled: false})
 	view2 := m2.View()
-	assert.NotContains(t, view2, "[NORMAL]")
-	assert.NotContains(t, view2, "[INSERT]")
-	assert.NotContains(t, view2, "[VISUAL]")
+	require.NotContains(t, view2, "[NORMAL]")
+	require.NotContains(t, view2, "[INSERT]")
+	require.NotContains(t, view2, "[VISUAL]")
 }
 
 // ============================================================================
@@ -170,7 +169,7 @@ func TestView_Placeholder_ShownWhenEmpty(t *testing.T) {
 	})
 	view := m.View()
 
-	assert.Contains(t, view, "Enter text here...")
+	require.Contains(t, view, "Enter text here...")
 }
 
 func TestView_Placeholder_HiddenWhenContentPresent(t *testing.T) {
@@ -181,8 +180,8 @@ func TestView_Placeholder_HiddenWhenContentPresent(t *testing.T) {
 	m.SetValue("some content")
 	view := m.View()
 
-	assert.NotContains(t, view, "Enter text here...")
-	assert.Contains(t, view, "some content")
+	require.NotContains(t, view, "Enter text here...")
+	require.Contains(t, view, "some content")
 }
 
 func TestView_Placeholder_HiddenWhenFocused(t *testing.T) {
@@ -194,8 +193,8 @@ func TestView_Placeholder_HiddenWhenFocused(t *testing.T) {
 	view := m.View()
 
 	// When focused, show cursor instead of placeholder
-	assert.NotContains(t, view, "Enter text here...")
-	assert.Contains(t, view, cursorOn)
+	require.NotContains(t, view, "Enter text here...")
+	require.Contains(t, view, cursorOn)
 }
 
 // ============================================================================
@@ -209,9 +208,9 @@ func TestView_MultiLine_NoScrollingNeeded(t *testing.T) {
 	view := m.View()
 
 	// All lines should be visible
-	assert.Contains(t, view, "line1")
-	assert.Contains(t, view, "line2")
-	assert.Contains(t, view, "line3")
+	require.Contains(t, view, "line1")
+	require.Contains(t, view, "line2")
+	require.Contains(t, view, "line3")
 }
 
 func TestView_ScrollOffset_CursorAtTop(t *testing.T) {
@@ -226,13 +225,13 @@ func TestView_ScrollOffset_CursorAtTop(t *testing.T) {
 	m.ensureCursorVisible()
 
 	// Scroll offset should be 0 (cursor at top)
-	assert.Equal(t, 0, m.scrollOffset)
+	require.Equal(t, 0, m.scrollOffset)
 
 	view := m.View()
 	// First 3 lines should be visible (line1 has cursor on 'l')
-	assert.Contains(t, view, cursorOn+"l"+cursorOff+"ine1") // cursor on first char
-	assert.Contains(t, view, "line2")
-	assert.Contains(t, view, "line3")
+	require.Contains(t, view, cursorOn+"l"+cursorOff+"ine1") // cursor on first char
+	require.Contains(t, view, "line2")
+	require.Contains(t, view, "line3")
 }
 
 func TestView_ScrollOffset_CursorAtBottom(t *testing.T) {
@@ -247,15 +246,15 @@ func TestView_ScrollOffset_CursorAtBottom(t *testing.T) {
 	m.ensureCursorVisible()
 
 	// Scroll offset should be 2 (showing lines 3,4,5 at indices 2,3,4)
-	assert.Equal(t, 2, m.scrollOffset)
+	require.Equal(t, 2, m.scrollOffset)
 
 	view := m.View()
 	// Last 3 lines should be visible (line5 has cursor on 'l')
-	assert.Contains(t, view, "line3")
-	assert.Contains(t, view, "line4")
-	assert.Contains(t, view, cursorOn+"l"+cursorOff+"ine5") // cursor on first char
+	require.Contains(t, view, "line3")
+	require.Contains(t, view, "line4")
+	require.Contains(t, view, cursorOn+"l"+cursorOff+"ine5") // cursor on first char
 	// First line should NOT be visible
-	assert.NotContains(t, view, "ine1") // Check for unique part without cursor interference
+	require.NotContains(t, view, "ine1") // Check for unique part without cursor interference
 }
 
 func TestView_ScrollOffset_UpdatesWhenCursorMoves(t *testing.T) {
@@ -267,21 +266,21 @@ func TestView_ScrollOffset_UpdatesWhenCursorMoves(t *testing.T) {
 
 	// Initially at top
 	m.ensureCursorVisible()
-	assert.Equal(t, 0, m.scrollOffset)
+	require.Equal(t, 0, m.scrollOffset)
 
 	// Move cursor down to line 5 (index 4)
 	m.cursorRow = 4
 	m.ensureCursorVisible()
 
 	// Scroll should have adjusted
-	assert.Equal(t, 2, m.scrollOffset)
+	require.Equal(t, 2, m.scrollOffset)
 
 	// Move cursor down to line 10 (index 9)
 	m.cursorRow = 9
 	m.ensureCursorVisible()
 
 	// Scroll should be at max (showing lines 8,9,10)
-	assert.Equal(t, 7, m.scrollOffset)
+	require.Equal(t, 7, m.scrollOffset)
 }
 
 func TestView_ScrollOffset_NoHeightRestriction(t *testing.T) {
@@ -293,7 +292,7 @@ func TestView_ScrollOffset_NoHeightRestriction(t *testing.T) {
 	m.ensureCursorVisible()
 
 	// With no height restriction, scroll offset should be 0
-	assert.Equal(t, 0, m.scrollOffset)
+	require.Equal(t, 0, m.scrollOffset)
 }
 
 func TestView_ScrollOffset_SoftWrap_CursorVisible(t *testing.T) {
@@ -313,30 +312,30 @@ func TestView_ScrollOffset_SoftWrap_CursorVisible(t *testing.T) {
 	// Initially cursor at start, should be visible
 	m.cursorCol = 0
 	m.ensureCursorVisible()
-	assert.Equal(t, 0, m.scrollOffset)
-	assert.Equal(t, 0, m.cursorDisplayRow())
+	require.Equal(t, 0, m.scrollOffset)
+	require.Equal(t, 0, m.cursorDisplayRow())
 
 	// Move cursor to middle of second wrap segment (display line 1)
 	m.cursorCol = 25
 	m.ensureCursorVisible()
-	assert.Equal(t, 0, m.scrollOffset, "Cursor on display line 1, viewport shows 0-2, should be visible")
-	assert.Equal(t, 1, m.cursorDisplayRow())
+	require.Equal(t, 0, m.scrollOffset, "Cursor on display line 1, viewport shows 0-2, should be visible")
+	require.Equal(t, 1, m.cursorDisplayRow())
 
 	// Move cursor to third wrap segment (display line 2)
 	m.cursorCol = 45
 	m.ensureCursorVisible()
-	assert.Equal(t, 0, m.scrollOffset, "Cursor on display line 2, viewport shows 0-2, should be visible")
-	assert.Equal(t, 2, m.cursorDisplayRow())
+	require.Equal(t, 0, m.scrollOffset, "Cursor on display line 2, viewport shows 0-2, should be visible")
+	require.Equal(t, 2, m.cursorDisplayRow())
 
 	// Move cursor to fourth wrap segment (display line 3) - this should trigger scroll!
 	m.cursorCol = 62
 	m.ensureCursorVisible()
-	assert.Equal(t, 3, m.cursorDisplayRow(), "Cursor should be on display line 3")
-	assert.Equal(t, 1, m.scrollOffset, "Should scroll to show display lines 1-3")
+	require.Equal(t, 3, m.cursorDisplayRow(), "Cursor should be on display line 3")
+	require.Equal(t, 1, m.scrollOffset, "Should scroll to show display lines 1-3")
 
 	// Verify cursor is actually visible in the view
 	view := m.View()
-	assert.Contains(t, view, cursorOn, "Cursor should be visible in rendered view")
+	require.Contains(t, view, cursorOn, "Cursor should be visible in rendered view")
 }
 
 func TestView_ScrollOffset_SoftWrap_ViaKeyPress(t *testing.T) {
@@ -350,30 +349,30 @@ func TestView_ScrollOffset_SoftWrap_ViaKeyPress(t *testing.T) {
 	// 'j' in soft-wrap mode moves to next display line within same logical line
 
 	// Initial state
-	assert.Equal(t, 0, m.cursorCol)
-	assert.Equal(t, 0, m.scrollOffset)
+	require.Equal(t, 0, m.cursorCol)
+	require.Equal(t, 0, m.scrollOffset)
 
 	// Press 'j' to move to second wrap segment
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	t.Logf("After 1st j: cursorCol=%d, scrollOffset=%d, displayRow=%d", m.cursorCol, m.scrollOffset, m.cursorDisplayRow())
-	assert.Equal(t, 1, m.cursorDisplayRow(), "Should be on display line 1")
-	assert.Equal(t, 0, m.scrollOffset, "No scroll needed yet")
+	require.Equal(t, 1, m.cursorDisplayRow(), "Should be on display line 1")
+	require.Equal(t, 0, m.scrollOffset, "No scroll needed yet")
 
 	// Press 'j' to move to third wrap segment
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	t.Logf("After 2nd j: cursorCol=%d, scrollOffset=%d, displayRow=%d", m.cursorCol, m.scrollOffset, m.cursorDisplayRow())
-	assert.Equal(t, 2, m.cursorDisplayRow(), "Should be on display line 2")
-	assert.Equal(t, 0, m.scrollOffset, "No scroll needed yet")
+	require.Equal(t, 2, m.cursorDisplayRow(), "Should be on display line 2")
+	require.Equal(t, 0, m.scrollOffset, "No scroll needed yet")
 
 	// Press 'j' to move to fourth wrap segment - this should trigger scroll!
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
 	t.Logf("After 3rd j: cursorCol=%d, scrollOffset=%d, displayRow=%d", m.cursorCol, m.scrollOffset, m.cursorDisplayRow())
-	assert.Equal(t, 3, m.cursorDisplayRow(), "Should be on display line 3")
-	assert.Equal(t, 1, m.scrollOffset, "Should scroll to show cursor")
+	require.Equal(t, 3, m.cursorDisplayRow(), "Should be on display line 3")
+	require.Equal(t, 1, m.scrollOffset, "Should scroll to show cursor")
 
 	// Verify cursor is visible in the rendered view
 	view := m.View()
-	assert.Contains(t, view, cursorOn, "Cursor should be visible in rendered view")
+	require.Contains(t, view, cursorOn, "Cursor should be visible in rendered view")
 }
 
 func TestView_ScrollOffset_SoftWrap_ViaHorizontalMovement(t *testing.T) {
@@ -388,13 +387,13 @@ func TestView_ScrollOffset_SoftWrap_ViaHorizontalMovement(t *testing.T) {
 	t.Logf("After $: cursorCol=%d, scrollOffset=%d, displayRow=%d", m.cursorCol, m.scrollOffset, m.cursorDisplayRow())
 
 	// Cursor should be at last char (col 64 for 65-char line), on display line 3
-	assert.Equal(t, 64, m.cursorCol, "Cursor should be at last character")
-	assert.Equal(t, 3, m.cursorDisplayRow(), "Should be on display line 3")
-	assert.Equal(t, 1, m.scrollOffset, "Should scroll to show cursor on last wrap segment")
+	require.Equal(t, 64, m.cursorCol, "Cursor should be at last character")
+	require.Equal(t, 3, m.cursorDisplayRow(), "Should be on display line 3")
+	require.Equal(t, 1, m.scrollOffset, "Should scroll to show cursor on last wrap segment")
 
 	// Verify cursor is visible
 	view := m.View()
-	assert.Contains(t, view, cursorOn, "Cursor should be visible")
+	require.Contains(t, view, cursorOn, "Cursor should be visible")
 }
 
 // ============================================================================
@@ -411,10 +410,10 @@ func TestView_MultiLine_CursorOnCorrectLine(t *testing.T) {
 	view := m.View()
 
 	// Cursor should be on 's' in "second"
-	assert.Contains(t, view, cursorOn+"s"+cursorOff+"econd")
+	require.Contains(t, view, cursorOn+"s"+cursorOff+"econd")
 	// "first" should NOT have cursor
-	assert.Contains(t, view, "first")
-	assert.NotContains(t, view, cursorOn+"f"+cursorOff)
+	require.Contains(t, view, "first")
+	require.NotContains(t, view, cursorOn+"f"+cursorOff)
 }
 
 // ============================================================================
@@ -423,25 +422,25 @@ func TestView_MultiLine_CursorOnCorrectLine(t *testing.T) {
 
 func TestIsEmpty_EmptyContent(t *testing.T) {
 	m := New(Config{})
-	assert.True(t, m.isEmpty())
+	require.True(t, m.isEmpty())
 }
 
 func TestIsEmpty_SingleEmptyLine(t *testing.T) {
 	m := New(Config{})
 	m.content = []string{""}
-	assert.True(t, m.isEmpty())
+	require.True(t, m.isEmpty())
 }
 
 func TestIsEmpty_WithContent(t *testing.T) {
 	m := New(Config{})
 	m.SetValue("hello")
-	assert.False(t, m.isEmpty())
+	require.False(t, m.isEmpty())
 }
 
 func TestIsEmpty_MultipleLines(t *testing.T) {
 	m := New(Config{})
 	m.SetValue("line1\nline2")
-	assert.False(t, m.isEmpty())
+	require.False(t, m.isEmpty())
 }
 
 // ============================================================================
@@ -458,7 +457,7 @@ func TestScrollOffset_GetSet(t *testing.T) {
 	m.cursorRow = 4
 
 	m.SetScrollOffset(2)
-	assert.Equal(t, 2, m.ScrollOffset())
+	require.Equal(t, 2, m.ScrollOffset())
 }
 
 func TestScrollOffset_ClampedToValidRange(t *testing.T) {
@@ -471,7 +470,7 @@ func TestScrollOffset_ClampedToValidRange(t *testing.T) {
 	// Try to set offset beyond valid range
 	m.SetScrollOffset(10)
 	// Should be clamped to max valid offset (1, since 3 lines - 2 height = 1)
-	assert.Equal(t, 1, m.ScrollOffset())
+	require.Equal(t, 1, m.ScrollOffset())
 }
 
 // ============================================================================
@@ -560,7 +559,7 @@ func TestView_CursorCol_ClampedInRender(t *testing.T) {
 
 	// Should not panic, cursor should be rendered at end
 	view := m.View()
-	assert.Contains(t, view, cursorOn)
+	require.Contains(t, view, cursorOn)
 }
 
 func TestView_EmptyLineInMultiLine(t *testing.T) {
@@ -572,7 +571,7 @@ func TestView_EmptyLineInMultiLine(t *testing.T) {
 	lines := strings.Split(view, "\n")
 
 	// Should have content for all lines including empty middle line
-	assert.Equal(t, 3, len(lines), "Should have exactly 3 content lines")
+	require.Equal(t, 3, len(lines), "Should have exactly 3 content lines")
 }
 
 // ============================================================================

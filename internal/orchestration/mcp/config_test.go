@@ -3,24 +3,20 @@ package mcp
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateCoordinatorConfig(t *testing.T) {
 	configJSON, err := GenerateCoordinatorConfig("/project")
-	if err != nil {
-		t.Fatalf("GenerateCoordinatorConfig failed: %v", err)
-	}
+	require.NoError(t, err, "GenerateCoordinatorConfig failed")
 
 	// Parse and verify the config
 	var config MCPConfig
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		t.Fatalf("Failed to parse config JSON: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
 
 	server, ok := config.MCPServers["perles-orchestrator"]
-	if !ok {
-		t.Fatal("Missing perles-orchestrator server in config")
-	}
+	require.True(t, ok, "Missing perles-orchestrator server in config")
 
 	// Check HTTP transport
 	if server.Type != "http" {
@@ -37,19 +33,13 @@ func TestGenerateCoordinatorConfig(t *testing.T) {
 func TestGenerateWorkerConfig(t *testing.T) {
 	// GenerateWorkerConfig now returns HTTP config
 	configJSON, err := GenerateWorkerConfig("worker-1", "/work")
-	if err != nil {
-		t.Fatalf("GenerateWorkerConfig failed: %v", err)
-	}
+	require.NoError(t, err, "GenerateWorkerConfig failed")
 
 	var config MCPConfig
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		t.Fatalf("Failed to parse config JSON: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
 
 	server, ok := config.MCPServers["perles-worker"]
-	if !ok {
-		t.Fatal("Missing perles-worker server in config")
-	}
+	require.True(t, ok, "Missing perles-worker server in config")
 
 	// Check it's HTTP transport
 	if server.Type != "http" {
@@ -65,19 +55,13 @@ func TestGenerateWorkerConfig(t *testing.T) {
 
 func TestGenerateWorkerConfigHTTP(t *testing.T) {
 	configJSON, err := GenerateWorkerConfigHTTP(9000, "WORKER.3")
-	if err != nil {
-		t.Fatalf("GenerateWorkerConfigHTTP failed: %v", err)
-	}
+	require.NoError(t, err, "GenerateWorkerConfigHTTP failed")
 
 	var config MCPConfig
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		t.Fatalf("Failed to parse config JSON: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config JSON")
 
 	server, ok := config.MCPServers["perles-worker"]
-	if !ok {
-		t.Fatal("Missing perles-worker server in config")
-	}
+	require.True(t, ok, "Missing perles-worker server in config")
 
 	if server.Type != "http" {
 		t.Errorf("Type should be 'http', got %q", server.Type)
@@ -112,18 +96,14 @@ func TestParseMCPConfig(t *testing.T) {
 	}`
 
 	config, err := ParseMCPConfig(input)
-	if err != nil {
-		t.Fatalf("ParseMCPConfig failed: %v", err)
-	}
+	require.NoError(t, err, "ParseMCPConfig failed")
 
 	if len(config.MCPServers) != 2 {
 		t.Errorf("Server count = %d, want 2", len(config.MCPServers))
 	}
 
 	server1, ok := config.MCPServers["server1"]
-	if !ok {
-		t.Fatal("Missing server1")
-	}
+	require.True(t, ok, "Missing server1")
 	if server1.Command != "/bin/server1" {
 		t.Errorf("server1.Command = %q, want %q", server1.Command, "/bin/server1")
 	}
@@ -156,19 +136,13 @@ func TestMCPConfigSerialization(t *testing.T) {
 	}
 
 	data, err := json.Marshal(config)
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
+	require.NoError(t, err, "Marshal failed")
 
 	var parsed MCPConfig
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("Unmarshal failed: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(data, &parsed), "Unmarshal failed")
 
 	server, ok := parsed.MCPServers["test-server"]
-	if !ok {
-		t.Fatal("Missing test-server")
-	}
+	require.True(t, ok, "Missing test-server")
 	if server.Command != config.MCPServers["test-server"].Command {
 		t.Errorf("Command = %q, want %q", server.Command, config.MCPServers["test-server"].Command)
 	}
@@ -176,14 +150,10 @@ func TestMCPConfigSerialization(t *testing.T) {
 
 func TestGenerateCoordinatorConfigHTTP(t *testing.T) {
 	configJSON, err := GenerateCoordinatorConfigHTTP(9000)
-	if err != nil {
-		t.Fatalf("GenerateCoordinatorConfigHTTP failed: %v", err)
-	}
+	require.NoError(t, err, "GenerateCoordinatorConfigHTTP failed")
 
 	var config MCPConfig
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		t.Fatalf("Failed to parse config: %v", err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(configJSON), &config), "Failed to parse config")
 
 	server := config.MCPServers["perles-orchestrator"]
 	if server.Type != "http" {
