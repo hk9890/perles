@@ -1383,7 +1383,9 @@ func (m *Model) updateDetailPanel() {
 		}
 
 		// rightWidth-2 for left/right border, height-2 for top/bottom border
-		m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(rightWidth-2, m.height-2)
+		m.details = details.New(issue, m.services.Executor, m.services.Client).
+			SetMarkdownStyle(m.services.Config.UI.MarkdownStyle).
+			SetSize(rightWidth-2, m.height-2)
 
 		// Restore scroll position for same issue
 		if sameIssue {
@@ -1416,7 +1418,9 @@ func (m *Model) updateDetailFromTree() {
 	}
 
 	// rightWidth-2 for left/right border, height-2 for top/bottom border
-	m.details = details.New(node.Issue, m.services.Executor, m.services.Client).SetSize(rightWidth-2, m.height-2)
+	m.details = details.New(node.Issue, m.services.Executor, m.services.Client).
+		SetMarkdownStyle(m.services.Config.UI.MarkdownStyle).
+		SetSize(rightWidth-2, m.height-2)
 
 	// Restore scroll position for same issue
 	if sameIssue {
@@ -1766,7 +1770,9 @@ func (m Model) navigateToDependency(issueID string) (Model, tea.Cmd) {
 	// Update the details panel with this issue
 	rightWidth := m.width - (m.width / 2) - 1
 	// rightWidth-2 for left/right border, height-2 for top/bottom border
-	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(rightWidth-2, m.height-2)
+	m.details = details.New(issue, m.services.Executor, m.services.Client).
+		SetMarkdownStyle(m.services.Config.UI.MarkdownStyle).
+		SetSize(rightWidth-2, m.height-2)
 	m.hasDetail = true
 
 	// Try to find and select this issue in the results list
