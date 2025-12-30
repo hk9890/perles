@@ -26,6 +26,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
@@ -113,6 +114,7 @@ type Model struct {
 	services           mode.Services
 	coordinatorMetrics *metrics.TokenMetrics // Token usage and cost data for coordinator
 	coordinatorWorking bool                  // True when coordinator is processing, false when waiting for input
+	session            *session.Session      // Session tracking for this orchestration run
 
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"

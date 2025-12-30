@@ -12,6 +12,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/coordinator"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
@@ -1172,4 +1173,110 @@ func TestQuitConfirmation_NavigationMode(t *testing.T) {
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	require.NotNil(t, m.quitModal, "Ctrl+C in navigation mode should show quit modal")
 	require.Nil(t, cmd, "should not return command, modal shown instead")
+}
+
+// ========================================================================
+// Session Shutdown Tests
+// ========================================================================
+
+func TestModel_SessionField(t *testing.T) {
+	// Test that session field is set from InitializerResources
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+
+	// Initially, session should be nil
+	require.Nil(t, m.session, "session should be nil initially")
+
+	// Session would be set in handleInitializerEvent when InitEventReady is received
+	// This test verifies the field exists and can be accessed
+	// The actual integration happens in initializer_test.go
+}
+
+func TestUpdate_CoordinatorStopped_ClosesSession(t *testing.T) {
+	// Test that CoordinatorStoppedMsg closes the session with correct status
+	tmpDir := t.TempDir()
+
+	// Create a mock session using the session package
+	sess, err := createTestSession(t, tmpDir)
+	require.NoError(t, err)
+
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.session = sess
+	m.initializer = newTestInitializer(InitReady, nil)
+
+	// Verify session is not closed initially
+	require.Equal(t, session.StatusRunning, sess.Status, "session should be running initially")
+
+	// Send CoordinatorStoppedMsg
+	m, _ = m.Update(CoordinatorStoppedMsg{})
+
+	// Verify session was closed
+	// The session's Close method should have been called
+	// We can verify by checking the metadata.json file was updated
+	meta, err := session.Load(tmpDir)
+	require.NoError(t, err)
+	require.Equal(t, session.StatusCompleted, meta.Status, "session status should be completed")
+	require.False(t, meta.EndTime.IsZero(), "end time should be set")
+}
+
+func TestUpdate_StatusMapping_NormalCompletion(t *testing.T) {
+	// Test that normal completion (no error, no timeout) maps to StatusCompleted
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m.errorModal = nil // No error
+
+	status := m.determineSessionStatus()
+	require.Equal(t, session.StatusCompleted, status, "normal completion should map to StatusCompleted")
+}
+
+func TestUpdate_StatusMapping_ErrorModal(t *testing.T) {
+	// Test that presence of error modal maps to StatusFailed
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitReady, nil)
+	m = m.SetError("test error") // This sets errorModal
+
+	status := m.determineSessionStatus()
+	require.Equal(t, session.StatusFailed, status, "error modal should map to StatusFailed")
+}
+
+func TestUpdate_StatusMapping_InitFailed(t *testing.T) {
+	// Test that InitFailed phase maps to StatusFailed
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitFailed, nil)
+
+	status := m.determineSessionStatus()
+	require.Equal(t, session.StatusFailed, status, "InitFailed should map to StatusFailed")
+}
+
+func TestUpdate_StatusMapping_InitTimedOut(t *testing.T) {
+	// Test that InitTimedOut phase maps to StatusTimedOut
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.initializer = newTestInitializer(InitTimedOut, nil)
+
+	status := m.determineSessionStatus()
+	require.Equal(t, session.StatusTimedOut, status, "InitTimedOut should map to StatusTimedOut")
+}
+
+func TestUpdate_NilSession(t *testing.T) {
+	// Test that CoordinatorStoppedMsg handles nil session gracefully (no panic)
+	m := New(Config{})
+	m = m.SetSize(120, 40)
+	m.session = nil // Explicitly nil
+
+	// This should not panic
+	m, cmd := m.Update(CoordinatorStoppedMsg{})
+
+	// Command should be nil (no error)
+	require.Nil(t, cmd, "should return nil command")
+}
+
+// createTestSession creates a test session for unit tests.
+func createTestSession(t *testing.T, tmpDir string) (*session.Session, error) {
+	t.Helper()
+	return session.New("test-session-id", tmpDir)
 }

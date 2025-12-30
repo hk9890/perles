@@ -478,3 +478,110 @@ func TestServerMultipleRequests(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	require.Len(t, lines, 3, "Response count mismatch")
 }
+
+func TestServer_MCPBroker_Publishes(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+
+	// Register a simple tool
+	s.RegisterTool(Tool{
+		Name:        "test_tool",
+		Description: "A test tool",
+		InputSchema: &InputSchema{Type: "object"},
+	}, func(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return SuccessResult("ok"), nil
+	})
+
+	// Subscribe to the broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eventCh := s.Broker().Subscribe(ctx)
+
+	// Make a tool call via handleToolsCall
+	params := json.RawMessage(`{"name": "test_tool", "arguments": {"key": "value"}}`)
+	result, rpcErr := s.handleToolsCall(params)
+	require.Nil(t, rpcErr, "Unexpected RPC error")
+	require.NotNil(t, result, "Expected result")
+
+	// Wait for event
+	select {
+	case event := <-eventCh:
+		require.Equal(t, "tools/call", event.Payload.Method, "Method mismatch")
+		require.Equal(t, "test_tool", event.Payload.ToolName, "ToolName mismatch")
+		require.Contains(t, string(event.Payload.RequestJSON), "test_tool", "RequestJSON should contain tool name")
+		require.Contains(t, string(event.Payload.ResponseJSON), "content", "ResponseJSON should contain content")
+		require.Empty(t, event.Payload.Error, "Error should be empty for success")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Timeout waiting for MCP event")
+	}
+}
+
+func TestServer_MCPBroker_CapturesDuration(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+
+	// Register a tool that takes some time
+	s.RegisterTool(Tool{
+		Name:        "slow_tool",
+		Description: "A slow tool",
+		InputSchema: &InputSchema{Type: "object"},
+	}, func(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		time.Sleep(50 * time.Millisecond)
+		return SuccessResult("done"), nil
+	})
+
+	// Subscribe to the broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eventCh := s.Broker().Subscribe(ctx)
+
+	// Make a tool call
+	params := json.RawMessage(`{"name": "slow_tool", "arguments": {}}`)
+	result, rpcErr := s.handleToolsCall(params)
+	require.Nil(t, rpcErr, "Unexpected RPC error")
+	require.NotNil(t, result, "Expected result")
+
+	// Wait for event and verify duration
+	select {
+	case event := <-eventCh:
+		require.GreaterOrEqual(t, event.Payload.Duration.Milliseconds(), int64(50), "Duration should be at least 50ms")
+		require.Less(t, event.Payload.Duration.Milliseconds(), int64(200), "Duration should be reasonable")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Timeout waiting for MCP event")
+	}
+}
+
+func TestServer_MCPBroker_CapturesError(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+
+	// Register a tool that fails
+	s.RegisterTool(Tool{
+		Name:        "failing_tool",
+		Description: "A failing tool",
+		InputSchema: &InputSchema{Type: "object"},
+	}, func(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+		return nil, context.DeadlineExceeded
+	})
+
+	// Subscribe to the broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eventCh := s.Broker().Subscribe(ctx)
+
+	// Make a tool call that will fail
+	params := json.RawMessage(`{"name": "failing_tool", "arguments": {}}`)
+	_, _ = s.handleToolsCall(params)
+
+	// Wait for event and verify error
+	select {
+	case event := <-eventCh:
+		require.Equal(t, "error", string(event.Payload.Type), "Type should be error")
+		require.Equal(t, "context deadline exceeded", event.Payload.Error, "Error message mismatch")
+		require.Equal(t, "failing_tool", event.Payload.ToolName, "ToolName mismatch")
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Timeout waiting for MCP event")
+	}
+}
+
+func TestServer_Broker_ReturnsNonNil(t *testing.T) {
+	s := NewServer("test", "1.0.0")
+	require.NotNil(t, s.Broker(), "Broker should not be nil")
+}

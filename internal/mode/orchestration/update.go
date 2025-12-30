@@ -18,6 +18,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/pool"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
@@ -382,6 +383,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.handleMessageEvent(msg)
 
 	case CoordinatorStoppedMsg:
+		// Close session with appropriate status
+		if m.session != nil {
+			status := m.determineSessionStatus()
+			if err := m.session.Close(status); err != nil {
+				log.Debug(log.CatOrch, "Session close error", "subsystem", "update", "error", err)
+			} else {
+				log.Debug(log.CatOrch, "Session closed", "subsystem", "update", "status", status)
+			}
+		}
+
 		// Shutdown HTTP MCP server
 		if m.mcpServer != nil {
 			go func() {
@@ -731,6 +742,7 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 		m.mcpServer = res.MCPServer
 		m.mcpPort = res.MCPPort
 		m.coord = res.Coordinator
+		m.session = res.Session
 
 		// Set up pub/sub subscriptions if not already set up
 		// (they may have been set up earlier when coordinator became available)
@@ -1145,4 +1157,31 @@ func (c *workerServerCache) getOrCreate(workerID string) *mcp.WorkerServer {
 	c.servers[workerID] = ws
 	log.Debug(log.CatOrch, "Created worker server", "subsystem", "update", "workerID", workerID)
 	return ws
+}
+
+// determineSessionStatus maps the current model state to a session status.
+// Returns the appropriate session.Status based on:
+//   - InitTimedOut phase -> StatusTimedOut
+//   - InitFailed phase -> StatusFailed
+//   - Error modal present -> StatusFailed
+//   - Default (normal completion) -> StatusCompleted
+func (m Model) determineSessionStatus() session.Status {
+	// Check if initialization timed out
+	initPhase := m.getInitPhase()
+	if initPhase == InitTimedOut {
+		return session.StatusTimedOut
+	}
+
+	// Check if initialization failed
+	if initPhase == InitFailed {
+		return session.StatusFailed
+	}
+
+	// Check if there's an error modal showing (indicates error state)
+	if m.errorModal != nil {
+		return session.StatusFailed
+	}
+
+	// Default to completed (normal shutdown, user interrupt, etc.)
+	return session.StatusCompleted
 }

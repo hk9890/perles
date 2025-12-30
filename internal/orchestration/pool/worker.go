@@ -341,6 +341,7 @@ func (w *Worker) handleOutputEvent(event *client.OutputEvent, broker *pubsub.Bro
 				WorkerID: w.ID,
 				TaskID:   w.TaskID,
 				Output:   text,
+				RawJSON:  event.Raw,
 			})
 		}
 
