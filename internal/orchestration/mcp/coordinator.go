@@ -250,11 +250,12 @@ func (cs *CoordinatorServer) registerTools() {
 	// read_message_log - Read recent messages
 	cs.RegisterTool(Tool{
 		Name:        "read_message_log",
-		Description: "Read recent messages from the shared message log. Returns structured JSON with message metadata.",
+		Description: "Read messages from the shared message log. By default returns only unread messages. Use read_all=true to get all messages.",
 		InputSchema: &InputSchema{
 			Type: "object",
 			Properties: map[string]*PropertySchema{
-				"limit": {Type: "number", Description: "Maximum number of messages to return (default: 20)"},
+				"limit":    {Type: "number", Description: "Maximum number of messages to return (default: 20)"},
+				"read_all": {Type: "boolean", Description: "Return all messages instead of just unread (default: false)"},
 			},
 			Required: []string{},
 		},
@@ -402,7 +403,8 @@ type markTaskFailedArgs struct {
 }
 
 type readMessageLogArgs struct {
-	Limit int `json:"limit,omitempty"`
+	Limit   int  `json:"limit,omitempty"`
+	ReadAll bool `json:"read_all,omitempty"`
 }
 
 type prepareHandoffArgs struct {
@@ -883,13 +885,22 @@ func (cs *CoordinatorServer) handleReadMessageLog(_ context.Context, rawArgs jso
 		limit = 20
 	}
 
-	allEntries := cs.msgIssue.Entries()
-	totalCount := len(allEntries)
+	var entries []message.Entry
+	var totalCount int
 
-	// Get the most recent entries up to limit
-	entries := allEntries
-	if len(entries) > limit {
-		entries = entries[len(entries)-limit:]
+	if args.ReadAll {
+		// Opt-in: return all messages (for initial context or debugging)
+		allEntries := cs.msgIssue.Entries()
+		totalCount = len(allEntries)
+		entries = allEntries
+		if len(entries) > limit {
+			entries = entries[len(entries)-limit:]
+		}
+	} else {
+		// Default: use existing readState pattern (same as workers)
+		entries = cs.msgIssue.UnreadFor(message.ActorCoordinator)
+		totalCount = len(entries)
+		cs.msgIssue.MarkRead(message.ActorCoordinator)
 	}
 
 	// Build structured response

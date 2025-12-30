@@ -1803,3 +1803,177 @@ func TestIntegration_AssignListReplaceFlow(t *testing.T) {
 	ta := stateResponse.TaskAssignments["perles-abc.1"]
 	require.Equal(t, "worker-1", ta.Implementer, "TaskAssignment implementer mismatch")
 }
+
+// ============================================================================
+// Unread Message Tracking Tests
+// ============================================================================
+
+// TestReadMessageLog_UnreadDefault_Basic tests that sequential read calls return only new messages.
+func TestReadMessageLog_UnreadDefault_Basic(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	handler := cs.handlers["read_message_log"]
+
+	// Post 3 initial messages
+	_, _ = msgIssue.Append("COORDINATOR", "ALL", "Message 1", message.MessageInfo)
+	_, _ = msgIssue.Append("WORKER.1", "COORDINATOR", "Message 2", message.MessageInfo)
+	_, _ = msgIssue.Append("COORDINATOR", "WORKER.1", "Message 3", message.MessageInfo)
+
+	// First call should return all 3 messages (first call returns all)
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	var resp messageLogResponse
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 3, resp.TotalCount, "First call should return all 3 messages")
+	require.Equal(t, 3, resp.ReturnedCount)
+
+	// Post 2 more messages
+	_, _ = msgIssue.Append("WORKER.2", "COORDINATOR", "Message 4", message.MessageInfo)
+	_, _ = msgIssue.Append("COORDINATOR", "WORKER.2", "Message 5", message.MessageInfo)
+
+	// Second call should return only 2 new messages
+	result, err = handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 2, resp.TotalCount, "Second call should return only 2 new messages")
+	require.Equal(t, 2, resp.ReturnedCount)
+
+	// Verify the messages are the new ones
+	require.Len(t, resp.Messages, 2)
+	require.Contains(t, resp.Messages[0].Content, "Message 4")
+	require.Contains(t, resp.Messages[1].Content, "Message 5")
+}
+
+// TestReadMessageLog_UnreadDefault_FirstCall tests that first call with no prior read state returns all messages.
+func TestReadMessageLog_UnreadDefault_FirstCall(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+
+	// Post messages before creating coordinator (simulates messages existing before coordinator joins)
+	_, _ = msgIssue.Append("WORKER.1", "COORDINATOR", "Hello", message.MessageInfo)
+	_, _ = msgIssue.Append("WORKER.2", "COORDINATOR", "World", message.MessageInfo)
+
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	handler := cs.handlers["read_message_log"]
+
+	// First call from coordinator should return all existing messages
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	var resp messageLogResponse
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 2, resp.TotalCount, "First call should return all 2 messages")
+	require.Equal(t, 2, resp.ReturnedCount)
+}
+
+// TestReadMessageLog_UnreadDefault_Empty tests read_message_log on empty log.
+func TestReadMessageLog_UnreadDefault_Empty(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	handler := cs.handlers["read_message_log"]
+
+	// Call on empty log
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	var resp messageLogResponse
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 0, resp.TotalCount, "Empty log should have total_count: 0")
+	require.Equal(t, 0, resp.ReturnedCount)
+	require.Empty(t, resp.Messages)
+}
+
+// TestReadMessageLog_UnreadDefault_NoNewMessages tests that calling without new messages returns empty.
+func TestReadMessageLog_UnreadDefault_NoNewMessages(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	handler := cs.handlers["read_message_log"]
+
+	// Post some messages
+	_, _ = msgIssue.Append("COORDINATOR", "ALL", "Initial message", message.MessageInfo)
+
+	// First call reads all
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	var resp messageLogResponse
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.TotalCount)
+
+	// Second call without new messages should return empty
+	result, err = handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 0, resp.TotalCount, "No new messages should return total_count: 0")
+	require.Equal(t, 0, resp.ReturnedCount)
+	require.Empty(t, resp.Messages)
+}
+
+// TestReadMessageLog_ReadAll tests that read_all=true returns all messages and doesn't affect readState.
+func TestReadMessageLog_ReadAll(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	handler := cs.handlers["read_message_log"]
+
+	// Post 3 messages
+	_, _ = msgIssue.Append("COORDINATOR", "ALL", "Message 1", message.MessageInfo)
+	_, _ = msgIssue.Append("WORKER.1", "COORDINATOR", "Message 2", message.MessageInfo)
+	_, _ = msgIssue.Append("COORDINATOR", "WORKER.1", "Message 3", message.MessageInfo)
+
+	// First default call marks all as read
+	result, err := handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	var resp messageLogResponse
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 3, resp.TotalCount)
+
+	// Second default call should return empty (all marked as read)
+	result, err = handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 0, resp.TotalCount, "Should have no unread messages")
+
+	// Call with read_all=true should return all messages
+	result, err = handler(context.Background(), json.RawMessage(`{"read_all": true}`))
+	require.NoError(t, err)
+
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 3, resp.TotalCount, "read_all=true should return all 3 messages")
+	require.Equal(t, 3, resp.ReturnedCount)
+
+	// Verify read_all=true didn't update readState - next default call should still be empty
+	result, err = handler(context.Background(), json.RawMessage(`{}`))
+	require.NoError(t, err)
+
+	err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
+	require.NoError(t, err)
+	require.Equal(t, 0, resp.TotalCount, "readState should be unchanged after read_all=true")
+}

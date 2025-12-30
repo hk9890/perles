@@ -392,6 +392,95 @@ func TestRace_MessagePostWhileRead(t *testing.T) {
 	wg.Wait()
 }
 
+// TestRace_UnreadMessageTracking tests concurrent access to unread message tracking.
+// This specifically targets the UnreadFor/MarkRead sequence under load with
+// interleaved post_message and read_message_log operations.
+func TestRace_UnreadMessageTracking(t *testing.T) {
+	workerPool := pool.NewWorkerPool(pool.Config{})
+	defer workerPool.Close()
+
+	msgIssue := message.New()
+	cs := NewCoordinatorServer(claude.NewClient(), workerPool, msgIssue, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	var wg sync.WaitGroup
+	ctx := context.Background()
+
+	// Pre-populate with some messages to stress the unread tracking
+	for i := 0; i < 10; i++ {
+		_, _ = msgIssue.Append("worker-setup", message.ActorCoordinator, "setup message", message.MessageInfo)
+	}
+
+	// Multiple concurrent readers using default unread mode (UnreadFor + MarkRead)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			handler := cs.handlers["read_message_log"]
+			for j := 0; j < 30; j++ {
+				// Default mode (no read_all) triggers UnreadFor + MarkRead
+				_, _ = handler(ctx, nil)
+				time.Sleep(50 * time.Microsecond)
+			}
+		}(i)
+	}
+
+	// Multiple concurrent readers using read_all mode (just Entries)
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			handler := cs.handlers["read_message_log"]
+			for j := 0; j < 30; j++ {
+				// read_all=true uses Entries() without affecting read state
+				_, _ = handler(ctx, json.RawMessage(`{"read_all": true}`))
+				time.Sleep(50 * time.Microsecond)
+			}
+		}(i)
+	}
+
+	// Concurrent posters to interleave with reads
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			handler := cs.handlers["post_message"]
+			for j := 0; j < 30; j++ {
+				args := `{"to": "ALL", "content": "concurrent message from worker-` + string(rune('0'+idx%10)) + ` iteration ` + string(rune('0'+j%10)) + `"}`
+				_, _ = handler(ctx, json.RawMessage(args))
+				time.Sleep(50 * time.Microsecond)
+			}
+		}(i)
+	}
+
+	// Direct UnreadFor/MarkRead calls on the message issue to stress the readState map
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			agentID := "test-agent-" + string(rune('0'+idx%10))
+			for j := 0; j < 30; j++ {
+				// Interleave UnreadFor and MarkRead calls
+				unread := msgIssue.UnreadFor(agentID)
+				_ = unread // Use result
+				if j%2 == 0 {
+					msgIssue.MarkRead(agentID)
+				}
+				time.Sleep(50 * time.Microsecond)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify no corruption: total count should be consistent
+	totalCount := msgIssue.Count()
+	require.GreaterOrEqual(t, totalCount, 10, "Should have at least the setup messages")
+
+	// Verify we can still read all messages after concurrent operations
+	allEntries := msgIssue.Entries()
+	require.Len(t, allEntries, totalCount, "Entries count should match Count()")
+}
+
 // Helper functions for generating IDs
 func workerID(i int) string {
 	return "worker-" + string(rune('0'+i%10))
