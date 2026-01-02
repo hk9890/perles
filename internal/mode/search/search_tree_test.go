@@ -442,7 +442,7 @@ func TestTreeSubMode_CtrlC_OpensQuitModal(t *testing.T) {
 	// Press ctrl+c - should open quit modal, not quit directly
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
-	require.NotNil(t, m.quitModal, "ctrl+c should open quit modal")
+	require.True(t, m.quitModal.IsVisible(), "ctrl+c should open quit modal")
 	require.Nil(t, cmd, "no command expected (just showing modal)")
 }
 

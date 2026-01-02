@@ -23,6 +23,7 @@ import (
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 )
 
@@ -152,37 +153,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.workerPane.contentDirty[workerID] = false
 	}
 
-	switch msg := msg.(type) {
-	// Handle quit confirmation submit
-	case modal.SubmitMsg:
-		if m.quitModal != nil {
-			m.quitModal = nil
-			return m, func() tea.Msg { return QuitMsg{} }
-		}
-		return m, nil
-
-	// Handle modal cancel (dismisses quit modal or critical error)
-	case modal.CancelMsg:
-		if m.quitModal != nil {
-			m.quitModal = nil
+	// Handle quit modal messages first when visible
+	if m.quitModal.IsVisible() {
+		var cmd tea.Cmd
+		var result quitmodal.Result
+		m.quitModal, cmd, result = m.quitModal.Update(msg)
+		switch result {
+		case quitmodal.ResultQuit:
+			return m, func() tea.Msg { return QuitMsg{} } // CRITICAL: Custom quit message for graceful worker cleanup
+		case quitmodal.ResultCancel:
 			return m, nil
 		}
+		return m, cmd
+	}
+
+	switch msg := msg.(type) {
+	// Handle modal cancel for error modal (quit modal handled above via quitmodal.Result)
+	case modal.CancelMsg:
 		m = m.ClearError()
 		return m, nil
 
 	case tea.KeyMsg:
-		// If quit modal visible, handle force quit or forward to modal
-		if m.quitModal != nil {
-			// Ctrl+C again = force quit (bypass confirmation)
-			if msg.Type == tea.KeyCtrlC {
-				m.quitModal = nil
-				return m, func() tea.Msg { return QuitMsg{} }
-			}
-			// Forward other keys to modal for navigation
-			var cmd tea.Cmd
-			*m.quitModal, cmd = m.quitModal.Update(msg)
-			return m, cmd
-		}
 
 		// Forward key events to error modal when it's visible
 		if m.errorModal != nil {
@@ -258,19 +249,22 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 			case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
-				return m.showQuitConfirmation(), nil
+				m.quitModal.Show()
+				return m, nil
 			}
 			return m, nil
 		}
 
 		// When vim is disabled, or we are in normal mode, ESC should show quit confirmation directly
 		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyEsc {
-			return m.showQuitConfirmation(), nil
+			m.quitModal.Show()
+			return m, nil
 		}
 
 		// When vim is disabled, or we are in normal mode, ctrl+c should show quit confirmation directly
 		if (!m.input.VimEnabled() || m.input.InNormalMode()) && msg.Type == tea.KeyCtrlC {
-			return m.showQuitConfirmation(), nil
+			m.quitModal.Show()
+			return m, nil
 		}
 
 		switch {

@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
+	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
 
@@ -37,7 +37,7 @@ type Model struct {
 	demoModelIndex int // tracks which demo is currently loaded
 
 	// Quit confirmation modal
-	quitModal *modal.Model
+	quitModal quitmodal.Model
 
 	// Dimensions
 	width    int
@@ -57,6 +57,10 @@ func New() Model {
 		selectedIndex:  0,
 		demos:          demos,
 		demoModelIndex: -1, // no demo loaded yet
+		quitModal: quitmodal.New(quitmodal.Config{
+			Title:   "Quit Playground",
+			Message: "Are you sure you want to exit?",
+		}),
 	}
 
 	return m
@@ -69,28 +73,31 @@ func (m Model) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle quit modal first when visible
+	if m.quitModal.IsVisible() {
+		var cmd tea.Cmd
+		var result quitmodal.Result
+		m.quitModal, cmd, result = m.quitModal.Update(msg)
+		switch result {
+		case quitmodal.ResultQuit:
+			m.quitting = true
+			return m, tea.Quit
+		case quitmodal.ResultCancel:
+			return m, nil
+		}
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.quitModal.SetSize(msg.Width, msg.Height)
 		// Initialize or resize demo model
 		if m.demoModel != nil {
 			demoWidth, demoHeight := m.getDemoAreaDimensions()
 			m.demoModel = m.demoModel.SetSize(demoWidth, demoHeight)
 		}
-		return m, nil
-
-	case modal.SubmitMsg:
-		// User confirmed quit
-		if m.quitModal != nil {
-			m.quitting = true
-			return m, tea.Quit
-		}
-		return m, nil
-
-	case modal.CancelMsg:
-		// User cancelled quit
-		m.quitModal = nil
 		return m, nil
 
 	case tea.KeyMsg:
@@ -125,27 +132,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Ctrl+C always handled first - quit immediately if modal open, else show modal
+	// Ctrl+C shows quit modal (force-quit when modal visible is handled by quitModal.Update)
 	if key == "ctrl+c" {
-		if m.quitModal != nil {
-			m.quitting = true
-			return m, tea.Quit
-		}
-		mdl := modal.New(modal.Config{
-			Title:          "Quit Playground",
-			Message:        "Are you sure you want to exit?",
-			ConfirmVariant: modal.ButtonDanger,
-		})
-		mdl.SetSize(m.width, m.height)
-		m.quitModal = &mdl
-		return m, mdl.Init()
-	}
-
-	// If quit modal is showing, forward to it
-	if m.quitModal != nil {
-		newModal, cmd := m.quitModal.Update(msg)
-		m.quitModal = &newModal
-		return m, cmd
+		m.quitModal.Show()
+		return m, nil
 	}
 
 	return m.handleComponentListKeys(msg)
@@ -275,7 +265,7 @@ func (m Model) View() string {
 	content := (&m).renderComponentListView()
 
 	// Overlay quit confirmation modal if showing
-	if m.quitModal != nil {
+	if m.quitModal.IsVisible() {
 		return m.quitModal.Overlay(content)
 	}
 

@@ -308,13 +308,13 @@ func TestUpdate_QuitMsg(t *testing.T) {
 	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "First ESC should switch to Normal mode")
-	require.Nil(t, m.quitModal, "quit modal should NOT be shown after first ESC")
+	require.False(t, m.quitModal.IsVisible(), "quit modal should NOT be shown after first ESC")
 
 	// Second ESC (in Normal mode) shows quit modal
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	require.Nil(t, cmd, "ESC in Normal mode should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit triggers QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -338,7 +338,7 @@ func TestUpdate_EscQuits(t *testing.T) {
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 
 	require.Nil(t, cmd, "ESC should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit to get QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -360,13 +360,13 @@ func TestUpdate_EscFromInputQuits(t *testing.T) {
 	// First ESC switches to Normal mode (vim behavior)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "First ESC should switch to Normal mode")
-	require.Nil(t, m.quitModal, "quit modal should NOT be shown after first ESC")
+	require.False(t, m.quitModal.IsVisible(), "quit modal should NOT be shown after first ESC")
 
 	// Second ESC (in Normal mode) shows quit confirmation modal
 	var cmd tea.Cmd
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 	require.Nil(t, cmd, "ESC in Normal mode should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after ESC in Normal mode")
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown after ESC in Normal mode")
 
 	// Confirm via modal submit to get QuitMsg
 	m, cmd = m.Update(modal.SubmitMsg{})
@@ -509,14 +509,14 @@ func TestVim_EscInInsertModeSwitchesToNormal(t *testing.T) {
 
 	// Starts in Insert mode
 	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode())
-	require.Nil(t, m.quitModal, "no quit modal initially")
+	require.False(t, m.quitModal.IsVisible(), "no quit modal initially")
 
 	// Press ESC
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 
 	// Should switch to Normal mode, NOT show quit modal
 	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode(), "ESC should switch to Normal mode")
-	require.Nil(t, m.quitModal, "quit modal should NOT be shown when ESC exits Insert mode")
+	require.False(t, m.quitModal.IsVisible(), "quit modal should NOT be shown when ESC exits Insert mode")
 }
 
 func TestVim_EscInNormalModeTriggersQuit(t *testing.T) {
@@ -528,13 +528,13 @@ func TestVim_EscInNormalModeTriggersQuit(t *testing.T) {
 	// Switch to Normal mode
 	m.input.SetMode(vimtextarea.ModeNormal)
 	require.Equal(t, vimtextarea.ModeNormal, m.input.Mode())
-	require.Nil(t, m.quitModal, "no quit modal initially")
+	require.False(t, m.quitModal.IsVisible(), "no quit modal initially")
 
 	// Press ESC in Normal mode
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
 
 	// Should show quit modal
-	require.NotNil(t, m.quitModal, "ESC in Normal mode should show quit confirmation")
+	require.True(t, m.quitModal.IsVisible(), "ESC in Normal mode should show quit confirmation")
 }
 
 func TestVim_ShiftEnterSubmitsMessage(t *testing.T) {
@@ -1077,13 +1077,13 @@ func TestQuitConfirmation_ForceQuit_DoubleCtrlC(t *testing.T) {
 	m = m.SetSize(120, 40)
 
 	// Simulate quit modal being shown (as if user pressed ESC/Ctrl+C once)
-	m.quitModal = &modal.Model{} // Non-nil indicates modal is visible
+	m.quitModal.Show()
 
 	// Press Ctrl+C while quit modal is visible
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
-	// Modal should be cleared
-	require.Nil(t, m.quitModal, "quitModal should be cleared after force quit")
+	// Modal should be hidden
+	require.False(t, m.quitModal.IsVisible(), "quitModal should be hidden after force quit")
 
 	// Should produce immediate QuitMsg (force quit bypasses confirmation)
 	require.NotNil(t, cmd, "should return a command for force quit")
@@ -1092,33 +1092,25 @@ func TestQuitConfirmation_ForceQuit_DoubleCtrlC(t *testing.T) {
 	require.True(t, ok, "force quit should produce QuitMsg")
 }
 
-func TestQuitConfirmation_ModalForwardsOtherKeys(t *testing.T) {
-	// Test that non-Ctrl+C keys are forwarded to the modal
+func TestQuitConfirmation_EnterConfirmsQuit(t *testing.T) {
+	// Test that Enter on the quit modal confirms quit (returns QuitMsg)
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
 	// Simulate quit modal being shown
-	qm := modal.New(modal.Config{
-		Title:   "Test",
-		Message: "Test message",
-	})
-	m.quitModal = &qm
+	m.quitModal.Show()
 
-	// Press Enter (should be forwarded to modal, not trigger force quit)
+	// Press Enter (should confirm quit via ResultQuit)
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Modal should still be set (key forwarded, not force quit)
-	// Note: The actual modal behavior (submit/cancel) depends on modal state,
-	// but the key should be forwarded rather than triggering force quit
-	require.NotNil(t, cmd, "should return a command from modal")
+	// Modal should be hidden after confirmation
+	require.False(t, m.quitModal.IsVisible(), "quitModal should be hidden after Enter")
 
-	// Verify it's NOT a QuitMsg (force quit requires Ctrl+C specifically)
-	if cmd != nil {
-		msg := cmd()
-		_, isQuitMsg := msg.(QuitMsg)
-		// Enter on modal typically produces SubmitMsg, not QuitMsg
-		require.False(t, isQuitMsg, "non-Ctrl+C keys should not trigger force quit")
-	}
+	// Should produce QuitMsg via ResultQuit
+	require.NotNil(t, cmd, "should return a command from modal")
+	msg := cmd()
+	_, isQuitMsg := msg.(QuitMsg)
+	require.True(t, isQuitMsg, "Enter should produce QuitMsg via confirmation")
 }
 
 // === Quit Confirmation Test Suite ===
@@ -1135,7 +1127,7 @@ func TestQuitConfirmation_CtrlC_ShowsModal(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
 	require.Nil(t, cmd, "Ctrl+C should not return a command (modal shown instead)")
-	require.NotNil(t, m.quitModal, "quit modal should be shown after Ctrl+C")
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown after Ctrl+C")
 }
 
 func TestQuitConfirmation_Cancel(t *testing.T) {
@@ -1149,13 +1141,13 @@ func TestQuitConfirmation_Cancel(t *testing.T) {
 
 	// Trigger the quit modal (ESC in Normal mode)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
-	require.NotNil(t, m.quitModal, "quit modal should be shown")
+	require.True(t, m.quitModal.IsVisible(), "quit modal should be shown")
 
 	// Cancel via modal.CancelMsg
 	m, cmd := m.Update(modal.CancelMsg{})
 
 	// Modal should be cleared
-	require.Nil(t, m.quitModal, "quit modal should be cleared after cancel")
+	require.False(t, m.quitModal.IsVisible(), "quit modal should be cleared after cancel")
 	// No QuitMsg should be produced
 	require.Nil(t, cmd, "cancel should not return a command")
 }
@@ -1186,7 +1178,7 @@ func TestQuitConfirmation_DuringInit_NoModal(t *testing.T) {
 
 			// Should return a command (QuitMsg), not show a modal
 			require.NotNil(t, cmd, "ESC should return a command during init phase %v", tt.phase)
-			require.Nil(t, m.quitModal, "quit modal should NOT be shown during init phase %v", tt.phase)
+			require.False(t, m.quitModal.IsVisible(), "quit modal should NOT be shown during init phase %v", tt.phase)
 
 			// Verify the command produces QuitMsg
 			msg := cmd()
@@ -1206,7 +1198,7 @@ func TestQuitConfirmation_DuringInit_CtrlC_NoModal(t *testing.T) {
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 
 	require.NotNil(t, cmd, "Ctrl+C should return a command during loading")
-	require.Nil(t, m.quitModal, "quit modal should NOT be shown during loading")
+	require.False(t, m.quitModal.IsVisible(), "quit modal should NOT be shown during loading")
 
 	msg := cmd()
 	_, ok := msg.(QuitMsg)
@@ -1226,7 +1218,7 @@ func TestQuitConfirmation_NavigationMode(t *testing.T) {
 	// ESC in navigation mode exits navigation mode, doesn't trigger quit
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	require.False(t, m.navigationMode, "ESC should exit navigation mode")
-	require.Nil(t, m.quitModal, "ESC in navigation mode should exit nav mode, not show quit modal")
+	require.False(t, m.quitModal.IsVisible(), "ESC in navigation mode should exit nav mode, not show quit modal")
 	require.Nil(t, cmd, "should not return a command when exiting navigation mode")
 
 	// Re-enter navigation mode
@@ -1235,7 +1227,7 @@ func TestQuitConfirmation_NavigationMode(t *testing.T) {
 
 	// Ctrl+C in navigation mode should show quit modal
 	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	require.NotNil(t, m.quitModal, "Ctrl+C in navigation mode should show quit modal")
+	require.True(t, m.quitModal.IsVisible(), "Ctrl+C in navigation mode should show quit modal")
 	require.Nil(t, cmd, "should not return command, modal shown instead")
 }
 

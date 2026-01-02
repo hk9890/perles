@@ -32,6 +32,7 @@ import (
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -97,8 +98,8 @@ type Model struct {
 	// Error display (modal overlay)
 	errorModal *modal.Model
 
-	// Quit confirmation modal (nil when not showing)
-	quitModal *modal.Model
+	// Quit confirmation modal
+	quitModal quitmodal.Model
 
 	// Workflow state
 	paused bool
@@ -240,6 +241,10 @@ func New(cfg Config) Model {
 		ampModel:              cfg.AmpModel,
 		ampMode:               cfg.AmpMode,
 		workflowRegistry:      cfg.WorkflowRegistry,
+		quitModal: quitmodal.New(quitmodal.Config{
+			Title:   "Exit Orchestration Mode?",
+			Message: "Active workers will be stopped.\n\nPress Enter to exit or Esc to cancel.",
+		}),
 	}
 }
 
@@ -352,6 +357,9 @@ func (m Model) SetSize(width, height int) Model {
 	if m.errorModal != nil {
 		m.errorModal.SetSize(width, height)
 	}
+
+	// Update quit modal size (always update to cache dimensions)
+	m.quitModal.SetSize(width, height)
 
 	// Update workflow picker size if present
 	if m.workflowPicker != nil {
@@ -605,26 +613,13 @@ func (m Model) SetError(msg string) Model {
 	})
 	mdl.SetSize(m.width, m.height)
 	m.errorModal = &mdl
-	m.quitModal = nil // Clear quit modal - error takes priority
+	m.quitModal.Hide() // Clear quit modal - error takes priority
 	return m
 }
 
 // ClearError clears the error display.
 func (m Model) ClearError() Model {
 	m.errorModal = nil
-	return m
-}
-
-// showQuitConfirmation creates and shows the quit confirmation modal.
-// Uses ButtonDanger for destructive action emphasis.
-func (m Model) showQuitConfirmation() Model {
-	mdl := modal.New(modal.Config{
-		Title:          "Exit Orchestration Mode?",
-		Message:        "Active workers will be stopped.\n\nPress Enter to exit or Esc to cancel.",
-		ConfirmVariant: modal.ButtonDanger,
-	})
-	mdl.SetSize(m.width, m.height)
-	m.quitModal = &mdl
 	return m
 }
 

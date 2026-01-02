@@ -80,7 +80,7 @@ func (m Model) renderMainView() string {
 	}
 
 	// Show quit confirmation modal (below error modal)
-	if m.quitModal != nil {
+	if m.quitModal.IsVisible() {
 		mainView = m.quitModal.Overlay(mainView)
 	}
 

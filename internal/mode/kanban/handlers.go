@@ -26,7 +26,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case ViewHelp:
 		switch {
 		case msg.Type == tea.KeyCtrlC:
-			return m.showQuitConfirmation(), nil
+			m.quitModal.Show()
+			return m, nil
 		case key.Matches(msg, keys.Common.Escape), key.Matches(msg, keys.Common.Help):
 			m.view = ViewBoard
 			return m, nil
@@ -66,7 +67,8 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	switch {
 	case msg.Type == tea.KeyCtrlC:
-		return m.showQuitConfirmation(), nil
+		m.quitModal.Show()
+		return m, nil
 
 	case key.Matches(msg, keys.Common.Help):
 		m.view = ViewHelp
@@ -311,7 +313,8 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) handleDetailsKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch {
 	case msg.Type == tea.KeyCtrlC:
-		return m.showQuitConfirmation(), nil
+		m.quitModal.Show()
+		return m, nil
 	case key.Matches(msg, keys.Common.Escape), key.Matches(msg, keys.Kanban.Escape):
 		m.view = ViewBoard
 		// Save cursor to return to the same issue after refresh

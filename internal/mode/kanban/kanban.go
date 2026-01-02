@@ -21,6 +21,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
+	"github.com/zjrosen/perles/internal/ui/shared/quitmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -62,7 +63,7 @@ type Model struct {
 	colEditor   coleditor.Model
 	modal       modal.Model
 	labelEditor labeleditor.Model
-	quitModal   *modal.Model // Quit confirmation modal (nil when not showing)
+	quitModal   quitmodal.Model // Quit confirmation modal
 	view        ViewMode
 	width       int
 	height      int
@@ -96,10 +97,14 @@ func New(services mode.Services) Model {
 		SetShowCounts(services.Config.UI.ShowCounts)
 
 	return Model{
-		services:            services,
-		view:                ViewBoard,
-		board:               boardModel,
-		help:                help.New(),
+		services: services,
+		view:     ViewBoard,
+		board:    boardModel,
+		help:     help.New(),
+		quitModal: quitmodal.New(quitmodal.Config{
+			Title:   "Exit Application?",
+			Message: "Are you sure you want to quit?",
+		}),
 		loading:             true,
 		showStatusBar:       services.Config.UI.ShowStatusBar,
 		pendingDeleteColumn: -1,
@@ -133,6 +138,7 @@ func (m Model) SetSize(width, height int) Model {
 	m.height = height
 	m.board = m.board.SetSize(width, m.boardHeight())
 	m.help = m.help.SetSize(width, height)
+	m.quitModal.SetSize(width, height)
 	// Update details if we're viewing it (handles terminal resize while in details view)
 	if m.view == ViewDetails {
 		m.details = m.details.SetSize(width, height)
@@ -154,41 +160,23 @@ func (m Model) SetSize(width, height int) Model {
 
 // Update handles messages.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	// Handle quit modal messages first (before other message processing)
-	switch msg := msg.(type) {
-	case modal.SubmitMsg:
-		if m.quitModal != nil {
-			m.quitModal = nil
+	// Handle quit modal first when visible
+	if m.quitModal.IsVisible() {
+		var cmd tea.Cmd
+		var result quitmodal.Result
+		m.quitModal, cmd, result = m.quitModal.Update(msg)
+		switch result {
+		case quitmodal.ResultQuit:
 			return m, tea.Quit
-		}
-		// Continue to main switch for other modal handling
-
-	case modal.CancelMsg:
-		if m.quitModal != nil {
-			m.quitModal = nil
+		case quitmodal.ResultCancel:
 			return m, nil
 		}
-		// Continue to main switch for other modal handling
+		return m, cmd
+	}
 
-	case tea.KeyMsg:
-		// If quit modal is visible, handle keys
-		if m.quitModal != nil {
-			// Ctrl+C or Enter while modal open = quit (confirming the quit)
-			if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEnter {
-				m.quitModal = nil
-				return m, tea.Quit
-			}
-			// Escape dismisses the modal
-			if msg.Type == tea.KeyEscape {
-				m.quitModal = nil
-				return m, nil
-			}
-			// Forward other keys to modal for navigation
-			var cmd tea.Cmd
-			*m.quitModal, cmd = m.quitModal.Update(msg)
-			return m, cmd
-		}
-		return m.handleKey(msg)
+	// Handle key messages
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		return m.handleKey(keyMsg)
 	}
 
 	switch msg := msg.(type) {
@@ -484,7 +472,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 // View renders the kanban mode.
 func (m Model) View() string {
 	// If quit modal is visible, overlay it on top of the current view
-	if m.quitModal != nil {
+	if m.quitModal.IsVisible() {
 		return m.quitModal.Overlay(m.renderCurrentView())
 	}
 	return m.renderCurrentView()
@@ -855,18 +843,6 @@ func (m Model) renameCurrentView(newName string) (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return mode.ShowToastMsg{Message: "Renamed view to: " + newName, Style: toaster.StyleSuccess}
 	}
-}
-
-// showQuitConfirmation creates and shows the quit confirmation modal.
-func (m Model) showQuitConfirmation() Model {
-	mdl := modal.New(modal.Config{
-		Title:          "Exit Application?",
-		Message:        "Are you sure you want to quit?",
-		ConfirmVariant: modal.ButtonDanger,
-	})
-	mdl.SetSize(m.width, m.height)
-	m.quitModal = &mdl
-	return m
 }
 
 // Message types
