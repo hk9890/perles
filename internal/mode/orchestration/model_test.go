@@ -26,7 +26,6 @@ func TestNew(t *testing.T) {
 	total, active := m.WorkerCount()
 	require.Equal(t, 0, total)
 	require.Equal(t, 0, active)
-	require.Equal(t, "", m.CurrentWorkerID())
 }
 
 func TestNew_VimModeDisabledByDefault(t *testing.T) {
@@ -217,7 +216,6 @@ func TestUpdateWorker(t *testing.T) {
 	total, active := m.WorkerCount()
 	require.Equal(t, 1, total)
 	require.Equal(t, 1, active)
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
 
 	// Add second worker
 	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
@@ -233,7 +231,6 @@ func TestUpdateWorker(t *testing.T) {
 	total, active = m.WorkerCount()
 	require.Equal(t, 1, total)  // Retired workers are removed
 	require.Equal(t, 1, active) // Only worker-2 remains
-	require.Equal(t, "worker-2", m.CurrentWorkerID())
 }
 
 func TestUpdateWorker_ExitsFullscreenWhenFullscreenWorkerRetires(t *testing.T) {
@@ -393,48 +390,6 @@ func TestCleanupRetiredWorkerViewports_UnderLimit(t *testing.T) {
 	// Verify all workers retained
 	expectedRetired := []string{"worker-1", "worker-2", "worker-3"}
 	require.Equal(t, expectedRetired, m.workerPane.retiredOrder)
-}
-
-func TestCycleWorker(t *testing.T) {
-	m := New(Config{})
-
-	// No workers - should not panic
-	m = m.CycleWorker(true)
-	require.Equal(t, "", m.CurrentWorkerID())
-
-	// Add workers (retired workers are not added to list)
-	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
-	m = m.UpdateWorker("worker-3", events.ProcessStatusWorking)
-
-	// Initial state - first worker
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-
-	// Cycle forward
-	m = m.CycleWorker(true)
-	require.Equal(t, "worker-2", m.CurrentWorkerID())
-
-	m = m.CycleWorker(true)
-	require.Equal(t, "worker-3", m.CurrentWorkerID())
-
-	// Wrap around
-	m = m.CycleWorker(true)
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-
-	// Cycle backward
-	m = m.CycleWorker(false)
-	require.Equal(t, "worker-3", m.CurrentWorkerID())
-
-	// Retire worker-2 - should be removed and cycling adjusted
-	m = m.UpdateWorker("worker-2", events.ProcessStatusRetired)
-	total, _ := m.WorkerCount()
-	require.Equal(t, 2, total) // worker-1 and worker-3 remain
-
-	// Cycling should skip retired worker
-	m = m.CycleWorker(true) // From worker-3 to worker-1
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-	m = m.CycleWorker(true) // From worker-1 to worker-3 (skips removed worker-2)
-	require.Equal(t, "worker-3", m.CurrentWorkerID())
 }
 
 func TestFocusCycling(t *testing.T) {

@@ -16,8 +16,10 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
@@ -57,6 +59,25 @@ func (m *mockCommandSubmitter) LastCommand() command.Command {
 		return nil
 	}
 	return m.commands[len(m.commands)-1]
+}
+
+// mockV2InfraWithSubmitter creates a mock v2.Infrastructure with the given command submitter.
+// This allows tests to verify command submission without running real infrastructure.
+func mockV2InfraWithSubmitter(submitter process.CommandSubmitter) *v2.Infrastructure {
+	return &v2.Infrastructure{
+		Core: v2.CoreComponents{
+			CmdSubmitter: submitter,
+		},
+		Repositories: v2.RepositoryComponents{
+			ProcessRepo: newMockProcessRepository(),
+		},
+	}
+}
+
+// mockV2Infra creates a mock v2.Infrastructure with a new mock command submitter.
+func mockV2Infra() (*v2.Infrastructure, *mockCommandSubmitter) {
+	submitter := newMockCommandSubmitter()
+	return mockV2InfraWithSubmitter(submitter), submitter
 }
 
 // mockProcessRepository implements repository.ProcessRepository for testing.
@@ -204,28 +225,6 @@ func TestUpdate_TabCyclesMessageTargets(t *testing.T) {
 	// Tab -> COORDINATOR (wrap)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	require.Equal(t, "COORDINATOR", m.messageTarget)
-}
-
-func TestUpdate_CtrlBracketsCycleWorkers(t *testing.T) {
-	m := New(Config{})
-	m = m.SetSize(120, 40)
-
-	// Add workers
-	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
-
-	// Initial: worker-1 displayed
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-
-	// ctrl+] -> worker-2
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}, Alt: false})
-	// Note: ctrl+] is tricky to simulate, test CycleWorker directly instead
-	m = m.CycleWorker(true)
-	require.Equal(t, "worker-2", m.CurrentWorkerID())
-
-	// ctrl+[ -> worker-1
-	m = m.CycleWorker(false)
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
 }
 
 func TestUpdate_InputAlwaysFocused(t *testing.T) {
@@ -622,13 +621,13 @@ func TestHandleReplaceCoordinator_SetsPendingRefresh(t *testing.T) {
 }
 
 func TestHandleReplaceCoordinator_WithCmdSubmitter(t *testing.T) {
-	// Create a model with a cmdSubmitter
+	// Create a model with v2Infra
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a mock command submitter for v2 command submission
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure with command submitter
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	require.False(t, m.pendingRefresh, "pendingRefresh should start false")
 
@@ -712,10 +711,10 @@ func TestHandleMessageEvent_HandoffTriggersReplace(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a process repository with coordinator and cmdSubmitter
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 	m.pendingRefresh = true
 
 	// Set up a message listener so handleMessageEvent doesn't return early
@@ -758,10 +757,10 @@ func TestHandleMessageEvent_IgnoresHandoffWhenNotPending(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a process repository with coordinator and cmdSubmitter
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 	m.pendingRefresh = false // Not waiting for refresh
 
 	// Set up a message listener
@@ -800,10 +799,10 @@ func TestHandleMessageEvent_ClearsPendingRefresh(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up a process repository with coordinator and cmdSubmitter
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 	m.pendingRefresh = true
 
 	// Set up a message listener
@@ -841,10 +840,10 @@ func TestHandleMessageEvent_NonHandoffMessagePreservesPendingRefresh(t *testing.
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up process repository with coordinator and cmdSubmitter
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 	m.pendingRefresh = true
 
 	// Set up a message listener
@@ -883,9 +882,9 @@ func TestHandoffTimeout_TriggersReplace(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up mock command submitter
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	msgRepo := repository.NewMemoryMessageRepository()
 	m.messageRepo = msgRepo
@@ -919,9 +918,9 @@ func TestHandoffTimeout_PostsFallbackMessage(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up mock command submitter and message repository
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	msgRepo := repository.NewMemoryMessageRepository()
 	m.messageRepo = msgRepo
@@ -948,10 +947,10 @@ func TestHandoffTimeout_IgnoredWhenNotPending(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up process repository with coordinator
+	// Set up mock v2 infrastructure
 	msgRepo := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 	m.messageRepo = msgRepo
 	m.pendingRefresh = false // Handoff already received
 
@@ -974,10 +973,10 @@ func TestHandleMessageEvent_WorkerReady_AppearsInMessagePane(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up process repository with coordinator
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Set up a message listener
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1014,10 +1013,10 @@ func TestHandleMessageEvent_RegularMessage_UsesDebounce(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up process repository with coordinator
+	// Set up mock v2 infrastructure
 	msgIssue := repository.NewMemoryMessageRepository()
-	m.processRepo = newTestProcessRepo()
-	m.cmdSubmitter = newMockCommandSubmitter()
+	infra, _ := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Set up a message listener
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2806,9 +2805,9 @@ func TestHandleStopProcessCommand_ParsesWorkerID(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up mock command submitter
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Send /stop command via handleUserInput
 	m, cmd := m.handleUserInput("/stop worker-1", "COORDINATOR")
@@ -2833,9 +2832,9 @@ func TestHandleStopProcessCommand_ParsesForceFlag(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up mock command submitter
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Send /stop command with --force flag
 	m, cmd := m.handleUserInput("/stop worker-2 --force", "COORDINATOR")
@@ -2858,9 +2857,9 @@ func TestHandleStopProcessCommand_InvalidSyntax(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// Set up mock command submitter
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Send /stop command without worker ID (just "/stop " to trigger the handler)
 	m, cmd := m.handleUserInput("/stop ", "COORDINATOR")
@@ -2879,7 +2878,7 @@ func TestHandleStopProcessCommand_SubmitsCommand(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 
-	// First test: without cmdSubmitter, should show error
+	// First test: without v2Infra, should show error
 	m, cmd := m.handleUserInput("/stop worker-1", "COORDINATOR")
 	require.NotNil(t, m.errorModal, "should set error when no cmdSubmitter")
 	require.Nil(t, cmd, "should return nil command")
@@ -2887,9 +2886,9 @@ func TestHandleStopProcessCommand_SubmitsCommand(t *testing.T) {
 	// Reset error modal
 	m = m.ClearError()
 
-	// Now set up mock command submitter
-	mockSubmitter := newMockCommandSubmitter()
-	m.cmdSubmitter = mockSubmitter
+	// Now set up mock v2 infrastructure
+	infra, mockSubmitter := mockV2Infra()
+	m = m.SetV2Infra(infra)
 
 	// Send /stop command
 	m, cmd = m.handleUserInput("/stop worker-3", "COORDINATOR")

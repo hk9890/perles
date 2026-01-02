@@ -258,20 +258,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch back to kanban mode from orchestration
 		log.Info(log.CatMode, "Switching mode", "from", "orchestration", "to", "kanban")
 
-		// Cancel pub/sub subscriptions first - this triggers cleanup via v2 commands
-		m.orchestration.CancelSubscriptions()
-
-		// Log coordinator cleanup (actual cleanup happens via CmdRetireProcess in model.cleanup())
-		if coord := m.orchestration.Coordinator(); coord != nil {
-			log.Debug(log.CatMode, "Coordinator cleanup initiated")
-		}
-		// Shut down MCP server synchronously to free the port
-		if srv := m.orchestration.MCPServer(); srv != nil {
-			log.Debug(log.CatMode, "Shutting down MCP server")
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_ = srv.Shutdown(ctx)
-			cancel()
-		}
+		// Clean up all orchestration resources (processes, MCP server, subscriptions)
+		m.orchestration.Cleanup()
 
 		m.currentMode = mode.ModeKanban
 		// Refresh kanban to show any changes made during orchestration

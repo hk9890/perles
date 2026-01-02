@@ -217,7 +217,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						return m, tea.Batch(spinnerTick(), m.initListener.Listen())
 					}
 					// Fallback if no initializer or listener (e.g., in tests) - restart initialization
-					m.cleanup()
+					m.Cleanup()
 					return m, func() tea.Msg { return StartCoordinatorMsg{} }
 				case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
 					return m, func() tea.Msg { return QuitMsg{} }
@@ -506,12 +506,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case RefreshTimeoutMsg:
 		if m.pendingRefresh {
 			m.pendingRefresh = false
-			if m.cmdSubmitter == nil {
+			cmdSubmitter := m.cmdSubmitter()
+			if cmdSubmitter == nil {
 				m = m.SetError("Command submitter not available")
 				return m, nil
 			}
 			msgRepo := m.messageRepo
-			cmdSubmitter := m.cmdSubmitter
 			return m, func() tea.Msg {
 				log.Debug(log.CatOrch, "Handoff timeout - proceeding with generic handoff", "subsystem", "update")
 				// Post fallback message
@@ -557,16 +557,16 @@ func (m Model) handleMessageEvent(event pubsub.Event[message.Event]) (Model, tea
 		if m.pendingRefresh && entry.Type == message.MessageHandoff {
 			m.pendingRefresh = false
 			// Trigger the actual replacement via v2 command
-			if m.cmdSubmitter != nil {
+			if cmdSubmitter := m.cmdSubmitter(); cmdSubmitter != nil {
 				cmd := command.NewReplaceProcessCommand(command.SourceUser, repository.CoordinatorID, "handoff_received")
-				m.cmdSubmitter.Submit(cmd)
+				cmdSubmitter.Submit(cmd)
 			}
 			return m, m.messageListener.Listen()
 		}
 
 		// Nudge coordinator if message is to COORDINATOR or ALL
 		if entry.To == message.ActorCoordinator || entry.To == message.ActorAll {
-			if m.processRepo != nil && m.nudgeBatcher != nil && entry.From != message.ActorCoordinator {
+			if m.processRepo() != nil && m.nudgeBatcher != nil && entry.From != message.ActorCoordinator {
 				// Determine message type based on the entry type
 				msgType := WorkerNewMessage
 				if entry.Type == message.MessageWorkerReady {
@@ -807,9 +807,9 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 		// This allows panes to populate during loading
 		// Note: Coordinator events now flow through v2EventBus via ProcessEvent
 		if payload.Phase >= InitAwaitingFirstMessage && m.v2Listener == nil {
-			// Get ProcessRepository for coordinator state queries
-			if processRepo := m.initializer.GetProcessRepository(); processRepo != nil {
-				m.processRepo = processRepo
+			// Get v2Infra for process state queries and command submission
+			if v2Infra := m.initializer.GetV2Infra(); v2Infra != nil {
+				m.v2Infra = v2Infra
 
 				if msgRepo := m.initializer.GetMessageRepo(); msgRepo != nil {
 					m.messageRepo = msgRepo
@@ -822,16 +822,12 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 					m.v2Listener = pubsub.NewContinuousListener(m.ctx, v2Bus)
 				}
 
-				// Get cmdSubmitter for v2 command submission
-				if cmdSubmitter := m.initializer.GetCmdSubmitter(); cmdSubmitter != nil {
-					m.cmdSubmitter = cmdSubmitter
-				}
-
 				// Set up nudge batcher early so worker ready messages get forwarded
 				if m.nudgeBatcher == nil {
 					m.nudgeBatcher = NewNudgeBatcher(1 * time.Second)
 					m.nudgeBatcher.SetOnNudge(func(messagesByType map[MessageType][]string) {
-						if m.cmdSubmitter == nil {
+						cmdSubmitter := m.cmdSubmitter()
+						if cmdSubmitter == nil {
 							return
 						}
 
@@ -852,13 +848,13 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 						if len(readyMessageWorkerIds) > 0 {
 							nudge = fmt.Sprintf("[%s] have started up and are now ready", strings.Join(readyMessageWorkerIds, ", "))
 							cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, nudge)
-							m.cmdSubmitter.Submit(cmd)
+							cmdSubmitter.Submit(cmd)
 						}
 
 						if len(newMessageWorkerIds) > 0 {
 							nudge = fmt.Sprintf("[%s sent messages] Use read_message_log to check for new messages.", strings.Join(newMessageWorkerIds, ", "))
 							cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, nudge)
-							m.cmdSubmitter.Submit(cmd)
+							cmdSubmitter.Submit(cmd)
 						}
 					})
 				}
@@ -887,12 +883,9 @@ func (m Model) handleInitializerEvent(event pubsub.Event[InitializerEvent]) (Mod
 		m.mcpCoordServer = res.MCPCoordServer
 		m.session = res.Session
 
-		// Get cmdSubmitter and processRepo if not already set
-		if m.cmdSubmitter == nil {
-			m.cmdSubmitter = m.initializer.GetCmdSubmitter()
-		}
-		if m.processRepo == nil {
-			m.processRepo = m.initializer.GetProcessRepository()
+		// Get v2Infra if not already set
+		if m.v2Infra == nil {
+			m.v2Infra = res.V2Infra
 		}
 
 		// Set up pub/sub subscriptions if not already set up
@@ -1002,7 +995,8 @@ func (m Model) handleUserInput(content, target string) (Model, tea.Cmd) {
 // handleUserInputToCoordinator sends user input to the coordinator.
 // Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputToCoordinator(content string) (Model, tea.Cmd) {
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
@@ -1010,7 +1004,7 @@ func (m Model) handleUserInputToCoordinator(content string) (Model, tea.Cmd) {
 	// Submit v2 command to send message to coordinator
 	// The command handler will add the message to chat via event emission
 	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, content)
-	m.cmdSubmitter.Submit(cmd)
+	cmdSubmitter.Submit(cmd)
 
 	return m, nil
 }
@@ -1018,7 +1012,8 @@ func (m Model) handleUserInputToCoordinator(content string) (Model, tea.Cmd) {
 // handleUserInputToWorker sends user input directly to a worker.
 // Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd) {
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
@@ -1026,7 +1021,7 @@ func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd
 	// Submit v2 command to send message to worker
 	// The command handler will add the message to chat via event emission
 	cmd := command.NewSendToProcessCommand(command.SourceUser, workerID, content)
-	m.cmdSubmitter.Submit(cmd)
+	cmdSubmitter.Submit(cmd)
 
 	return m, nil
 }
@@ -1034,14 +1029,15 @@ func (m Model) handleUserInputToWorker(content, workerID string) (Model, tea.Cmd
 // handleUserInputBroadcast sends user input to the coordinator and all active workers.
 // Uses v2 command submission via CmdSendToProcess.
 func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
 
 	// Send to coordinator via v2 command
 	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, "[BROADCAST]\n"+content)
-	m.cmdSubmitter.Submit(cmd)
+	cmdSubmitter.Submit(cmd)
 
 	// Send to all active workers via v2 command
 	for _, workerID := range m.workerPane.workerIDs {
@@ -1053,7 +1049,7 @@ func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
 
 		broadcastContent := fmt.Sprintf("[BROADCAST]\n%s", content)
 		cmd := command.NewSendToProcessCommand(command.SourceUser, workerID, broadcastContent)
-		m.cmdSubmitter.Submit(cmd)
+		cmdSubmitter.Submit(cmd)
 	}
 
 	log.Debug(log.CatOrch, "Broadcast message sent", "subsystem", "update")
@@ -1062,18 +1058,19 @@ func (m Model) handleUserInputBroadcast(content string) (Model, tea.Cmd) {
 
 // handlePauseToggle toggles the paused state using v2 commands.
 func (m Model) handlePauseToggle() (Model, tea.Cmd) {
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		return m, nil
 	}
 
 	if m.paused {
 		// Submit resume command - the handler will update m.paused via ProcessStatusChange event
 		cmd := command.NewResumeProcessCommand(command.SourceUser, repository.CoordinatorID)
-		m.cmdSubmitter.Submit(cmd)
+		cmdSubmitter.Submit(cmd)
 	} else {
 		// Submit pause command - the handler will update m.paused via ProcessStatusChange event
 		cmd := command.NewPauseProcessCommand(command.SourceUser, repository.CoordinatorID, "user_requested")
-		m.cmdSubmitter.Submit(cmd)
+		cmdSubmitter.Submit(cmd)
 	}
 
 	return m, nil
@@ -1085,7 +1082,8 @@ func (m Model) handlePauseToggle() (Model, tea.Cmd) {
 // handoff message is received in handleMessageEvent.
 // Also starts a 15-second timeout to handle cases where coordinator doesn't respond.
 func (m Model) handleReplaceCoordinator() (Model, tea.Cmd) {
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
@@ -1124,7 +1122,7 @@ The more detailed your handoff, the smoother the transition will be. Think of th
 When you're ready, call: ` + "`prepare_handoff`" + ` with your summary.`
 
 	cmd := command.NewSendToProcessCommand(command.SourceUser, repository.CoordinatorID, handoffMessage)
-	m.cmdSubmitter.Submit(cmd)
+	cmdSubmitter.Submit(cmd)
 
 	return m, timeoutCmd
 }
@@ -1141,13 +1139,14 @@ func (m Model) handleStopProcessCommand(content string) (Model, tea.Cmd) {
 	processID := parts[1]
 	force := len(parts) > 2 && parts[2] == "--force"
 
-	if m.cmdSubmitter == nil {
+	cmdSubmitter := m.cmdSubmitter()
+	if cmdSubmitter == nil {
 		m = m.SetError("Command submitter not available")
 		return m, nil
 	}
 
 	cmd := command.NewStopProcessCommand(command.SourceUser, processID, force, "user_requested")
-	m.cmdSubmitter.Submit(cmd)
+	cmdSubmitter.Submit(cmd)
 
 	return m, nil
 }

@@ -113,6 +113,21 @@ func (r *ProcessRegistry) IDs() []string {
 	return ids
 }
 
+// StopAll stops all registered processes (coordinator and workers).
+// This is used during shutdown to cleanly terminate all processes.
+func (r *ProcessRegistry) StopAll() {
+	r.mu.RLock()
+	processes := make([]*Process, 0, len(r.processes))
+	for _, p := range r.processes {
+		processes = append(processes, p)
+	}
+	r.mu.RUnlock()
+
+	for _, p := range processes {
+		p.Stop()
+	}
+}
+
 // ResumeProcess implements the integration.ProcessResumer interface.
 // It attaches a new AI process to an existing Process and restarts the event loop.
 // This is called by ProcessSessionDeliverer when delivering a queued message.

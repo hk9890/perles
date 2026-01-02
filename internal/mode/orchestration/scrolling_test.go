@@ -123,9 +123,6 @@ func TestMultipleWorkers_ScrollAffectsCurrentWorkerOnly(t *testing.T) {
 	// Render to create viewports
 	_ = m.View()
 
-	// Verify worker-1 is currently displayed
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-
 	// Get initial scroll positions
 	vp1Before := m.workerPane.viewports["worker-1"]
 	vp2Before := m.workerPane.viewports["worker-2"]
@@ -156,43 +153,6 @@ func TestMultipleWorkers_ScrollAffectsCurrentWorkerOnly(t *testing.T) {
 	// Worker-2 should be unaffected
 	require.Equal(t, offset2Before, vp2After.YOffset,
 		"non-current worker viewport should not change")
-}
-
-func TestMultipleWorkers_CyclingPreservesScrollPosition(t *testing.T) {
-	m := New(Config{})
-	m = m.SetSize(120, 30)
-
-	// Add workers with content
-	m = m.UpdateWorker("worker-1", events.ProcessStatusWorking)
-	m = m.UpdateWorker("worker-2", events.ProcessStatusWorking)
-
-	for i := 0; i < 50; i++ {
-		m = m.AddWorkerMessage("worker-1", "Worker 1 message")
-		m = m.AddWorkerMessage("worker-2", "Worker 2 message")
-	}
-
-	// Render to create viewports and scroll worker-1
-	_ = m.View()
-
-	// Manually scroll worker-1's viewport up
-	if vp, ok := m.workerPane.viewports["worker-1"]; ok {
-		vp.SetYOffset(10) // Scroll up
-		m.workerPane.viewports["worker-1"] = vp
-	}
-
-	savedOffset := m.workerPane.viewports["worker-1"].YOffset
-
-	// Cycle to worker-2
-	m = m.CycleWorker(true)
-	require.Equal(t, "worker-2", m.CurrentWorkerID())
-
-	// Cycle back to worker-1
-	m = m.CycleWorker(false)
-	require.Equal(t, "worker-1", m.CurrentWorkerID())
-
-	// Worker-1's scroll position should be preserved
-	require.Equal(t, savedOffset, m.workerPane.viewports["worker-1"].YOffset,
-		"scroll position should be preserved when cycling workers")
 }
 
 // =============================================================================

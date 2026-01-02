@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -251,4 +252,44 @@ func TestProcessRegistry_ConcurrentRegisterUnregister(t *testing.T) {
 
 	wg.Wait()
 	// Should not panic - final state is non-deterministic but valid
+}
+
+func TestProcessRegistry_StopAll_StopsAllProcesses(t *testing.T) {
+	reg := NewProcessRegistry()
+
+	// Create processes with properly initialized context/cancel/eventDone
+	createStoppableProcess := func(id string, role repository.ProcessRole) *Process {
+		ctx, cancel := context.WithCancel(context.Background())
+		eventDone := make(chan struct{})
+		close(eventDone) // Pre-close so Stop() doesn't block
+
+		return &Process{
+			ID:        id,
+			Role:      role,
+			ctx:       ctx,
+			cancel:    cancel,
+			eventDone: eventDone,
+		}
+	}
+
+	reg.Register(createStoppableProcess("coordinator", repository.RoleCoordinator))
+	reg.Register(createStoppableProcess("worker-1", repository.RoleWorker))
+	reg.Register(createStoppableProcess("worker-2", repository.RoleWorker))
+
+	// StopAll should not panic and should complete
+	assert.NotPanics(t, func() {
+		reg.StopAll()
+	})
+
+	// Verify all 3 processes are still in registry (StopAll doesn't unregister)
+	assert.Len(t, reg.All(), 3)
+}
+
+func TestProcessRegistry_StopAll_EmptyRegistry(t *testing.T) {
+	reg := NewProcessRegistry()
+
+	// Should not panic on empty registry
+	assert.NotPanics(t, func() {
+		reg.StopAll()
+	})
 }

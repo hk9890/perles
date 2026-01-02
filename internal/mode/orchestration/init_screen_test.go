@@ -16,10 +16,10 @@ func newTestInitializer(phase InitPhase, err error) *Initializer {
 		failedAt = InitCreatingWorkspace // Default failed phase
 	}
 	return &Initializer{
-		phase:            phase,
-		failedAtPhase:    failedAt,
-		err:              err,
-		confirmedWorkers: make(map[string]bool),
+		phase:              phase,
+		failedAtPhase:      failedAt,
+		err:                err,
+		workerConfirmation: newWorkerConfirmation(4),
 		cfg: InitializerConfig{
 			ExpectedWorkers: 4,
 		},
@@ -29,10 +29,10 @@ func newTestInitializer(phase InitPhase, err error) *Initializer {
 // newTestInitializerWithFailedPhase creates an Initializer with specific failed phase.
 func newTestInitializerWithFailedPhase(phase InitPhase, failedAt InitPhase, err error) *Initializer {
 	return &Initializer{
-		phase:            phase,
-		failedAtPhase:    failedAt,
-		err:              err,
-		confirmedWorkers: make(map[string]bool),
+		phase:              phase,
+		failedAtPhase:      failedAt,
+		err:                err,
+		workerConfirmation: newWorkerConfirmation(4),
 		cfg: InitializerConfig{
 			ExpectedWorkers: 4,
 		},

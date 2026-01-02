@@ -25,7 +25,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/session"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
@@ -110,8 +110,8 @@ type Model struct {
 	// Spinner animation frame (view-only, advanced by SpinnerTickMsg)
 	spinnerFrame int
 
-	// Backend integration (v2 process repository for coordinator/worker state)
-	processRepo        repository.ProcessRepository // V2 process repository for status queries
+	// Backend integration (v2 infrastructure owns process lifecycle)
+	v2Infra            *v2.Infrastructure           // V2 orchestration infrastructure (for shutdown and repo access)
 	coordinatorStatus  events.ProcessStatus         // Current coordinator status from v2 events
 	messageRepo        repository.MessageRepository // Message repository for inter-agent messaging
 	mcpServer          *http.Server                 // HTTP MCP server for in-process tool handling
@@ -119,10 +119,9 @@ type Model struct {
 	mcpCoordServer     *mcp.CoordinatorServer       // MCP coordinator server for direct worker messaging
 	workDir            string
 	services           mode.Services
-	coordinatorMetrics *metrics.TokenMetrics    // Token usage and cost data for coordinator
-	coordinatorWorking bool                     // True when coordinator is processing, false when waiting for input
-	session            *session.Session         // Session tracking for this orchestration run
-	cmdSubmitter       process.CommandSubmitter // V2 command submitter for direct v2 command submission
+	coordinatorMetrics *metrics.TokenMetrics // Token usage and cost data for coordinator
+	coordinatorWorking bool                  // True when coordinator is processing, false when waiting for input
+	session            *session.Session      // Session tracking for this orchestration run
 
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"
@@ -181,7 +180,6 @@ type MessagePane struct {
 
 // WorkerPane shows output from one worker at a time.
 type WorkerPane struct {
-	workerIndex       int      // Currently displayed worker
 	workerIDs         []string // Worker IDs in display order (active workers only)
 	workerStatus      map[string]events.ProcessStatus
 	workerTaskIDs     map[string]string                // Current task ID per worker
@@ -326,7 +324,6 @@ func (m Model) SetSize(width, height int) Model {
 	numWorkers := len(m.workerPane.workerIDs)
 	if numWorkers > 0 {
 		// Calculate height per worker (matches renderWorkerPanes logic)
-		minHeightPerWorker := 5
 		heightPerWorker := max(contentHeight/numWorkers, minHeightPerWorker)
 
 		workerVpWidth := max(rightWidth-2, 1)
@@ -480,11 +477,6 @@ func (m Model) UpdateWorker(workerID string, status events.ProcessStatus) Model 
 		// Update status to retired (keep other data for now)
 		m.workerPane.workerStatus[workerID] = status
 
-		// Adjust display index if needed
-		if m.workerPane.workerIndex >= len(m.workerPane.workerIDs) && m.workerPane.workerIndex > 0 {
-			m.workerPane.workerIndex = len(m.workerPane.workerIDs) - 1
-		}
-
 		// Cleanup oldest retired workers if over limit
 		m = m.cleanupRetiredWorkerViewports()
 		return m
@@ -542,28 +534,6 @@ func (m Model) SetWorkerTask(workerID, taskID string, phase events.ProcessPhase)
 	m.workerPane.workerTaskIDs[workerID] = taskID
 	m.workerPane.workerPhases[workerID] = phase
 	return m
-}
-
-// CycleWorker moves to the next or previous worker in the list.
-func (m Model) CycleWorker(forward bool) Model {
-	if len(m.workerPane.workerIDs) == 0 {
-		return m
-	}
-
-	if forward {
-		m.workerPane.workerIndex = (m.workerPane.workerIndex + 1) % len(m.workerPane.workerIDs)
-	} else {
-		m.workerPane.workerIndex = (m.workerPane.workerIndex - 1 + len(m.workerPane.workerIDs)) % len(m.workerPane.workerIDs)
-	}
-	return m
-}
-
-// CurrentWorkerID returns the ID of the currently displayed worker, or empty if none.
-func (m Model) CurrentWorkerID() string {
-	if len(m.workerPane.workerIDs) == 0 {
-		return ""
-	}
-	return m.workerPane.workerIDs[m.workerPane.workerIndex]
 }
 
 // WorkerCount returns the total number of workers and active count.
@@ -654,15 +624,32 @@ func (m Model) showQuitConfirmation() Model {
 	return m
 }
 
+// processRepo returns the process repository from v2Infra, or nil if not initialized.
+func (m Model) processRepo() repository.ProcessRepository {
+	if m.v2Infra == nil {
+		return nil
+	}
+	return m.v2Infra.Repositories.ProcessRepo
+}
+
+// cmdSubmitter returns the command submitter from v2Infra, or nil if not initialized.
+func (m Model) cmdSubmitter() process.CommandSubmitter {
+	if m.v2Infra == nil {
+		return nil
+	}
+	return m.v2Infra.Core.CmdSubmitter
+}
+
 // Coordinator returns nil - coordinator state is now managed via ProcessRepository.
 // This method is retained for API compatibility but callers should use
 // ProcessRepository.GetCoordinator() for status queries and CmdRetireProcess for cleanup.
-// Deprecated: Use m.processRepo.GetCoordinator() for status or CmdRetireProcess for cleanup.
+// Deprecated: Use v2Infra.Repositories.ProcessRepo.GetCoordinator() for status or CmdRetireProcess for cleanup.
 func (m Model) Coordinator() *repository.Process {
-	if m.processRepo == nil {
+	repo := m.processRepo()
+	if repo == nil {
 		return nil
 	}
-	proc, err := m.processRepo.GetCoordinator()
+	proc, err := repo.GetCoordinator()
 	if err != nil {
 		return nil
 	}
@@ -672,6 +659,12 @@ func (m Model) Coordinator() *repository.Process {
 // MCPServer returns the HTTP MCP server instance, if any.
 func (m Model) MCPServer() *http.Server {
 	return m.mcpServer
+}
+
+// SetV2Infra sets the v2 infrastructure for testing purposes.
+func (m Model) SetV2Infra(infra *v2.Infrastructure) Model {
+	m.v2Infra = infra
+	return m
 }
 
 // toggleNavigationMode toggles between normal and navigation mode.
@@ -738,11 +731,18 @@ func (m *Model) CancelSubscriptions() {
 	}
 }
 
-// cleanup cleans up any partial initialization state before retrying.
-// This is called when the user presses R to retry after a failed or timed out initialization.
-func (m *Model) cleanup() {
+// Cleanup cleans up all orchestration resources.
+// This is called when exiting orchestration mode or retrying after a failed initialization.
+// It stops all processes, shuts down the MCP server, and clears state.
+func (m *Model) Cleanup() {
 	// Cancel any active subscriptions
 	m.CancelSubscriptions()
+
+	// Shutdown v2 infrastructure (stops all processes and drains command processor)
+	if m.v2Infra != nil {
+		m.v2Infra.Shutdown()
+		m.v2Infra = nil
+	}
 
 	// Shutdown MCP server if running
 	if m.mcpServer != nil {
@@ -751,15 +751,6 @@ func (m *Model) cleanup() {
 		cancel()
 		m.mcpServer = nil
 	}
-
-	// Stop coordinator if running via v2 command
-	if m.processRepo != nil && m.cmdSubmitter != nil {
-		if _, err := m.processRepo.GetCoordinator(); err == nil {
-			cmd := command.NewRetireProcessCommand(command.SourceInternal, repository.CoordinatorID, "cleanup")
-			m.cmdSubmitter.Submit(cmd)
-		}
-	}
-	m.processRepo = nil
 
 	// Clear message repository
 	m.messageRepo = nil
