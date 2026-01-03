@@ -261,6 +261,18 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return OpenEditMenuMsg{Issue: m.issue}
 			}
 		}
+	case tea.MouseMsg:
+		// Only handle wheel events for scrolling
+		if msg.Button != tea.MouseButtonWheelUp && msg.Button != tea.MouseButtonWheelDown {
+			return m, nil
+		}
+		scrollLines := 1
+		if msg.Button == tea.MouseButtonWheelUp {
+			m.viewport.ScrollUp(scrollLines)
+		} else {
+			m.viewport.ScrollDown(scrollLines)
+		}
+		return m, nil
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)

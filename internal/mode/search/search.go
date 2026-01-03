@@ -581,6 +581,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.handleKey(keyMsg)
 	}
 
+	// Handle mouse messages - forward wheel events to details regardless of focus
+	if mouseMsg, ok := msg.(tea.MouseMsg); ok {
+		// Forward wheel events to details regardless of focus
+		if mouseMsg.Button == tea.MouseButtonWheelUp || mouseMsg.Button == tea.MouseButtonWheelDown {
+			var cmd tea.Cmd
+			m.details, cmd = m.details.Update(mouseMsg)
+			return m, cmd
+		}
+		// Non-wheel events only forwarded when details focused
+		if m.focus == FocusDetails {
+			var cmd tea.Cmd
+			m.details, cmd = m.details.Update(mouseMsg)
+			return m, cmd
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case EnterMsg:
 		return m.handleEnter(msg)

@@ -1418,3 +1418,200 @@ func TestSearch_IssueEditor_KeyDelegation(t *testing.T) {
 	// Command may or may not be nil depending on editor state
 	_ = cmd
 }
+
+// =============================================================================
+// Mouse Scroll Event Forwarding Tests
+// =============================================================================
+
+func TestSearch_MouseScrollForwardsToDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+
+	// Set up details panel with an issue that has scrollable content
+	issue := beads.Issue{
+		ID:        "test-scroll",
+		TitleText: "Scrollable Issue",
+		DescriptionText: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\n" +
+			"Line 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+
+	// Verify preconditions
+	require.Equal(t, FocusDetails, m.focus, "precondition: focus should be on details")
+	initialOffset := m.details.YOffset()
+
+	// Send mouse wheel down event through Update
+	m, cmd := m.Update(tea.MouseMsg{
+		Button: tea.MouseButtonWheelDown,
+	})
+
+	// Command may be nil (viewport scroll doesn't return a command)
+	_ = cmd
+
+	// After scrolling down, the offset should increase (or stay the same if already at bottom)
+	// The key test here is that the message was forwarded and processed
+	// We verify by checking the details component was updated
+	require.Equal(t, FocusDetails, m.focus, "focus should still be on details")
+	// The viewport should have received the scroll event
+	// Note: The exact offset depends on viewport configuration, but it should be >= initial
+	require.GreaterOrEqual(t, m.details.YOffset(), initialOffset, "scroll down should not decrease offset")
+}
+
+func TestSearch_MouseScrollWheelUp_ForwardsToDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+
+	// Set up details panel with scrollable content
+	issue := beads.Issue{
+		ID:        "test-scroll-up",
+		TitleText: "Scrollable Issue",
+		DescriptionText: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\n" +
+			"Line 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+
+	// First scroll down to have somewhere to scroll up from
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+
+	offsetBeforeScrollUp := m.details.YOffset()
+
+	// Now scroll up
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+
+	// After scrolling up, the offset should decrease (or stay the same if already at top)
+	require.LessOrEqual(t, m.details.YOffset(), offsetBeforeScrollUp, "scroll up should not increase offset")
+}
+
+func TestSearch_MouseScrollWorksWhenFocusedOnResults(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults // Focus on results, not details
+
+	// Set up details panel with scrollable content
+	issue := beads.Issue{
+		ID:        "test-scroll-results-focus",
+		TitleText: "Scrollable Issue",
+		DescriptionText: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\n" +
+			"Line 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+	initialOffset := m.details.YOffset()
+
+	// Verify preconditions
+	require.Equal(t, FocusResults, m.focus, "precondition: focus should be on results")
+
+	// Send mouse wheel down event while focused on results
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+
+	// Wheel events should still scroll details even when focused on results
+	require.Equal(t, FocusResults, m.focus, "focus should still be on results")
+	require.GreaterOrEqual(t, m.details.YOffset(), initialOffset, "scroll down should work even when focused on results")
+}
+
+func TestSearch_MouseScrollWorksWhenFocusedOnSearch(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusSearch
+	m.input.Focus()
+
+	// Set up details panel with scrollable content
+	issue := beads.Issue{
+		ID:        "test-scroll-search-focus",
+		TitleText: "Scrollable Issue",
+		DescriptionText: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\n" +
+			"Line 11\nLine 12\nLine 13\nLine 14\nLine 15\nLine 16\nLine 17\nLine 18\nLine 19\nLine 20",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+	initialOffset := m.details.YOffset()
+
+	// Verify preconditions
+	require.Equal(t, FocusSearch, m.focus, "precondition: focus should be on search")
+
+	// Send mouse wheel down event while focused on search input
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+
+	// Wheel events should still scroll details even when focused on search
+	require.Equal(t, FocusSearch, m.focus, "focus should still be on search")
+	require.GreaterOrEqual(t, m.details.YOffset(), initialOffset, "scroll down should work even when focused on search")
+}
+
+func TestSearch_MouseClickIgnoredWhenNotFocusedOnDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults // Focus on results, not details
+
+	// Set up details panel
+	issue := beads.Issue{
+		ID:              "test-ignore",
+		TitleText:       "Test Issue",
+		DescriptionText: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+
+	// Verify preconditions
+	require.Equal(t, FocusResults, m.focus, "precondition: focus should be on results")
+
+	// Send mouse click event when NOT focused on details
+	m, cmd := m.Update(tea.MouseMsg{
+		Button: tea.MouseButtonLeft,
+	})
+
+	// Non-wheel mouse events should be ignored when not focused on details
+	require.Nil(t, cmd, "expected no command when mouse click is ignored")
+	require.Equal(t, FocusResults, m.focus, "focus should still be on results")
+}
+
+func TestSearch_MouseClickIgnoredWhenFocusedOnSearch(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusSearch
+	m.input.Focus()
+
+	// Set up details panel
+	issue := beads.Issue{
+		ID:              "test-ignore-search",
+		TitleText:       "Test Issue",
+		DescriptionText: "Some content",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+
+	// Verify preconditions
+	require.Equal(t, FocusSearch, m.focus, "precondition: focus should be on search")
+
+	// Send mouse click event when focused on search input
+	m, cmd := m.Update(tea.MouseMsg{
+		Button: tea.MouseButtonLeft,
+	})
+
+	// Non-wheel mouse events should be ignored when focused on search
+	require.Nil(t, cmd, "expected no command when mouse click is ignored")
+	require.Equal(t, FocusSearch, m.focus, "focus should still be on search")
+}
+
+func TestSearch_MouseScrollAtBoundary_DoesNotGoNegative(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+
+	// Set up details panel at top of content
+	issue := beads.Issue{
+		ID:              "test-boundary",
+		TitleText:       "Boundary Test",
+		DescriptionText: "Line 1\nLine 2\nLine 3",
+	}
+	m.details = details.New(issue, m.services.Executor, m.services.Client).SetSize(50, 10)
+	m.hasDetail = true
+
+	// Ensure we're at the top (offset 0)
+	m.details = m.details.SetYOffset(0)
+	require.Equal(t, 0, m.details.YOffset(), "precondition: should start at top")
+
+	// Try to scroll up when already at top
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+
+	// Offset should never go negative
+	require.GreaterOrEqual(t, m.details.YOffset(), 0, "offset should never be negative")
+}

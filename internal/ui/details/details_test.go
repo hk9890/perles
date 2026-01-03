@@ -524,6 +524,101 @@ func TestDetails_JKScrollsViewport(t *testing.T) {
 	require.Equal(t, initialOffset, m.viewport.YOffset, "expected viewport to scroll back up on 'k'")
 }
 
+func TestDetails_MouseScrollDown(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 20) // Small height to enable scrolling
+
+	initialOffset := m.viewport.YOffset
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	require.Greater(t, m.viewport.YOffset, initialOffset, "expected viewport to scroll down on wheel down")
+}
+
+func TestDetails_MouseScrollUp(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 20)
+
+	// Scroll down first
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	afterDown := m.viewport.YOffset
+
+	// Then scroll up
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	require.Less(t, m.viewport.YOffset, afterDown, "expected viewport to scroll up on wheel up")
+}
+
+func TestDetails_MouseScrollBoundaryTop(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 20)
+
+	// At top, scroll up should be no-op (offset stays 0)
+	require.Equal(t, 0, m.viewport.YOffset, "should start at top")
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
+	require.GreaterOrEqual(t, m.viewport.YOffset, 0, "offset should never go negative")
+}
+
+func TestDetails_MouseScrollBoundaryBottom(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 20)
+
+	// Go to bottom using keyboard
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	atBottom := m.viewport.YOffset
+
+	// Scroll down more should be no-op
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	require.Equal(t, atBottom, m.viewport.YOffset, "scroll at bottom should be no-op")
+}
+
+func TestDetails_MouseIgnoresNonWheelEvents(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: strings.Repeat("Long content line\n", 100),
+		CreatedAt:       time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 20)
+
+	initialOffset := m.viewport.YOffset
+
+	// Left click should be ignored
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft})
+	require.Equal(t, initialOffset, m.viewport.YOffset, "left click should be ignored")
+
+	// Right click should be ignored
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonRight})
+	require.Equal(t, initialOffset, m.viewport.YOffset, "right click should be ignored")
+
+	// Middle click should be ignored
+	m, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonMiddle})
+	require.Equal(t, initialOffset, m.viewport.YOffset, "middle click should be ignored")
+}
+
 func TestDetails_DependencyNavigation_LToFocusDeps(t *testing.T) {
 	issue := beads.Issue{
 		ID:        "test-1",
