@@ -33,8 +33,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
-	case ViewDetailsPriorityPicker, ViewDetailsStatusPicker:
-		return m.handlePickerKey(msg)
 	case ViewColumnEditor:
 		return m.handleColumnEditorKey(msg)
 	case ViewNewViewModal:
@@ -43,8 +41,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handleDeleteViewModalKey(msg)
 	case ViewDeleteConfirm:
 		return m.handleDeleteConfirmKey(msg)
-	case ViewLabelEditor:
-		return m.handleLabelEditorKey(msg)
 	case ViewViewMenu:
 		return m.handleViewMenuKey(msg)
 	case ViewDeleteColumnModal:
@@ -53,6 +49,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handleRenameViewModalKey(msg)
 	case ViewDetailsEditMenu:
 		return m.handleDetailsEditMenuKey(msg)
+	case ViewEditIssue:
+		return m.handleEditIssueKey(msg)
 	}
 	return m, nil
 }
@@ -345,21 +343,6 @@ func (m Model) handleDetailsKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// handlePickerKey handles key events for all picker views.
-// The picker's callbacks produce domain-specific messages.
-// Note: Ctrl+C in overlay modes closes the overlay, not quit.
-func (m Model) handlePickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlC {
-		// Close overlay instead of quitting
-		m.view = ViewDetails
-		m.selectedIssue = nil
-		return m, nil
-	}
-	var cmd tea.Cmd
-	m.picker, cmd = m.picker.Update(msg)
-	return m, cmd
-}
-
 func (m Model) handleColumnEditorKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
 		// Close overlay instead of quitting
@@ -414,16 +397,16 @@ func (m Model) handleDeleteConfirmKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) handleLabelEditorKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+func (m Model) handleEditIssueKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
 		// Close overlay instead of quitting
 		m.view = ViewDetails
 		return m, nil
 	}
 
-	// Delegate to label editor
+	// Delegate to issue editor
 	var cmd tea.Cmd
-	m.labelEditor, cmd = m.labelEditor.Update(msg)
+	m.issueEditor, cmd = m.issueEditor.Update(msg)
 	return m, cmd
 }
 

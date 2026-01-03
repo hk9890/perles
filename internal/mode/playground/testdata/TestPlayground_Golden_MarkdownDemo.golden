@@ -14,8 +14,8 @@
 │   markdown                 │  │───────────────│                                                  │
 │   chainart                 │  │ │>Create Issue                                                   │
 │   issuebadge               │  ││                                                                 │
-│   Theme Tokens             │  │ │  Open a new issue in the tracker                               │
-│                            │  ││                                                                 │
+│   issueeditor              │  │ │  Open a new issue in the tracker                               │
+│   Theme Tokens             │  ││                                                                 │
 │                            │  │ │                                                                │
 │                            │  ││                                                                 │
 │                            │  │ │ Search Files                                                   │

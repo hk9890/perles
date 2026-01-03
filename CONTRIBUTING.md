@@ -47,7 +47,6 @@ perles/
 │       ├── colorpicker/# Color picker for columns
 │       ├── details/    # Issue detail view
 │       ├── help/       # Help overlay
-│       ├── labeleditor/# Label editor modal
 │       ├── modal/      # Generic modal component
 │       ├── picker/     # Status/priority picker
 │       ├── styles/     # Shared lip gloss styles

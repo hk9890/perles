@@ -81,6 +81,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // FieldType identifies the type of form field.
@@ -179,10 +180,12 @@ type FieldConfig struct {
 //
 // Label is displayed to the user, Value is returned in SubmitMsg.Values.
 // For FieldTypeList with MultiSelect=true, Selected sets initial state.
+// Color is optional - if set, the label will be rendered in this color.
 type ListOption struct {
-	Label    string // Display text
-	Value    string // Programmatic value (returned in SubmitMsg)
-	Selected bool   // Initially selected (for multi-select lists)
+	Label    string                 // Display text
+	Value    string                 // Programmatic value (returned in SubmitMsg)
+	Selected bool                   // Initially selected (for multi-select lists)
+	Color    lipgloss.TerminalColor // Optional color for the label
 }
 
 // FormConfig defines the complete form modal configuration.

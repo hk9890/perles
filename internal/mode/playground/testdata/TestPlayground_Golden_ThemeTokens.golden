@@ -14,8 +14,8 @@
 │   markdown                 │  │  [👨‍💼][P2][demo-a08] Agent: AI-assisted task automation           │
 │   chainart                 │  │                                                                  │
 │ ● issuebadge               │  │                                                                  │
-│   Theme Tokens             │  │ Priority Levels (P0-P4):                                         │
-│                            │  │  [B][P0][demo-p0] P0 Critical: Security vulnerability            │
+│   issueeditor              │  │ Priority Levels (P0-P4):                                         │
+│   Theme Tokens             │  │  [B][P0][demo-p0] P0 Critical: Security vulnerability            │
 │                            │  │  [F][P1][demo-p1] P1 High: Core feature request                  │
 │                            │  │  [T][P2][demo-p2] P2 Medium: Standard work item                  │
 │                            │  │  [C][P3][demo-p3] P3 Low: Nice to have improvement               │

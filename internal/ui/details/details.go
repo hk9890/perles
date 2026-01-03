@@ -37,18 +37,6 @@ type DependencyItem struct {
 
 // Messages emitted by the details view for the app to handle.
 
-// OpenPriorityPickerMsg requests opening the priority picker.
-type OpenPriorityPickerMsg struct {
-	IssueID string
-	Current beads.Priority
-}
-
-// OpenStatusPickerMsg requests opening the status picker.
-type OpenStatusPickerMsg struct {
-	IssueID string
-	Current beads.Status
-}
-
 // DeleteIssueMsg requests deletion of the current issue.
 type DeleteIssueMsg struct {
 	IssueID   string
@@ -58,12 +46,6 @@ type DeleteIssueMsg struct {
 // NavigateToDependencyMsg requests navigation to a dependency's detail view.
 type NavigateToDependencyMsg struct {
 	IssueID string
-}
-
-// OpenLabelEditorMsg requests opening the label editor modal.
-type OpenLabelEditorMsg struct {
-	IssueID string
-	Labels  []string
 }
 
 // OpenEditMenuMsg requests opening the edit menu.
@@ -840,7 +822,7 @@ func (m Model) renderFooter() string {
 		scrollPercent = fmt.Sprintf(" %3.0f%%", m.viewport.ScrollPercent()*100)
 	}
 
-	return footerStyle.Render("[j/k] Scroll  [e] Edit Issue  [d] Delete Issue  [Esc] Back" + scrollPercent)
+	return footerStyle.Render("[j/k] Scroll  [ctrl+e] Edit Issue  [d] Delete Issue  [Esc] Back" + scrollPercent)
 }
 
 // getTypeStyle returns the style for an issue type.

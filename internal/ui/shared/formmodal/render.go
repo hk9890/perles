@@ -129,7 +129,16 @@ func (m Model) renderField(index int, width int) string {
 			if item.selected {
 				radio = "(●)"
 			}
-			rows = append(rows, prefix+radio+" "+item.label)
+			// Apply color to label if specified
+			label := item.label
+			if item.color != nil {
+				labelStyle := lipgloss.NewStyle().Foreground(item.color)
+				if focused && i == fs.listCursor {
+					labelStyle = labelStyle.Bold(true)
+				}
+				label = labelStyle.Render(item.label)
+			}
+			rows = append(rows, prefix+radio+" "+label)
 		}
 		if len(rows) == 0 {
 			rows = []string{" (no items)"}

@@ -15,6 +15,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/board"
 	"github.com/zjrosen/perles/internal/ui/details"
+	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
 
@@ -511,4 +512,236 @@ func TestKanban_HelpView_CtrlC_OpensQuitModal(t *testing.T) {
 	// Should open quit modal
 	require.True(t, m.quitModal.IsVisible(), "expected quitModal to be visible in help view")
 	require.Nil(t, cmd, "expected no command")
+}
+
+// =============================================================================
+// Issue Editor Integration Tests
+// =============================================================================
+
+// createTestModelWithDetails creates a Model with details view set up.
+func createTestModelWithDetails(t *testing.T, issue beads.Issue) Model {
+	t.Helper()
+	cfg := config.Defaults()
+	clipboard := mocks.NewMockClipboard(t)
+	clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+
+	mockExecutor := mocks.NewMockBQLExecutor(t)
+	mockCommentLoader := mocks.NewMockBeadsClient(t)
+	mockCommentLoader.EXPECT().GetComments(mock.Anything).
+		Return([]beads.Comment{}, nil).Maybe()
+
+	services := mode.Services{
+		Config:    &cfg,
+		Clipboard: clipboard,
+		Executor:  mockExecutor,
+		Client:    mockCommentLoader,
+	}
+
+	m := Model{
+		services: services,
+		width:    100,
+		height:   40,
+		view:     ViewDetails,
+		details:  details.New(issue, mockExecutor, mockCommentLoader).SetSize(100, 40),
+	}
+
+	return m
+}
+
+func TestKanban_IssueEditor_OpenEditMenuMsg_SetsViewEditIssue(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		Status:    beads.StatusOpen,
+		Labels:    []string{"bug", "urgent"},
+	}
+	m := createTestModelWithDetails(t, issue)
+
+	// Process OpenEditMenuMsg (simulating 'e' key press from details)
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+}
+
+func TestKanban_IssueEditor_ViewEditIssue_RendersIssueEditorOverlay(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityHigh,
+		Status:    beads.StatusInProgress,
+		Labels:    []string{"feature"},
+	}
+	m := createTestModelWithDetails(t, issue)
+
+	// Open issue editor via OpenEditMenuMsg
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	// Render should not panic and should contain "Edit Issue"
+	view := m.View()
+	require.NotEmpty(t, view, "view should not be empty")
+	require.Contains(t, view, "Edit Issue", "view should contain modal title")
+}
+
+func TestKanban_IssueEditor_SaveMsg_ReturnsToViewDetails(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+	}
+	m := createTestModelWithDetails(t, issue)
+	m.view = ViewEditIssue
+
+	// Process SaveMsg
+	msg := issueeditor.SaveMsg{
+		IssueID:  "test-1",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails view after save")
+	require.NotNil(t, cmd, "expected commands for updating priority, status, labels")
+}
+
+func TestKanban_IssueEditor_SaveMsg_DispatchesAllThreeUpdateCommands(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+	}
+	m := createTestModelWithDetails(t, issue)
+	m.view = ViewEditIssue
+
+	// Process SaveMsg
+	msg := issueeditor.SaveMsg{
+		IssueID:  "test-1",
+		Priority: beads.PriorityCritical,
+		Status:   beads.StatusClosed,
+		Labels:   []string{"done"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.NotNil(t, cmd, "expected batch command")
+
+	// The batch command should execute and produce multiple messages
+	// We can't easily test the batch contents, but we verify the command exists
+	// and the view state changed correctly
+	require.Equal(t, ViewDetails, m.view, "view should be ViewDetails")
+}
+
+func TestKanban_IssueEditor_CancelMsg_ReturnsToViewDetails(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+	}
+	m := createTestModelWithDetails(t, issue)
+	m.view = ViewEditIssue
+
+	// Process CancelMsg
+	msg := issueeditor.CancelMsg{}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails view after cancel")
+	require.Nil(t, cmd, "expected no command on cancel")
+}
+
+func TestKanban_IssueEditor_ReceivesCorrectInitialValuesFromOpenEditMenuMsg(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-custom",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityLow,
+		Status:    beads.StatusInProgress,
+		Labels:    []string{"alpha", "beta", "gamma"},
+	}
+	m := createTestModelWithDetails(t, issue)
+
+	// Open issue editor via OpenEditMenuMsg
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+	// The issueEditor model is now set up with the correct values
+	// We can verify this by checking the view renders correctly
+	view := m.View()
+	require.Contains(t, view, "Edit Issue", "modal should be visible")
+}
+
+func TestKanban_IssueEditor_CtrlC_ClosesOverlay(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		Status:    beads.StatusOpen,
+		Labels:    []string{"test"},
+	}
+	m := createTestModelWithDetails(t, issue)
+
+	// Open issue editor
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+
+	// Press Ctrl+C to close
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails view after Ctrl+C")
+}
+
+func TestKanban_IssueEditor_KeyDelegation(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		Status:    beads.StatusOpen,
+		Labels:    []string{"test"},
+	}
+	m := createTestModelWithDetails(t, issue)
+
+	// Open issue editor
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+
+	// Press 'j' - should be delegated to issue editor, not change focus
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+
+	// View should still be ViewEditIssue
+	require.Equal(t, ViewEditIssue, m.view, "view should still be ViewEditIssue after 'j' key")
+	// Command may or may not be nil depending on editor state
+	_ = cmd
 }

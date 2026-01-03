@@ -249,7 +249,7 @@ var Component = struct {
 	Prev       key.Binding // Alternative navigation (ctrl+p)
 	GotoTop    key.Binding // Navigate to top (g)
 	GotoBottom key.Binding // Navigate to bottom (G)
-	EditAction key.Binding // Edit action (e) - opens edit menu
+	EditAction key.Binding // Edit action (ctrl+e) - opens edit menu
 	DelAction  key.Binding // Delete action (d) - triggers delete
 	Clear      key.Binding // Clear action (c) - clears content
 	Toggle     key.Binding // Toggle action (space)
@@ -293,8 +293,8 @@ var Component = struct {
 		key.WithHelp("G", "go to bottom"),
 	),
 	EditAction: key.NewBinding(
-		key.WithKeys("e"),
-		key.WithHelp("e", "edit"),
+		key.WithKeys("ctrl+e"),
+		key.WithHelp("ctrl+e", "edit"),
 	),
 	DelAction: key.NewBinding(
 		key.WithKeys("d"),

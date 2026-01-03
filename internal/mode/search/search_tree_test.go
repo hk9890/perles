@@ -659,7 +659,7 @@ func TestHandleIssueDeleted_Error(t *testing.T) {
 }
 
 // =============================================================================
-// Edit Key ('e') Tests - Tree Sub-Mode
+// Edit Key ('ctrl+e') Tests - Tree Sub-Mode
 // =============================================================================
 
 func TestTreeSubMode_EditKey_EmitsOpenEditMenuMsg(t *testing.T) {
@@ -672,8 +672,8 @@ func TestTreeSubMode_EditKey_EmitsOpenEditMenuMsg(t *testing.T) {
 	require.NotNil(t, selectedNode, "should have a selected node")
 	selectedIssue := &selectedNode.Issue
 
-	// Press 'e' while focused on tree results
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' while focused on tree results
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	// Should return a command that emits OpenEditMenuMsg
 	require.NotNil(t, cmd, "expected a command to be returned")
@@ -701,8 +701,8 @@ func TestTreeSubMode_EditKey_NavigatedChild_EmitsCorrectIssue(t *testing.T) {
 	require.NotNil(t, selectedNode, "should have a selected node")
 	require.Equal(t, "child-1", selectedNode.Issue.ID, "should have navigated to child-1")
 
-	// Press 'e' to edit the child
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' to edit the child
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	require.NotNil(t, cmd, "expected a command to be returned")
 
@@ -723,8 +723,8 @@ func TestTreeSubMode_EditKey_TreeLoading_NoOp(t *testing.T) {
 	// m.tree is nil (loading state)
 	require.Nil(t, m.tree, "precondition: tree should be nil (loading)")
 
-	// Press 'e' during loading state
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' during loading state
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	// Should be a no-op since getSelectedIssue returns nil when tree is nil
 	require.Nil(t, cmd, "expected no command when tree is loading")

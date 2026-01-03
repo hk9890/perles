@@ -1,6 +1,9 @@
 package formmodal
 
-import "github.com/charmbracelet/bubbles/textinput"
+import (
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
+)
 
 // subFocus tracks which part of a composite field has focus.
 // Used by FieldTypeEditableList to track focus between list and input sections.
@@ -40,6 +43,7 @@ type listItem struct {
 	label    string
 	value    string
 	selected bool
+	color    lipgloss.TerminalColor // Optional color for the label
 }
 
 // newFieldState creates a fieldState from a FieldConfig.
@@ -75,6 +79,11 @@ func newFieldState(cfg FieldConfig) fieldState {
 				label:    opt.Label,
 				value:    opt.Value,
 				selected: opt.Selected,
+				color:    opt.Color,
+			}
+			// For FieldTypeSelect, initialize cursor to the selected option
+			if cfg.Type == FieldTypeSelect && opt.Selected {
+				fs.listCursor = i
 			}
 		}
 

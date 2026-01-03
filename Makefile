@@ -43,7 +43,7 @@ test-update:
 		./internal/ui/commandpalette/... \
 		./internal/ui/details/... \
 		./internal/ui/modals/help/... \
-		./internal/ui/modals/labeleditor/... \
+		./internal/ui/modals/issueeditor/... \
 		./internal/ui/nobeads/... \
 		./internal/ui/outdated/... \
 		./internal/ui/shared/colorpicker/... \

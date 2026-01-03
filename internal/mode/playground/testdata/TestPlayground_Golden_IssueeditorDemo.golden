@@ -1,0 +1,28 @@
+╭────────────────────────────╮  ╭─ issueeditor ────────────────────────────────────────────────────╮
+│ Components                 │  │ Unified issue editor modal demo:                                 │
+│ ────────────────────────── │  │                                                                  │
+│   vimtextarea              │  │   • Priority: Select from P0-P4                                  │
+│   modal                    │  │   • Status: Select Open/In Progress/Closed                       │
+│   formmodal                │  │   • Labels: Toggle existing or add new                           │
+│   panes                    │  │                                                                  │
+│   scrollpane               │  │ Press Enter to open editor                                       │
+│   colorpicker              │  │                                                                  │
+│   picker                   │  │                                                                  │
+│   commandpalette           │  │                                                                  │
+│   toaster                  │  │                                                                  │
+│   logoverlay               │  │                                                                  │
+│   markdown                 │  │                                                                  │
+│   chainart                 │  │                                                                  │
+│   issuebadge               │  │                                                                  │
+│ ● issueeditor              │  │                                                                  │
+│   Theme Tokens             │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+│                            │  │                                                                  │
+╰────────────────────────────╯  ╰──────────────────────────────────────────────────────────────────╯
+Tab: Switch panes  │  Ctrl+R: Reset  │  Ctrl+C: Quit                                                

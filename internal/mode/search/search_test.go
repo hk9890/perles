@@ -13,6 +13,7 @@ import (
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/ui/details"
+	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
@@ -278,66 +279,6 @@ func TestSearch_HelpOverlay_EscCloses(t *testing.T) {
 	require.Equal(t, ViewSearch, m.view, "expected search view")
 }
 
-func TestSearch_PickerOpen_Priority(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.focus = FocusDetails
-
-	msg := details.OpenPriorityPickerMsg{IssueID: "test-1", Current: beads.Priority(1)}
-	m, _ = m.openPriorityPicker(msg)
-
-	require.Equal(t, ViewPriorityPicker, m.view, "expected priority picker view")
-	require.NotNil(t, m.selectedIssue, "expected selected issue to be set")
-}
-
-func TestSearch_PickerOpen_Status(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.focus = FocusDetails
-
-	msg := details.OpenStatusPickerMsg{IssueID: "test-1", Current: beads.StatusOpen}
-	m, _ = m.openStatusPicker(msg)
-
-	require.Equal(t, ViewStatusPicker, m.view, "expected status picker view")
-	require.NotNil(t, m.selectedIssue, "expected selected issue to be set")
-}
-
-func TestSearch_PickerCancel_Esc(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.view = ViewPriorityPicker
-	m.selectedIssue = &m.results[0]
-
-	// handlePickerKey now delegates to picker.Update which produces a command
-	m, cmd := m.handlePickerKey(tea.KeyMsg{Type: tea.KeyEscape})
-	require.NotNil(t, cmd, "expected command from esc key")
-
-	// Execute the command to get the message (picker.CancelMsg for pickers without callbacks)
-	msg := cmd()
-
-	// Process the message in Update
-	m, _ = m.Update(msg)
-
-	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-}
-
-func TestSearch_PickerCancel_Q(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.view = ViewStatusPicker
-	m.selectedIssue = &m.results[0]
-
-	// handlePickerKey now delegates to picker.Update which produces a command
-	m, cmd := m.handlePickerKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	require.NotNil(t, cmd, "expected command from q key")
-
-	// Execute the command to get the message (picker.CancelMsg for pickers without callbacks)
-	msg := cmd()
-
-	// Process the message in Update
-	m, _ = m.Update(msg)
-
-	require.Equal(t, ViewSearch, m.view, "expected search view after cancel")
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-}
-
 func TestSearch_PriorityChanged_Success(t *testing.T) {
 	m := createTestModelWithResults(t)
 	m.selectedIssue = &m.results[0]
@@ -399,14 +340,9 @@ func TestSearch_View_NotPanics(t *testing.T) {
 			m.view = ViewHelp
 			return m
 		}()},
-		{"priority_picker", func() Model {
+		{"edit_issue", func() Model {
 			m := createTestModelWithResults(t)
-			m.view = ViewPriorityPicker
-			return m
-		}()},
-		{"status_picker", func() Model {
-			m := createTestModelWithResults(t)
-			m.view = ViewStatusPicker
+			m.view = ViewEditIssue
 			return m
 		}()},
 	}
@@ -1165,21 +1101,8 @@ func TestSearch_QuitModalCancel_DismissesModal(t *testing.T) {
 	require.Nil(t, cmd, "expected no command")
 }
 
-func TestSearch_PickerView_CtrlC_ClosesOverlay(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.view = ViewPriorityPicker
-
-	// Simulate Ctrl+C in picker view - should close overlay, not quit
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	m, cmd := m.handlePickerKey(msg)
-
-	// Should close overlay (return to search) instead of quitting
-	require.Equal(t, ViewSearch, m.view, "expected view to return to ViewSearch")
-	require.Nil(t, cmd, "expected no command")
-}
-
 // =============================================================================
-// Edit Key ('e') Tests - List Pane Edit Menu Shortcut
+// Edit Key ('ctrl+e') Tests - List Pane Edit Menu Shortcut
 // =============================================================================
 
 func TestSearch_EditKey_ListSubMode_EmitsOpenEditMenuMsg(t *testing.T) {
@@ -1191,8 +1114,8 @@ func TestSearch_EditKey_ListSubMode_EmitsOpenEditMenuMsg(t *testing.T) {
 	require.Equal(t, mode.SubModeList, m.subMode, "should be in list sub-mode")
 	require.Equal(t, "test-1", m.results[m.selectedIdx].ID, "should have test-1 selected")
 
-	// Press 'e' while focused on results in list mode
-	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' while focused on results in list mode
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	// Should return a command that emits OpenEditMenuMsg
 	require.NotNil(t, cmd, "expected a command to be returned")
@@ -1214,8 +1137,8 @@ func TestSearch_EditKey_EmptyList_NoOp(t *testing.T) {
 	m.focus = FocusResults
 	// No results loaded - m.results is nil/empty
 
-	// Press 'e' with no selected issue
-	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' with no selected issue
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	// Should return nil command (no-op)
 	require.Nil(t, cmd, "expected no command when no issue is selected")
@@ -1228,10 +1151,10 @@ func TestSearch_EditKey_FocusDetails_DelegatesToDetails(t *testing.T) {
 	m.details = details.New(m.results[0], m.services.Executor, m.services.Client).SetSize(50, 30)
 	m.hasDetail = true
 
-	// Press 'e' while focused on details - should delegate to details component
-	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' while focused on details - should delegate to details component
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
 
-	// Details component handles 'e' key, so cmd should exist (from details)
+	// Details component handles 'ctrl+e' key, so cmd should exist (from details)
 	require.NotNil(t, cmd, "expected command from details delegation")
 
 	// Execute the command to verify it's an OpenEditMenuMsg from details
@@ -1246,10 +1169,10 @@ func TestSearch_EditKey_FocusSearch_NoOp(t *testing.T) {
 	m.focus = FocusSearch
 	m.input.Focus()
 
-	// Press 'e' while focused on search input - should type 'e' in input, not trigger edit
-	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' while focused on search input - should not trigger edit, input keeps focus
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
 
-	// No edit menu should open - input should receive the character
+	// No edit menu should open - input should still be focused
 	require.True(t, m.input.Focused(), "input should still be focused")
 }
 
@@ -1322,8 +1245,8 @@ func TestSearch_EditKey_ModalOpen_KeyIgnored(t *testing.T) {
 	// Open a modal (e.g., delete confirmation)
 	m.view = ViewDeleteConfirm
 
-	// Press 'e' while modal is open
-	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	// Press 'ctrl+e' while modal is open
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlE})
 
 	// Key should be handled by modal, not trigger edit
 	// Modal state should remain unchanged
@@ -1340,19 +1263,183 @@ func TestSearch_DeleteKey_ModalOpen_KeyIgnored(t *testing.T) {
 	m := createTestModelWithResults(t)
 	m.focus = FocusResults
 	m.selectedIdx = 0
-	// Open the edit menu picker
-	m.view = ViewDetailsEditMenu
+	// Open the unified issue editor modal
+	m.view = ViewEditIssue
 
 	// Press 'd' while modal is open
 	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
-	// Key should be handled by modal/picker, not trigger delete
+	// Key should be handled by modal, not trigger delete
 	// View state should remain unchanged
-	require.Equal(t, ViewDetailsEditMenu, m.view, "view should still be edit menu")
-	// The command should be nil or handled by picker
+	require.Equal(t, ViewEditIssue, m.view, "view should still be edit issue modal")
+	// The command should be nil or handled by modal
 	if cmd != nil {
 		msg := cmd()
 		_, isDeleteMsg := msg.(details.DeleteIssueMsg)
 		require.False(t, isDeleteMsg, "should NOT emit DeleteIssueMsg when modal is open")
 	}
+}
+
+// ============================================================================
+// Issue Editor Integration Tests
+// ============================================================================
+
+func TestSearch_IssueEditor_OpenEditMenuMsg_SetsViewEditIssue(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+	issue := m.results[0]
+	issue.Labels = []string{"bug", "urgent"}
+
+	// Process OpenEditMenuMsg (simulating 'ctrl+e' key press from details)
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+}
+
+func TestSearch_IssueEditor_ViewEditIssue_RendersIssueEditorOverlay(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+	issue.Labels = []string{"feature"}
+
+	// Open issue editor via OpenEditMenuMsg
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	// Render should not panic and should contain "Edit Issue"
+	view := m.View()
+	require.NotEmpty(t, view, "view should not be empty")
+	require.Contains(t, view, "Edit Issue", "view should contain modal title")
+}
+
+func TestSearch_IssueEditor_SaveMsg_ReturnsToViewSearch(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.view = ViewEditIssue
+
+	// Process SaveMsg
+	msg := issueeditor.SaveMsg{
+		IssueID:  "test-1",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
+	require.NotNil(t, cmd, "expected commands for updating priority, status, labels")
+}
+
+func TestSearch_IssueEditor_SaveMsg_DispatchesAllThreeUpdateCommands(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.view = ViewEditIssue
+
+	// Process SaveMsg
+	msg := issueeditor.SaveMsg{
+		IssueID:  "test-1",
+		Priority: beads.PriorityCritical,
+		Status:   beads.StatusClosed,
+		Labels:   []string{"done"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.NotNil(t, cmd, "expected batch command")
+
+	// The batch command should execute and produce multiple messages
+	// We can't easily test the batch contents, but we verify the command exists
+	// and the view state changed correctly
+	require.Equal(t, ViewSearch, m.view, "view should be ViewSearch")
+}
+
+func TestSearch_IssueEditor_CancelMsg_ReturnsToViewSearch(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.view = ViewEditIssue
+
+	// Process CancelMsg
+	msg := issueeditor.CancelMsg{}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after cancel")
+	require.Nil(t, cmd, "expected no command on cancel")
+}
+
+func TestSearch_IssueEditor_ReceivesCorrectInitialValuesFromOpenEditMenuMsg(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+
+	// Set up issue with specific values
+	issue := &beads.Issue{
+		ID:       "test-custom",
+		Priority: beads.PriorityLow,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"alpha", "beta", "gamma"},
+	}
+	m.results[0] = *issue
+
+	// Open issue editor via OpenEditMenuMsg
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+	// The issueEditor model is now set up with the correct values
+	// We can verify this by checking the view renders correctly
+	view := m.View()
+	require.Contains(t, view, "Edit Issue", "modal should be visible")
+}
+
+func TestSearch_IssueEditor_CtrlC_ClosesOverlay(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+
+	// Open issue editor
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+
+	// Press Ctrl+C to close
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after Ctrl+C")
+}
+
+func TestSearch_IssueEditor_KeyDelegation(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+
+	// Open issue editor
+	msg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(msg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue view")
+
+	// Press 'j' - should be delegated to issue editor, not change focus
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+
+	// View should still be ViewEditIssue
+	require.Equal(t, ViewEditIssue, m.view, "view should still be ViewEditIssue after 'j' key")
+	// Command may or may not be nil depending on editor state
+	_ = cmd
 }

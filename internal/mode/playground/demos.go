@@ -15,6 +15,7 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/commandpalette"
+	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/chainart"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
@@ -112,6 +113,11 @@ func GetComponentDemos() []ComponentDemo {
 			Name:        "issuebadge",
 			Description: "Issue type/priority/id badge component",
 			Create:      createIssueBadgeDemo,
+		},
+		{
+			Name:        "issueeditor",
+			Description: "Unified issue property editor modal",
+			Create:      createIssueeditorDemo,
 		},
 		{
 			Name:        "Theme Tokens",
@@ -1566,6 +1572,134 @@ func (m *IssueBadgeDemoModel) Reset() DemoModel {
 }
 
 func (m *IssueBadgeDemoModel) NeedsEscKey() bool { return false }
+
+// =============================================================================
+// IssueEditor Demo
+// =============================================================================
+
+// IssueeditorDemoModel wraps the issueeditor component for demonstration.
+type IssueeditorDemoModel struct {
+	issueeditor *issueeditor.Model
+	width       int
+	height      int
+	showingMenu bool
+	lastResult  string
+}
+
+func createIssueeditorDemo(width, height int) DemoModel {
+	return &IssueeditorDemoModel{
+		issueeditor: nil,
+		width:       width,
+		height:      height,
+		showingMenu: true,
+	}
+}
+
+func (m *IssueeditorDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) {
+	// Handle issueeditor result messages
+	switch result := msg.(type) {
+	case issueeditor.SaveMsg:
+		// Format saved values for display
+		m.lastResult = fmt.Sprintf("Priority: P%d\nStatus: %s\nLabels: %v",
+			result.Priority, result.Status, result.Labels)
+		m.issueeditor = nil
+		m.showingMenu = true
+		return m, nil, "Saved issue"
+	case issueeditor.CancelMsg:
+		m.lastResult = ""
+		m.issueeditor = nil
+		m.showingMenu = true
+		return m, nil, "Cancelled"
+	}
+
+	// If showing the menu, handle menu keys
+	if m.showingMenu {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.String() == "enter" {
+				// Create issueeditor with sample values
+				editor := issueeditor.New(
+					"demo-123",
+					[]string{"bug", "enhancement", "documentation"},
+					beads.PriorityMedium,
+					beads.StatusOpen,
+				).SetSize(m.width, m.height)
+				m.issueeditor = &editor
+				m.showingMenu = false
+				return m, editor.Init(), ""
+			}
+		}
+		return m, nil, ""
+	}
+
+	// Issueeditor is showing, forward messages
+	if m.issueeditor != nil {
+		var cmd tea.Cmd
+		newEditor, cmd := m.issueeditor.Update(msg)
+		m.issueeditor = &newEditor
+		return m, cmd, ""
+	}
+
+	return m, nil, ""
+}
+
+func (m *IssueeditorDemoModel) View() string {
+	var sb strings.Builder
+
+	// Show last result if available
+	if m.lastResult != "" {
+		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.StatusSuccessColor)
+		sb.WriteString(headerStyle.Render("✓ Issue Saved"))
+		sb.WriteString("\n\n")
+
+		resultStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+		sb.WriteString(resultStyle.Render(m.lastResult))
+		sb.WriteString("\n\n")
+
+		keyStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.StatusInProgressColor)
+		sb.WriteString(keyStyle.Render("Press Enter to edit another"))
+	} else {
+		instructionStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+		sb.WriteString(instructionStyle.Render("Unified issue editor modal demo:"))
+		sb.WriteString("\n\n")
+
+		descStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+		sb.WriteString(descStyle.Render("  • Priority: Select from P0-P4"))
+		sb.WriteString("\n")
+		sb.WriteString(descStyle.Render("  • Status: Select Open/In Progress/Closed"))
+		sb.WriteString("\n")
+		sb.WriteString(descStyle.Render("  • Labels: Toggle existing or add new"))
+		sb.WriteString("\n\n")
+
+		keyStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.StatusInProgressColor)
+		sb.WriteString(keyStyle.Render("Press Enter to open editor"))
+	}
+
+	menuContent := sb.String()
+
+	// If issueeditor is showing, overlay it
+	if m.issueeditor != nil {
+		return m.issueeditor.Overlay(menuContent)
+	}
+
+	return menuContent
+}
+
+func (m *IssueeditorDemoModel) SetSize(width, height int) DemoModel {
+	m.width = width
+	m.height = height
+	if m.issueeditor != nil {
+		editor := m.issueeditor.SetSize(width, height)
+		m.issueeditor = &editor
+	}
+	return m
+}
+
+func (m *IssueeditorDemoModel) Reset() DemoModel {
+	return createIssueeditorDemo(m.width, m.height)
+}
+
+func (m *IssueeditorDemoModel) NeedsEscKey() bool { return false }
 
 // =============================================================================
 // Theme Tokens Demo
