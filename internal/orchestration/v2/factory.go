@@ -20,6 +20,18 @@ import (
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
+// eventBusAdapter adapts pubsub.Broker to the processor.EventPublisher interface.
+// This is needed because pubsub.EventType and processor.EventPublisher use different
+// type signatures (pubsub uses a typed EventType string, processor uses plain string).
+type eventBusAdapter struct {
+	broker *pubsub.Broker[any]
+}
+
+// Publish implements processor.EventPublisher.
+func (a *eventBusAdapter) Publish(eventType string, payload any) {
+	a.broker.Publish(pubsub.EventType(eventType), payload)
+}
+
 // InfrastructureConfig holds configuration for creating V2 infrastructure.
 type InfrastructureConfig struct {
 	// Port is the MCP server port for process communication.
@@ -123,6 +135,9 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 
 	// Create middleware for command processing
 	loggingMiddleware := processor.NewLoggingMiddleware(processor.LoggingMiddlewareConfig{})
+	commandLogMiddleware := processor.NewCommandLogMiddleware(processor.CommandLogMiddlewareConfig{
+		EventBus: &eventBusAdapter{broker: eventBus},
+	})
 	timeoutMiddleware := processor.NewTimeoutMiddleware(processor.TimeoutMiddlewareConfig{
 		WarningThreshold: 500 * time.Millisecond,
 	})
@@ -133,7 +148,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		processor.WithTaskRepository(taskRepo),
 		processor.WithQueueRepository(queueRepo),
 		processor.WithEventBus(eventBus),
-		processor.WithMiddleware(loggingMiddleware, timeoutMiddleware),
+		processor.WithMiddleware(loggingMiddleware, commandLogMiddleware, timeoutMiddleware),
 	)
 
 	// Create unified ProcessRegistry for coordinator and workers

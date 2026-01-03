@@ -48,6 +48,7 @@ const (
 	PaneCoordinator = 1
 	PaneMessages    = 2
 	PaneWorker      = 3
+	PaneCommand     = 4
 )
 
 // ChatMessage represents a single message in the coordinator chat history.
@@ -90,6 +91,10 @@ type Model struct {
 	coordinatorPane CoordinatorPane
 	messagePane     MessagePane
 	workerPane      WorkerPane
+	commandPane     CommandPane // Command log pane (toggleable)
+
+	// Command pane visibility toggle (hidden by default)
+	showCommandPane bool
 
 	// User input
 	input   vimtextarea.Model
@@ -210,7 +215,8 @@ type Config struct {
 	// Workflow templates
 	WorkflowRegistry *workflow.Registry // Pre-loaded workflow registry (optional)
 	// UI settings
-	VimMode bool // Enable vim keybindings in text input areas
+	VimMode   bool // Enable vim keybindings in text input areas
+	DebugMode bool // Show command pane by default when true
 }
 
 // New creates a new orchestration mode model with the given configuration.
@@ -231,6 +237,8 @@ func New(cfg Config) Model {
 		coordinatorPane:       newCoordinatorPane(),
 		messagePane:           newMessagePane(),
 		workerPane:            newWorkerPane(),
+		commandPane:           newCommandPane(),
+		showCommandPane:       cfg.DebugMode, // Command pane visible by default only in debug mode
 		services:              cfg.Services,
 		workDir:               cfg.WorkDir,
 		messageTarget:         "COORDINATOR", // Default to coordinator
@@ -352,6 +360,10 @@ func (m Model) SetSize(width, height int) Model {
 			}
 		}
 	}
+
+	// Mark command pane for re-render on resize
+	// (viewport dimensions are set by ScrollablePane during render)
+	m.commandPane.contentDirty = true
 
 	// Update error modal size if present
 	if m.errorModal != nil {

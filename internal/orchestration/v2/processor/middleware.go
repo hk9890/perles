@@ -337,6 +337,83 @@ func (m *DeduplicationMiddleware) computeContentHash(cmd command.Command) string
 }
 
 // ===========================================================================
+// Command Log Middleware
+// ===========================================================================
+
+// CommandLogMiddlewareConfig configures the command log middleware.
+type CommandLogMiddlewareConfig struct {
+	// EventBus is the pub/sub broker for publishing CommandLogEvents.
+	// If nil, the middleware will be a no-op.
+	EventBus EventPublisher
+}
+
+// EventPublisher is an interface for publishing events.
+// This allows the middleware to be tested with a mock publisher.
+// Note: This uses a string type for eventType to avoid coupling to pubsub package.
+type EventPublisher interface {
+	Publish(eventType string, payload any)
+}
+
+// NewCommandLogMiddleware creates a middleware that emits CommandLogEvent for each
+// processed command. This provides visibility into command processing for the UI.
+// If the eventBus is nil, the middleware is a no-op (graceful degradation).
+func NewCommandLogMiddleware(cfg CommandLogMiddlewareConfig) Middleware {
+	return func(next CommandHandler) CommandHandler {
+		return HandlerFunc(func(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
+			// If no event bus, just pass through
+			if cfg.EventBus == nil {
+				return next.Handle(ctx, cmd)
+			}
+
+			start := time.Now()
+
+			// Execute the handler
+			result, err := next.Handle(ctx, cmd)
+
+			// Calculate duration
+			duration := time.Since(start)
+
+			// Determine success and error
+			var success bool
+			var cmdErr error
+
+			if err != nil {
+				// Handler returned an error
+				success = false
+				cmdErr = err
+			} else if result != nil && !result.Success {
+				// Handler returned a failure result
+				success = false
+				cmdErr = result.Error
+			} else {
+				// Success
+				success = true
+			}
+
+			// Extract source if available
+			var source command.CommandSource
+			if hasSource, ok := cmd.(interface{ Source() command.CommandSource }); ok {
+				source = hasSource.Source()
+			}
+
+			// Emit the event
+			event := CommandLogEvent{
+				CommandID:   cmd.ID(),
+				CommandType: cmd.Type(),
+				Source:      source,
+				Success:     success,
+				Error:       cmdErr,
+				Duration:    duration,
+				Timestamp:   time.Now(),
+			}
+			cfg.EventBus.Publish("updated", event)
+
+			return result, err
+		})
+	}
+}
+
+// ===========================================================================
 // Timeout Middleware
 // ===========================================================================
 

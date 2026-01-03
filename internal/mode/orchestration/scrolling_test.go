@@ -512,6 +512,206 @@ func TestWorkerRetirement_ViewportCleanedUp(t *testing.T) {
 // Regression Tests
 // =============================================================================
 
+// =============================================================================
+// Command Pane Scroll Tests
+// =============================================================================
+
+func TestCommandPane_MouseWheelScroll(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show command pane
+	m.showCommandPane = true
+
+	// Add enough entries to enable scrolling
+	for i := 0; i < 50; i++ {
+		m.commandPane.entries = append(m.commandPane.entries, CommandLogEntry{
+			Timestamp:   time.Now(),
+			CommandType: "test_command",
+			CommandID:   "test-id",
+			Source:      "internal",
+			Success:     true,
+			Duration:    100 * time.Millisecond,
+		})
+	}
+	m.commandPane.contentDirty = true
+
+	// Render to populate viewport
+	_ = m.View()
+
+	// Set viewport content to enable scrolling
+	vp := m.commandPane.viewports[viewportKey]
+	content := renderCommandContent(m.commandPane.entries, vp.Width)
+	vp.SetContent(content)
+
+	// Scroll to a known position
+	vp.GotoBottom()
+	m.commandPane.viewports[viewportKey] = vp
+	beforeOffset := m.commandPane.viewports[viewportKey].YOffset
+
+	// Calculate position in middle column (where command pane is)
+	leftWidth := m.width * leftPanePercent / 100
+	middleColumnX := leftWidth + 5 // Inside middle column
+
+	// Scroll up in command pane area (Y < commandPaneHeight)
+	m, _ = m.Update(tea.MouseMsg{
+		X:      middleColumnX,
+		Y:      2, // Inside command pane (height is 5)
+		Button: tea.MouseButtonWheelUp,
+	})
+
+	// Viewport should have scrolled
+	afterOffset := m.commandPane.viewports[viewportKey].YOffset
+	require.NotEqual(t, beforeOffset, afterOffset,
+		"command pane viewport should scroll when mouse wheel in command pane area")
+}
+
+func TestCommandPane_MouseWheelRouting(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show command pane
+	m.showCommandPane = true
+
+	// Add content to both panes
+	for i := 0; i < 50; i++ {
+		m.commandPane.entries = append(m.commandPane.entries, CommandLogEntry{
+			Timestamp: time.Now(),
+			Success:   true,
+		})
+	}
+	entries := []message.Entry{}
+	for i := 0; i < 50; i++ {
+		entries = append(entries, message.Entry{
+			ID:      "msg-" + string(rune('a'+i)),
+			Content: "Message",
+			Type:    message.MessageInfo,
+		})
+	}
+	m = m.SetMessageEntries(entries)
+	m.commandPane.contentDirty = true
+
+	// Render to populate viewports
+	_ = m.View()
+
+	// Set up content in viewports
+	cmdVp := m.commandPane.viewports[viewportKey]
+	cmdVp.SetContent(renderCommandContent(m.commandPane.entries, cmdVp.Width))
+	cmdVp.SetYOffset(10)
+	m.commandPane.viewports[viewportKey] = cmdVp
+
+	msgVp := m.messagePane.viewports[viewportKey]
+	msgVp.SetYOffset(10)
+	m.messagePane.viewports[viewportKey] = msgVp
+
+	cmdOffsetBefore := m.commandPane.viewports[viewportKey].YOffset
+	msgOffsetBefore := m.messagePane.viewports[viewportKey].YOffset
+
+	// Calculate position in middle column
+	leftWidth := m.width * leftPanePercent / 100
+	middleColumnX := leftWidth + 5
+
+	// Scroll in command pane area (Y=2, which is < commandPaneHeight=5)
+	m, _ = m.Update(tea.MouseMsg{
+		X:      middleColumnX,
+		Y:      2,
+		Button: tea.MouseButtonWheelUp,
+	})
+
+	// Command pane should have scrolled
+	require.NotEqual(t, cmdOffsetBefore, m.commandPane.viewports[viewportKey].YOffset,
+		"command pane should scroll when mouse is in command pane area")
+
+	// Message pane should NOT have scrolled
+	require.Equal(t, msgOffsetBefore, m.messagePane.viewports[viewportKey].YOffset,
+		"message pane should not scroll when mouse is in command pane area")
+}
+
+func TestCommandPane_HiddenPaneNoScrolling(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Verify pane is hidden by default (no debug mode)
+	require.False(t, m.showCommandPane)
+
+	// Add content to message pane
+	for i := 0; i < 50; i++ {
+		entries := []message.Entry{
+			{
+				ID:      "msg-" + string(rune('a'+i)),
+				Content: "Message",
+				Type:    message.MessageInfo,
+			},
+		}
+		m = m.SetMessageEntries(append(m.messagePane.entries, entries...))
+	}
+
+	// Render
+	_ = m.View()
+
+	msgVp := m.messagePane.viewports[viewportKey]
+	msgVp.SetYOffset(10)
+	m.messagePane.viewports[viewportKey] = msgVp
+	msgOffsetBefore := m.messagePane.viewports[viewportKey].YOffset
+
+	// Calculate position in middle column
+	leftWidth := m.width * leftPanePercent / 100
+	middleColumnX := leftWidth + 5
+
+	// Scroll in what would be command pane area (Y=2) but command pane is hidden
+	m, _ = m.Update(tea.MouseMsg{
+		X:      middleColumnX,
+		Y:      2,
+		Button: tea.MouseButtonWheelUp,
+	})
+
+	// Message pane should scroll (since command pane is hidden, entire middle column is message pane)
+	require.NotEqual(t, msgOffsetBefore, m.messagePane.viewports[viewportKey].YOffset,
+		"message pane should scroll when command pane is hidden")
+}
+
+func TestCommandPane_HasNewContentClearedOnScrollToBottom(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show command pane and add content
+	m.showCommandPane = true
+	for i := 0; i < 50; i++ {
+		m.commandPane.entries = append(m.commandPane.entries, CommandLogEntry{
+			Timestamp: time.Now(),
+			Success:   true,
+		})
+	}
+	m.commandPane.contentDirty = true
+	m.commandPane.hasNewContent = true
+
+	// Render
+	_ = m.View()
+
+	// Set up viewport with content
+	vp := m.commandPane.viewports[viewportKey]
+	vp.SetContent(renderCommandContent(m.commandPane.entries, vp.Width))
+	vp.GotoBottom()
+	m.commandPane.viewports[viewportKey] = vp
+
+	// Calculate position
+	leftWidth := m.width * leftPanePercent / 100
+	middleColumnX := leftWidth + 5
+
+	// Scroll down (will stay at bottom since already at bottom)
+	m, _ = m.Update(tea.MouseMsg{
+		X:      middleColumnX,
+		Y:      2,
+		Button: tea.MouseButtonWheelDown,
+	})
+
+	// hasNewContent should be cleared when at bottom
+	if m.commandPane.viewports[viewportKey].AtBottom() {
+		require.False(t, m.commandPane.hasNewContent,
+			"hasNewContent should be cleared when scrolled to bottom")
+	}
+}
+
 func TestBuildScrollIndicator_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name           string

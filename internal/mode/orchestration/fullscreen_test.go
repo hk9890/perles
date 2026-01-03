@@ -116,6 +116,20 @@ func TestToggleFullscreenPane_WorkerNoWorkers(t *testing.T) {
 	require.Equal(t, PaneNone, m.fullscreenPaneType)
 }
 
+// TestToggleFullscreenPane_Command tests toggling command pane fullscreen.
+func TestToggleFullscreenPane_Command(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Toggle command pane fullscreen
+	m = m.toggleFullscreenPane(PaneCommand, 0)
+	require.Equal(t, PaneCommand, m.fullscreenPaneType)
+
+	// Toggle again to exit
+	m = m.toggleFullscreenPane(PaneCommand, 0)
+	require.Equal(t, PaneNone, m.fullscreenPaneType)
+}
+
 // TestToggleFullscreenPane_SwitchBetweenPaneTypes tests switching between different pane types.
 func TestToggleFullscreenPane_SwitchBetweenPaneTypes(t *testing.T) {
 	m := New(Config{})
@@ -133,6 +147,10 @@ func TestToggleFullscreenPane_SwitchBetweenPaneTypes(t *testing.T) {
 	// Switch to worker
 	m = m.toggleFullscreenPane(PaneWorker, 0)
 	require.Equal(t, PaneWorker, m.fullscreenPaneType)
+
+	// Switch to command
+	m = m.toggleFullscreenPane(PaneCommand, 0)
+	require.Equal(t, PaneCommand, m.fullscreenPaneType)
 
 	// Back to coordinator
 	m = m.toggleFullscreenPane(PaneCoordinator, 0)
@@ -187,6 +205,10 @@ func TestUpdate_NavigationMode_NumberKeys(t *testing.T) {
 	// Press '6' for messages
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'6'}})
 	require.Equal(t, PaneMessages, m.fullscreenPaneType)
+
+	// Press '7' for command log
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'7'}})
+	require.Equal(t, PaneCommand, m.fullscreenPaneType)
 }
 
 // TestUpdate_NavigationMode_Escape tests that escape exits navigation mode.

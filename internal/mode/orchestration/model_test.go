@@ -12,6 +12,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 )
 
@@ -738,6 +739,56 @@ func TestView_Golden_FullscreenWorker(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
+func TestView_Golden_FullscreenCommand(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Add command log entries
+	m.commandPane.entries = []CommandLogEntry{
+		{
+			Timestamp:   testNow,
+			CommandType: command.CmdSpawnProcess,
+			CommandID:   "abc12345-6789-0123-4567-890abcdef012",
+			Source:      command.SourceInternal,
+			Success:     true,
+			Duration:    25 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(time.Second),
+			CommandType: command.CmdAssignTask,
+			CommandID:   "def12345-6789-0123-4567-890abcdef012",
+			Source:      command.SourceMCPTool,
+			Success:     true,
+			Duration:    150 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(2 * time.Second),
+			CommandType: command.CmdSendToProcess,
+			CommandID:   "ghi12345-6789-0123-4567-890abcdef012",
+			Source:      command.SourceUser,
+			Success:     false,
+			Error:       "worker not found",
+			Duration:    5 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(3 * time.Second),
+			CommandType: command.CmdReportComplete,
+			CommandID:   "jkl12345-6789-0123-4567-890abcdef012",
+			Source:      command.SourceCallback,
+			Success:     true,
+			Duration:    1200 * time.Millisecond,
+		},
+	}
+	m.commandPane.contentDirty = true
+
+	// Enter navigation mode and fullscreen command pane
+	m.navigationMode = true
+	m.fullscreenPaneType = PaneCommand
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
 func TestResizeViewportProportional(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1136,4 +1187,129 @@ func TestRenderChatContent_NonToolCallSurroundedByToolCalls(t *testing.T) {
 	// Second sequence: Edit (├╴) -> Bash (╰╴)
 	require.Contains(t, result, "├╴ Edit", "first tool in second sequence should use ├╴")
 	require.Contains(t, result, "╰╴ Bash", "last tool in second sequence should use ╰╴")
+}
+
+// ============================================================================
+// Command Pane Golden Tests
+// ============================================================================
+
+func TestView_Golden_WithCommandPane(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show the command pane
+	m.showCommandPane = true
+
+	// Add sample command log entries
+	m.commandPane.entries = []CommandLogEntry{
+		{
+			Timestamp:   testNow,
+			CommandType: command.CmdSpawnProcess,
+			CommandID:   "aaaaaaaa-1234-1234-1234-123456789abc",
+			Source:      command.SourceMCPTool,
+			Success:     true,
+			Duration:    45 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(1 * time.Second),
+			CommandType: command.CmdAssignTask,
+			CommandID:   "bbbbbbbb-1234-1234-1234-123456789abc",
+			Source:      command.SourceInternal,
+			Success:     true,
+			Duration:    120 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(2 * time.Second),
+			CommandType: command.CmdSendToProcess,
+			CommandID:   "cccccccc-1234-1234-1234-123456789abc",
+			Source:      command.SourceUser,
+			Success:     true,
+			Duration:    8 * time.Millisecond,
+		},
+	}
+	m.commandPane.contentDirty = true
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_CommandPaneEmpty(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show the command pane with no entries
+	m.showCommandPane = true
+	m.commandPane.entries = []CommandLogEntry{}
+	m.commandPane.contentDirty = true
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_CommandPaneWithErrors(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Show the command pane with error entries
+	m.showCommandPane = true
+
+	// Add entries with failures (red highlighting)
+	m.commandPane.entries = []CommandLogEntry{
+		{
+			Timestamp:   testNow,
+			CommandType: command.CmdSpawnProcess,
+			CommandID:   "aaaaaaaa-1234-1234-1234-123456789abc",
+			Source:      command.SourceMCPTool,
+			Success:     true,
+			Duration:    45 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(1 * time.Second),
+			CommandType: command.CmdAssignTask,
+			CommandID:   "bbbbbbbb-1234-1234-1234-123456789abc",
+			Source:      command.SourceInternal,
+			Success:     false,
+			Error:       "worker not found",
+			Duration:    5 * time.Millisecond,
+		},
+		{
+			Timestamp:   testNow.Add(2 * time.Second),
+			CommandType: command.CmdSendToProcess,
+			CommandID:   "cccccccc-1234-1234-1234-123456789abc",
+			Source:      command.SourceCallback,
+			Success:     false,
+			Error:       "process terminated unexpectedly",
+			Duration:    12 * time.Millisecond,
+		},
+	}
+	m.commandPane.contentDirty = true
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_CommandPaneHidden(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Verify command pane is hidden by default (no debug mode)
+	require.False(t, m.showCommandPane)
+
+	// Add entries anyway - they should accumulate but not be visible
+	m.commandPane.entries = []CommandLogEntry{
+		{
+			Timestamp:   testNow,
+			CommandType: command.CmdSpawnProcess,
+			CommandID:   "hidden-cmd-123456789abc",
+			Source:      command.SourceInternal,
+			Success:     true,
+			Duration:    100 * time.Millisecond,
+		},
+	}
+
+	// Verify the pane is hidden
+	require.False(t, m.showCommandPane, "showCommandPane should be false")
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
 }

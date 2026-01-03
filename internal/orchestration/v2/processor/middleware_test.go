@@ -618,3 +618,195 @@ func TestMiddlewareChain_SlowHandler(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
+
+// ===========================================================================
+// CommandLogMiddleware Tests
+// ===========================================================================
+
+// mockEventPublisher captures events for testing.
+type mockEventPublisher struct {
+	mu     sync.Mutex
+	events []any
+}
+
+func newMockEventPublisher() *mockEventPublisher {
+	return &mockEventPublisher{events: make([]any, 0)}
+}
+
+func (m *mockEventPublisher) Publish(eventType string, payload any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, payload)
+}
+
+func (m *mockEventPublisher) Events() []any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]any, len(m.events))
+	copy(result, m.events)
+	return result
+}
+
+func (m *mockEventPublisher) LastEvent() (CommandLogEvent, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.events) == 0 {
+		return CommandLogEvent{}, false
+	}
+	event, ok := m.events[len(m.events)-1].(CommandLogEvent)
+	return event, ok
+}
+
+func TestCommandLogMiddleware_EmitsCorrectEventStructure(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(42)
+	_, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Verify event was published
+	event, ok := publisher.LastEvent()
+	require.True(t, ok, "Expected a CommandLogEvent to be published")
+
+	// Verify event structure
+	assert.Equal(t, cmd.ID(), event.CommandID)
+	assert.Equal(t, cmd.Type(), event.CommandType)
+	assert.True(t, event.Success)
+	assert.Nil(t, event.Error)
+	assert.Greater(t, event.Duration, time.Duration(0))
+	assert.False(t, event.Timestamp.IsZero())
+}
+
+func TestCommandLogMiddleware_Success(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(1)
+	result, err := wrapped.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	event, ok := publisher.LastEvent()
+	require.True(t, ok)
+	assert.True(t, event.Success)
+	assert.Nil(t, event.Error)
+}
+
+func TestCommandLogMiddleware_Failure_HandlerError(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	handler := errorHandler("handler failed")
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(1)
+	_, err := wrapped.Handle(context.Background(), cmd)
+	require.Error(t, err)
+
+	event, ok := publisher.LastEvent()
+	require.True(t, ok)
+	assert.False(t, event.Success)
+	assert.NotNil(t, event.Error)
+	assert.Contains(t, event.Error.Error(), "handler failed")
+}
+
+func TestCommandLogMiddleware_Failure_ResultError(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	// Handler that returns error in result (not error return value)
+	handler := HandlerFunc(func(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
+		return &command.CommandResult{
+			Success: false,
+			Error:   errors.New("result error"),
+		}, nil
+	})
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(1)
+	result, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	assert.False(t, result.Success)
+
+	event, ok := publisher.LastEvent()
+	require.True(t, ok)
+	assert.False(t, event.Success)
+	assert.NotNil(t, event.Error)
+	assert.Contains(t, event.Error.Error(), "result error")
+}
+
+func TestCommandLogMiddleware_Duration(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	// Handler with artificial delay
+	handler := slowHandler(50 * time.Millisecond)
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(1)
+	_, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	event, ok := publisher.LastEvent()
+	require.True(t, ok)
+	// Duration should be at least 50ms
+	assert.GreaterOrEqual(t, event.Duration, 50*time.Millisecond)
+	// But not unreasonably long (allow some slack for test overhead)
+	assert.Less(t, event.Duration, 200*time.Millisecond)
+}
+
+func TestCommandLogMiddleware_NilEventBus_GracefulNoOp(t *testing.T) {
+	// Should not panic with nil event bus
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: nil,
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	cmd := newTestCommand(1)
+	result, err := wrapped.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	// No panic, handler executes normally
+}
+
+func TestCommandLogMiddleware_ExtractsSource(t *testing.T) {
+	publisher := newMockEventPublisher()
+	middleware := NewCommandLogMiddleware(CommandLogMiddlewareConfig{
+		EventBus: publisher,
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	// Create a command with a specific source
+	base := command.NewBaseCommand("test_command", command.SourceMCPTool)
+	cmd := &testCommand{BaseCommand: &base, value: 1}
+
+	_, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	event, ok := publisher.LastEvent()
+	require.True(t, ok)
+	assert.Equal(t, command.SourceMCPTool, event.Source)
+}

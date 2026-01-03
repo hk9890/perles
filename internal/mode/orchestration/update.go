@@ -148,6 +148,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// then manual scroll position is preserved
 	m.coordinatorPane.contentDirty = false
 	m.messagePane.contentDirty = false
+	m.commandPane.contentDirty = false
 	// Clear per-worker dirty flags
 	for workerID := range m.workerPane.contentDirty {
 		m.workerPane.contentDirty[workerID] = false
@@ -247,6 +248,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				case '6':
 					m = m.toggleFullscreenPane(PaneMessages, 0)
 					return m, nil
+				case '7':
+					m = m.toggleFullscreenPane(PaneCommand, 0)
+					return m, nil
 				}
 			case key.Matches(msg, keys.Quit) || msg.Type == tea.KeyCtrlC:
 				m.quitModal.Show()
@@ -329,17 +333,35 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case msg.X < leftWidth+middleWidth:
-			// Message pane
-			vp := m.messagePane.viewports[viewportKey]
-			if scrollUp {
-				vp.ScrollUp(scrollLines)
+			// Middle column: command pane (if visible) + message pane
+			// Command pane gets 30% of content height when visible
+			cmdPaneHeight := contentHeight * 30 / 100
+			if m.showCommandPane && msg.Y < cmdPaneHeight {
+				// Command pane scroll (top of middle column when visible)
+				vp := m.commandPane.viewports[viewportKey]
+				if scrollUp {
+					vp.ScrollUp(scrollLines)
+				} else {
+					vp.ScrollDown(scrollLines)
+				}
+				m.commandPane.viewports[viewportKey] = vp
+				// Clear new content indicator when scrolled to bottom
+				if vp.AtBottom() {
+					m.commandPane.hasNewContent = false
+				}
 			} else {
-				vp.ScrollDown(scrollLines)
-			}
-			m.messagePane.viewports[viewportKey] = vp
-			// Clear new content indicator when scrolled to bottom
-			if vp.AtBottom() {
-				m.messagePane.hasNewContent = false
+				// Message pane scroll
+				vp := m.messagePane.viewports[viewportKey]
+				if scrollUp {
+					vp.ScrollUp(scrollLines)
+				} else {
+					vp.ScrollDown(scrollLines)
+				}
+				m.messagePane.viewports[viewportKey] = vp
+				// Clear new content indicator when scrolled to bottom
+				if vp.AtBottom() {
+					m.messagePane.hasNewContent = false
+				}
 			}
 
 		default:
@@ -600,6 +622,43 @@ func (m Model) handleV2Event(event pubsub.Event[any]) (Model, tea.Cmd) {
 			"commandID", payload.CommandID,
 			"commandType", payload.CommandType,
 			"error", payload.Error)
+
+	case processor.CommandLogEvent:
+		// CRITICAL: Always append entries regardless of showCommandPane state.
+		// This ensures debugging history is available when users toggle the pane on.
+		errorStr := ""
+		if payload.Error != nil {
+			errorStr = payload.Error.Error()
+		}
+		entry := CommandLogEntry{
+			Timestamp:   payload.Timestamp,
+			CommandType: payload.CommandType,
+			CommandID:   payload.CommandID,
+			Source:      payload.Source,
+			Success:     payload.Success,
+			Error:       errorStr,
+			Duration:    payload.Duration,
+		}
+		m.commandPane.entries = append(m.commandPane.entries, entry)
+
+		// Apply max entry bounds checking (FIFO eviction)
+		if len(m.commandPane.entries) > maxCommandLogEntries {
+			m.commandPane.entries = m.commandPane.entries[1:]
+		}
+
+		m.commandPane.contentDirty = true
+
+		// Only check hasNewContent if pane is visible and not at bottom
+		if m.showCommandPane && !m.commandPane.viewports[viewportKey].AtBottom() {
+			m.commandPane.hasNewContent = true
+		}
+
+		log.Debug(log.CatOrch, "Command log entry added",
+			"subsystem", "update",
+			"commandID", payload.CommandID,
+			"commandType", payload.CommandType,
+			"success", payload.Success,
+			"entryCount", len(m.commandPane.entries))
 
 	default:
 		// Unknown event types are handled gracefully - just continue listening
@@ -1005,6 +1064,20 @@ func (m Model) handleSlashCommand(content string) (Model, tea.Cmd, bool) {
 	parts := strings.Fields(content)
 	if len(parts) == 0 {
 		return m, nil, false
+	}
+
+	// Handle two-word commands first (e.g., "/show commands", "/hide commands")
+	if len(parts) >= 2 {
+		twoWordCmd := parts[0] + " " + parts[1]
+		switch twoWordCmd {
+		case "/show commands":
+			m.showCommandPane = true
+			m.commandPane.contentDirty = true
+			return m, nil, true
+		case "/hide commands":
+			m.showCommandPane = false
+			return m, nil, true
+		}
 	}
 
 	cmd := parts[0]

@@ -35,19 +35,23 @@ func (m Model) View() string {
 func (m Model) renderMainView() string {
 	// Calculate dynamic input bar height based on textarea content
 	inputHeight := m.calculateInputHeight()
+
+	// Content height is remaining space after input
 	contentHeight := max(m.height-inputHeight, 5)
 
-	var panes string
+	var mainPanes string
 
 	if m.fullscreenPaneType != PaneNone {
 		// Fullscreen mode: render only the selected pane
 		switch m.fullscreenPaneType {
 		case PaneCoordinator:
-			panes = m.renderCoordinatorPane(m.width, contentHeight, true)
+			mainPanes = m.renderCoordinatorPane(m.width, contentHeight, true)
 		case PaneMessages:
-			panes = m.renderMessagePane(m.width, contentHeight, true)
+			mainPanes = m.renderMessagePane(m.width, contentHeight, true)
 		case PaneWorker:
-			panes = m.renderFullscreenWorkerPane(m.width, contentHeight)
+			mainPanes = m.renderFullscreenWorkerPane(m.width, contentHeight)
+		case PaneCommand:
+			mainPanes = renderCommandPane(&m.commandPane, m.width, contentHeight)
 		}
 	} else {
 		// Normal three-pane layout
@@ -55,24 +59,45 @@ func (m Model) renderMainView() string {
 		middleWidth := m.width * middlePanePercent / 100
 		rightWidth := m.width - leftWidth - middleWidth
 
-		// Render each pane
+		// Render left and right panes (full content height)
 		leftPane := m.renderCoordinatorPane(leftWidth, contentHeight, false)
-		middlePane := m.renderMessagePane(middleWidth, contentHeight, false)
 		rightPanes := m.renderWorkerPanes(rightWidth, contentHeight)
 
+		// Render middle column: command pane (if visible) + message log
+		var middleColumn string
+		if m.showCommandPane {
+			// Split middle column height 30/70 between command pane and message log
+			cmdPaneHeight := contentHeight * 30 / 100
+			messagePaneHeight := contentHeight - cmdPaneHeight
+			// Ensure minimum height of 5 for both panes
+			if cmdPaneHeight < 5 {
+				cmdPaneHeight = 5
+			}
+			if messagePaneHeight < 5 {
+				messagePaneHeight = 5
+			}
+			cmdPane := renderCommandPane(&m.commandPane, middleWidth, cmdPaneHeight)
+			msgPane := m.renderMessagePane(middleWidth, messagePaneHeight, false)
+			middleColumn = lipgloss.JoinVertical(lipgloss.Left, cmdPane, msgPane)
+		} else {
+			middleColumn = m.renderMessagePane(middleWidth, contentHeight, false)
+		}
+
 		// Join panes horizontally
-		panes = lipgloss.JoinHorizontal(lipgloss.Top,
+		mainPanes = lipgloss.JoinHorizontal(lipgloss.Top,
 			leftPane,
-			middlePane,
+			middleColumn,
 			rightPanes,
 		)
 	}
+
+	panesContent := mainPanes
 
 	// Render input bar
 	inputBar := m.renderInputBar()
 
 	// Stack vertically
-	mainView := lipgloss.JoinVertical(lipgloss.Left, panes, inputBar)
+	mainView := lipgloss.JoinVertical(lipgloss.Left, panesContent, inputBar)
 
 	// Show workflow picker overlay
 	if m.showWorkflowPicker && m.workflowPicker != nil {
@@ -108,7 +133,7 @@ func (m Model) renderInputBar() string {
 	inputHeight := m.calculateInputHeight()
 	// Navigation mode: show help instead of input
 	if m.navigationMode {
-		navHelp := "1-4=workers  5=coordinator  6=messages  esc=exit"
+		navHelp := "1-4=workers  5=coordinator  6=messages  7=commands  esc=exit"
 		navStyle := lipgloss.NewStyle().
 			Foreground(styles.TextSecondaryColor)
 
