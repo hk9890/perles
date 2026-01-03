@@ -11,6 +11,7 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/ui/coleditor"
+	"github.com/zjrosen/perles/internal/ui/details"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
@@ -300,6 +301,21 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			return SwitchToOrchestrationMsg{}
 		}
+
+	case key.Matches(msg, keys.Component.EditAction):
+		// Open issue editor for the selected issue
+		issue := m.board.SelectedIssue()
+		if issue != nil {
+			return m, func() tea.Msg {
+				return details.OpenEditMenuMsg{
+					IssueID:  issue.ID,
+					Labels:   issue.Labels,
+					Priority: issue.Priority,
+					Status:   issue.Status,
+				}
+			}
+		}
+		return m, nil
 	}
 
 	// Delegate navigation to board

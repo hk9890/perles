@@ -85,6 +85,9 @@ type Model struct {
 
 	// UI visibility toggles
 	showStatusBar bool
+
+	// Track where the IssueEditor was opened from (ViewBoard or ViewDetails)
+	issueEditorPreviousView ViewMode
 }
 
 // New creates a new kanban mode controller.
@@ -237,11 +240,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case details.OpenEditMenuMsg:
 		m.issueEditor = issueeditor.New(msg.IssueID, msg.Labels, msg.Priority, msg.Status).
 			SetSize(m.width, m.height)
+		// Track the current view to return to after save/cancel
+		// When opened via Ctrl+E from board, m.view is still ViewBoard
+		// When opened via 'e' from details, m.view is ViewDetails
+		m.issueEditorPreviousView = m.view
 		m.view = ViewEditIssue
 		return m, m.issueEditor.Init()
 
 	case issueeditor.SaveMsg:
-		m.view = ViewDetails
+		m.view = m.issueEditorPreviousView
+		// If returning to board, refresh to show changes
+		if m.view == ViewBoard {
+			m.pendingCursor = m.saveCursor()
+			m.loading = true
+			m.board = m.board.InvalidateViews()
+			return m, tea.Batch(
+				updatePriorityCmd(msg.IssueID, msg.Priority),
+				updateStatusCmd(msg.IssueID, msg.Status),
+				setLabelsCmd(msg.IssueID, msg.Labels),
+				m.board.LoadAllColumns(),
+			)
+		}
 		return m, tea.Batch(
 			updatePriorityCmd(msg.IssueID, msg.Priority),
 			updateStatusCmd(msg.IssueID, msg.Status),
@@ -249,7 +268,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		)
 
 	case issueeditor.CancelMsg:
-		m.view = ViewDetails
+		m.view = m.issueEditorPreviousView
 		return m, nil
 
 	case labelsChangedMsg:
@@ -384,7 +403,14 @@ func (m Model) renderCurrentView() string {
 		// Render edit menu overlay on top of details view
 		return m.picker.Overlay(m.details.View())
 	case ViewEditIssue:
-		// Render issue editor overlay on top of details view
+		// Render issue editor overlay on top of the view it was opened from
+		if m.issueEditorPreviousView == ViewBoard {
+			bg := m.board.View()
+			if m.showStatusBar {
+				bg += "\n" + m.renderStatusBar()
+			}
+			return m.issueEditor.Overlay(bg)
+		}
 		return m.issueEditor.Overlay(m.details.View())
 	case ViewViewMenu:
 		// Render view menu overlay on top of board

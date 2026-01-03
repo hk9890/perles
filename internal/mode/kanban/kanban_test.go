@@ -604,6 +604,8 @@ func TestKanban_IssueEditor_SaveMsg_ReturnsToViewDetails(t *testing.T) {
 		Type:      beads.TypeTask,
 	}
 	m := createTestModelWithDetails(t, issue)
+	// Simulate opening editor from details (set previousView before changing view)
+	m.issueEditorPreviousView = ViewDetails
 	m.view = ViewEditIssue
 
 	// Process SaveMsg
@@ -626,6 +628,8 @@ func TestKanban_IssueEditor_SaveMsg_DispatchesAllThreeUpdateCommands(t *testing.
 		Type:      beads.TypeTask,
 	}
 	m := createTestModelWithDetails(t, issue)
+	// Simulate opening editor from details (set previousView before changing view)
+	m.issueEditorPreviousView = ViewDetails
 	m.view = ViewEditIssue
 
 	// Process SaveMsg
@@ -652,6 +656,8 @@ func TestKanban_IssueEditor_CancelMsg_ReturnsToViewDetails(t *testing.T) {
 		Type:      beads.TypeTask,
 	}
 	m := createTestModelWithDetails(t, issue)
+	// Simulate opening editor from details (set previousView before changing view)
+	m.issueEditorPreviousView = ViewDetails
 	m.view = ViewEditIssue
 
 	// Process CancelMsg
@@ -744,4 +750,230 @@ func TestKanban_IssueEditor_KeyDelegation(t *testing.T) {
 	require.Equal(t, ViewEditIssue, m.view, "view should still be ViewEditIssue after 'j' key")
 	// Command may or may not be nil depending on editor state
 	_ = cmd
+}
+
+// =============================================================================
+// Ctrl+E Issue Editor from Board View Tests
+// =============================================================================
+
+func TestKanban_CtrlE_BoardView_EmitsOpenEditMenuMsg(t *testing.T) {
+	m := createTestModelWithIssue("test-123", "status = open")
+
+	// Simulate Ctrl+E keypress
+	msg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	_, cmd := m.handleBoardKey(msg)
+
+	// Execute the command to get the message
+	require.NotNil(t, cmd, "expected command from Ctrl+E key")
+	result := cmd()
+
+	// Verify it's a details.OpenEditMenuMsg
+	editMsg, ok := result.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg, got %T", result)
+	require.Equal(t, "test-123", editMsg.IssueID, "expected IssueID to match selected issue")
+}
+
+func TestKanban_CtrlE_EmptyBoard_NoOp(t *testing.T) {
+	// Model with empty board (no issues)
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	boardConfigs := []config.ColumnConfig{
+		{Name: "Empty", Query: "status = open"},
+	}
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
+
+	m := Model{
+		services: services,
+		board:    brd,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Simulate Ctrl+E keypress on empty board
+	msg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	_, cmd := m.handleBoardKey(msg)
+
+	// Should return nil command when no issue is selected
+	require.Nil(t, cmd, "expected nil command when no issue selected")
+}
+
+func TestKanban_CtrlE_MessageContainsIssueData(t *testing.T) {
+	// Create a model with an issue that has specific data
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	boardConfigs := []config.ColumnConfig{
+		{Name: "Test", Query: "status = open", Color: "#888888"},
+	}
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
+
+	// Populate with issue that has labels, priority, and status
+	brd, _ = brd.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Test",
+		Issues: []beads.Issue{
+			{
+				ID:        "issue-456",
+				TitleText: "Test Issue With Data",
+				Type:      beads.TypeTask,
+				Labels:    []string{"bug", "urgent", "p0"},
+				Priority:  beads.PriorityHigh,
+				Status:    beads.StatusInProgress,
+			},
+		},
+		Err: nil,
+	})
+
+	m := Model{
+		services: services,
+		board:    brd,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Simulate Ctrl+E keypress
+	msg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	_, cmd := m.handleBoardKey(msg)
+
+	require.NotNil(t, cmd, "expected command from Ctrl+E key")
+	result := cmd()
+
+	// Verify message contains all correct issue data
+	editMsg, ok := result.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg, got %T", result)
+	require.Equal(t, "issue-456", editMsg.IssueID, "IssueID should match")
+	require.Equal(t, []string{"bug", "urgent", "p0"}, editMsg.Labels, "Labels should match")
+	require.Equal(t, beads.PriorityHigh, editMsg.Priority, "Priority should match")
+	require.Equal(t, beads.StatusInProgress, editMsg.Status, "Status should match")
+}
+
+func TestKanban_CtrlE_SaveMsg_ReturnsToBoardView(t *testing.T) {
+	m := createTestModelWithIssue("test-123", "status = open")
+	require.Equal(t, ViewBoard, m.view, "precondition: should start in board view")
+
+	// Simulate Ctrl+E keypress and process the message
+	keyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	_, cmd := m.handleBoardKey(keyMsg)
+	require.NotNil(t, cmd, "expected command from Ctrl+E key")
+
+	// Execute command to get OpenEditMenuMsg and process it
+	result := cmd()
+	editMsg, ok := result.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg")
+
+	// Process OpenEditMenuMsg to open the editor
+	m, _ = m.Update(editMsg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue after opening editor")
+
+	// Process SaveMsg
+	saveMsg := issueeditor.SaveMsg{
+		IssueID:  "test-123",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"updated"},
+	}
+	m, cmd = m.Update(saveMsg)
+
+	// Should return to board view, not details view
+	require.Equal(t, ViewBoard, m.view, "expected ViewBoard after save when opened from board")
+	require.NotNil(t, cmd, "expected commands for updating issue and refreshing board")
+}
+
+func TestKanban_CtrlE_CancelMsg_ReturnsToBoardView(t *testing.T) {
+	m := createTestModelWithIssue("test-123", "status = open")
+	require.Equal(t, ViewBoard, m.view, "precondition: should start in board view")
+
+	// Simulate Ctrl+E keypress and process the message
+	keyMsg := tea.KeyMsg{Type: tea.KeyCtrlE}
+	_, cmd := m.handleBoardKey(keyMsg)
+	require.NotNil(t, cmd, "expected command from Ctrl+E key")
+
+	// Execute command to get OpenEditMenuMsg and process it
+	result := cmd()
+	editMsg, ok := result.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg")
+
+	// Process OpenEditMenuMsg to open the editor
+	m, _ = m.Update(editMsg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue after opening editor")
+
+	// Process CancelMsg
+	cancelMsg := issueeditor.CancelMsg{}
+	m, cmd = m.Update(cancelMsg)
+
+	// Should return to board view, not details view
+	require.Equal(t, ViewBoard, m.view, "expected ViewBoard after cancel when opened from board")
+	require.Nil(t, cmd, "expected no command on cancel")
+}
+
+func TestKanban_IssueEditor_FromDetails_SaveMsg_ReturnsToDetailsView(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		Status:    beads.StatusOpen,
+		Labels:    []string{"test"},
+	}
+	m := createTestModelWithDetails(t, issue)
+	require.Equal(t, ViewDetails, m.view, "precondition: should start in details view")
+
+	// Open issue editor via OpenEditMenuMsg (simulating 'e' from details)
+	openMsg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(openMsg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue after opening editor")
+
+	// Process SaveMsg
+	saveMsg := issueeditor.SaveMsg{
+		IssueID:  "test-1",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"updated"},
+	}
+	m, _ = m.Update(saveMsg)
+
+	// Should return to details view (original behavior for opening from details)
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails after save when opened from details")
+}
+
+func TestKanban_IssueEditor_FromDetails_CancelMsg_ReturnsToDetailsView(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		Status:    beads.StatusOpen,
+		Labels:    []string{"test"},
+	}
+	m := createTestModelWithDetails(t, issue)
+	require.Equal(t, ViewDetails, m.view, "precondition: should start in details view")
+
+	// Open issue editor via OpenEditMenuMsg (simulating 'e' from details)
+	openMsg := details.OpenEditMenuMsg{
+		IssueID:  issue.ID,
+		Labels:   issue.Labels,
+		Priority: issue.Priority,
+		Status:   issue.Status,
+	}
+	m, _ = m.Update(openMsg)
+	require.Equal(t, ViewEditIssue, m.view, "expected ViewEditIssue after opening editor")
+
+	// Process CancelMsg
+	cancelMsg := issueeditor.CancelMsg{}
+	m, _ = m.Update(cancelMsg)
+
+	// Should return to details view (original behavior for opening from details)
+	require.Equal(t, ViewDetails, m.view, "expected ViewDetails after cancel when opened from details")
 }
