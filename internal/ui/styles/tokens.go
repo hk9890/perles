@@ -73,6 +73,7 @@ const (
 	TokenTypeFeature  ColorToken = "type.feature"
 	TokenTypeMolecule ColorToken = "type.molecule"
 	TokenTypeConvoy   ColorToken = "type.convoy"
+	TokenTypeAgent    ColorToken = "type.agent"
 
 	// BQL syntax highlighting
 	TokenBQLKeyword  ColorToken = "bql.keyword" //nolint:gosec // UI color token, not credentials
@@ -156,6 +157,7 @@ func AllTokens() []ColorToken {
 		TokenTypeFeature,
 		TokenTypeMolecule,
 		TokenTypeConvoy,
+		TokenTypeAgent,
 
 		// BQL syntax highlighting
 		TokenBQLKeyword,

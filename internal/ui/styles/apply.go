@@ -232,6 +232,9 @@ func applyColors(colors map[ColorToken]string) {
 	if c, ok := colors[TokenTypeConvoy]; ok {
 		IssueConvoyColor = makeColor(c)
 	}
+	if c, ok := colors[TokenTypeAgent]; ok {
+		IssueAgentColor = makeColor(c)
+	}
 
 	// BQL
 	if c, ok := colors[TokenBQLKeyword]; ok {
@@ -316,6 +319,7 @@ func rebuildStyles() {
 	TypeChoreStyle = lipgloss.NewStyle().Foreground(IssueChoreColor)
 	TypeMoleculeStyle = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
 	TypeConvoyStyle = lipgloss.NewStyle().Foreground(IssueConvoyColor)
+	TypeAgentStyle = lipgloss.NewStyle().Foreground(IssueAgentColor)
 
 	// Status bar
 	StatusBarStyle = lipgloss.NewStyle().

@@ -91,6 +91,7 @@ var DefaultPreset = Preset{
 		TokenTypeFeature:  "#73F59F",
 		TokenTypeMolecule: "#FF731A",
 		TokenTypeConvoy:   "#888888",
+		TokenTypeAgent:    "#5C6BC0", // indigo
 
 		// BQL syntax highlighting (Catppuccin Mocha inspired)
 		TokenBQLKeyword:  "#CBA6F7",
@@ -179,6 +180,7 @@ var CatppuccinMochaPreset = Preset{
 		TokenTypeFeature:  "#A6E3A1", // green
 		TokenTypeMolecule: "#FAB387", // peach
 		TokenTypeConvoy:   "#6C7086", // overlay0
+		TokenTypeAgent:    "#89B4FA", // blue
 
 		// BQL syntax highlighting
 		TokenBQLKeyword:  "#CBA6F7", // mauve
@@ -267,6 +269,7 @@ var CatppuccinLattePreset = Preset{
 		TokenTypeFeature:  "#40A02B", // green
 		TokenTypeMolecule: "#FE640B", // peach
 		TokenTypeConvoy:   "#9CA0B0", // overlay0
+		TokenTypeAgent:    "#1E66F5", // blue
 
 		// BQL syntax highlighting
 		TokenBQLKeyword:  "#8839EF", // mauve
@@ -355,6 +358,7 @@ var DraculaPreset = Preset{
 		TokenTypeFeature:  "#50FA7B", // green
 		TokenTypeMolecule: "#FFB86C", // orange
 		TokenTypeConvoy:   "#6272A4", // comment
+		TokenTypeAgent:    "#BD93F9", // purple
 
 		// BQL syntax highlighting
 		TokenBQLKeyword:  "#FF79C6", // pink
@@ -447,6 +451,7 @@ var NordPreset = Preset{
 		TokenTypeFeature:  "#A3BE8C", // aurora green
 		TokenTypeMolecule: "#D08770", // aurora orange
 		TokenTypeConvoy:   "#4C566A", // polar night 4
+		TokenTypeAgent:    "#81A1C1", // frost blue
 
 		// BQL syntax highlighting
 		TokenBQLKeyword:  "#81A1C1", // frost 3
@@ -536,6 +541,7 @@ var HighContrastPreset = Preset{
 		TokenTypeFeature:  "#00FF00", // green
 		TokenTypeMolecule: "#FFA500", // orange
 		TokenTypeConvoy:   "#808080", // gray
+		TokenTypeAgent:    "#00BFFF", // deep sky blue
 
 		// BQL syntax highlighting - high contrast
 		TokenBQLKeyword:  "#FF00FF", // magenta
@@ -623,6 +629,7 @@ var GruvboxPreset = Preset{
 		TokenTypeFeature:  "#B8BB26", // green
 		TokenTypeMolecule: "#FE8019", // orange
 		TokenTypeConvoy:   "#928374", // gray
+		TokenTypeAgent:    "#83A598", // blue bright
 
 		// BQL syntax highlighting
 		TokenBQLKeyword:  "#FB4934", // red

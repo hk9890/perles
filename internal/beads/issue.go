@@ -34,6 +34,7 @@ const (
 	TypeChore    IssueType = "chore"
 	TypeMolecule IssueType = "molecule"
 	TypeConvoy   IssueType = "convoy"
+	TypeAgent    IssueType = "agent"
 )
 
 // Comment represents a comment on an issue.

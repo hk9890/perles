@@ -1352,7 +1352,7 @@ func ptrBool(b bool) *bool {
 
 // sampleIssues provides examples for the demo, showcasing all issue types and priorities.
 var sampleIssues = []beads.Issue{
-	// All 7 issue types
+	// All 8 issue types
 	{ID: "demo-e01", Type: beads.TypeEpic, Priority: 1, TitleText: "Epic: User Authentication System"},
 	{ID: "demo-t02", Type: beads.TypeTask, Priority: 2, TitleText: "Task: Implement login form validation"},
 	{ID: "demo-f03", Type: beads.TypeFeature, Priority: 1, TitleText: "Feature: Add dark mode support"},
@@ -1360,6 +1360,7 @@ var sampleIssues = []beads.Issue{
 	{ID: "demo-c05", Type: beads.TypeChore, Priority: 3, TitleText: "Chore: Update dependencies"},
 	{ID: "demo-m06", Type: beads.TypeMolecule, Priority: 2, TitleText: "Molecule: Reusable auth component"},
 	{ID: "demo-v07", Type: beads.TypeConvoy, Priority: 2, TitleText: "Convoy: Batch deployment pipeline"},
+	{ID: "demo-a08", Type: beads.TypeAgent, Priority: 2, TitleText: "Agent: AI-assisted task automation"},
 	// All 5 priority levels
 	{ID: "demo-p0", Type: beads.TypeBug, Priority: 0, TitleText: "P0 Critical: Security vulnerability"},
 	{ID: "demo-p1", Type: beads.TypeFeature, Priority: 1, TitleText: "P1 High: Core feature request"},
@@ -1413,9 +1414,9 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n\n")
 
 	// Section 1: Issue Types
-	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M/🚚):"))
+	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M/🚚/👨‍💼):"))
 	sb.WriteString("\n")
-	for i := range 7 {
+	for i := range 8 {
 		issue := sampleIssues[i]
 		line := issuebadge.Render(issue, issuebadge.Config{
 			ShowSelection: true,
@@ -1429,7 +1430,7 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Priority Levels (P0-P4):"))
 	sb.WriteString("\n")
-	for i := 7; i < 12; i++ {
+	for i := 8; i < 13; i++ {
 		issue := sampleIssues[i]
 		line := issuebadge.Render(issue, issuebadge.Config{
 			ShowSelection: true,
@@ -1443,10 +1444,10 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Title Truncation (MaxWidth=60):"))
 	sb.WriteString("\n")
-	truncatedIssue := sampleIssues[12]
+	truncatedIssue := sampleIssues[13]
 	truncatedLine := issuebadge.Render(truncatedIssue, issuebadge.Config{
 		ShowSelection: true,
-		Selected:      m.selectedIdx == 12,
+		Selected:      m.selectedIdx == 13,
 		MaxWidth:      60,
 	})
 	sb.WriteString(truncatedLine)
@@ -1456,10 +1457,10 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Pinned Issue (📌 indicator):"))
 	sb.WriteString("\n")
-	pinnedIssue := sampleIssues[13]
+	pinnedIssue := sampleIssues[14]
 	pinnedLine := issuebadge.Render(pinnedIssue, issuebadge.Config{
 		ShowSelection: true,
-		Selected:      m.selectedIdx == 13,
+		Selected:      m.selectedIdx == 14,
 	})
 	sb.WriteString(pinnedLine)
 	sb.WriteString("\n")
@@ -1468,13 +1469,13 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n")
 	sb.WriteString(sectionStyle.Render("Badge Only (RenderBadge):"))
 	sb.WriteString("\n")
-	for i := range 7 {
+	for i := range 8 {
 		badge := issuebadge.RenderBadge(sampleIssues[i])
 		sb.WriteString(badge)
 		sb.WriteString("\n")
 	}
 	// Also show pinned badge
-	sb.WriteString(issuebadge.RenderBadge(sampleIssues[13]))
+	sb.WriteString(issuebadge.RenderBadge(sampleIssues[14]))
 	sb.WriteString("\n")
 
 	return sb.String()
