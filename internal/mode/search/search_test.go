@@ -1177,3 +1177,182 @@ func TestSearch_PickerView_CtrlC_ClosesOverlay(t *testing.T) {
 	require.Equal(t, ViewSearch, m.view, "expected view to return to ViewSearch")
 	require.Nil(t, cmd, "expected no command")
 }
+
+// =============================================================================
+// Edit Key ('e') Tests - List Pane Edit Menu Shortcut
+// =============================================================================
+
+func TestSearch_EditKey_ListSubMode_EmitsOpenEditMenuMsg(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.selectedIdx = 0
+
+	// Verify preconditions
+	require.Equal(t, mode.SubModeList, m.subMode, "should be in list sub-mode")
+	require.Equal(t, "test-1", m.results[m.selectedIdx].ID, "should have test-1 selected")
+
+	// Press 'e' while focused on results in list mode
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Should return a command that emits OpenEditMenuMsg
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	editMsg, ok := msg.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg, got %T", msg)
+
+	// Verify the message contains correct issue data
+	require.Equal(t, "test-1", editMsg.IssueID, "issue ID should match selected issue")
+	require.Equal(t, m.results[0].Labels, editMsg.Labels, "labels should match")
+	require.Equal(t, m.results[0].Priority, editMsg.Priority, "priority should match")
+	require.Equal(t, m.results[0].Status, editMsg.Status, "status should match")
+}
+
+func TestSearch_EditKey_EmptyList_NoOp(t *testing.T) {
+	m := createTestModel(t)
+	m.focus = FocusResults
+	// No results loaded - m.results is nil/empty
+
+	// Press 'e' with no selected issue
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Should return nil command (no-op)
+	require.Nil(t, cmd, "expected no command when no issue is selected")
+}
+
+func TestSearch_EditKey_FocusDetails_DelegatesToDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+	// Ensure details has an issue set
+	m.details = details.New(m.results[0], m.services.Executor, m.services.Client).SetSize(50, 30)
+	m.hasDetail = true
+
+	// Press 'e' while focused on details - should delegate to details component
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Details component handles 'e' key, so cmd should exist (from details)
+	require.NotNil(t, cmd, "expected command from details delegation")
+
+	// Execute the command to verify it's an OpenEditMenuMsg from details
+	msg := cmd()
+	editMsg, ok := msg.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg from details, got %T", msg)
+	require.Equal(t, m.results[0].ID, editMsg.IssueID, "should edit details issue")
+}
+
+func TestSearch_EditKey_FocusSearch_NoOp(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusSearch
+	m.input.Focus()
+
+	// Press 'e' while focused on search input - should type 'e' in input, not trigger edit
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// No edit menu should open - input should receive the character
+	require.True(t, m.input.Focused(), "input should still be focused")
+}
+
+func TestSearch_DeleteKey_ListSubMode_EmitsDeleteIssueMsg(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.selectedIdx = 0
+
+	// Verify preconditions
+	require.Equal(t, mode.SubModeList, m.subMode, "should be in list sub-mode")
+	require.Equal(t, "test-1", m.results[m.selectedIdx].ID, "should have test-1 selected")
+
+	// Press 'd' while focused on results in list mode
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Should return a command that emits DeleteIssueMsg
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	deleteMsg, ok := msg.(details.DeleteIssueMsg)
+	require.True(t, ok, "expected DeleteIssueMsg, got %T", msg)
+
+	// Verify the message contains correct issue data
+	require.Equal(t, "test-1", deleteMsg.IssueID, "issue ID should match selected issue")
+	require.Equal(t, m.results[0].Type, deleteMsg.IssueType, "issue type should match")
+}
+
+func TestSearch_DeleteKey_EmptyList_NoOp(t *testing.T) {
+	m := createTestModel(t)
+	m.focus = FocusResults
+	// No results loaded - m.results is nil/empty
+
+	// Press 'd' with no selected issue
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Should return nil command (no-op)
+	require.Nil(t, cmd, "expected no command when no issue is selected")
+}
+
+func TestSearch_DeleteKey_FocusDetails_DelegatesToDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+	// Ensure details has an issue set
+	m.details = details.New(m.results[0], m.services.Executor, m.services.Client).SetSize(50, 30)
+	m.hasDetail = true
+
+	// Press 'd' while focused on details - should delegate to details component
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Details component handles 'd' key, so cmd should exist (from details)
+	require.NotNil(t, cmd, "expected command from details delegation")
+
+	// Execute the command to verify it's a DeleteIssueMsg from details
+	msg := cmd()
+	deleteMsg, ok := msg.(details.DeleteIssueMsg)
+	require.True(t, ok, "expected DeleteIssueMsg from details, got %T", msg)
+	require.Equal(t, m.results[0].ID, deleteMsg.IssueID, "should delete details issue")
+	require.Equal(t, m.results[0].Type, deleteMsg.IssueType, "should have correct issue type")
+}
+
+// =============================================================================
+// Edge Case Tests - Modal Already Open
+// =============================================================================
+
+func TestSearch_EditKey_ModalOpen_KeyIgnored(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.selectedIdx = 0
+	// Open a modal (e.g., delete confirmation)
+	m.view = ViewDeleteConfirm
+
+	// Press 'e' while modal is open
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Key should be handled by modal, not trigger edit
+	// Modal state should remain unchanged
+	require.Equal(t, ViewDeleteConfirm, m.view, "view should still be delete confirm")
+	// The command should be nil or handled by modal (modal passes 'e' through as no-op)
+	if cmd != nil {
+		msg := cmd()
+		_, isEditMsg := msg.(details.OpenEditMenuMsg)
+		require.False(t, isEditMsg, "should NOT emit OpenEditMenuMsg when modal is open")
+	}
+}
+
+func TestSearch_DeleteKey_ModalOpen_KeyIgnored(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.selectedIdx = 0
+	// Open the edit menu picker
+	m.view = ViewDetailsEditMenu
+
+	// Press 'd' while modal is open
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Key should be handled by modal/picker, not trigger delete
+	// View state should remain unchanged
+	require.Equal(t, ViewDetailsEditMenu, m.view, "view should still be edit menu")
+	// The command should be nil or handled by picker
+	if cmd != nil {
+		msg := cmd()
+		_, isDeleteMsg := msg.(details.DeleteIssueMsg)
+		require.False(t, isDeleteMsg, "should NOT emit DeleteIssueMsg when modal is open")
+	}
+}

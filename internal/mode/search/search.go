@@ -1307,6 +1307,40 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+
+	case key.Matches(msg, keys.Component.EditAction):
+		// Only handle in list pane; let details delegation handle when focused on details
+		if m.focus == FocusResults {
+			issue := m.getSelectedIssue()
+			if issue != nil {
+				return m, func() tea.Msg {
+					return details.OpenEditMenuMsg{
+						IssueID:  issue.ID,
+						Labels:   issue.Labels,
+						Priority: issue.Priority,
+						Status:   issue.Status,
+					}
+				}
+			}
+			return m, nil
+		}
+		// Fall through to details delegation when focused on details
+
+	case key.Matches(msg, keys.Component.DelAction):
+		// Only handle in list pane (list sub-mode); tree sub-mode handles 'd' for direction toggle first
+		if m.focus == FocusResults {
+			issue := m.getSelectedIssue()
+			if issue != nil {
+				return m, func() tea.Msg {
+					return details.DeleteIssueMsg{
+						IssueID:   issue.ID,
+						IssueType: issue.Type,
+					}
+				}
+			}
+			return m, nil
+		}
+		// Fall through to details delegation when focused on details
 	}
 
 	// Delegate remaining keys to details if focused there

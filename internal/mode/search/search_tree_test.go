@@ -14,6 +14,7 @@ import (
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/ui/details"
 	"github.com/zjrosen/perles/internal/ui/tree"
 )
 
@@ -655,4 +656,127 @@ func TestHandleIssueDeleted_Error(t *testing.T) {
 
 	// Should return error toast command
 	require.NotNil(t, cmd, "should return command for error toast")
+}
+
+// =============================================================================
+// Edit Key ('e') Tests - Tree Sub-Mode
+// =============================================================================
+
+func TestTreeSubMode_EditKey_EmitsOpenEditMenuMsg(t *testing.T) {
+	m := createTreeTestModel(t)
+	require.Equal(t, mode.SubModeTree, m.subMode, "should be in tree sub-mode")
+	require.Equal(t, FocusResults, m.focus, "should be focused on tree/results")
+
+	// Get the currently selected node's issue
+	selectedNode := m.tree.SelectedNode()
+	require.NotNil(t, selectedNode, "should have a selected node")
+	selectedIssue := &selectedNode.Issue
+
+	// Press 'e' while focused on tree results
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Should return a command that emits OpenEditMenuMsg
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	editMsg, ok := msg.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg, got %T", msg)
+
+	// Verify the message contains correct issue data from tree selection
+	require.Equal(t, selectedIssue.ID, editMsg.IssueID, "issue ID should match selected tree node")
+	require.Equal(t, selectedIssue.Labels, editMsg.Labels, "labels should match")
+	require.Equal(t, selectedIssue.Priority, editMsg.Priority, "priority should match")
+	require.Equal(t, selectedIssue.Status, editMsg.Status, "status should match")
+}
+
+func TestTreeSubMode_EditKey_NavigatedChild_EmitsCorrectIssue(t *testing.T) {
+	m := createTreeTestModel(t)
+
+	// Navigate to first child
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+
+	// Verify we moved to a child
+	selectedNode := m.tree.SelectedNode()
+	require.NotNil(t, selectedNode, "should have a selected node")
+	require.Equal(t, "child-1", selectedNode.Issue.ID, "should have navigated to child-1")
+
+	// Press 'e' to edit the child
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	require.NotNil(t, cmd, "expected a command to be returned")
+
+	// Execute the command to get the message
+	msg := cmd()
+	editMsg, ok := msg.(details.OpenEditMenuMsg)
+	require.True(t, ok, "expected OpenEditMenuMsg, got %T", msg)
+
+	// Should edit the child, not the root
+	require.Equal(t, "child-1", editMsg.IssueID, "should edit the navigated-to child")
+}
+
+func TestTreeSubMode_EditKey_TreeLoading_NoOp(t *testing.T) {
+	// Create a model in tree sub-mode but with no tree loaded yet (loading state)
+	m := createTestModelInTreeMode(t)
+	m.focus = FocusResults
+	m.treeRoot = &beads.Issue{ID: "loading-root"}
+	// m.tree is nil (loading state)
+	require.Nil(t, m.tree, "precondition: tree should be nil (loading)")
+
+	// Press 'e' during loading state
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+
+	// Should be a no-op since getSelectedIssue returns nil when tree is nil
+	require.Nil(t, cmd, "expected no command when tree is loading")
+}
+
+func TestTreeSubMode_DeleteKey_TreeLoading_NoOp(t *testing.T) {
+	// Create a model in tree sub-mode but with no tree loaded yet (loading state)
+	// Note: In tree sub-mode, 'd' normally toggles direction, but during loading
+	// (m.tree == nil) we can't toggle direction either, so it falls through to
+	// the general 'd' handler which checks focus and selected issue.
+	m := createTestModelInTreeMode(t)
+	m.focus = FocusResults
+	m.treeRoot = &beads.Issue{ID: "loading-root"}
+	// m.tree is nil (loading state)
+	require.Nil(t, m.tree, "precondition: tree should be nil (loading)")
+
+	// Press 'd' during loading state
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Should be a no-op since getSelectedIssue returns nil when tree is nil
+	// And tree direction toggle also requires m.tree != nil
+	require.Nil(t, cmd, "expected no command when tree is loading")
+}
+
+// =============================================================================
+// Delete Key ('d') Tests - Tree Sub-Mode (Regression Tests)
+// =============================================================================
+
+func TestTreeSubMode_DeleteKey_TogglesDirection_NotDelete(t *testing.T) {
+	// This is a regression test to verify that in tree sub-mode, 'd' key
+	// toggles direction rather than emitting DeleteIssueMsg
+	m := createTreeTestModel(t)
+	require.Equal(t, mode.SubModeTree, m.subMode, "should be in tree sub-mode")
+	require.Equal(t, FocusResults, m.focus, "should be focused on tree/results")
+
+	// Capture initial direction
+	initialDirection := m.tree.Direction()
+
+	// Get the selected issue for verification
+	selectedNode := m.tree.SelectedNode()
+	require.NotNil(t, selectedNode, "should have a selected node")
+
+	// Press 'd' while focused on tree results
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+
+	// Direction should have changed (toggle happened)
+	require.NotEqual(t, initialDirection, m.tree.Direction(), "d should toggle direction in tree sub-mode")
+
+	// Should NOT emit DeleteIssueMsg
+	if cmd != nil {
+		msg := cmd()
+		_, isDeleteMsg := msg.(details.DeleteIssueMsg)
+		require.False(t, isDeleteMsg, "should NOT emit DeleteIssueMsg in tree sub-mode (d toggles direction)")
+	}
 }
