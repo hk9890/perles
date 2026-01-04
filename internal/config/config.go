@@ -102,11 +102,12 @@ func flattenColors(prefix string, m map[string]any, result map[string]string) {
 
 // OrchestrationConfig holds orchestration mode configuration.
 type OrchestrationConfig struct {
-	Client    string             `mapstructure:"client"` // "claude" (default) or "amp"
-	Claude    ClaudeClientConfig `mapstructure:"claude"`
-	Codex     CodexClientConfig  `mapstructure:"codex"`
-	Amp       AmpClientConfig    `mapstructure:"amp"`
-	Workflows []WorkflowConfig   `mapstructure:"workflows"` // Workflow template configurations
+	Client           string             `mapstructure:"client"`            // "claude" (default) or "amp"
+	DisableWorktrees bool               `mapstructure:"disable_worktrees"` // Skip worktree prompt (default: false)
+	Claude           ClaudeClientConfig `mapstructure:"claude"`
+	Codex            CodexClientConfig  `mapstructure:"codex"`
+	Amp              AmpClientConfig    `mapstructure:"amp"`
+	Workflows        []WorkflowConfig   `mapstructure:"workflows"` // Workflow template configurations
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
@@ -420,6 +421,9 @@ views:
 orchestration:
   # AI client provider: "claude" (default) or "amp" or "codex"
   client: claude
+
+  # Skip worktree prompt and always run in current directory (default: false)
+  # disable_worktrees: true
 
   # Claude-specific settings (only used when client: claude)
   claude:

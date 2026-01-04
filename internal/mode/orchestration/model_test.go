@@ -56,6 +56,30 @@ func TestNew_VimModeExplicitlyDisabled(t *testing.T) {
 	require.False(t, m.input.VimEnabled(), "vim mode should be disabled when configured")
 }
 
+func TestNew_DisableWorktrees_PropagatesFromConfig(t *testing.T) {
+	// When DisableWorktrees is set to true in config
+	m := New(Config{DisableWorktrees: true})
+
+	// The model should have disableWorktrees set to true
+	require.True(t, m.disableWorktrees, "disableWorktrees should be true when configured")
+}
+
+func TestNew_DisableWorktrees_DefaultFalse(t *testing.T) {
+	// When DisableWorktrees is not set in config
+	m := New(Config{})
+
+	// The model should have disableWorktrees defaulting to false
+	require.False(t, m.disableWorktrees, "disableWorktrees should be false by default")
+}
+
+func TestNew_DisableWorktrees_ExplicitFalse(t *testing.T) {
+	// When DisableWorktrees is explicitly set to false
+	m := New(Config{DisableWorktrees: false})
+
+	// The model should have disableWorktrees set to false
+	require.False(t, m.disableWorktrees, "disableWorktrees should be false when explicitly configured")
+}
+
 func TestSetSize(t *testing.T) {
 	m := New(Config{})
 	m = m.SetSize(120, 40)

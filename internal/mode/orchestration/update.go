@@ -1081,8 +1081,11 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 		m.gitExecutor = git.NewRealExecutor(m.workDir)
 	}
 
-	// Check if we should prompt for worktree (only if in git repo and decision not yet made)
-	if m.gitExecutor.IsGitRepo() && !m.worktreeDecisionMade {
+	// Check if worktrees are disabled in config - bypass prompt entirely
+	if m.disableWorktrees {
+		m.worktreeDecisionMade = true
+		m.worktreeEnabled = false
+	} else if m.gitExecutor.IsGitRepo() && !m.worktreeDecisionMade {
 		// Show worktree prompt modal
 		mdl := modal.New(modal.Config{
 			Title:       "Use Git Worktree?",

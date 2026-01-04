@@ -129,6 +129,7 @@ type Model struct {
 	mcpCoordServer     *mcp.CoordinatorServer       // MCP coordinator server for direct worker messaging
 	workDir            string
 	worktreeEnabled    bool // Whether worktree isolation is enabled
+	disableWorktrees   bool // Skip worktree prompt and always run in current directory
 	services           mode.Services
 	coordinatorMetrics *metrics.TokenMetrics // Token usage and cost data for coordinator
 	coordinatorWorking bool                  // True when coordinator is processing, false when waiting for input
@@ -234,6 +235,8 @@ type Config struct {
 	// UI settings
 	VimMode   bool // Enable vim keybindings in text input areas
 	DebugMode bool // Show command pane by default when true
+	// Worktree settings
+	DisableWorktrees bool // Skip worktree prompt and always run in current directory
 }
 
 // New creates a new orchestration mode model with the given configuration.
@@ -258,6 +261,7 @@ func New(cfg Config) Model {
 		showCommandPane:       cfg.DebugMode, // Command pane visible by default only in debug mode
 		services:              cfg.Services,
 		workDir:               cfg.WorkDir,
+		disableWorktrees:      cfg.DisableWorktrees,
 		messageTarget:         "COORDINATOR", // Default to coordinator
 		fullscreenWorkerIndex: -1,            // No fullscreen by default
 		clientType:            cfg.ClientType,

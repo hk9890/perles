@@ -253,6 +253,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			WorkflowRegistry: workflowRegistry,
 			VimMode:          m.services.Config.UI.VimMode,
 			DebugMode:        m.debugMode,
+			DisableWorktrees: orchConfig.DisableWorktrees,
 		}).SetSize(m.width, m.height)
 		return m, m.orchestration.Init()
 

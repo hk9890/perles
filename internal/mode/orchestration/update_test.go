@@ -3738,3 +3738,84 @@ func TestSkipWorktree_NotAvailableForOtherFailures(t *testing.T) {
 	// Verify S key was ignored
 	require.Nil(t, cmd, "S key should be ignored when not worktree failure")
 }
+
+// --- DisableWorktrees Config Tests ---
+
+func TestHandleStartCoordinator_DisableWorktrees_SkipsModal(t *testing.T) {
+	// Test that handleStartCoordinator skips worktree modal when disableWorktrees is true
+	m := New(Config{
+		WorkDir:          "/test/dir",
+		DisableWorktrees: true,
+	})
+	m = m.SetSize(120, 40)
+
+	// Set up mock git executor that reports this is a git repo
+	// Note: Even though it's a git repo, the modal should NOT be shown because disableWorktrees is true
+	mockGit := mocks.NewMockGitExecutor(t)
+	// IsGitRepo should NOT be called when disableWorktrees is true
+	// The bypass happens before the git repo check
+	m.gitExecutor = mockGit
+
+	// Call handleStartCoordinator
+	m, _ = m.handleStartCoordinator()
+
+	// Verify worktree modal is NOT shown
+	require.Nil(t, m.worktreeModal, "should NOT show worktree modal when disableWorktrees is true")
+	// Verify worktree decision was made and worktree is disabled
+	require.True(t, m.worktreeDecisionMade, "worktreeDecisionMade should be true")
+	require.False(t, m.worktreeEnabled, "worktreeEnabled should be false")
+	// Verify initializer was created (initialization proceeds)
+	require.NotNil(t, m.initializer, "should create initializer when disableWorktrees is true")
+
+	// Cleanup
+	m.Cleanup()
+}
+
+func TestHandleStartCoordinator_DisableWorktrees_False_ShowsModal(t *testing.T) {
+	// Test that handleStartCoordinator shows worktree modal when disableWorktrees is false
+	m := New(Config{
+		WorkDir:          "/test/dir",
+		DisableWorktrees: false,
+	})
+	m = m.SetSize(120, 40)
+
+	// Set up mock git executor that reports this is a git repo
+	mockGit := mocks.NewMockGitExecutor(t)
+	mockGit.EXPECT().IsGitRepo().Return(true)
+	m.gitExecutor = mockGit
+
+	// Call handleStartCoordinator
+	m, _ = m.handleStartCoordinator()
+
+	// Verify worktree modal IS shown (existing behavior preserved)
+	require.NotNil(t, m.worktreeModal, "should show worktree modal when disableWorktrees is false")
+	require.Nil(t, m.initializer, "should not create initializer while modal is shown")
+	require.False(t, m.worktreeDecisionMade, "worktree decision should not be made yet")
+}
+
+func TestHandleStartCoordinator_DisableWorktrees_NonGitRepo(t *testing.T) {
+	// Test that handleStartCoordinator works correctly when disableWorktrees is true in a non-git repo
+	// This should be a harmless no-op - worktrees wouldn't work anyway outside git
+	m := New(Config{
+		WorkDir:          "/test/dir",
+		DisableWorktrees: true,
+	})
+	m = m.SetSize(120, 40)
+
+	// Set up mock git executor - not used because bypass happens first
+	mockGit := mocks.NewMockGitExecutor(t)
+	// IsGitRepo should NOT be called when disableWorktrees is true
+	m.gitExecutor = mockGit
+
+	// Call handleStartCoordinator
+	m, _ = m.handleStartCoordinator()
+
+	// Verify no error and initialization proceeds normally
+	require.Nil(t, m.worktreeModal, "should NOT show worktree modal")
+	require.True(t, m.worktreeDecisionMade, "worktreeDecisionMade should be true")
+	require.False(t, m.worktreeEnabled, "worktreeEnabled should be false")
+	require.NotNil(t, m.initializer, "should create initializer")
+
+	// Cleanup
+	m.Cleanup()
+}
