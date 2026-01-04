@@ -55,6 +55,13 @@ func TestRealExecutor_GetCurrentBranch(t *testing.T) {
 
 	executor := NewRealExecutor(cwd)
 	branch, err := executor.GetCurrentBranch()
+
+	// In CI (detached HEAD), we get ErrDetachedHead - that's valid
+	if errors.Is(err, ErrDetachedHead) {
+		t.Log("GetCurrentBranch() returned ErrDetachedHead (detached HEAD state, common in CI)")
+		return
+	}
+
 	if err != nil {
 		t.Fatalf("GetCurrentBranch() error = %v", err)
 	}

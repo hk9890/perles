@@ -28,6 +28,9 @@ var (
 
 	// ErrUnsafeParentDirectory indicates the parent directory is restricted.
 	ErrUnsafeParentDirectory = errors.New("unsafe parent directory")
+
+	// ErrDetachedHead indicates HEAD is not pointing to a branch (detached HEAD state).
+	ErrDetachedHead = errors.New("detached HEAD state")
 )
 
 // Compile-time check that RealExecutor implements GitExecutor.
@@ -160,8 +163,10 @@ func (e *RealExecutor) IsDetachedHead() (bool, error) {
 }
 
 // GetCurrentBranch returns the name of the current branch.
+// Returns ErrDetachedHead if HEAD is not pointing to a branch (common in CI).
 func (e *RealExecutor) GetCurrentBranch() (string, error) {
 	// First try git branch --show-current (git 2.22+)
+	// This returns empty string in detached HEAD state (no error)
 	output, err := e.runGitOutput("branch", "--show-current")
 	if err == nil && output != "" {
 		return output, nil
@@ -170,6 +175,10 @@ func (e *RealExecutor) GetCurrentBranch() (string, error) {
 	// Fallback: parse symbolic-ref
 	output, err = e.runGitOutput("symbolic-ref", "--short", "HEAD")
 	if err != nil {
+		// Check if we're in detached HEAD state
+		if strings.Contains(err.Error(), "not a symbolic ref") {
+			return "", ErrDetachedHead
+		}
 		return "", fmt.Errorf("failed to get current branch: %w", err)
 	}
 	return output, nil
@@ -204,10 +213,14 @@ func (e *RealExecutor) GetMainBranch() (string, error) {
 	return "main", nil
 }
 
-// IsOnMainBranch checks if the current branch is the main branch.
+// IsOnMainBranch returns true if the current branch is the main branch.
+// Returns false (not error) if in detached HEAD state.
 func (e *RealExecutor) IsOnMainBranch() (bool, error) {
 	currentBranch, err := e.GetCurrentBranch()
 	if err != nil {
+		if errors.Is(err, ErrDetachedHead) {
+			return false, nil
+		}
 		return false, err
 	}
 
