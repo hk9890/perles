@@ -67,10 +67,14 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 		if err != nil {
 			return nil, fmt.Errorf("failed to build coordinator system prompt: %w", err)
 		}
+		initialPrompt, err := prompt.BuildCoordinatorInitialPrompt()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build coordinator inital prompt: %w", err)
+		}
 		cfg = client.Config{
 			WorkDir:         s.workDir,
 			SystemPrompt:    systemPrompt,
-			Prompt:          systemPrompt,
+			Prompt:          initialPrompt,
 			MCPConfig:       mcpConfig,
 			SkipPermissions: true,
 			DisallowedTools: []string{"AskUserQuestion"},
