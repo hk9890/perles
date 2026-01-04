@@ -762,16 +762,14 @@ func TestShowHideCommands(t *testing.T) {
 	require.True(t, m.showCommandPane, "pane should be visible in debug mode")
 
 	// Test /hide commands
-	newModel, cmd, handled := m.handleSlashCommand("/hide commands")
+	newModel, handled := m.handleSlashCommand("/hide commands")
 	require.True(t, handled, "/hide commands should be handled")
-	require.Nil(t, cmd, "no tea.Cmd should be returned")
 	require.False(t, newModel.showCommandPane, "showCommandPane should be false after /hide commands")
 
 	// Test /show commands
 	m = newModel
-	newModel, cmd, handled = m.handleSlashCommand("/show commands")
+	newModel, handled = m.handleSlashCommand("/show commands")
 	require.True(t, handled, "/show commands should be handled")
-	require.Nil(t, cmd, "no tea.Cmd should be returned")
 	require.True(t, newModel.showCommandPane, "showCommandPane should be true after /show commands")
 }
 
@@ -783,7 +781,7 @@ func TestCommandPaneHiddenByDefault(t *testing.T) {
 	require.False(t, m.showCommandPane, "command pane should be hidden by default")
 
 	// Test /show commands reveals it
-	newModel, _, handled := m.handleSlashCommand("/show commands")
+	newModel, handled := m.handleSlashCommand("/show commands")
 	require.True(t, handled, "/show commands should be handled")
 	require.True(t, newModel.showCommandPane, "showCommandPane should be true after /show commands")
 }
@@ -804,7 +802,7 @@ func TestShowCommands_SetsContentDirty(t *testing.T) {
 	m.commandPane.contentDirty = false
 
 	// Test /show commands sets contentDirty
-	newModel, _, handled := m.handleSlashCommand("/show commands")
+	newModel, handled := m.handleSlashCommand("/show commands")
 	require.True(t, handled)
 	require.True(t, newModel.commandPane.contentDirty, "contentDirty should be set when showing pane")
 }
@@ -818,7 +816,7 @@ func TestHideCommands_NoContentDirty(t *testing.T) {
 	m.commandPane.contentDirty = false
 
 	// Test /hide commands does NOT set contentDirty
-	newModel, _, handled := m.handleSlashCommand("/hide commands")
+	newModel, handled := m.handleSlashCommand("/hide commands")
 	require.True(t, handled)
 	require.False(t, newModel.commandPane.contentDirty, "contentDirty should NOT be set when hiding pane")
 }
@@ -831,7 +829,7 @@ func TestShowCommands_Idempotent(t *testing.T) {
 	m.showCommandPane = true
 
 	// Call /show commands again (should be no-op but still handled)
-	newModel, _, handled := m.handleSlashCommand("/show commands")
+	newModel, handled := m.handleSlashCommand("/show commands")
 	require.True(t, handled, "should still be handled even when already visible")
 	require.True(t, newModel.showCommandPane, "should remain visible")
 }
@@ -844,7 +842,7 @@ func TestHideCommands_Idempotent(t *testing.T) {
 	require.False(t, m.showCommandPane)
 
 	// Call /hide commands when already hidden (should be no-op but still handled)
-	newModel, _, handled := m.handleSlashCommand("/hide commands")
+	newModel, handled := m.handleSlashCommand("/hide commands")
 	require.True(t, handled, "should still be handled even when already hidden")
 	require.False(t, newModel.showCommandPane, "should remain hidden")
 }
@@ -864,7 +862,7 @@ func TestShowCommands_InvalidVariants(t *testing.T) {
 	}
 
 	for _, cmd := range invalidCommands {
-		_, _, handled := m.handleSlashCommand(cmd)
+		_, handled := m.handleSlashCommand(cmd)
 		require.False(t, handled, "%q should not be handled as /show commands", cmd)
 	}
 }
@@ -884,7 +882,7 @@ func TestHideCommands_InvalidVariants(t *testing.T) {
 	}
 
 	for _, cmd := range invalidCommands {
-		_, _, handled := m.handleSlashCommand(cmd)
+		_, handled := m.handleSlashCommand(cmd)
 		require.False(t, handled, "%q should not be handled as /hide commands", cmd)
 	}
 }

@@ -1040,8 +1040,8 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 func (m Model) handleUserInput(content, target string) (Model, tea.Cmd) {
 	// Check for known slash commands first (intercept before routing to coordinator/workers)
 	if strings.HasPrefix(content, "/") {
-		if newModel, cmd, handled := m.handleSlashCommand(content); handled {
-			return newModel, cmd
+		if newModel, handled := m.handleSlashCommand(content); handled {
+			return newModel, nil
 		}
 		// Unknown slash commands fall through to normal message routing
 	}
@@ -1058,12 +1058,12 @@ func (m Model) handleUserInput(content, target string) (Model, tea.Cmd) {
 }
 
 // handleSlashCommand routes slash commands to their respective handlers.
-// Returns (model, cmd, handled) where handled indicates if the command was recognized.
+// Returns (model, handled) where handled indicates if the command was recognized.
 // Unknown commands return handled=false so they can fall through to normal message routing.
-func (m Model) handleSlashCommand(content string) (Model, tea.Cmd, bool) {
+func (m Model) handleSlashCommand(content string) (Model, bool) {
 	parts := strings.Fields(content)
 	if len(parts) == 0 {
-		return m, nil, false
+		return m, false
 	}
 
 	// Handle two-word commands first (e.g., "/show commands", "/hide commands")
@@ -1073,30 +1073,26 @@ func (m Model) handleSlashCommand(content string) (Model, tea.Cmd, bool) {
 		case "/show commands":
 			m.showCommandPane = true
 			m.commandPane.contentDirty = true
-			return m, nil, true
+			return m, true
 		case "/hide commands":
 			m.showCommandPane = false
-			return m, nil, true
+			return m, true
 		}
 	}
 
 	cmd := parts[0]
 	switch cmd {
 	case "/stop":
-		newModel, teaCmd := m.handleStopProcessCommand(content)
-		return newModel, teaCmd, true
+		return m.handleStopProcessCommand(content), true
 	case "/spawn":
-		newModel, teaCmd := m.handleSpawnWorkerCommand(content)
-		return newModel, teaCmd, true
+		return m.handleSpawnWorkerCommand(), true
 	case "/retire":
-		newModel, teaCmd := m.handleRetireWorkerCommand(content)
-		return newModel, teaCmd, true
+		return m.handleRetireWorkerCommand(content), true
 	case "/replace":
-		newModel, teaCmd := m.handleReplaceWorkerCommand(content)
-		return newModel, teaCmd, true
+		return m.handleReplaceWorkerCommand(content), true
 	default:
 		// Unknown commands are not handled - fall through to normal routing
-		return m, nil, false
+		return m, false
 	}
 }
 
@@ -1237,11 +1233,10 @@ When you're ready, call: ` + "`prepare_handoff`" + ` with your summary.`
 
 // handleStopProcessCommand parses and handles the /stop <process-id> [--force] command.
 // Syntax: /stop worker-1 [--force] or /stop coordinator [--force]
-func (m Model) handleStopProcessCommand(content string) (Model, tea.Cmd) {
+func (m Model) handleStopProcessCommand(content string) Model {
 	parts := strings.Fields(content)
 	if len(parts) < 2 {
-		m = m.SetError("Usage: /stop <process-id> [--force]")
-		return m, nil
+		return m.SetError("Usage: /stop <process-id> [--force]")
 	}
 
 	processID := parts[1]
@@ -1249,61 +1244,55 @@ func (m Model) handleStopProcessCommand(content string) (Model, tea.Cmd) {
 
 	cmdSubmitter := m.cmdSubmitter()
 	if cmdSubmitter == nil {
-		m = m.SetError("Command submitter not available")
-		return m, nil
+		return m.SetError("Command submitter not available")
 	}
 
 	cmd := command.NewStopProcessCommand(command.SourceUser, processID, force, "user_requested")
 	cmdSubmitter.Submit(cmd)
 
-	return m, nil
+	return m
 }
 
 // handleSpawnWorkerCommand handles the /spawn command to spawn a new worker.
 // Syntax: /spawn (no arguments expected)
-func (m Model) handleSpawnWorkerCommand(content string) (Model, tea.Cmd) {
+func (m Model) handleSpawnWorkerCommand() Model {
 	cmdSubmitter := m.cmdSubmitter()
 	if cmdSubmitter == nil {
-		m = m.SetError("Command submitter not available")
-		return m, nil
+		return m.SetError("Command submitter not available")
 	}
 
 	cmd := command.NewSpawnProcessCommand(command.SourceUser, repository.RoleWorker)
 	cmdSubmitter.Submit(cmd)
 
-	return m, nil
+	return m
 }
 
 // handleRetireWorkerCommand handles the /retire command to retire a worker.
 // Syntax: /retire <worker-id> [reason]
-func (m Model) handleRetireWorkerCommand(content string) (Model, tea.Cmd) {
+func (m Model) handleRetireWorkerCommand(content string) Model {
 	parts := strings.Fields(content)
 	if len(parts) < 2 {
-		m = m.SetError("Usage: /retire <worker-id> [reason]")
-		return m, nil
+		return m.SetError("Usage: /retire <worker-id> [reason]")
 	}
 
 	workerID := parts[1]
 
 	// Block retiring the coordinator
 	if workerID == repository.CoordinatorID {
-		m = m.SetError("Cannot retire coordinator. Use Ctrl+R to replace coordinator instead.")
-		return m, nil
+		return m.SetError("Cannot retire coordinator. Use Ctrl+R to replace coordinator instead.")
 	}
 
 	// Pre-validate worker exists for immediate feedback
 	repo := m.processRepo()
 	if repo != nil {
 		if _, err := repo.Get(workerID); err != nil {
-			m = m.SetError(fmt.Sprintf("Worker %s not found", workerID))
-			return m, nil
+			return m.SetError(fmt.Sprintf("Worker %s not found", workerID))
 		}
 	}
 
 	cmdSubmitter := m.cmdSubmitter()
 	if cmdSubmitter == nil {
-		m = m.SetError("Command submitter not available")
-		return m, nil
+		return m.SetError("Command submitter not available")
 	}
 
 	// Build reason from remaining arguments, default to "user_requested"
@@ -1315,17 +1304,16 @@ func (m Model) handleRetireWorkerCommand(content string) (Model, tea.Cmd) {
 	cmd := command.NewRetireProcessCommand(command.SourceUser, workerID, reason)
 	cmdSubmitter.Submit(cmd)
 
-	return m, nil
+	return m
 }
 
 // handleReplaceWorkerCommand handles the /replace command to replace a worker.
 // Syntax: /replace <worker-id> [reason]
 // Note: Unlike /retire, /replace coordinator IS allowed (equivalent to Ctrl+R).
-func (m Model) handleReplaceWorkerCommand(content string) (Model, tea.Cmd) {
+func (m Model) handleReplaceWorkerCommand(content string) Model {
 	parts := strings.Fields(content)
 	if len(parts) < 2 {
-		m = m.SetError("Usage: /replace <worker-id> [reason]")
-		return m, nil
+		return m.SetError("Usage: /replace <worker-id> [reason]")
 	}
 
 	workerID := parts[1]
@@ -1334,15 +1322,13 @@ func (m Model) handleReplaceWorkerCommand(content string) (Model, tea.Cmd) {
 	repo := m.processRepo()
 	if repo != nil {
 		if _, err := repo.Get(workerID); err != nil {
-			m = m.SetError(fmt.Sprintf("Worker %s not found", workerID))
-			return m, nil
+			return m.SetError(fmt.Sprintf("Worker %s not found", workerID))
 		}
 	}
 
 	cmdSubmitter := m.cmdSubmitter()
 	if cmdSubmitter == nil {
-		m = m.SetError("Command submitter not available")
-		return m, nil
+		return m.SetError("Command submitter not available")
 	}
 
 	// Build reason from remaining arguments, default to "user_requested"
@@ -1354,7 +1340,7 @@ func (m Model) handleReplaceWorkerCommand(content string) (Model, tea.Cmd) {
 	cmd := command.NewReplaceProcessCommand(command.SourceUser, workerID, reason)
 	cmdSubmitter.Submit(cmd)
 
-	return m, nil
+	return m
 }
 
 // workerServerCache manages worker MCP servers that share the same message store.
