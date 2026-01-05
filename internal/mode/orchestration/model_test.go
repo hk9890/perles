@@ -16,6 +16,8 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
+	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 )
 
@@ -1504,6 +1506,62 @@ func TestView_Golden_WithUncommittedModal(t *testing.T) {
 
 	// Show the uncommittedModal (simulating dirty worktree detection)
 	m.uncommittedModal.Show()
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_WithWorktreeModal(t *testing.T) {
+	// Worktree modal appears during InitNotStarted phase on a blank background
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Create the worktree prompt modal (same as in handleStartCoordinator)
+	mdl := modal.New(modal.Config{
+		Title:       "Use Git Worktree?",
+		Message:     "Create an isolated workspace for this session?\n\n• Yes: Changes happen in a separate worktree\n• No: Changes happen in current directory",
+		ConfirmText: "Yes",
+		CancelText:  "No",
+		Required:    true,
+		MinWidth:    52,
+	})
+	mdl.SetSize(m.width, m.height)
+	m.worktreeModal = &mdl
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_WithBranchSelectModal(t *testing.T) {
+	// Branch select modal appears during InitNotStarted phase on a blank background
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Create the branch selection modal with sample branches
+	mdl := formmodal.New(formmodal.FormConfig{
+		Title:       "Select Base Branch",
+		MinWidth:    52,
+		SubmitLabel: "Continue",
+		Fields: []formmodal.FieldConfig{
+			{
+				Key:   "branch",
+				Type:  formmodal.FieldTypeSearchSelect,
+				Label: "Base Branch",
+				Options: []formmodal.ListOption{
+					{Label: "main", Value: "main", Selected: false},
+					{Label: "develop", Value: "develop", Selected: true},
+					{Label: "feature/auth", Value: "feature/auth", Selected: false},
+				},
+				SearchPlaceholder: "Search branches...",
+				MaxVisibleItems:   7,
+			},
+		},
+		HeaderContent: func(width int) string {
+			return "You're on 'develop'. The worktree creates an\nisolated copy from your chosen base branch.\nYour current work remains untouched."
+		},
+	})
+	mdl = mdl.SetSize(m.width, m.height)
+	m.branchSelectModal = &mdl
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))

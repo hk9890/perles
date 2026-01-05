@@ -1134,7 +1134,7 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 		// Show worktree prompt modal
 		mdl := modal.New(modal.Config{
 			Title:       "Use Git Worktree?",
-			Message:     "Create an isolated workspace for this session?\n\n• Yes: Changes happen in a separate worktree (safer)\n• No: Changes happen in current directory",
+			Message:     "Create an isolated workspace for this session?\n\n• Yes: Changes happen in a separate worktree\n• No: Changes happen in current directory",
 			ConfirmText: "Yes",
 			CancelText:  "No",
 			Required:    true, // User must explicitly choose Yes or No
