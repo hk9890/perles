@@ -301,15 +301,6 @@ func (m Model) getInitError() error {
 	return nil
 }
 
-// getSpinnerData returns spinner data from the Initializer.
-// Returns defaults if initializer is nil.
-func (m Model) getSpinnerData() InitPhase {
-	if m.initializer != nil {
-		return m.initializer.SpinnerData()
-	}
-	return InitNotStarted
-}
-
 // getFailedPhase determines which phase failed based on the current state.
 // This is called when the phase is InitFailed or InitTimedOut.
 func (m Model) getFailedPhase() InitPhase {
