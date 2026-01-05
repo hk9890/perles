@@ -66,26 +66,177 @@ did not give you a task-id.
 func TaskAssignmentPrompt(taskID, title, summary string) string {
 	prompt := fmt.Sprintf(`[TASK ASSIGNMENT]
 
-**Goal** Complete the task assigned to you with the highest possible quality effort.
+**Task ID:** %s
+**Title:** %s
 
-Task ID: %s
-Title: %s
+## Implementation Workflow
 
-**IMPORTANT: Before starting, if your tasks parent epic references a proposal document, you must read the full context of the proposal to understand the work.**
-Your instructions are in the task description which you can read using the bd tool with "bd show <task-id>" read the full description this is your work and contains
-import acceptance criteria to adhere to.`, taskID, title)
+Follow these phases in order. Use sub-agents for parallel exploration and verification.
+
+---
+
+### Phase 1: Understand
+
+**Goal:** Fully understand what you're building before writing code.
+
+1. **Read the task**: `+"`bd show %s`"+`
+   - Extract ALL acceptance criteria (checkboxes)
+   - Note any verification commands specified
+   - Identify dependencies or blockers
+
+2. **Read the proposal** (if epic references one):
+   - Understand the "why" behind this task
+   - Note architectural decisions that affect implementation
+   - Find any patterns or examples to follow
+
+3. **Explore the codebase** (spawn sub-agent if complex):
+   - Find existing patterns to follow
+   - Identify files that will be modified
+   - Understand interfaces and dependencies
+
+**Sub-Agent Option - Code Explorer:**
+`+"```"+`
+Spawn a sub-agent to explore: "Find all usages of [interface/function] and understand
+the existing patterns. Return: entry points, call chains, and patterns to follow."
+`+"```"+`
+
+---
+
+### Phase 2: Plan
+
+**Goal:** Have a clear implementation plan before coding.
+
+1. **List the changes needed:**
+   - Which files to create/modify
+   - Which interfaces to update
+   - Which tests to add
+
+2. **Identify risks:**
+   - What could break?
+   - What edge cases matter?
+   - Are there integration points to test?
+
+3. **Order of operations:**
+   - What must be done first?
+   - What can be parallelized?
+
+---
+
+### Phase 3: Implement
+
+**Goal:** Write clean, correct code following project conventions.
+
+1. **Follow existing patterns** - match the codebase style
+2. **Handle edge cases** - nil checks, empty inputs, boundaries
+3. **Handle errors properly** - no swallowed errors, wrap with context
+4. **Write tests as you go** - don't leave testing for the end
+
+**CRITICAL - Avoid These Anti-Patterns:**
+
+❌ **Test-only helpers** (BLOCKER - always wrong):
+- Do NOT add methods like `+"`Focused()`"+`, `+"`GetState()`"+`, `+"`Values()`"+` just to make testing easier
+- If a method is only called from test files, it's dead code
+- Tests should verify behavior through the public interface
+
+❌ **Dead code:**
+- Every function you write MUST be called from production code
+- Verify with: `+"`grep -rn 'FunctionName' --include='*.go' | grep -v '_test.go'`"+`
+- If only the definition appears, delete it
+
+❌ **Swallowed errors:**
+- Never use `+"`_, _ = someFunc()`"+` to ignore errors
+- Always check and propagate errors
+
+---
+
+### Phase 4: Test
+
+**Goal:** Verify your implementation is correct and complete.
+
+1. **Run the tests:**
+   `+"```bash"+`
+   go test ./path/to/package -v
+   `+"```"+`
+
+2. **Verify ALL tests pass** - not just the ones you wrote
+
+3. **Check test quality:**
+   - Are edge cases covered?
+   - Are error paths tested?
+   - Do assertions verify actual behavior (not just "doesn't crash")?
+
+**Sub-Agent Option - Test Verification:**
+`+"```"+`
+Spawn a sub-agent: "Run all tests in [package]. Verify they pass. Check for
+any flaky tests or missing coverage. Return: test results and coverage gaps."
+`+"```"+`
+
+---
+
+### Phase 5: Verify Acceptance Criteria
+
+**Goal:** Gather evidence that EVERY acceptance criterion is met.
+
+For EACH checkbox in the task description:
+
+1. **Run verification commands** exactly as specified
+2. **Document the evidence** (command output, file:line references)
+3. **Mark criterion as verified** only with proof
+
+**Evidence Format:**
+`+"```"+`
+Criterion: "Interface signature updated in repo.go"
+Evidence: repo.go:45 now has `+"`func FindByID(ctx context.Context, id string)`"+`
+Verified: ✅
+
+Criterion: "NO mock.Anything for ID parameter"
+Command: grep -rn "mock.Anything" --include="*_test.go" | grep -i "id"
+Output: (zero results)
+Verified: ✅
+`+"```"+`
+
+**Sub-Agent Option - Acceptance Verification:**
+`+"```"+`
+Spawn a sub-agent: "Verify each acceptance criterion from the task. Run all
+verification commands. Return: JSON with each criterion, status, and evidence."
+`+"```"+`
+
+---
+
+### Phase 6: Report Completion
+
+**Goal:** Signal completion with a summary of what was done.
+
+**Before reporting, verify:**
+- [ ] All tests pass
+- [ ] No dead code added (verified with grep)
+- [ ] No test-only helpers added
+- [ ] All acceptance criteria met with evidence
+- [ ] Code follows project conventions
+
+**Report using:**
+`+"```"+`
+report_implementation_complete(
+    summary="[What you implemented]. Tests: [X passing]. Acceptance: [Y/Y criteria met]. Files changed: [list key files]."
+)
+`+"```"+`
+
+**Example:**
+`+"```"+`
+report_implementation_complete(
+    summary="Added ShardKey parameter to Transaction interface and updated 15 call sites. Tests: 47 passing. Acceptance: 6/6 criteria met. Files: repo/interface.go, repo/impl.go, 13 test files updated."
+)
+`+"```"+``, taskID, title, taskID)
 
 	if summary != "" {
 		prompt += fmt.Sprintf(`
 
-Coordinator Instructions:
+---
+
+## Coordinator Instructions
+
 %s`, summary)
 	}
-
-	prompt += `
-
-**CRITICAL*: Work on this task thoroughly. When complete, Before committing your changes, **YOU MUST** use report_implementation_complete to signal you're done.
-Example: report_implementation_complete(summary="Implemented feature X with tests")`
 
 	return prompt
 }
