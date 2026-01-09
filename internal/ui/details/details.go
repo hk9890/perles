@@ -21,12 +21,19 @@ import (
 
 // Layout constants for two-column view.
 const (
-	minTwoColumnWidth  = 100 // Below this, use single-column layout
-	contentColWidth    = 80  // Preferred fixed width for content column
-	metadataColWidth   = 34  // Fixed width for metadata column
-	metadataDividerLen = 29  // Visual divider length (extended for full timestamps)
-	columnGap          = 2   // Gap between columns
+	minTwoColumnWidth = 100 // Below this, use single-column layout
+	contentColWidth   = 80  // Preferred fixed width for content column
+	metadataColWidth  = 34  // Fixed width for metadata column
+	metadataIndent    = 1   // Left indent in metadata column
+	metadataPadding   = 2   // Right padding in metadata column
+	columnGap         = 3   // Gap between columns (matches " │ " divider width)
 )
+
+// metadataContentWidth returns the usable content width in metadata column.
+// This is the width available for dividers, labels+values, and wrapped text.
+func metadataContentWidth() int {
+	return metadataColWidth - metadataIndent - metadataPadding // 34 - 1 - 2 = 31
+}
 
 // DependencyItem holds loaded dependency data for display.
 type DependencyItem struct {
@@ -322,9 +329,8 @@ func (m Model) View() string {
 		// Get calculated column widths (fixed or percentage-based)
 		leftWidth, rightWidth := m.calculateColumnWidths()
 
-		// Style columns with calculated widths
+		// Style left column with calculated width
 		leftStyle := lipgloss.NewStyle().Width(leftWidth)
-		rightStyle := lipgloss.NewStyle().Width(rightWidth)
 
 		// Render left column first to get actual line count after width wrapping
 		renderedLeftCol := leftStyle.Render(leftCol)
@@ -332,11 +338,22 @@ func (m Model) View() string {
 		dividerHeight := leftLines
 
 		// Truncate right column if it exceeds the available height
+		// Also pad each line to exactly rightWidth to prevent JoinHorizontal wrapping issues
 		rightLineSlice := strings.Split(rightCol, "\n")
 		if len(rightLineSlice) > leftLines {
 			rightLineSlice = rightLineSlice[:leftLines]
-			rightCol = strings.Join(rightLineSlice, "\n")
 		}
+		// Pad each line to rightWidth using lipgloss width calculation
+		for i, line := range rightLineSlice {
+			lineWidth := lipgloss.Width(line)
+			if lineWidth < rightWidth {
+				rightLineSlice[i] = line + strings.Repeat(" ", rightWidth-lineWidth)
+			} else if lineWidth > rightWidth {
+				// Truncate lines that are too long
+				rightLineSlice[i] = styles.TruncateString(line, rightWidth)
+			}
+		}
+		rightCol = strings.Join(rightLineSlice, "\n")
 
 		// Render vertical divider with consistent spacing per line
 		dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
@@ -351,7 +368,7 @@ func (m Model) View() string {
 			lipgloss.Top,
 			renderedLeftCol,
 			verticalDivider,
-			rightStyle.Render(rightCol),
+			rightCol,
 		)
 
 		// Calculate left padding to center the content
@@ -378,11 +395,7 @@ func (m Model) View() string {
 		body = lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
 	}
 
-	// Apply modal styling
-	modalStyle := lipgloss.NewStyle().
-		Padding(0, 1)
-
-	return modalStyle.Render(body)
+	return body
 }
 
 // renderHeader renders the issue header.
@@ -506,7 +519,7 @@ func (m Model) renderMetadataColumn() string {
 		Width(10)
 
 	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
-	divider := dividerStyle.Render(strings.Repeat("─", metadataDividerLen))
+	divider := dividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
 
 	valueStyle := lipgloss.NewStyle()
 
@@ -537,10 +550,31 @@ func (m Model) renderMetadataColumn() string {
 
 	// Assignee (only show if non-empty)
 	if issue.Assignee != "" {
-		sb.WriteString(indent)
-		sb.WriteString(labelStyle.Render("Assignee"))
-		sb.WriteString(valueStyle.Render(issue.Assignee))
-		sb.WriteString("\n")
+		contentWidth := metadataContentWidth()
+		labelWidth := 10
+		maxValueWidth := contentWidth - labelWidth // Width for value on same line as label
+		assignee := issue.Assignee
+
+		if len(assignee) <= maxValueWidth {
+			// Fits on one line with label
+			sb.WriteString(indent)
+			sb.WriteString(labelStyle.Render("Assignee"))
+			sb.WriteString(valueStyle.Render(assignee))
+			sb.WriteString("\n")
+		} else {
+			// Wrap: label on its own line, value wrapped below with indent
+			sb.WriteString(indent)
+			sb.WriteString(labelStyle.Render("Assignee"))
+			sb.WriteString("\n")
+			// Wrap value across multiple lines, indented by 1 extra space
+			valueIndent := indent + " "
+			wrapWidth := contentWidth - 1 // -1 for the extra indent
+			for len(assignee) > 0 {
+				lineLen := min(len(assignee), wrapWidth)
+				sb.WriteString(valueIndent + assignee[:lineLen] + "\n")
+				assignee = assignee[lineLen:]
+			}
+		}
 		sb.WriteString(indentedDivider)
 		sb.WriteString("\n")
 	}
@@ -611,7 +645,7 @@ func (m Model) renderMetadataColumn() string {
 		sb.WriteString("\n")
 
 		labelIndent := indent + " "
-		maxLabelWidth := metadataColWidth - len(labelIndent) - 4
+		maxLabelWidth := metadataContentWidth() - 1 // -1 for extra indent
 		for _, label := range issue.Labels {
 			// Split long labels across multiple lines, each properly indented
 			for len(label) > 0 {
@@ -724,7 +758,7 @@ func (m Model) renderDependenciesSection() string {
 		Width(10)
 
 	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
-	divider := dividerStyle.Render(strings.Repeat("─", metadataDividerLen))
+	divider := dividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
 
 	indent := " "
 	indentedDivider := indent + divider

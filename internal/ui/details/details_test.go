@@ -978,6 +978,31 @@ func TestDetails_View_Golden_WithAssignee(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
+// TestDetails_View_Golden_WithLongAssignee tests rendering with a long assignee string
+// that could potentially wrap into the main view area when the panel is narrow.
+// Run with -update flag to update golden files: go test -update ./internal/ui/details/...
+func TestDetails_View_Golden_WithLongAssignee(t *testing.T) {
+	issue := beads.Issue{
+		ID:              "long-assignee-task",
+		TitleText:       "Task with Long Assignee",
+		DescriptionText: "This task has an assignee with a very long name that should be truncated.",
+		Type:            beads.TypeTask,
+		Priority:        beads.PriorityHigh,
+		Status:          beads.StatusInProgress,
+		Assignee:        "perles/polecats/furiosa/very-long-assignee-name",
+		Labels:          []string{"wip"},
+		CreatedAt:       time.Date(2024, 4, 1, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:       time.Date(2024, 4, 1, 10, 30, 0, 0, time.UTC),
+	}
+	// Use width of 100 (minimum for two-column layout) to trigger the wrapping issue
+	// The metadata column is 34 chars wide, and "perles/polecats/furiosa" (23 chars)
+	// plus label "Assignee" (10 chars) = 33 chars should fit but be very tight
+	m := createTestModel(t, issue).SetSize(100, 30)
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
 // TestDetails_View_Golden_WithComments tests rendering with comments loaded.
 // Uses MockCommentLoader to provide comments for the issue.
 // Run with -update flag to update golden files: go test -update ./internal/ui/details/...

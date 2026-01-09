@@ -175,6 +175,40 @@ func TestSearch_TreeView_Golden_ChildrenMode(t *testing.T) {
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
+// TestSearch_TreeView_Golden_WithLongAssignee tests tree view with a long assignee that might wrap.
+func TestSearch_TreeView_Golden_WithLongAssignee(t *testing.T) {
+	rootIssue := beads.Issue{
+		ID:              "epic-1",
+		TitleText:       "Epic: Implement new feature",
+		DescriptionText: "This is a test issue with a long assignee.",
+		Type:            beads.TypeEpic,
+		Status:          beads.StatusOpen,
+		Priority:        1,
+		Assignee:        "this/is/a/verylong/assignee/name/that/will/wrap",
+		Children:        []string{"task-1", "task-2"},
+		CreatedAt:       testCreatedAt,
+		UpdatedAt:       testCreatedAt,
+	}
+	issues := []beads.Issue{
+		rootIssue,
+		{ID: "task-1", TitleText: "Design API", Type: beads.TypeTask, Status: beads.StatusClosed, Priority: 1, ParentID: "epic-1", CreatedAt: testCreatedAt},
+		{ID: "task-2", TitleText: "Implement backend", Type: beads.TypeTask, Status: beads.StatusInProgress, Priority: 1, ParentID: "epic-1", CreatedAt: testCreatedAt},
+	}
+
+	m := createTestModelWithTree(t, rootIssue, issues)
+	// Use 220 width to ensure right panel gets >= 100 chars for two-column layout in details
+	// rightWidth = 220 - 110 - 1 = 109, but details gets rightWidth-2 = 107 for border
+	m = m.SetSize(220, 30)
+	// Set up details panel with the root issue
+	// Width 107 (109-2 for border) is above minTwoColumnWidth (100) so two-column layout is used
+	m.details = details.New(rootIssue, m.services.Executor, m.services.Client).SetSize(107, 28)
+	m.hasDetail = true
+	m.focus = FocusDetails
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
 // Unit tests for renderCompactProgress
 func TestRenderCompactProgress(t *testing.T) {
 	tests := []struct {
