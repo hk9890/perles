@@ -1,6 +1,7 @@
 package config
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -850,4 +851,134 @@ func TestOrchestrationConfig_TracingField(t *testing.T) {
 	require.True(t, cfg.Tracing.Enabled)
 	require.Equal(t, "stdout", cfg.Tracing.Exporter)
 	require.Equal(t, 0.5, cfg.Tracing.SampleRate)
+}
+
+// Tests for SessionStorageConfig
+
+func TestDefaultSessionStorageBaseDir(t *testing.T) {
+	// Verify it returns a path containing .perles/sessions
+	path := DefaultSessionStorageBaseDir()
+	require.NotEmpty(t, path, "DefaultSessionStorageBaseDir should return a path")
+	require.Contains(t, path, ".perles", "Path should contain .perles")
+	require.Contains(t, path, "sessions", "Path should contain sessions")
+}
+
+func TestSessionStorageConfig_Defaults(t *testing.T) {
+	cfg := Defaults()
+	storage := cfg.Orchestration.SessionStorage
+
+	// BaseDir should be set to the default
+	require.NotEmpty(t, storage.BaseDir, "BaseDir should be set in defaults")
+	require.Contains(t, storage.BaseDir, ".perles", "Default BaseDir should contain .perles")
+	require.Contains(t, storage.BaseDir, "sessions", "Default BaseDir should contain sessions")
+
+	// ApplicationName should be empty (derived at runtime)
+	require.Empty(t, storage.ApplicationName, "ApplicationName should be empty in defaults")
+}
+
+func TestSessionStorageConfig_ZeroValue(t *testing.T) {
+	cfg := SessionStorageConfig{}
+	require.Empty(t, cfg.BaseDir, "BaseDir zero value should be empty")
+	require.Empty(t, cfg.ApplicationName, "ApplicationName zero value should be empty")
+}
+
+func TestValidateSessionStorage_Empty(t *testing.T) {
+	// Empty config should be valid (uses defaults)
+	err := ValidateSessionStorage(SessionStorageConfig{})
+	require.NoError(t, err)
+}
+
+func TestValidateSessionStorage_AbsoluteBaseDir(t *testing.T) {
+	// Use a platform-appropriate absolute path
+	absPath := "/home/user/.perles/sessions"
+	if runtime.GOOS == "windows" {
+		absPath = `C:\Users\user\.perles\sessions`
+	}
+	cfg := SessionStorageConfig{
+		BaseDir: absPath,
+	}
+	err := ValidateSessionStorage(cfg)
+	require.NoError(t, err)
+}
+
+func TestValidateSessionStorage_RelativeBaseDir(t *testing.T) {
+	cfg := SessionStorageConfig{
+		BaseDir: "relative/path/sessions",
+	}
+	err := ValidateSessionStorage(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be an absolute path")
+}
+
+func TestValidateSessionStorage_WithApplicationName(t *testing.T) {
+	// Use a platform-appropriate absolute path
+	absPath := "/home/user/.perles/sessions"
+	if runtime.GOOS == "windows" {
+		absPath = `C:\Users\user\.perles\sessions`
+	}
+	cfg := SessionStorageConfig{
+		BaseDir:         absPath,
+		ApplicationName: "my-project",
+	}
+	err := ValidateSessionStorage(cfg)
+	require.NoError(t, err)
+}
+
+func TestValidateOrchestration_WithValidSessionStorage(t *testing.T) {
+	// Use a platform-appropriate absolute path
+	absPath := "/home/user/.perles/sessions"
+	if runtime.GOOS == "windows" {
+		absPath = `C:\Users\user\.perles\sessions`
+	}
+	cfg := OrchestrationConfig{
+		Client: "claude",
+		SessionStorage: SessionStorageConfig{
+			BaseDir:         absPath,
+			ApplicationName: "test-app",
+		},
+	}
+	err := ValidateOrchestration(cfg)
+	require.NoError(t, err)
+}
+
+func TestValidateOrchestration_WithInvalidSessionStorage(t *testing.T) {
+	cfg := OrchestrationConfig{
+		Client: "claude",
+		SessionStorage: SessionStorageConfig{
+			BaseDir: "relative/path", // Invalid: not absolute
+		},
+	}
+	err := ValidateOrchestration(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be an absolute path")
+}
+
+func TestOrchestrationConfig_SessionStorageField(t *testing.T) {
+	// Verify OrchestrationConfig includes SessionStorage field
+	cfg := OrchestrationConfig{
+		Client: "claude",
+		SessionStorage: SessionStorageConfig{
+			BaseDir:         "/custom/path/sessions",
+			ApplicationName: "custom-app",
+		},
+	}
+	require.Equal(t, "/custom/path/sessions", cfg.SessionStorage.BaseDir)
+	require.Equal(t, "custom-app", cfg.SessionStorage.ApplicationName)
+}
+
+func TestSessionStorageConfig_CustomBaseDirPreserved(t *testing.T) {
+	// Test that a custom BaseDir is preserved (simulating config file loading)
+	cfg := SessionStorageConfig{
+		BaseDir: "/custom/sessions/path",
+	}
+	require.Equal(t, "/custom/sessions/path", cfg.BaseDir)
+}
+
+func TestSessionStorageConfig_ApplicationNameOverridePreserved(t *testing.T) {
+	// Test that ApplicationName override is preserved
+	cfg := SessionStorageConfig{
+		BaseDir:         "/home/user/.perles/sessions",
+		ApplicationName: "my-custom-app-name",
+	}
+	require.Equal(t, "my-custom-app-name", cfg.ApplicationName)
 }

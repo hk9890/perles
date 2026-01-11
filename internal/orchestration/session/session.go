@@ -64,9 +64,53 @@ type Session struct {
 	workers    []WorkerMetadata
 	tokenUsage TokenUsageSummary
 
+	// Application context fields (set via options).
+	applicationName string
+	workDir         string
+	datePartition   string
+
+	// pathBuilder is used for constructing session index paths.
+	// Set via WithPathBuilder option.
+	pathBuilder *SessionPathBuilder
+
 	// Synchronization.
 	mu     sync.Mutex
 	closed bool
+}
+
+// SessionOption is a functional option for configuring a Session.
+type SessionOption func(*Session)
+
+// WithWorkDir sets the project working directory for the session.
+// This preserves the actual project location even when using git worktrees.
+func WithWorkDir(dir string) SessionOption {
+	return func(s *Session) {
+		s.workDir = dir
+	}
+}
+
+// WithApplicationName sets the application name for the session.
+// Used for organizing sessions in centralized storage.
+func WithApplicationName(name string) SessionOption {
+	return func(s *Session) {
+		s.applicationName = name
+	}
+}
+
+// WithDatePartition sets the date partition (YYYY-MM-DD format) for the session.
+// Used for organizing sessions by date in centralized storage.
+func WithDatePartition(date string) SessionOption {
+	return func(s *Session) {
+		s.datePartition = date
+	}
+}
+
+// WithPathBuilder sets the SessionPathBuilder for constructing index paths.
+// This enables writing to both application-level and global session indexes.
+func WithPathBuilder(pb *SessionPathBuilder) SessionOption {
+	return func(s *Session) {
+		s.pathBuilder = pb
+	}
 }
 
 // Directory and file constants for session folder structure.
@@ -87,6 +131,9 @@ const (
 // New creates a new session with the given ID and directory.
 // It creates the complete folder structure and initializes the session with status=running.
 //
+// Optional SessionOption functions can be passed to configure the session with additional
+// application context (e.g., WithWorkDir, WithApplicationName, WithDatePartition).
+//
 // The folder structure created:
 //
 //	{dir}/
@@ -98,7 +145,7 @@ const (
 //	├── messages.jsonl               # Inter-agent message log
 //	├── mcp_requests.jsonl           # MCP tool call requests/responses
 //	└── summary.md                   # Post-session summary (created on close)
-func New(id, dir string) (*Session, error) {
+func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	// Create the main session directory
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("creating session directory: %w", err)
@@ -163,24 +210,8 @@ func New(id, dir string) (*Session, error) {
 
 	startTime := time.Now()
 
-	// Create initial metadata with status=running
-	meta := &Metadata{
-		SessionID: id,
-		StartTime: startTime,
-		Status:    StatusRunning,
-		WorkDir:   dir,
-		Workers:   []WorkerMetadata{},
-	}
-
-	if err := meta.Save(dir); err != nil {
-		_ = coordLog.Close()
-		_ = coordRaw.Close()
-		_ = messageLog.Close()
-		_ = mcpLog.Close()
-		return nil, fmt.Errorf("saving initial metadata: %w", err)
-	}
-
-	return &Session{
+	// Create session struct first so we can apply options
+	sess := &Session{
 		ID:         id,
 		Dir:        dir,
 		StartTime:  startTime,
@@ -194,7 +225,34 @@ func New(id, dir string) (*Session, error) {
 		workers:    []WorkerMetadata{},
 		tokenUsage: TokenUsageSummary{},
 		closed:     false,
-	}, nil
+	}
+
+	// Apply any provided options to set application context fields
+	for _, opt := range opts {
+		opt(sess)
+	}
+
+	// Create initial metadata with status=running and application context fields
+	meta := &Metadata{
+		SessionID:       id,
+		StartTime:       startTime,
+		Status:          StatusRunning,
+		SessionDir:      dir,
+		Workers:         []WorkerMetadata{},
+		ApplicationName: sess.applicationName,
+		WorkDir:         sess.workDir,
+		DatePartition:   sess.datePartition,
+	}
+
+	if err := meta.Save(dir); err != nil {
+		_ = coordLog.Close()
+		_ = coordRaw.Close()
+		_ = messageLog.Close()
+		_ = mcpLog.Close()
+		return nil, fmt.Errorf("saving initial metadata: %w", err)
+	}
+
+	return sess, nil
 }
 
 // WriteCoordinatorEvent writes a coordinator event to the coordinator output.log.
@@ -361,13 +419,16 @@ func (s *Session) Close(status Status) error {
 	// Update metadata with end time, final status, workers, and token usage
 	meta, err := Load(s.Dir)
 	if err != nil {
-		// If we can't load metadata, create a new one
+		// If we can't load metadata, create a new one with application context
 		meta = &Metadata{
-			SessionID: s.ID,
-			StartTime: s.StartTime,
-			Status:    status,
-			WorkDir:   s.Dir,
-			Workers:   []WorkerMetadata{},
+			SessionID:       s.ID,
+			StartTime:       s.StartTime,
+			Status:          status,
+			SessionDir:      s.Dir,
+			Workers:         []WorkerMetadata{},
+			ApplicationName: s.applicationName,
+			WorkDir:         s.workDir,
+			DatePartition:   s.datePartition,
 		}
 	}
 	meta.EndTime = time.Now()
@@ -486,20 +547,17 @@ func (s *Session) generateSummary(meta *Metadata) error {
 	return os.WriteFile(summaryPath, []byte(content), 0600)
 }
 
-// updateSessionIndex appends this session's entry to the sessions.json index file.
-// The index is stored at the parent directory level (e.g., .perles/sessions/sessions.json)
-// to track all sessions across time. Uses atomic rename to avoid race conditions.
+// updateSessionIndex appends this session's entry to the session index files.
+//
+// When a pathBuilder is configured, the session writes to TWO indexes:
+//   - Application index: {baseDir}/{appName}/sessions.json (per-application sessions)
+//   - Global index: {baseDir}/sessions.json (all sessions across applications)
+//
+// When no pathBuilder is configured (legacy mode), writes only to the parent directory:
+//   - Legacy index: {parent of session dir}/sessions.json
+//
+// Uses atomic rename to avoid race conditions on both files.
 func (s *Session) updateSessionIndex(meta *Metadata) error {
-	// Index is stored one level up from the session directory
-	// e.g., session dir is .perles/sessions/{uuid}/, index is .perles/sessions/sessions.json
-	indexPath := filepath.Join(filepath.Dir(s.Dir), "sessions.json")
-
-	// Load existing index or create empty one
-	index, err := LoadSessionIndex(indexPath)
-	if err != nil {
-		return fmt.Errorf("loading session index: %w", err)
-	}
-
 	// Build accountability summary path relative to session dir if it exists
 	var accountabilitySummaryPath string
 	summaryPath := filepath.Join(s.Dir, accountabilitySummaryFile)
@@ -507,22 +565,95 @@ func (s *Session) updateSessionIndex(meta *Metadata) error {
 		accountabilitySummaryPath = summaryPath
 	}
 
-	// Create entry for this session
+	// Create entry for this session with all metadata fields
 	entry := SessionIndexEntry{
 		ID:                        s.ID,
 		StartTime:                 meta.StartTime,
 		EndTime:                   meta.EndTime,
 		Status:                    meta.Status,
+		SessionDir:                s.Dir,
 		AccountabilitySummaryPath: accountabilitySummaryPath,
 		WorkerCount:               len(meta.Workers),
+		ApplicationName:           s.applicationName,
+		WorkDir:                   s.workDir,
+		DatePartition:             s.datePartition,
 	}
 
-	// Append to index
+	// If pathBuilder is configured, write to both application and global indexes
+	if s.pathBuilder != nil {
+		// Update application-level index
+		if err := s.updateApplicationIndex(entry); err != nil {
+			return fmt.Errorf("updating application index: %w", err)
+		}
+
+		// Update global index
+		if err := s.updateGlobalIndex(entry); err != nil {
+			return fmt.Errorf("updating global index: %w", err)
+		}
+
+		return nil
+	}
+
+	// Legacy mode: write only to parent directory index
+	indexPath := filepath.Join(filepath.Dir(s.Dir), "sessions.json")
+	index, err := LoadSessionIndex(indexPath)
+	if err != nil {
+		return fmt.Errorf("loading session index: %w", err)
+	}
+
 	index.Sessions = append(index.Sessions, entry)
 
-	// Save with atomic rename
 	if err := SaveSessionIndex(indexPath, index); err != nil {
 		return fmt.Errorf("saving session index: %w", err)
+	}
+
+	return nil
+}
+
+// updateApplicationIndex updates the per-application sessions.json index.
+// Path: {baseDir}/{appName}/sessions.json
+func (s *Session) updateApplicationIndex(entry SessionIndexEntry) error {
+	indexPath := s.pathBuilder.ApplicationIndexPath()
+
+	// Load existing index or create empty one
+	appIndex, err := LoadApplicationIndex(indexPath)
+	if err != nil {
+		return fmt.Errorf("loading application index: %w", err)
+	}
+
+	// Set the application name if not already set
+	if appIndex.ApplicationName == "" {
+		appIndex.ApplicationName = s.applicationName
+	}
+
+	// Append entry
+	appIndex.Sessions = append(appIndex.Sessions, entry)
+
+	// Save with atomic rename
+	if err := SaveApplicationIndex(indexPath, appIndex); err != nil {
+		return fmt.Errorf("saving application index: %w", err)
+	}
+
+	return nil
+}
+
+// updateGlobalIndex updates the global sessions.json index.
+// Path: {baseDir}/sessions.json
+func (s *Session) updateGlobalIndex(entry SessionIndexEntry) error {
+	indexPath := s.pathBuilder.IndexPath()
+
+	// Load existing index or create empty one
+	globalIndex, err := LoadSessionIndex(indexPath)
+	if err != nil {
+		return fmt.Errorf("loading global index: %w", err)
+	}
+
+	// Append entry
+	globalIndex.Sessions = append(globalIndex.Sessions, entry)
+
+	// Save with atomic rename
+	if err := SaveSessionIndex(indexPath, globalIndex); err != nil {
+		return fmt.Errorf("saving global index: %w", err)
 	}
 
 	return nil

@@ -754,3 +754,19 @@ func parseCommitLog(output string) []CommitInfo {
 
 	return commits
 }
+
+// GetRemoteURL returns the URL for the named remote (e.g., "origin").
+// Returns empty string and nil error if remote doesn't exist.
+func (e *RealExecutor) GetRemoteURL(name string) (string, error) {
+	url, err := e.runGitOutput("remote", "get-url", name)
+	if err != nil {
+		// If the remote doesn't exist, git returns an error
+		// We treat this as "remote not found" rather than an error
+		if strings.Contains(err.Error(), "No such remote") ||
+			strings.Contains(err.Error(), "fatal:") {
+			return "", nil
+		}
+		return "", err
+	}
+	return url, nil
+}

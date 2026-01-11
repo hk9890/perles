@@ -100,15 +100,27 @@ func flattenColors(prefix string, m map[string]any, result map[string]string) {
 	}
 }
 
+// SessionStorageConfig holds session storage location configuration.
+type SessionStorageConfig struct {
+	// BaseDir is the root directory for session storage.
+	// Default: ~/.perles/sessions
+	BaseDir string `mapstructure:"base_dir"`
+
+	// ApplicationName identifies the project/application.
+	// Default: derived from git remote or directory name
+	ApplicationName string `mapstructure:"application_name"`
+}
+
 // OrchestrationConfig holds orchestration mode configuration.
 type OrchestrationConfig struct {
-	Client           string             `mapstructure:"client"`            // "claude" (default) or "amp"
-	DisableWorktrees bool               `mapstructure:"disable_worktrees"` // Skip worktree prompt (default: false)
-	Claude           ClaudeClientConfig `mapstructure:"claude"`
-	Codex            CodexClientConfig  `mapstructure:"codex"`
-	Amp              AmpClientConfig    `mapstructure:"amp"`
-	Workflows        []WorkflowConfig   `mapstructure:"workflows"` // Workflow template configurations
-	Tracing          TracingConfig      `mapstructure:"tracing"`   // Distributed tracing configuration
+	Client           string               `mapstructure:"client"`            // "claude" (default) or "amp"
+	DisableWorktrees bool                 `mapstructure:"disable_worktrees"` // Skip worktree prompt (default: false)
+	Claude           ClaudeClientConfig   `mapstructure:"claude"`
+	Codex            CodexClientConfig    `mapstructure:"codex"`
+	Amp              AmpClientConfig      `mapstructure:"amp"`
+	Workflows        []WorkflowConfig     `mapstructure:"workflows"`       // Workflow template configurations
+	Tracing          TracingConfig        `mapstructure:"tracing"`         // Distributed tracing configuration
+	SessionStorage   SessionStorageConfig `mapstructure:"session_storage"` // Session storage location configuration
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
@@ -172,6 +184,16 @@ func DefaultTracesFilePath() string {
 		return ""
 	}
 	return filepath.Join(home, ".config", "perles", "traces", "traces.jsonl")
+}
+
+// DefaultSessionStorageBaseDir returns the default path for session storage.
+// Returns ~/.perles/sessions or empty string if home dir unavailable.
+func DefaultSessionStorageBaseDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".perles", "sessions")
 }
 
 // DefaultColumns returns the default column configuration matching current behavior.
@@ -287,6 +309,22 @@ func ValidateOrchestration(orch OrchestrationConfig) error {
 	// Validate tracing
 	if err := ValidateTracing(orch.Tracing); err != nil {
 		return err
+	}
+
+	// Validate session storage
+	if err := ValidateSessionStorage(orch.SessionStorage); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateSessionStorage checks session storage configuration for errors.
+// Returns nil if the configuration is valid (empty values use defaults).
+func ValidateSessionStorage(storage SessionStorageConfig) error {
+	// BaseDir must be absolute if set
+	if storage.BaseDir != "" && !filepath.IsAbs(storage.BaseDir) {
+		return fmt.Errorf("orchestration.session_storage.base_dir must be an absolute path, got %q", storage.BaseDir)
 	}
 
 	return nil
@@ -407,6 +445,10 @@ func Defaults() Config {
 				FilePath:     "", // Derived from config dir at runtime
 				OTLPEndpoint: "localhost:4317",
 				SampleRate:   1.0,
+			},
+			SessionStorage: SessionStorageConfig{
+				BaseDir:         DefaultSessionStorageBaseDir(),
+				ApplicationName: "", // Derived from git remote or directory name
 			},
 		},
 	}

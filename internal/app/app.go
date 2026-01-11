@@ -409,18 +409,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Use shared workflow registry (created at app startup)
 		m.orchestration = orchestration.New(orchestration.Config{
-			Services:         m.services,
-			WorkDir:          m.services.WorkDir,
-			ClientType:       orchConfig.Client,
-			ClaudeModel:      orchConfig.Claude.Model,
-			CodexModel:       orchConfig.Codex.Model,
-			AmpModel:         orchConfig.Amp.Model,
-			AmpMode:          orchConfig.Amp.Mode,
-			WorkflowRegistry: m.workflowRegistry,
-			VimMode:          m.services.Config.UI.VimMode,
-			DebugMode:        m.debugMode,
-			DisableWorktrees: orchConfig.DisableWorktrees,
-			TracingConfig:    orchConfig.Tracing,
+			Services:             m.services,
+			WorkDir:              m.services.WorkDir,
+			ClientType:           orchConfig.Client,
+			ClaudeModel:          orchConfig.Claude.Model,
+			CodexModel:           orchConfig.Codex.Model,
+			AmpModel:             orchConfig.Amp.Model,
+			AmpMode:              orchConfig.Amp.Mode,
+			WorkflowRegistry:     m.workflowRegistry,
+			VimMode:              m.services.Config.UI.VimMode,
+			DebugMode:            m.debugMode,
+			DisableWorktrees:     orchConfig.DisableWorktrees,
+			TracingConfig:        orchConfig.Tracing,
+			SessionStorageConfig: orchConfig.SessionStorage,
 		}).SetSize(m.width, m.height)
 		return m, m.orchestration.Init()
 

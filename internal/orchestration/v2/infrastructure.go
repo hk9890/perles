@@ -49,6 +49,9 @@ type InfrastructureConfig struct {
 	MessageRepo repository.MessageRepository
 	// SessionID is the session identifier for accountability summary generation.
 	SessionID string
+	// SessionDir is the directory where session files are stored.
+	// For centralized storage: ~/.perles/sessions/{app}/{date}/{id}/
+	SessionDir string
 	// Tracer is the OpenTelemetry tracer for distributed tracing (optional).
 	// When provided, TracingMiddleware will be registered in the command processor.
 	Tracer trace.Tracer
@@ -179,7 +182,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		adapter.WithTaskRepository(taskRepo),
 		adapter.WithQueueRepository(queueRepo),
 		adapter.WithMessageRepository(cfg.MessageRepo),
-		adapter.WithSessionID(cfg.SessionID, cfg.WorkDir),
+		adapter.WithSessionID(cfg.SessionID, cfg.WorkDir, cfg.SessionDir),
 	)
 
 	return &Infrastructure{

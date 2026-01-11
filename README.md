@@ -450,6 +450,10 @@ Perles looks for configuration in these locations (in order):
 | `ui.show_status_bar` | bool | `true` | Show status bar at bottom |
 | `theme.preset` | string | `""` | Theme preset name (see Theming section) |
 | `theme.colors.*` | hex | varies | Individual color token overrides |
+| `orchestration.client` | string | `"claude"` | AI client: claude, amp, or codex |
+| `orchestration.disable_worktrees` | bool | `false` | Disable git worktree isolation |
+| `orchestration.session_storage.base_dir` | string | `~/.perles/sessions` | Root directory for session storage |
+| `orchestration.session_storage.application_name` | string | auto | Override application name (default: derived from git remote) |
 
 ### Example Configuration
 
@@ -514,6 +518,14 @@ views:
         issue_id: bd-123
         tree_mode: child
         color: "#EF4444"
+
+# AI Orchestration settings
+orchestration:
+  client: claude                       # claude (default), amp, or codex
+  disable_worktrees: false             # Disable git worktree isolation
+  session_storage:
+    base_dir: ~/.perles/sessions       # Default session storage location
+    # application_name: my-project     # Optional: override auto-derived name
 ```
 
 ---

@@ -56,7 +56,7 @@ func TestMetadata_Save_Load(t *testing.T) {
 		StartTime:     now,
 		EndTime:       now.Add(time.Hour),
 		Status:        StatusCompleted,
-		WorkDir:       "/test/work/dir",
+		SessionDir:    "/test/work/dir",
 		CoordinatorID: "coord-abc",
 		Workers: []WorkerMetadata{
 			{
@@ -99,7 +99,7 @@ func TestMetadata_Save_Load(t *testing.T) {
 	require.True(t, meta.StartTime.Equal(loaded.StartTime), "StartTime mismatch: expected %v, got %v", meta.StartTime, loaded.StartTime)
 	require.True(t, meta.EndTime.Equal(loaded.EndTime), "EndTime mismatch: expected %v, got %v", meta.EndTime, loaded.EndTime)
 	require.Equal(t, meta.Status, loaded.Status)
-	require.Equal(t, meta.WorkDir, loaded.WorkDir)
+	require.Equal(t, meta.SessionDir, loaded.SessionDir)
 	require.Equal(t, meta.CoordinatorID, loaded.CoordinatorID)
 	require.Equal(t, meta.ClientType, loaded.ClientType)
 	require.Equal(t, meta.Model, loaded.Model)
@@ -121,10 +121,10 @@ func TestMetadata_SaveCreatesDir(t *testing.T) {
 	nestedDir := filepath.Join(baseDir, "nested", "deep", "session")
 
 	meta := &Metadata{
-		SessionID: "test-nested",
-		StartTime: time.Now(),
-		Status:    StatusRunning,
-		WorkDir:   "/test",
+		SessionID:  "test-nested",
+		StartTime:  time.Now(),
+		Status:     StatusRunning,
+		SessionDir: "/test",
 	}
 
 	// Save should create nested directories
@@ -168,11 +168,11 @@ func TestMetadata_EmptyWorkers(t *testing.T) {
 	dir := t.TempDir()
 
 	meta := &Metadata{
-		SessionID: "empty-workers",
-		StartTime: time.Now().Truncate(time.Second),
-		Status:    StatusRunning,
-		WorkDir:   "/test",
-		Workers:   []WorkerMetadata{}, // Empty slice
+		SessionID:  "empty-workers",
+		StartTime:  time.Now().Truncate(time.Second),
+		Status:     StatusRunning,
+		SessionDir: "/test",
+		Workers:    []WorkerMetadata{}, // Empty slice
 	}
 
 	err := meta.Save(dir)
@@ -189,10 +189,10 @@ func TestMetadata_ZeroValueFields(t *testing.T) {
 
 	// Minimal metadata with zero values
 	meta := &Metadata{
-		SessionID: "minimal",
-		StartTime: time.Now().Truncate(time.Second),
-		Status:    StatusRunning,
-		WorkDir:   "/test",
+		SessionID:  "minimal",
+		StartTime:  time.Now().Truncate(time.Second),
+		Status:     StatusRunning,
+		SessionDir: "/test",
 	}
 
 	err := meta.Save(dir)
@@ -220,7 +220,7 @@ func TestMetadata_EpicIDAndAccountabilitySummaryPath(t *testing.T) {
 		StartTime:                 now,
 		EndTime:                   now.Add(time.Hour),
 		Status:                    StatusCompleted,
-		WorkDir:                   "/test/work/dir",
+		SessionDir:                "/test/work/dir",
 		EpicID:                    "perles-abc",
 		AccountabilitySummaryPath: ".perles/sessions/test-session-123/accountability_summary.md",
 		Workers:                   []WorkerMetadata{},
@@ -262,6 +262,118 @@ func TestMetadata_BackwardCompatibility(t *testing.T) {
 	require.Equal(t, StatusCompleted, loaded.Status)
 	require.Empty(t, loaded.EpicID)
 	require.Empty(t, loaded.AccountabilitySummaryPath)
+}
+
+func TestMetadata_ApplicationContextFields(t *testing.T) {
+	// Test that new application context fields serialize and deserialize correctly
+	dir := t.TempDir()
+
+	now := time.Now().Truncate(time.Second)
+	meta := &Metadata{
+		SessionID:       "context-test-session",
+		StartTime:       now,
+		Status:          StatusRunning,
+		SessionDir:      "/test/project",
+		Workers:         []WorkerMetadata{},
+		ClientType:      "claude",
+		ApplicationName: "my-app",
+		WorkDir:         "/Users/dev/my-app",
+		DatePartition:   "2026-01-11",
+	}
+
+	// Save metadata
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Load metadata
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+
+	// Verify all new fields are preserved
+	require.Equal(t, "my-app", loaded.ApplicationName)
+	require.Equal(t, "/Users/dev/my-app", loaded.WorkDir)
+	require.Equal(t, "2026-01-11", loaded.DatePartition)
+}
+
+func TestMetadata_ApplicationContextFields_OmitEmpty(t *testing.T) {
+	// Test that empty application context fields are omitted from JSON
+	dir := t.TempDir()
+
+	meta := &Metadata{
+		SessionID:  "omit-empty-test",
+		StartTime:  time.Now(),
+		Status:     StatusRunning,
+		SessionDir: "/test",
+		Workers:    []WorkerMetadata{},
+		ClientType: "claude",
+		// ApplicationName, WorkDir, DatePartition intentionally empty
+	}
+
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Read raw JSON
+	data, err := os.ReadFile(filepath.Join(dir, metadataFilename))
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	// Verify optional fields are omitted when empty
+	require.NotContains(t, jsonStr, "application_name")
+	require.NotContains(t, jsonStr, `"work_dir"`)
+	require.NotContains(t, jsonStr, "date_partition")
+}
+
+func TestMetadata_BackwardCompatibility_NewContextFields(t *testing.T) {
+	// Test that metadata JSON without optional context fields can still be loaded
+	dir := t.TempDir()
+
+	// Write metadata JSON without the optional context fields
+	minimalJSON := `{
+  "session_id": "old-session-456",
+  "start_time": "2026-01-01T10:00:00Z",
+  "status": "running",
+  "session_dir": "/test/old",
+  "workers": [],
+  "client_type": "claude",
+  "model": "sonnet"
+}`
+	err := os.WriteFile(filepath.Join(dir, metadataFilename), []byte(minimalJSON), 0600)
+	require.NoError(t, err)
+
+	// Load should succeed and optional context fields should be empty
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "old-session-456", loaded.SessionID)
+	require.Equal(t, StatusRunning, loaded.Status)
+	require.Empty(t, loaded.ApplicationName)
+	require.Empty(t, loaded.WorkDir)
+	require.Empty(t, loaded.DatePartition)
+}
+
+func TestMetadata_PartialContextFields(t *testing.T) {
+	// Test that metadata with only some context fields can be loaded correctly
+	dir := t.TempDir()
+
+	// JSON with only ApplicationName set, other context fields missing
+	partialJSON := `{
+  "session_id": "partial-context",
+  "start_time": "2026-01-11T15:30:00Z",
+  "status": "running",
+  "session_dir": "/test",
+  "workers": [],
+  "client_type": "claude",
+  "application_name": "partial-app"
+}`
+	err := os.WriteFile(filepath.Join(dir, metadataFilename), []byte(partialJSON), 0600)
+	require.NoError(t, err)
+
+	// Load should succeed
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "partial-context", loaded.SessionID)
+	require.Equal(t, "partial-app", loaded.ApplicationName)
+	require.Empty(t, loaded.WorkDir)
+	require.Empty(t, loaded.DatePartition)
 }
 
 // Tests for New() constructor
@@ -346,7 +458,7 @@ func TestNew_WritesInitialMetadata(t *testing.T) {
 
 	require.Equal(t, sessionID, meta.SessionID)
 	require.Equal(t, StatusRunning, meta.Status)
-	require.Equal(t, sessionDir, meta.WorkDir)
+	require.Equal(t, sessionDir, meta.SessionDir)
 	require.False(t, meta.StartTime.IsZero())
 	require.True(t, meta.EndTime.IsZero())
 	require.Empty(t, meta.CoordinatorID)
@@ -443,7 +555,7 @@ func TestNew_MetadataJSONFormat(t *testing.T) {
 	require.Contains(t, jsonStr, `"session_id"`)
 	require.Contains(t, jsonStr, `"start_time"`)
 	require.Contains(t, jsonStr, `"status"`)
-	require.Contains(t, jsonStr, `"work_dir"`)
+	require.Contains(t, jsonStr, `"session_dir"`)
 	require.Contains(t, jsonStr, `"workers"`)
 
 	// Verify status is "running"
@@ -2490,4 +2602,379 @@ func TestClose_UpdatesSessionIndex(t *testing.T) {
 	// WorkerCount should reflect the workers from session metadata
 	// (workers need to be added via events, which we haven't simulated)
 	require.Equal(t, 0, entry.WorkerCount)
+}
+
+// TestNew_WithoutOptions verifies backward compatibility - New() without options works as before.
+func TestNew_WithoutOptions(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-no-opts"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+
+	// Create session without any options (backward compatible)
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Verify basic session creation works
+	require.Equal(t, sessionID, sess.ID)
+	require.Equal(t, sessionDir, sess.Dir)
+	require.Equal(t, StatusRunning, sess.Status)
+
+	// Verify metadata was saved without application context fields
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, sessionID, meta.SessionID)
+	require.Empty(t, meta.ApplicationName, "ApplicationName should be empty without option")
+	require.Empty(t, meta.WorkDir, "WorkDir should be empty without option")
+	require.Empty(t, meta.DatePartition, "DatePartition should be empty without option")
+}
+
+// TestNew_WithWorkDir verifies WithWorkDir sets the metadata field.
+func TestNew_WithWorkDir(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-workdir"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+	workDir := "/home/user/projects/my-app"
+
+	sess, err := New(sessionID, sessionDir, WithWorkDir(workDir))
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Verify metadata includes the work dir
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, workDir, meta.WorkDir)
+}
+
+// TestNew_WithApplicationName verifies WithApplicationName sets the metadata field.
+func TestNew_WithApplicationName(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-appname"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+	appName := "perles"
+
+	sess, err := New(sessionID, sessionDir, WithApplicationName(appName))
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Verify metadata includes the application name
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, appName, meta.ApplicationName)
+}
+
+// TestNew_WithDatePartition verifies WithDatePartition sets the metadata field.
+func TestNew_WithDatePartition(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-datepart"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+	datePartition := "2026-01-11"
+
+	sess, err := New(sessionID, sessionDir, WithDatePartition(datePartition))
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Verify metadata includes the date partition
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, datePartition, meta.DatePartition)
+}
+
+// TestNew_WithMultipleOptions verifies all options can be applied together.
+func TestNew_WithMultipleOptions(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-multi"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+
+	appName := "my-application"
+	workDir := "/home/user/projects/my-application"
+	datePartition := "2026-01-11"
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir(workDir),
+		WithDatePartition(datePartition),
+	)
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Verify all options are applied
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, appName, meta.ApplicationName)
+	require.Equal(t, workDir, meta.WorkDir)
+	require.Equal(t, datePartition, meta.DatePartition)
+}
+
+// TestNew_MetadataIncludesNewFieldsWhenSet verifies metadata.json includes new fields when set.
+func TestNew_MetadataIncludesNewFieldsWhenSet(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-json-fields"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+
+	appName := "test-app"
+	workDir := "/test/workdir"
+	datePartition := "2026-01-11"
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir(workDir),
+		WithDatePartition(datePartition),
+	)
+	require.NoError(t, err)
+	defer sess.Close(StatusCompleted)
+
+	// Read raw JSON to verify fields are in the file
+	metadataPath := filepath.Join(sessionDir, metadataFilename)
+	data, err := os.ReadFile(metadataPath)
+	require.NoError(t, err)
+
+	// Parse as generic map to check fields
+	var raw map[string]interface{}
+	err = json.Unmarshal(data, &raw)
+	require.NoError(t, err)
+
+	require.Equal(t, appName, raw["application_name"])
+	require.Equal(t, workDir, raw["work_dir"])
+	require.Equal(t, datePartition, raw["date_partition"])
+}
+
+// TestClose_PreservesApplicationContextOnReload verifies Close() preserves application context
+// when it reloads metadata.
+func TestClose_PreservesApplicationContextOnReload(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "test-session-close-preserve"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+
+	appName := "preserved-app"
+	workDir := "/preserved/workdir"
+	datePartition := "2026-01-11"
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir(workDir),
+		WithDatePartition(datePartition),
+	)
+	require.NoError(t, err)
+
+	// Close the session (this reloads and re-saves metadata)
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify application context fields are preserved after close
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, appName, meta.ApplicationName)
+	require.Equal(t, workDir, meta.WorkDir)
+	require.Equal(t, datePartition, meta.DatePartition)
+	require.Equal(t, StatusCompleted, meta.Status)
+}
+
+// Tests for dual index updates (application + global)
+
+func TestClose_UpdatesBothIndexes_WithPathBuilder(t *testing.T) {
+	// Setup centralized storage structure
+	baseDir := t.TempDir()
+	appName := "dual-index-app"
+	datePartition := "2026-01-11"
+	sessionID := "dual-index-session"
+
+	// Create path builder for centralized storage
+	pathBuilder := NewSessionPathBuilder(baseDir, appName)
+	sessionDir := pathBuilder.SessionDir(sessionID, time.Now())
+
+	// Create session with path builder
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir("/original/workdir"),
+		WithDatePartition(datePartition),
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	// Close session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify application index was created
+	appIndexPath := pathBuilder.ApplicationIndexPath()
+	appIndex, err := LoadApplicationIndex(appIndexPath)
+	require.NoError(t, err)
+	require.Equal(t, appName, appIndex.ApplicationName)
+	require.Len(t, appIndex.Sessions, 1)
+	require.Equal(t, sessionID, appIndex.Sessions[0].ID)
+	require.Equal(t, appName, appIndex.Sessions[0].ApplicationName)
+	require.Equal(t, "/original/workdir", appIndex.Sessions[0].WorkDir)
+	require.Equal(t, datePartition, appIndex.Sessions[0].DatePartition)
+
+	// Verify global index was created
+	globalIndexPath := pathBuilder.IndexPath()
+	globalIndex, err := LoadSessionIndex(globalIndexPath)
+	require.NoError(t, err)
+	require.Len(t, globalIndex.Sessions, 1)
+	require.Equal(t, sessionID, globalIndex.Sessions[0].ID)
+	require.Equal(t, appName, globalIndex.Sessions[0].ApplicationName)
+}
+
+func TestClose_UpdatesLegacyIndex_WithoutPathBuilder(t *testing.T) {
+	// Setup legacy directory structure (no path builder)
+	baseDir := t.TempDir()
+	sessionsDir := filepath.Join(baseDir, "sessions")
+	sessionID := "legacy-index-session"
+	sessionDir := filepath.Join(sessionsDir, sessionID)
+
+	// Create session without path builder (legacy mode)
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName("legacy-app"),
+		WithWorkDir("/legacy/workdir"),
+		WithDatePartition("2026-01-11"),
+	)
+	require.NoError(t, err)
+
+	// Close session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify legacy index was created at parent directory
+	legacyIndexPath := filepath.Join(sessionsDir, "sessions.json")
+	legacyIndex, err := LoadSessionIndex(legacyIndexPath)
+	require.NoError(t, err)
+	require.Len(t, legacyIndex.Sessions, 1)
+	require.Equal(t, sessionID, legacyIndex.Sessions[0].ID)
+	// Verify metadata fields are still included in legacy mode
+	require.Equal(t, "legacy-app", legacyIndex.Sessions[0].ApplicationName)
+	require.Equal(t, "/legacy/workdir", legacyIndex.Sessions[0].WorkDir)
+	require.Equal(t, "2026-01-11", legacyIndex.Sessions[0].DatePartition)
+}
+
+func TestClose_AppendsToExistingIndexes(t *testing.T) {
+	// Setup centralized storage
+	baseDir := t.TempDir()
+	appName := "append-test-app"
+
+	// Create path builder
+	pathBuilder := NewSessionPathBuilder(baseDir, appName)
+
+	// Pre-create indexes with existing sessions
+	existingEntry := SessionIndexEntry{
+		ID:              "existing-session",
+		StartTime:       time.Now().Add(-time.Hour),
+		Status:          StatusCompleted,
+		ApplicationName: appName,
+	}
+
+	// Save existing application index
+	appIndexPath := pathBuilder.ApplicationIndexPath()
+	appIndex := &ApplicationSessionIndex{
+		Version:         SessionIndexVersion,
+		ApplicationName: appName,
+		Sessions:        []SessionIndexEntry{existingEntry},
+	}
+	err := SaveApplicationIndex(appIndexPath, appIndex)
+	require.NoError(t, err)
+
+	// Save existing global index
+	globalIndexPath := pathBuilder.IndexPath()
+	globalIndex := &SessionIndex{
+		Version:  SessionIndexVersion,
+		Sessions: []SessionIndexEntry{existingEntry},
+	}
+	err = SaveSessionIndex(globalIndexPath, globalIndex)
+	require.NoError(t, err)
+
+	// Create and close a new session
+	sessionID := "new-session"
+	sessionDir := pathBuilder.SessionDir(sessionID, time.Now())
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir("/new/workdir"),
+		WithDatePartition("2026-01-11"),
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify application index now has two entries
+	loadedAppIndex, err := LoadApplicationIndex(appIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedAppIndex.Sessions, 2)
+	require.Equal(t, "existing-session", loadedAppIndex.Sessions[0].ID)
+	require.Equal(t, "new-session", loadedAppIndex.Sessions[1].ID)
+
+	// Verify global index now has two entries
+	loadedGlobalIndex, err := LoadSessionIndex(globalIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedGlobalIndex.Sessions, 2)
+	require.Equal(t, "existing-session", loadedGlobalIndex.Sessions[0].ID)
+	require.Equal(t, "new-session", loadedGlobalIndex.Sessions[1].ID)
+}
+
+func TestClose_IndexEntryContainsAllMetadataFields(t *testing.T) {
+	baseDir := t.TempDir()
+	appName := "metadata-fields-app"
+	workDir := "/original/project/path"
+	datePartition := "2026-01-11"
+	sessionID := "metadata-fields-session"
+
+	pathBuilder := NewSessionPathBuilder(baseDir, appName)
+	sessionDir := pathBuilder.SessionDir(sessionID, time.Now())
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir(workDir),
+		WithDatePartition(datePartition),
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	// Add a worker to verify worker count
+	sess.addWorker("worker-1", time.Now())
+
+	err = sess.Close(StatusFailed)
+	require.NoError(t, err)
+
+	// Verify entry in application index has all fields
+	appIndex, err := LoadApplicationIndex(pathBuilder.ApplicationIndexPath())
+	require.NoError(t, err)
+	require.Len(t, appIndex.Sessions, 1)
+
+	entry := appIndex.Sessions[0]
+	require.Equal(t, sessionID, entry.ID)
+	require.Equal(t, StatusFailed, entry.Status)
+	require.Equal(t, appName, entry.ApplicationName)
+	require.Equal(t, workDir, entry.WorkDir)
+	require.Equal(t, datePartition, entry.DatePartition)
+	require.Equal(t, sessionDir, entry.SessionDir)
+	require.Equal(t, 1, entry.WorkerCount)
+	require.False(t, entry.StartTime.IsZero())
+	require.False(t, entry.EndTime.IsZero())
+}
+
+func TestWithPathBuilder_Option(t *testing.T) {
+	baseDir := t.TempDir()
+	appName := "option-test-app"
+
+	pathBuilder := NewSessionPathBuilder(baseDir, appName)
+	sessionDir := filepath.Join(baseDir, "test-session")
+
+	sess, err := New("test-session", sessionDir,
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	// Verify path builder was set (indirectly via behavior)
+	require.NotNil(t, sess)
+
+	// Clean up
+	_ = sess.Close(StatusCompleted)
 }

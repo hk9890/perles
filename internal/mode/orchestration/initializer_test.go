@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/amp"
 	"github.com/zjrosen/perles/internal/orchestration/client"
@@ -332,10 +333,15 @@ func TestInitializer_Retry_ResetsProcessRepo(t *testing.T) {
 func TestInitializer_CreateSession_Success(t *testing.T) {
 	// Verify createSession() creates a valid session with expected directory structure
 	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir() // Centralized sessions directory
 
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
 	})
 
 	// Set session ID (normally done by Start())
@@ -355,28 +361,37 @@ func TestInitializer_CreateSession_Success(t *testing.T) {
 	require.NotEmpty(t, sess.ID, "session should have a non-empty ID")
 	require.Len(t, sess.ID, 36, "session ID should be a valid UUID (36 chars)")
 
-	// Verify the session directory was created
-	sessionDir := filepath.Join(workDir, ".perles", "sessions", sess.ID)
+	// Verify the session directory was created in centralized location
+	// Path: {baseDir}/{appName}/{date}/{sessionID}
+	today := time.Now().Format("2006-01-02")
+	sessionDir := filepath.Join(sessionsBaseDir, "test-app", today, sess.ID)
 	info, err := os.Stat(sessionDir)
 	require.NoError(t, err, "session directory should exist")
 	require.True(t, info.IsDir(), "session directory should be a directory")
+
+	// Verify sessionDir is stored in initializer
+	require.Equal(t, sessionDir, init.SessionDir(), "SessionDir() should return the created session directory")
 }
 
 func TestInitializer_CreateSession_ReturnsErrorOnFailure(t *testing.T) {
 	// Verify createSession() returns proper error on session.New failure
-	// We simulate failure by using an invalid/unwritable path
+	// We simulate failure by using an invalid/unwritable path for session storage
 
-	// Use a path that will fail (file as parent directory)
 	workDir := t.TempDir()
-	invalidPath := filepath.Join(workDir, "not-a-dir")
+	sessionsBaseDir := t.TempDir()
 
 	// Create a file where a directory is expected (to force MkdirAll failure)
-	err := os.WriteFile(invalidPath, []byte("blocking file"), 0644)
+	blockingFile := filepath.Join(sessionsBaseDir, "test-app")
+	err := os.WriteFile(blockingFile, []byte("blocking file"), 0644)
 	require.NoError(t, err, "setup: should create blocking file")
 
 	init := NewInitializer(InitializerConfig{
-		WorkDir:    invalidPath, // This will cause session.New to fail
+		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app", // This will try to create under the blocking file
+		},
 	})
 
 	// Set session ID (normally done by Start())
@@ -398,10 +413,15 @@ func TestInitializer_CreateSession_UniqueIDs(t *testing.T) {
 	// Verify createSession() uses the session ID set by Start()
 	// Each session should have the expected unique ID when we set different IDs
 	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
 
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
 	})
 
 	// Create multiple sessions with different pre-set IDs
@@ -433,12 +453,17 @@ func TestInitializer_CreateSession_UniqueIDs(t *testing.T) {
 }
 
 func TestInitializer_CreateSession_DirectoryStructure(t *testing.T) {
-	// Verify the session directory follows the expected path pattern
+	// Verify the session directory follows the new centralized path pattern
 	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
 
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
 	})
 
 	// Set session ID (normally done by Start())
@@ -450,17 +475,29 @@ func TestInitializer_CreateSession_DirectoryStructure(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sess.Close(session.StatusCompleted) })
 
-	// Verify the directory structure is: WorkDir/.perles/sessions/<sessionID>
-	expectedParent := filepath.Join(workDir, ".perles", "sessions")
-	info, err := os.Stat(expectedParent)
-	require.NoError(t, err, ".perles/sessions directory should exist")
-	require.True(t, info.IsDir(), ".perles/sessions should be a directory")
+	// Verify the directory structure is: {baseDir}/{appName}/{date}/{sessionID}
+	today := time.Now().Format("2006-01-02")
+	expectedAppDir := filepath.Join(sessionsBaseDir, "test-app")
+	expectedDateDir := filepath.Join(expectedAppDir, today)
+	expectedSessionDir := filepath.Join(expectedDateDir, sess.ID)
+
+	// Verify app directory exists
+	info, err := os.Stat(expectedAppDir)
+	require.NoError(t, err, "app directory should exist")
+	require.True(t, info.IsDir(), "app directory should be a directory")
+
+	// Verify date directory exists
+	info, err = os.Stat(expectedDateDir)
+	require.NoError(t, err, "date directory should exist")
+	require.True(t, info.IsDir(), "date directory should be a directory")
 
 	// Verify session-specific directory exists
-	sessionDir := filepath.Join(expectedParent, sess.ID)
-	info, err = os.Stat(sessionDir)
+	info, err = os.Stat(expectedSessionDir)
 	require.NoError(t, err, "session directory should exist")
 	require.True(t, info.IsDir(), "session directory should be a directory")
+
+	// Verify SessionDir() accessor returns the correct path
+	require.Equal(t, expectedSessionDir, init.SessionDir())
 }
 
 // ===========================================================================
@@ -716,6 +753,10 @@ func TestInitializer_CreateMCPServer_Success(t *testing.T) {
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         t.TempDir(),
+			ApplicationName: "test-app",
+		},
 	})
 
 	// First create dependencies
@@ -767,6 +808,10 @@ func TestInitializer_CreateMCPServer_ConfiguresHTTPRoutes(t *testing.T) {
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         t.TempDir(),
+			ApplicationName: "test-app",
+		},
 	})
 
 	// Create dependencies
@@ -828,6 +873,10 @@ func TestInitializer_CreateMCPServer_ReadHeaderTimeout(t *testing.T) {
 	init := NewInitializer(InitializerConfig{
 		WorkDir:    workDir,
 		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         t.TempDir(),
+			ApplicationName: "test-app",
+		},
 	})
 
 	// Create dependencies

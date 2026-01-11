@@ -69,6 +69,11 @@ type GitExecutor interface {
 	// GetCommitLogForRef returns commit history for a specific ref (branch, tag, etc.).
 	// If ref is empty, returns commits for HEAD (same behavior as GetCommitLog).
 	GetCommitLogForRef(ref string, limit int) ([]CommitInfo, error)
+
+	// Remote operations
+	// GetRemoteURL returns the URL for the named remote (e.g., "origin").
+	// Returns empty string and nil error if remote doesn't exist.
+	GetRemoteURL(name string) (string, error)
 }
 
 // WorktreeInfo holds information about a git worktree.

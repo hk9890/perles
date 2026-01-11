@@ -430,6 +430,49 @@ User workflows: `~/.config/perles/workflows/`
 
 List available: `perles workflows`
 
+### Centralized Session Storage
+
+Orchestration sessions are stored in a centralized user home directory to simplify backup, management, and cross-project querying.
+
+**Default location:** `~/.perles/sessions/`
+
+**Directory structure:**
+```
+~/.perles/
+└── sessions/
+    ├── sessions.json                    # Global session index
+    └── {application_name}/              # Application name (repo name or custom)
+        ├── sessions.json                # Per-application session index
+        ├── 2026-01-10/
+        │   └── a1b2c3d4-5678-uuid/
+        │       ├── metadata.json
+        │       ├── coordinator/
+        │       ├── workers/
+        │       └── messages.jsonl
+        └── 2026-01-11/
+            └── e5f6g7h8-9012-uuid/
+```
+
+**Application name derivation:**
+1. Config override (`orchestration.session_storage.application_name`)
+2. Git remote URL (repository name without `.git`)
+3. Working directory name (fallback)
+
+**Configuration:**
+```yaml
+orchestration:
+  session_storage:
+    base_dir: ~/.perles/sessions        # Default location
+    application_name: my-custom-name    # Optional: override derived name
+```
+
+**Benefits:**
+- **Single location**: All sessions in one place for easy backup
+- **Date-based partitioning**: Easy cleanup of old sessions
+- **Cross-project visibility**: Future CLI can list/search sessions across projects
+- **Survives project deletion**: Session history preserved independently
+- **No project pollution**: Projects stay clean (no `.perles/` directory needed)
+
 ## BQL (Beads Query Language)
 
 ### Fields
@@ -504,6 +547,9 @@ views:                               # Board views
 orchestration:                       # AI orchestration settings
   client: "claude"                   # claude, amp, or codex
   disable_worktrees: false           # Disable git worktree isolation
+  session_storage:                   # Centralized session storage
+    base_dir: ~/.perles/sessions     # Default storage location
+    application_name: ""             # Override: defaults to git repo name
 ```
 
 ## Environment Variables

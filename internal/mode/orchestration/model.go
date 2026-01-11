@@ -197,6 +197,9 @@ type Model struct {
 	debugMode     bool                 // Debug mode flag (enables full trace ID display)
 	tracingConfig config.TracingConfig // Tracing configuration (passed to Initializer)
 
+	// Session storage configuration
+	sessionStorageConfig config.SessionStorageConfig // Session storage configuration (passed to Initializer)
+
 	// Dimensions
 	width  int
 	height int
@@ -255,6 +258,8 @@ type Config struct {
 	DisableWorktrees bool // Skip worktree prompt and always run in current directory
 	// Tracing settings
 	TracingConfig config.TracingConfig // Distributed tracing configuration
+	// Session storage settings
+	SessionStorageConfig config.SessionStorageConfig // Centralized session storage configuration
 }
 
 // New creates a new orchestration mode model with the given configuration.
@@ -291,6 +296,7 @@ func New(cfg Config) Model {
 		workflowRegistry:      cfg.WorkflowRegistry,
 		activeWorkflowRef:     &activeWorkflowHolder{},
 		tracingConfig:         cfg.TracingConfig,
+		sessionStorageConfig:  cfg.SessionStorageConfig,
 		quitModal: quitmodal.New(quitmodal.Config{
 			Title:   "Exit Orchestration Mode?",
 			Message: "Active workers will be stopped.",
@@ -723,6 +729,18 @@ func (m *Model) Cleanup() {
 	// Cancel initializer if running (stop background goroutine)
 	if m.initializer != nil {
 		m.initializer.Cancel()
+	}
+
+	// Close session with appropriate status (must happen before v2Infra.Shutdown
+	// so we can still determine status from process state)
+	if m.session != nil {
+		status := m.determineSessionStatus()
+		if err := m.session.Close(status); err != nil {
+			log.Debug(log.CatOrch, "Session close error", "subsystem", "cleanup", "error", err)
+		} else {
+			log.Debug(log.CatOrch, "Session closed", "subsystem", "cleanup", "status", status)
+		}
+		m.session = nil
 	}
 
 	// Shutdown v2 infrastructure (stops all processes and drains command processor)

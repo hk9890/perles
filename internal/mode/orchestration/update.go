@@ -104,9 +104,6 @@ type RefreshTimeoutMsg struct{}
 // StartCoordinatorMsg signals to start the coordinator.
 type StartCoordinatorMsg struct{}
 
-// CoordinatorStoppedMsg indicates the coordinator stopped.
-type CoordinatorStoppedMsg struct{}
-
 // spinnerTick returns a command that sends SpinnerTickMsg after 80ms.
 // Used to animate the braille spinner during initialization loading phases.
 func spinnerTick() tea.Cmd {
@@ -507,27 +504,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// Handle v2 orchestration events from pub/sub (includes all worker events)
 	case pubsub.Event[any]:
 		return m.handleV2Event(msg)
-
-	case CoordinatorStoppedMsg:
-		// Close session with appropriate status
-		if m.session != nil {
-			status := m.determineSessionStatus()
-			if err := m.session.Close(status); err != nil {
-				log.Debug(log.CatOrch, "Session close error", "subsystem", "update", "error", err)
-			} else {
-				log.Debug(log.CatOrch, "Session closed", "subsystem", "update", "status", status)
-			}
-		}
-
-		// Shutdown HTTP MCP server
-		if m.mcpServer != nil {
-			go func() {
-				if err := m.mcpServer.Shutdown(context.Background()); err != nil {
-					log.Debug(log.CatOrch, "MCP server shutdown error", "subsystem", "update", "error", err)
-				}
-			}()
-		}
-		return m, nil
 
 	// Handle vimtextarea submit (Shift+Enter)
 	case vimtextarea.SubmitMsg:
@@ -1101,6 +1077,7 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 		WorktreeBranchName: m.worktreeCustomBranch,
 		GitExecutor:        m.gitExecutor,
 		TracingConfig:      m.tracingConfig,
+		SessionStorage:     m.sessionStorageConfig,
 	})
 
 	// Create context for subscriptions

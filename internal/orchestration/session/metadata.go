@@ -24,8 +24,8 @@ type Metadata struct {
 	// Status is the current session state.
 	Status Status `json:"status"`
 
-	// WorkDir is the working directory where the session was started.
-	WorkDir string `json:"work_dir"`
+	// SessionDir is the session storage directory path.
+	SessionDir string `json:"session_dir"`
 
 	// EpicID is the bd epic ID associated with this session (if any).
 	EpicID string `json:"epic_id,omitempty"`
@@ -47,6 +47,17 @@ type Metadata struct {
 
 	// TokenUsage aggregates token usage across the session.
 	TokenUsage TokenUsageSummary `json:"token_usage,omitzero"`
+
+	// ApplicationName is the derived or configured name for the application.
+	// Used for organizing sessions in centralized storage.
+	ApplicationName string `json:"application_name,omitempty"`
+
+	// WorkDir is the project working directory where the session was initiated.
+	// This preserves the actual project location even when using git worktrees.
+	WorkDir string `json:"work_dir,omitempty"`
+
+	// DatePartition is the date-based partition (YYYY-MM-DD format) for organizing sessions.
+	DatePartition string `json:"date_partition,omitempty"`
 }
 
 // WorkerMetadata tracks individual worker lifecycle.

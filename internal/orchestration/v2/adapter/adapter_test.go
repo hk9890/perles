@@ -2758,3 +2758,136 @@ func TestHandleQueryWorkerState_IncludesAgentType(t *testing.T) {
 		assert.Equal(t, "generic", agentTypes["worker-4"])
 	})
 }
+
+// ===========================================================================
+// Session Directory Tests (perles-x4f4.7)
+// ===========================================================================
+
+func TestWithSessionID_SetsAllThreeFields(t *testing.T) {
+	// Create a processor with a mock handler
+	proc := processor.NewCommandProcessor()
+	mockHandler := newMockHandler()
+	proc.RegisterHandler(command.CmdGenerateAccountabilitySummary, mockHandler)
+
+	adapter := NewV2Adapter(proc,
+		WithSessionID("test-session-123", "/work/dir", "/home/user/.perles/sessions/myapp/2026-01-11/test-session-123"),
+	)
+
+	// Verify all three fields are set correctly
+	assert.Equal(t, "test-session-123", adapter.sessionID)
+	assert.Equal(t, "/work/dir", adapter.workDir)
+	assert.Equal(t, "/home/user/.perles/sessions/myapp/2026-01-11/test-session-123", adapter.sessionDir)
+}
+
+func TestAdapter_StoresSessionDirectory(t *testing.T) {
+	proc := processor.NewCommandProcessor()
+
+	// Test with centralized storage path
+	adapter := NewV2Adapter(proc,
+		WithSessionID("session-abc", "/project/root", "/Users/test/.perles/sessions/myapp/2026-01-11/session-abc"),
+	)
+
+	assert.Equal(t, "session-abc", adapter.sessionID)
+	assert.Equal(t, "/project/root", adapter.workDir)
+	assert.Equal(t, "/Users/test/.perles/sessions/myapp/2026-01-11/session-abc", adapter.sessionDir)
+}
+
+func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) {
+	t.Run("uses stored sessionDir directly", func(t *testing.T) {
+		proc := processor.NewCommandProcessor()
+
+		// Create a handler that captures the command to verify session dir
+		var capturedCmd command.Command
+		handler := &mockHandler{
+			returnResult: &command.CommandResult{Success: true},
+		}
+		proc.RegisterHandler(command.CmdGenerateAccountabilitySummary, handler)
+
+		// Start processor
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go proc.Run(ctx)
+		require.NoError(t, proc.WaitForReady(ctx))
+
+		expectedSessionDir := "/home/user/.perles/sessions/myapp/2026-01-11/test-session"
+		adapter := NewV2Adapter(proc,
+			WithSessionID("test-session", "/work/dir", expectedSessionDir),
+		)
+
+		args := json.RawMessage(`{"worker_id": "worker-1"}`)
+		_, err := adapter.HandleGenerateAccountabilitySummary(context.Background(), args)
+		require.NoError(t, err)
+
+		// Wait for handler to process command
+		time.Sleep(50 * time.Millisecond)
+
+		// Verify the command was captured
+		handler.mu.Lock()
+		if len(handler.commands) > 0 {
+			capturedCmd = handler.commands[0]
+		}
+		handler.mu.Unlock()
+
+		require.NotNil(t, capturedCmd)
+		summaryCmd, ok := capturedCmd.(*command.GenerateAccountabilitySummaryCommand)
+		require.True(t, ok, "expected GenerateAccountabilitySummaryCommand")
+		assert.Equal(t, expectedSessionDir, summaryCmd.SessionDir)
+	})
+
+	t.Run("returns error when sessionDir not configured", func(t *testing.T) {
+		proc := processor.NewCommandProcessor()
+		// No sessionDir configured
+		adapter := NewV2Adapter(proc)
+
+		args := json.RawMessage(`{"worker_id": "worker-1"}`)
+		_, err := adapter.HandleGenerateAccountabilitySummary(context.Background(), args)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "session directory not configured")
+	})
+
+	t.Run("no path reconstruction from workDir", func(t *testing.T) {
+		// This test verifies that the old path reconstruction pattern
+		// (workDir/.perles/sessions/sessionID) is NOT used
+		proc := processor.NewCommandProcessor()
+
+		handler := &mockHandler{
+			returnResult: &command.CommandResult{Success: true},
+		}
+		proc.RegisterHandler(command.CmdGenerateAccountabilitySummary, handler)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go proc.Run(ctx)
+		require.NoError(t, proc.WaitForReady(ctx))
+
+		// Set a sessionDir that's different from what path reconstruction would produce
+		// If the code was still reconstructing, it would use "/work/.perles/sessions/sess-123"
+		centralizedSessionDir := "/home/user/.perles/sessions/myproject/2026-01-11/sess-123"
+		adapter := NewV2Adapter(proc,
+			WithSessionID("sess-123", "/work", centralizedSessionDir),
+		)
+
+		args := json.RawMessage(`{"worker_id": "worker-1"}`)
+		_, err := adapter.HandleGenerateAccountabilitySummary(context.Background(), args)
+		require.NoError(t, err)
+
+		// Wait for handler
+		time.Sleep(50 * time.Millisecond)
+
+		handler.mu.Lock()
+		var capturedCmd command.Command
+		if len(handler.commands) > 0 {
+			capturedCmd = handler.commands[0]
+		}
+		handler.mu.Unlock()
+
+		require.NotNil(t, capturedCmd)
+		summaryCmd, ok := capturedCmd.(*command.GenerateAccountabilitySummaryCommand)
+		require.True(t, ok)
+
+		// Should use the stored sessionDir, NOT reconstruct from workDir
+		assert.Equal(t, centralizedSessionDir, summaryCmd.SessionDir)
+		assert.NotEqual(t, "/work/.perles/sessions/sess-123", summaryCmd.SessionDir)
+	})
+}

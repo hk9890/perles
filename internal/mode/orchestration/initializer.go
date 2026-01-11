@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -68,6 +67,8 @@ type InitializerConfig struct {
 	GitExecutor        git.GitExecutor // Injected for testability
 	// Tracing configuration
 	TracingConfig config.TracingConfig // Distributed tracing settings
+	// Session storage configuration
+	SessionStorage config.SessionStorageConfig // Centralized session storage settings
 }
 
 // InitializerResources holds the resources created during initialization.
@@ -99,6 +100,7 @@ type Initializer struct {
 	worktreePath   string // Path to created worktree (empty if disabled)
 	worktreeBranch string // Branch name used for worktree
 	sessionID      string // Session ID for branch naming (set during Start)
+	sessionDir     string // Session directory path (set during createSession)
 
 	// Resources created during initialization
 	messageRepo    *repository.MemoryMessageRepository // Message repository for inter-agent messaging
@@ -180,6 +182,13 @@ func (i *Initializer) WorktreeBranch() string {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.worktreeBranch
+}
+
+// SessionDir returns the session directory path, or empty string if not yet created.
+func (i *Initializer) SessionDir() string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.sessionDir
 }
 
 // SpinnerData returns data needed for spinner rendering.
@@ -294,6 +303,7 @@ func (i *Initializer) Retry() error {
 	i.worktreePath = ""
 	i.worktreeBranch = ""
 	i.sessionID = ""
+	i.sessionDir = ""
 	// Reset tracing state
 	i.tracingProvider = nil
 	i.tracer = nil
@@ -383,8 +393,9 @@ func (i *Initializer) run() {
 }
 
 // createSession creates a new orchestration session with its directory structure.
-// It uses the session ID generated during Start(), creates the session directory,
-// and initializes the session tracking object.
+// It uses the session ID generated during Start(), creates the session directory
+// in the centralized storage location, and initializes the session tracking object
+// with application context metadata.
 func (i *Initializer) createSession() (*session.Session, error) {
 	// Use the session ID generated during Start()
 	i.mu.RLock()
@@ -399,14 +410,41 @@ func (i *Initializer) createSession() (*session.Session, error) {
 	}
 	i.mu.RUnlock()
 
-	sessionDir := filepath.Join(effectiveWorkDir, ".perles", "sessions", sessionID)
+	// Build centralized session path using SessionPathBuilder
+	// Derive application name from git remote or directory basename
+	appName := i.cfg.SessionStorage.ApplicationName
+	if appName == "" {
+		appName = session.DeriveApplicationName(effectiveWorkDir, i.cfg.GitExecutor)
+	}
 
-	sess, err := session.New(sessionID, sessionDir)
+	pathBuilder := session.NewSessionPathBuilder(
+		i.cfg.SessionStorage.BaseDir,
+		appName,
+	)
+
+	now := time.Now()
+	sessionDir := pathBuilder.SessionDir(sessionID, now)
+	datePartition := now.Format("2006-01-02")
+
+	// Create session with application context options
+	sess, err := session.New(sessionID, sessionDir,
+		session.WithWorkDir(effectiveWorkDir),
+		session.WithApplicationName(pathBuilder.ApplicationName()),
+		session.WithDatePartition(datePartition),
+		session.WithPathBuilder(pathBuilder),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	log.Debug(log.CatOrch, "Session created", "subsystem", "init", "sessionID", sessionID, "dir", sessionDir)
+	// Store sessionDir for later reference (e.g., V2 adapter accountability summaries)
+	i.mu.Lock()
+	i.sessionDir = sessionDir
+	i.mu.Unlock()
+
+	log.Debug(log.CatOrch, "Session created", "subsystem", "init",
+		"sessionID", sessionID, "dir", sessionDir,
+		"app", pathBuilder.ApplicationName(), "date", datePartition)
 	return sess, nil
 }
 
@@ -720,6 +758,11 @@ func (i *Initializer) createWorkspace() error {
 	// ============================================================
 	// Step 5: Create V2 orchestration infrastructure using factory
 	// ============================================================
+	// Read stored session directory for V2 adapter accountability summaries
+	i.mu.RLock()
+	sessionDir := i.sessionDir
+	i.mu.RUnlock()
+
 	v2Infra, err := v2.NewInfrastructure(v2.InfrastructureConfig{
 		Port:        port,
 		AIClient:    aiClient,
@@ -727,7 +770,8 @@ func (i *Initializer) createWorkspace() error {
 		Extensions:  extensions,
 		MessageRepo: msgRepo,
 		SessionID:   sess.ID,
-		Tracer:      tracer, // nil when tracing disabled - middleware handles this gracefully
+		SessionDir:  sessionDir, // Centralized session storage path
+		Tracer:      tracer,     // nil when tracing disabled - middleware handles this gracefully
 	})
 	if err != nil {
 		_ = listenerResult.Listener.Close()

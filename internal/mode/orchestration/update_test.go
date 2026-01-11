@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
@@ -1734,8 +1735,8 @@ func TestModel_SessionField(t *testing.T) {
 	// The actual integration happens in initializer_test.go
 }
 
-func TestUpdate_CoordinatorStopped_ClosesSession(t *testing.T) {
-	// Test that CoordinatorStoppedMsg closes the session with correct status
+func TestCleanup_ClosesSession(t *testing.T) {
+	// Test that Cleanup() closes the session with correct status
 	tmpDir := t.TempDir()
 
 	// Create a mock session using the session package
@@ -1750,8 +1751,8 @@ func TestUpdate_CoordinatorStopped_ClosesSession(t *testing.T) {
 	// Verify session is not closed initially
 	require.Equal(t, session.StatusRunning, sess.Status, "session should be running initially")
 
-	// Send CoordinatorStoppedMsg
-	m, _ = m.Update(CoordinatorStoppedMsg{})
+	// Call Cleanup
+	m.Cleanup()
 
 	// Verify session was closed
 	// The session's Close method should have been called
@@ -1804,17 +1805,17 @@ func TestUpdate_StatusMapping_InitTimedOut(t *testing.T) {
 	require.Equal(t, session.StatusTimedOut, status, "InitTimedOut should map to StatusTimedOut")
 }
 
-func TestUpdate_NilSession(t *testing.T) {
-	// Test that CoordinatorStoppedMsg handles nil session gracefully (no panic)
+func TestCleanup_NilSession(t *testing.T) {
+	// Test that Cleanup() handles nil session gracefully (no panic)
 	m := New(Config{})
 	m = m.SetSize(120, 40)
 	m.session = nil // Explicitly nil
 
 	// This should not panic
-	m, cmd := m.Update(CoordinatorStoppedMsg{})
+	m.Cleanup()
 
-	// Command should be nil (no error)
-	require.Nil(t, cmd, "should return nil command")
+	// Model should still be valid after cleanup
+	require.Nil(t, m.session, "session should remain nil")
 }
 
 // createTestSession creates a test session for unit tests.
@@ -3991,12 +3992,23 @@ func TestHandleStartCoordinator_SkipsWorktreeModalWhenNotGitRepo(t *testing.T) {
 	mockGit.EXPECT().IsGitRepo().Return(false)
 	m.gitExecutor = mockGit
 
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
+
 	// Call handleStartCoordinator
 	m, _ = m.handleStartCoordinator()
 
 	// Verify worktree modal is NOT shown and initializer is created
 	require.Nil(t, m.worktreeModal, "should not show worktree modal outside git repo")
 	require.NotNil(t, m.initializer, "should create initializer when not in git repo")
+
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestHandleStartCoordinator_SkipsWorktreeModalWhenDecisionMade(t *testing.T) {
@@ -4010,12 +4022,23 @@ func TestHandleStartCoordinator_SkipsWorktreeModalWhenDecisionMade(t *testing.T)
 	m.gitExecutor = mockGit
 	m.worktreeDecisionMade = true // Decision already made
 
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
+
 	// Call handleStartCoordinator
 	m, _ = m.handleStartCoordinator()
 
 	// Verify worktree modal is NOT shown and initializer is created
 	require.Nil(t, m.worktreeModal, "should not show worktree modal when decision made")
 	require.NotNil(t, m.initializer, "should create initializer when decision made")
+
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestWorktreeModal_CancelStartsWithoutWorktree(t *testing.T) {
@@ -4029,6 +4052,14 @@ func TestWorktreeModal_CancelStartsWithoutWorktree(t *testing.T) {
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().IsGitRepo().Return(true).Maybe()
 	m.gitExecutor = mockGit
+
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
 
 	// Create worktree modal
 	mdl := modal.New(modal.Config{Title: "Use Git Worktree?"})
@@ -4090,6 +4121,14 @@ func TestBranchSelectModal_SubmitSetsBranch(t *testing.T) {
 	m.gitExecutor = mockGit
 	m.worktreeEnabled = true
 
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
+
 	// Create branch select modal
 	mdl := formmodal.New(formmodal.FormConfig{
 		Title: "Select Base Branch",
@@ -4107,10 +4146,8 @@ func TestBranchSelectModal_SubmitSetsBranch(t *testing.T) {
 	require.True(t, m.worktreeDecisionMade, "worktree decision should be made")
 	require.Equal(t, "develop", m.worktreeBaseBranch, "base branch should be set from modal")
 
-	// Cancel the initializer to stop the goroutine before test cleanup
-	if m.initializer != nil {
-		m.initializer.Cancel()
-	}
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestBranchSelectModal_CancelReturnsToWorktreeModal(t *testing.T) {
@@ -4154,6 +4191,14 @@ func TestBranchSelectModal_SubmitExtractsCustomBranch(t *testing.T) {
 	m.gitExecutor = mockGit
 	m.worktreeEnabled = true
 
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
+
 	// Create branch select modal
 	mdl := formmodal.New(formmodal.FormConfig{
 		Title: "Select Base Branch",
@@ -4175,10 +4220,8 @@ func TestBranchSelectModal_SubmitExtractsCustomBranch(t *testing.T) {
 	require.Equal(t, "develop", m.worktreeBaseBranch, "base branch should be set from modal")
 	require.Equal(t, "feature/my-work", m.worktreeCustomBranch, "custom branch should be set from modal")
 
-	// Cancel the initializer to stop the goroutine before test cleanup
-	if m.initializer != nil {
-		m.initializer.Cancel()
-	}
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestBranchSelectModal_WhitespaceTrimsCustomBranch(t *testing.T) {
@@ -4194,6 +4237,14 @@ func TestBranchSelectModal_WhitespaceTrimsCustomBranch(t *testing.T) {
 	mockGit.EXPECT().CreateWorktree(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	m.gitExecutor = mockGit
 	m.worktreeEnabled = true
+
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
 
 	// Create branch select modal
 	mdl := formmodal.New(formmodal.FormConfig{
@@ -4214,10 +4265,8 @@ func TestBranchSelectModal_WhitespaceTrimsCustomBranch(t *testing.T) {
 	// Verify whitespace is trimmed
 	require.Equal(t, "feature/my-work", m.worktreeCustomBranch, "custom branch should be trimmed")
 
-	// Cancel the initializer to stop the goroutine before test cleanup
-	if m.initializer != nil {
-		m.initializer.Cancel()
-	}
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestBranchSelectModal_EmptyCustomBranchRemainsEmpty(t *testing.T) {
@@ -4233,6 +4282,14 @@ func TestBranchSelectModal_EmptyCustomBranchRemainsEmpty(t *testing.T) {
 	mockGit.EXPECT().CreateWorktree(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	m.gitExecutor = mockGit
 	m.worktreeEnabled = true
+
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
 
 	// Create branch select modal
 	mdl := formmodal.New(formmodal.FormConfig{
@@ -4253,10 +4310,8 @@ func TestBranchSelectModal_EmptyCustomBranchRemainsEmpty(t *testing.T) {
 	// Verify empty string remains empty
 	require.Equal(t, "", m.worktreeCustomBranch, "empty custom branch should remain empty")
 
-	// Cancel the initializer to stop the goroutine before test cleanup
-	if m.initializer != nil {
-		m.initializer.Cancel()
-	}
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestBranchSelectModal_WhitespaceOnlyCustomBranchBecomesEmpty(t *testing.T) {
@@ -4272,6 +4327,14 @@ func TestBranchSelectModal_WhitespaceOnlyCustomBranchBecomesEmpty(t *testing.T) 
 	mockGit.EXPECT().CreateWorktree(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	m.gitExecutor = mockGit
 	m.worktreeEnabled = true
+
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
 
 	// Create branch select modal
 	mdl := formmodal.New(formmodal.FormConfig{
@@ -4292,10 +4355,8 @@ func TestBranchSelectModal_WhitespaceOnlyCustomBranchBecomesEmpty(t *testing.T) 
 	// Verify whitespace-only becomes empty
 	require.Equal(t, "", m.worktreeCustomBranch, "whitespace-only custom branch should become empty")
 
-	// Cancel the initializer to stop the goroutine before test cleanup
-	if m.initializer != nil {
-		m.initializer.Cancel()
-	}
+	// Cleanup to stop the initializer goroutine
+	m.Cleanup()
 }
 
 func TestBranchSelectModal_ValidationRejectsInvalidBranchName(t *testing.T) {
@@ -4421,6 +4482,14 @@ func TestHandleStartCoordinator_DisableWorktrees_SkipsModal(t *testing.T) {
 	// The bypass happens before the git repo check
 	m.gitExecutor = mockGit
 
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
+
 	// Call handleStartCoordinator
 	m, _ = m.handleStartCoordinator()
 
@@ -4471,6 +4540,14 @@ func TestHandleStartCoordinator_DisableWorktrees_NonGitRepo(t *testing.T) {
 	mockGit := mocks.NewMockGitExecutor(t)
 	// IsGitRepo should NOT be called when disableWorktrees is true
 	m.gitExecutor = mockGit
+
+	// Set session storage config to avoid git executor calls during session creation
+	// Use /tmp directly instead of t.TempDir() because the async initializer goroutine
+	// may still be writing when the test ends, causing cleanup failures
+	m.sessionStorageConfig = config.SessionStorageConfig{
+		BaseDir:         "/tmp/perles-test-sessions",
+		ApplicationName: "test-app",
+	}
 
 	// Call handleStartCoordinator
 	m, _ = m.handleStartCoordinator()
