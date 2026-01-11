@@ -36,6 +36,14 @@ type Metadata struct {
 	// CoordinatorID is the coordinator's process identifier.
 	CoordinatorID string `json:"coordinator_id,omitempty"`
 
+	// CoordinatorSessionRef is the headless client session reference
+	// (e.g., Claude Code session ID) for resuming the coordinator.
+	CoordinatorSessionRef string `json:"coordinator_session_ref,omitempty"`
+
+	// Resumable indicates this session can be resumed.
+	// Set to true after first successful coordinator turn when session ref is captured.
+	Resumable bool `json:"resumable,omitempty"`
+
 	// Workers contains metadata for each spawned worker.
 	Workers []WorkerMetadata `json:"workers"`
 
@@ -73,6 +81,13 @@ type WorkerMetadata struct {
 
 	// FinalPhase is the worker's last workflow phase before retirement.
 	FinalPhase string `json:"final_phase,omitempty"`
+
+	// HeadlessSessionRef is the AI client session reference for resuming this worker.
+	HeadlessSessionRef string `json:"headless_session_ref,omitempty"`
+
+	// WorkDir is this worker's working directory.
+	// Currently same as session WorkDir, but supports future per-worker worktrees.
+	WorkDir string `json:"work_dir,omitempty"`
 }
 
 // TokenUsageSummary aggregates token usage across the session.

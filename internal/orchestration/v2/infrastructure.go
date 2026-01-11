@@ -55,6 +55,10 @@ type InfrastructureConfig struct {
 	// Tracer is the OpenTelemetry tracer for distributed tracing (optional).
 	// When provided, TracingMiddleware will be registered in the command processor.
 	Tracer trace.Tracer
+	// SessionRefNotifier is called when a process's session reference is captured.
+	// Used to persist session refs for crash-resilient session resumption.
+	// Optional - if nil, session ref capture is skipped.
+	SessionRefNotifier handler.SessionRefNotifier
 }
 
 // Validate checks that all required configuration is provided.
@@ -171,7 +175,8 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 
 	// Register all command handlers
 	registerHandlers(cmdProcessor, processRepo, taskRepo, queueRepo, processRegistry, turnEnforcer,
-		cfg.AIClient, cfg.Extensions, beadsExec, cfg.Port, eventBus, cfg.WorkDir, cfg.Tracer)
+		cfg.AIClient, cfg.Extensions, beadsExec, cfg.Port, eventBus, cfg.WorkDir, cfg.Tracer,
+		cfg.SessionRefNotifier)
 
 	// Create command submitter adapter
 	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
@@ -261,6 +266,7 @@ func registerHandlers(
 	eventBus *pubsub.Broker[any],
 	workDir string,
 	tracer trace.Tracer,
+	sessionRefNotifier handler.SessionRefNotifier,
 ) {
 	// Create shared infrastructure components
 	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
@@ -294,7 +300,9 @@ func registerHandlers(
 		handler.NewTransitionPhaseHandler(processRepo, queueRepo))
 	cmdProcessor.RegisterHandler(command.CmdProcessTurnComplete,
 		handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
-			handler.WithProcessTurnEnforcer(turnEnforcer)))
+			handler.WithProcessTurnEnforcer(turnEnforcer),
+			handler.WithTurnCompleteProcessRegistry(processRegistry),
+			handler.WithSessionRefNotifier(sessionRefNotifier)))
 
 	// ============================================================
 	// BD Task Status handlers (2)

@@ -377,6 +377,285 @@ func TestMetadata_PartialContextFields(t *testing.T) {
 	require.Empty(t, loaded.DatePartition)
 }
 
+// Tests for session resumption metadata fields
+
+func TestMetadata_SessionResumptionFields(t *testing.T) {
+	// Test that CoordinatorSessionRef and Resumable fields serialize correctly
+	dir := t.TempDir()
+
+	now := time.Now().Truncate(time.Second)
+	meta := &Metadata{
+		SessionID:             "resumption-test-session",
+		StartTime:             now,
+		Status:                StatusRunning,
+		SessionDir:            "/test/project",
+		CoordinatorID:         "coordinator",
+		CoordinatorSessionRef: "claude-session-xyz-123",
+		Resumable:             true,
+		Workers:               []WorkerMetadata{},
+		ClientType:            "claude",
+	}
+
+	// Save metadata
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Load metadata
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+
+	// Verify session resumption fields are preserved
+	require.Equal(t, "claude-session-xyz-123", loaded.CoordinatorSessionRef)
+	require.True(t, loaded.Resumable)
+}
+
+func TestMetadata_SessionResumptionFields_OmitEmpty(t *testing.T) {
+	// Test that empty CoordinatorSessionRef and false Resumable are omitted from JSON
+	dir := t.TempDir()
+
+	meta := &Metadata{
+		SessionID:  "omit-empty-resumption-test",
+		StartTime:  time.Now(),
+		Status:     StatusRunning,
+		SessionDir: "/test",
+		Workers:    []WorkerMetadata{},
+		ClientType: "claude",
+		// CoordinatorSessionRef intentionally empty
+		// Resumable intentionally false (default)
+	}
+
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Read raw JSON
+	data, err := os.ReadFile(filepath.Join(dir, metadataFilename))
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	// Verify optional fields are omitted when empty/false
+	require.NotContains(t, jsonStr, "coordinator_session_ref")
+	require.NotContains(t, jsonStr, "resumable")
+}
+
+func TestMetadata_BackwardCompatibility_SessionResumption(t *testing.T) {
+	// Test that old metadata JSON without session resumption fields can still be loaded
+	dir := t.TempDir()
+
+	// Write old-style metadata JSON without the new resumption fields
+	oldJSON := `{
+  "session_id": "old-session-no-resumption",
+  "start_time": "2026-01-01T10:00:00Z",
+  "status": "completed",
+  "session_dir": "/test",
+  "coordinator_id": "coordinator",
+  "workers": [],
+  "client_type": "claude"
+}`
+	err := os.WriteFile(filepath.Join(dir, metadataFilename), []byte(oldJSON), 0600)
+	require.NoError(t, err)
+
+	// Load should succeed and new resumption fields should have zero values
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "old-session-no-resumption", loaded.SessionID)
+	require.Equal(t, "coordinator", loaded.CoordinatorID)
+	require.Empty(t, loaded.CoordinatorSessionRef)
+	require.False(t, loaded.Resumable)
+}
+
+func TestWorkerMetadata_SessionResumptionFields(t *testing.T) {
+	// Test that HeadlessSessionRef and WorkDir fields serialize correctly
+	dir := t.TempDir()
+
+	now := time.Now().Truncate(time.Second)
+	meta := &Metadata{
+		SessionID:  "worker-resumption-test",
+		StartTime:  now,
+		Status:     StatusRunning,
+		SessionDir: "/test/project",
+		Workers: []WorkerMetadata{
+			{
+				ID:                 "worker-1",
+				SpawnedAt:          now.Add(time.Minute),
+				FinalPhase:         "implementing",
+				HeadlessSessionRef: "claude-worker-session-abc",
+				WorkDir:            "/Users/dev/project",
+			},
+			{
+				ID:        "worker-2",
+				SpawnedAt: now.Add(2 * time.Minute),
+				// HeadlessSessionRef and WorkDir intentionally empty
+			},
+		},
+		ClientType: "claude",
+	}
+
+	// Save metadata
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Load metadata
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+
+	// Verify workers
+	require.Len(t, loaded.Workers, 2)
+
+	// Verify first worker has session resumption fields
+	require.Equal(t, "worker-1", loaded.Workers[0].ID)
+	require.Equal(t, "claude-worker-session-abc", loaded.Workers[0].HeadlessSessionRef)
+	require.Equal(t, "/Users/dev/project", loaded.Workers[0].WorkDir)
+
+	// Verify second worker has empty session resumption fields
+	require.Equal(t, "worker-2", loaded.Workers[1].ID)
+	require.Empty(t, loaded.Workers[1].HeadlessSessionRef)
+	require.Empty(t, loaded.Workers[1].WorkDir)
+}
+
+func TestWorkerMetadata_SessionResumptionFields_OmitEmpty(t *testing.T) {
+	// Test that empty HeadlessSessionRef and WorkDir are omitted from JSON
+	dir := t.TempDir()
+
+	meta := &Metadata{
+		SessionID:  "worker-omit-empty-test",
+		StartTime:  time.Now(),
+		Status:     StatusRunning,
+		SessionDir: "/test",
+		Workers: []WorkerMetadata{
+			{
+				ID:        "worker-1",
+				SpawnedAt: time.Now(),
+				// HeadlessSessionRef and WorkDir intentionally empty
+			},
+		},
+		ClientType: "claude",
+	}
+
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Read raw JSON
+	data, err := os.ReadFile(filepath.Join(dir, metadataFilename))
+	require.NoError(t, err)
+
+	jsonStr := string(data)
+	// Verify optional fields are omitted when empty
+	require.NotContains(t, jsonStr, "headless_session_ref")
+	// Note: We check for worker work_dir specifically, not session work_dir
+	// The workers array should not contain work_dir for empty values
+	// Parse to verify structure
+	var parsed map[string]interface{}
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	workers := parsed["workers"].([]interface{})
+	require.Len(t, workers, 1)
+	worker := workers[0].(map[string]interface{})
+	_, hasWorkDir := worker["work_dir"]
+	require.False(t, hasWorkDir, "work_dir should be omitted when empty")
+}
+
+func TestWorkerMetadata_BackwardCompatibility_SessionResumption(t *testing.T) {
+	// Test that old WorkerMetadata JSON without session resumption fields can still be loaded
+	dir := t.TempDir()
+
+	// Write old-style metadata JSON with workers that lack the new resumption fields
+	oldJSON := `{
+  "session_id": "old-worker-session",
+  "start_time": "2026-01-01T10:00:00Z",
+  "status": "completed",
+  "session_dir": "/test",
+  "workers": [
+    {
+      "id": "worker-1",
+      "spawned_at": "2026-01-01T10:01:00Z",
+      "retired_at": "2026-01-01T10:30:00Z",
+      "final_phase": "idle"
+    }
+  ],
+  "client_type": "claude"
+}`
+	err := os.WriteFile(filepath.Join(dir, metadataFilename), []byte(oldJSON), 0600)
+	require.NoError(t, err)
+
+	// Load should succeed and new worker resumption fields should have zero values
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+	require.Len(t, loaded.Workers, 1)
+	require.Equal(t, "worker-1", loaded.Workers[0].ID)
+	require.Equal(t, "idle", loaded.Workers[0].FinalPhase)
+	require.Empty(t, loaded.Workers[0].HeadlessSessionRef)
+	require.Empty(t, loaded.Workers[0].WorkDir)
+}
+
+func TestMetadata_FullSessionResumption(t *testing.T) {
+	// Integration test: full metadata with all session resumption fields
+	dir := t.TempDir()
+
+	now := time.Now().Truncate(time.Second)
+	meta := &Metadata{
+		SessionID:             "full-resumption-session",
+		StartTime:             now,
+		EndTime:               now.Add(time.Hour),
+		Status:                StatusCompleted,
+		SessionDir:            "/home/user/.perles/sessions/2026-01-11/full-resumption-session",
+		CoordinatorID:         "coordinator",
+		CoordinatorSessionRef: "claude-coord-session-main-12345",
+		Resumable:             true,
+		Workers: []WorkerMetadata{
+			{
+				ID:                 "worker-1",
+				SpawnedAt:          now.Add(time.Minute),
+				RetiredAt:          now.Add(30 * time.Minute),
+				FinalPhase:         "idle",
+				HeadlessSessionRef: "claude-worker-session-1-abc",
+				WorkDir:            "/home/user/project",
+			},
+			{
+				ID:                 "worker-2",
+				SpawnedAt:          now.Add(5 * time.Minute),
+				FinalPhase:         "implementing",
+				HeadlessSessionRef: "claude-worker-session-2-def",
+				WorkDir:            "/home/user/project",
+			},
+		},
+		ClientType:      "claude",
+		Model:           "sonnet",
+		ApplicationName: "my-project",
+		WorkDir:         "/home/user/project",
+		DatePartition:   "2026-01-11",
+		TokenUsage: TokenUsageSummary{
+			TotalInputTokens:  50000,
+			TotalOutputTokens: 15000,
+			TotalCostUSD:      1.25,
+		},
+	}
+
+	// Save metadata
+	err := meta.Save(dir)
+	require.NoError(t, err)
+
+	// Load metadata
+	loaded, err := Load(dir)
+	require.NoError(t, err)
+
+	// Verify all session resumption fields
+	require.Equal(t, "claude-coord-session-main-12345", loaded.CoordinatorSessionRef)
+	require.True(t, loaded.Resumable)
+
+	// Verify worker session resumption fields
+	require.Len(t, loaded.Workers, 2)
+	require.Equal(t, "claude-worker-session-1-abc", loaded.Workers[0].HeadlessSessionRef)
+	require.Equal(t, "/home/user/project", loaded.Workers[0].WorkDir)
+	require.Equal(t, "claude-worker-session-2-def", loaded.Workers[1].HeadlessSessionRef)
+	require.Equal(t, "/home/user/project", loaded.Workers[1].WorkDir)
+
+	// Verify non-resumption fields still work
+	require.Equal(t, "full-resumption-session", loaded.SessionID)
+	require.Equal(t, "coordinator", loaded.CoordinatorID)
+	require.Equal(t, "my-project", loaded.ApplicationName)
+}
+
 // Tests for New() constructor
 
 func TestNew_CreatesDirectoryStructure(t *testing.T) {
@@ -3095,7 +3374,7 @@ func TestClose_IndexEntryContainsAllMetadataFields(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add a worker to verify worker count
-	sess.addWorker("worker-1", time.Now())
+	sess.addWorker("worker-1", time.Now(), workDir)
 
 	err = sess.Close(StatusFailed)
 	require.NoError(t, err)
@@ -3548,4 +3827,308 @@ func TestSession_HandleProcessEvent_WorkerSpawned(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "system", decoded.Role)
 	require.Equal(t, "Worker spawned", decoded.Content)
+}
+
+// Tests for Session Resumption Methods (perles-v1n6.2)
+
+func TestSession_SetCoordinatorSessionRef_PersistsImmediately(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-coord-session-ref"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Set coordinator session ref
+	err = sess.SetCoordinatorSessionRef("claude-session-xyz-123")
+	require.NoError(t, err)
+
+	// Verify metadata was persisted immediately (without closing session)
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, "claude-session-xyz-123", meta.CoordinatorSessionRef)
+}
+
+func TestSession_SetCoordinatorSessionRef_ReturnsErrClosedWhenClosed(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-coord-ref-closed"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Close the session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Attempt to set coordinator session ref
+	err = sess.SetCoordinatorSessionRef("some-ref")
+	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+func TestSession_SetWorkerSessionRef_UpdatesCorrectWorker(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-worker-session-ref"
+	sessionDir := filepath.Join(baseDir, "session")
+	workDir := "/path/to/project"
+
+	sess, err := New(sessionID, sessionDir, WithWorkDir(workDir))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Add workers
+	sess.addWorker("worker-1", time.Now(), workDir)
+	sess.addWorker("worker-2", time.Now(), workDir)
+
+	// Set session ref for worker-2
+	err = sess.SetWorkerSessionRef("worker-2", "worker-2-session-abc", "/project/worktree-2")
+	require.NoError(t, err)
+
+	// Verify metadata was persisted with correct worker updated
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Len(t, meta.Workers, 2)
+
+	// Find worker-2 and verify its fields
+	var worker2 *WorkerMetadata
+	for i := range meta.Workers {
+		if meta.Workers[i].ID == "worker-2" {
+			worker2 = &meta.Workers[i]
+			break
+		}
+	}
+	require.NotNil(t, worker2, "worker-2 should exist in metadata")
+	require.Equal(t, "worker-2-session-abc", worker2.HeadlessSessionRef)
+	require.Equal(t, "/project/worktree-2", worker2.WorkDir)
+
+	// worker-1 should not be affected
+	var worker1 *WorkerMetadata
+	for i := range meta.Workers {
+		if meta.Workers[i].ID == "worker-1" {
+			worker1 = &meta.Workers[i]
+			break
+		}
+	}
+	require.NotNil(t, worker1, "worker-1 should exist in metadata")
+	require.Empty(t, worker1.HeadlessSessionRef)
+}
+
+func TestSession_SetWorkerSessionRef_ReturnsErrorForUnknownWorker(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-unknown-worker"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Try to set session ref for non-existent worker
+	err = sess.SetWorkerSessionRef("worker-unknown", "some-ref", "/some/path")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "worker not found")
+	require.Contains(t, err.Error(), "worker-unknown")
+}
+
+func TestSession_SetWorkerSessionRef_ReturnsErrClosedWhenClosed(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-worker-ref-closed"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Add a worker before closing
+	sess.addWorker("worker-1", time.Now(), "/path")
+
+	// Close the session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Attempt to set worker session ref
+	err = sess.SetWorkerSessionRef("worker-1", "some-ref", "/some/path")
+	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+func TestSession_MarkResumable_SetsAndPersists(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-mark-resumable"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Initially, resumable should be false
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.False(t, meta.Resumable)
+
+	// Mark resumable
+	err = sess.MarkResumable()
+	require.NoError(t, err)
+
+	// Verify metadata was persisted with resumable=true
+	meta, err = Load(sessionDir)
+	require.NoError(t, err)
+	require.True(t, meta.Resumable)
+}
+
+func TestSession_MarkResumable_ReturnsErrClosedWhenClosed(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-resumable-closed"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Close the session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Attempt to mark resumable
+	err = sess.MarkResumable()
+	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+func TestSession_NotifySessionRef_RoutesCoordinatorCorrectly(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-notify-coord"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Notify coordinator session ref
+	err = sess.NotifySessionRef("coordinator", "coord-session-123", "/project/path")
+	require.NoError(t, err)
+
+	// Verify both coordinator session ref and resumable flag were set
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, "coord-session-123", meta.CoordinatorSessionRef)
+	require.True(t, meta.Resumable)
+}
+
+func TestSession_NotifySessionRef_RoutesWorkerCorrectly(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-notify-worker"
+	sessionDir := filepath.Join(baseDir, "session")
+	workDir := "/project/path"
+
+	sess, err := New(sessionID, sessionDir, WithWorkDir(workDir))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// First add the worker
+	sess.addWorker("worker-1", time.Now(), workDir)
+
+	// Notify worker session ref
+	err = sess.NotifySessionRef("worker-1", "worker-session-456", "/project/worktree-1")
+	require.NoError(t, err)
+
+	// Verify worker session ref was set
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Len(t, meta.Workers, 1)
+	require.Equal(t, "worker-session-456", meta.Workers[0].HeadlessSessionRef)
+	require.Equal(t, "/project/worktree-1", meta.Workers[0].WorkDir)
+
+	// Verify resumable was NOT set (only coordinator triggers resumable)
+	require.False(t, meta.Resumable)
+}
+
+func TestSession_ConcurrentSetCoordinatorSessionRef_ThreadSafe(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-concurrent-coord-ref"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Run concurrent calls
+	const numGoroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := range numGoroutines {
+		go func(idx int) {
+			defer wg.Done()
+			ref := fmt.Sprintf("session-ref-%d", idx)
+			err := sess.SetCoordinatorSessionRef(ref)
+			// Should not fail (no race conditions)
+			if err != nil {
+				t.Errorf("SetCoordinatorSessionRef failed: %v", err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify metadata is valid (one of the refs was written)
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.NotEmpty(t, meta.CoordinatorSessionRef)
+	require.Contains(t, meta.CoordinatorSessionRef, "session-ref-")
+}
+
+func TestSession_AddWorkerWithWorkDir(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-addworker-workdir"
+	sessionDir := filepath.Join(baseDir, "session")
+	workDir := "/custom/work/dir"
+
+	sess, err := New(sessionID, sessionDir, WithWorkDir(workDir))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Add worker with workDir
+	spawnTime := time.Now().Truncate(time.Second)
+	sess.addWorker("worker-test", spawnTime, workDir)
+
+	// Close to persist metadata
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify worker was added with workDir
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Len(t, meta.Workers, 1)
+	require.Equal(t, "worker-test", meta.Workers[0].ID)
+	require.Equal(t, workDir, meta.Workers[0].WorkDir)
+	require.True(t, meta.Workers[0].SpawnedAt.Equal(spawnTime))
+}
+
+func TestSession_SaveMetadataLocked_CreatesMetadataIfMissing(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-save-creates-meta"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName("test-app"),
+		WithWorkDir("/test/project"),
+		WithDatePartition("2026-01-11"),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Delete the metadata file to simulate corruption/missing
+	metaPath := filepath.Join(sessionDir, "metadata.json")
+	err = os.Remove(metaPath)
+	require.NoError(t, err)
+
+	// Set coordinator session ref (which calls saveMetadataLocked)
+	err = sess.SetCoordinatorSessionRef("new-session-ref")
+	require.NoError(t, err)
+
+	// Verify metadata was recreated with session context
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, sessionID, meta.SessionID)
+	require.Equal(t, "new-session-ref", meta.CoordinatorSessionRef)
+	require.Equal(t, "test-app", meta.ApplicationName)
+	require.Equal(t, "/test/project", meta.WorkDir)
+	require.Equal(t, "2026-01-11", meta.DatePartition)
 }

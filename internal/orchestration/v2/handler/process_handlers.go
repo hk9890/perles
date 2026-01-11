@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/tracing"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
@@ -391,9 +392,11 @@ type DeliverProcessQueuedResult struct {
 // Same logic for both coordinator and workers.
 // For workers, it also enforces turn completion by checking if required tools were called.
 type ProcessTurnCompleteHandler struct {
-	processRepo repository.ProcessRepository
-	queueRepo   repository.QueueRepository
-	enforcer    TurnCompletionEnforcer
+	processRepo     repository.ProcessRepository
+	queueRepo       repository.QueueRepository
+	enforcer        TurnCompletionEnforcer
+	registry        *process.ProcessRegistry
+	sessionNotifier SessionRefNotifier
 }
 
 // ProcessTurnCompleteHandlerOption configures ProcessTurnCompleteHandler.
@@ -405,6 +408,24 @@ type ProcessTurnCompleteHandlerOption func(*ProcessTurnCompleteHandler)
 func WithProcessTurnEnforcer(enforcer TurnCompletionEnforcer) ProcessTurnCompleteHandlerOption {
 	return func(h *ProcessTurnCompleteHandler) {
 		h.enforcer = enforcer
+	}
+}
+
+// WithTurnCompleteProcessRegistry sets the process registry for session ref lookup.
+// The registry is used to get the live process to retrieve session ID and work dir
+// after the first successful turn.
+func WithTurnCompleteProcessRegistry(registry *process.ProcessRegistry) ProcessTurnCompleteHandlerOption {
+	return func(h *ProcessTurnCompleteHandler) {
+		h.registry = registry
+	}
+}
+
+// WithSessionRefNotifier sets the session ref notifier for the handler.
+// The notifier is called after a process's first successful turn to persist
+// the session reference for crash-resilient session resumption.
+func WithSessionRefNotifier(notifier SessionRefNotifier) ProcessTurnCompleteHandlerOption {
+	return func(h *ProcessTurnCompleteHandler) {
+		h.sessionNotifier = notifier
 	}
 }
 
@@ -554,10 +575,42 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 	// End of startup failure handling
 	// ===========================================================================
 
+	// Track if this is the first successful turn (before we modify HasCompletedTurn)
+	wasFirstSuccessfulTurn := !proc.HasCompletedTurn && turnCmd.Succeeded
+
 	// Mark successful turn completion
 	if turnCmd.Succeeded && !proc.HasCompletedTurn {
 		proc.HasCompletedTurn = true
 	}
+
+	// ===========================================================================
+	// Session ref capture on first successful turn
+	// ===========================================================================
+	// Capture session ref for crash-resilient session resumption.
+	// This happens after HasCompletedTurn is set, ensuring the session is established.
+	if wasFirstSuccessfulTurn && h.registry != nil {
+		liveProc := h.registry.Get(proc.ID)
+		if liveProc != nil {
+			sessionRef := liveProc.SessionID()
+			workDir := liveProc.WorkDir()
+
+			// Update repository entity with session ID
+			if sessionRef != "" {
+				proc.SessionID = sessionRef
+			}
+
+			// Notify session service if notifier is configured and session ref is available
+			if sessionRef != "" && h.sessionNotifier != nil {
+				if err := h.sessionNotifier.NotifySessionRef(proc.ID, sessionRef, workDir); err != nil {
+					log.Warn(log.CatOrch, "Failed to notify session ref",
+						"processID", proc.ID, "error", err)
+				}
+			}
+		}
+	}
+	// ===========================================================================
+	// End of session ref capture
+	// ===========================================================================
 
 	// Update process state - same for coordinator and workers
 	// Always transition to Ready (even if succeeded=false after first success, we don't auto-retire)

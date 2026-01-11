@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
@@ -262,6 +263,53 @@ func (p *mockProcess) SessionRef() string { return p.sessionID }
 func (p *mockProcess) IsRunning() bool    { return p.running }
 func (p *mockProcess) Cancel() error      { p.running = false; return nil }
 func (p *mockProcess) Wait() error        { return nil }
+
+// mockHeadlessProcessFull implements the full client.HeadlessProcess interface for integration testing.
+// It supports sending init events to set the session ID on a Process.
+type mockHeadlessProcessFull struct {
+	sessionRef string
+	events     chan client.OutputEvent
+	errors     chan error
+	running    bool
+	status     client.ProcessStatus
+	workDir    string
+}
+
+func newMockHeadlessProcessFull() *mockHeadlessProcessFull {
+	return &mockHeadlessProcessFull{
+		sessionRef: "",
+		events:     make(chan client.OutputEvent, 10),
+		errors:     make(chan error, 10),
+		running:    true,
+		status:     client.StatusRunning,
+		workDir:    "/test/workdir",
+	}
+}
+
+func (m *mockHeadlessProcessFull) Events() <-chan client.OutputEvent { return m.events }
+func (m *mockHeadlessProcessFull) Errors() <-chan error              { return m.errors }
+func (m *mockHeadlessProcessFull) SessionRef() string                { return m.sessionRef }
+func (m *mockHeadlessProcessFull) Status() client.ProcessStatus      { return m.status }
+func (m *mockHeadlessProcessFull) IsRunning() bool                   { return m.running }
+func (m *mockHeadlessProcessFull) WorkDir() string                   { return m.workDir }
+func (m *mockHeadlessProcessFull) PID() int                          { return 12345 }
+func (m *mockHeadlessProcessFull) Cancel() error {
+	m.running = false
+	m.status = client.StatusCancelled
+	close(m.events)
+	return nil
+}
+func (m *mockHeadlessProcessFull) Wait() error { return nil }
+
+// SendInitEvent sends an init event with the given session ID to the events channel.
+// This allows tests to set the session ID on a process through the normal init flow.
+func (m *mockHeadlessProcessFull) SendInitEvent(sessionID string) {
+	m.events <- client.OutputEvent{
+		Type:      client.EventSystem,
+		SubType:   "init",
+		SessionID: sessionID,
+	}
+}
 
 // ===========================================================================
 // Integration Test: SpawnWorkerFlow
@@ -1963,4 +2011,375 @@ func TestIntegration_MarkTaskComplete_RemovesFromQueryWorkerState(t *testing.T) 
 	assert.True(t, foundCompletionComment, "BD should have completion comment")
 
 	t.Logf("MarkTaskComplete removes task from QueryWorkerState: task %s removed successfully after completion", taskID)
+}
+
+// ===========================================================================
+// Integration Test: Session Ref Capture Wiring
+// ===========================================================================
+
+// mockSessionRefNotifierForIntegration records calls to NotifySessionRef for integration testing.
+type mockSessionRefNotifierForIntegration struct {
+	mu    sync.Mutex
+	calls []sessionRefNotification
+}
+
+type sessionRefNotification struct {
+	ProcessID  string
+	SessionRef string
+	WorkDir    string
+}
+
+func (m *mockSessionRefNotifierForIntegration) NotifySessionRef(processID, sessionRef, workDir string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, sessionRefNotification{
+		ProcessID:  processID,
+		SessionRef: sessionRef,
+		WorkDir:    workDir,
+	})
+	return nil
+}
+
+func (m *mockSessionRefNotifierForIntegration) getCalls() []sessionRefNotification {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]sessionRefNotification, len(m.calls))
+	copy(result, m.calls)
+	return result
+}
+
+// testV2StackWithSessionRefNotifier contains v2 components with session ref notifier wired.
+type testV2StackWithSessionRefNotifier struct {
+	*testV2Stack
+	mockNotifier *mockSessionRefNotifierForIntegration
+}
+
+// newTestV2StackWithSessionRefNotifier creates a v2 stack with SessionRefNotifier wired.
+func newTestV2StackWithSessionRefNotifier(t *testing.T) *testV2StackWithSessionRefNotifier {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Create repositories
+	processRepo := repository.NewMemoryProcessRepository()
+	taskRepo := repository.NewMemoryTaskRepository()
+	queueRepo := repository.NewMemoryQueueRepository(repository.DefaultQueueMaxSize)
+
+	// Create event bus
+	eventBus := pubsub.NewBroker[any]()
+
+	// Create command processor with event bus
+	cmdProcessor := processor.NewCommandProcessor(
+		processor.WithQueueCapacity(1000),
+		processor.WithEventBus(eventBus),
+		processor.WithTaskRepository(taskRepo),
+		processor.WithQueueRepository(queueRepo),
+	)
+
+	// Create mock spawner
+	mockSpawner := &mockProcessSpawner{
+		processes: make(map[string]*mockProcess),
+	}
+
+	// Create mock BD executor with permissive expectations
+	mockBD := mocks.NewMockBeadsExecutor(t)
+	setupPermissiveBDMock(mockBD)
+
+	// Create process registry for handlers
+	registry := process.NewProcessRegistry()
+
+	// Create mock session ref notifier
+	mockNotifier := &mockSessionRefNotifierForIntegration{}
+
+	stack := &testV2Stack{
+		processRepo: processRepo,
+		taskRepo:    taskRepo,
+		queueRepo:   queueRepo,
+		processor:   cmdProcessor,
+		eventBus:    eventBus,
+		registry:    registry,
+		ctx:         ctx,
+		cancel:      cancel,
+		mockSpawner: mockSpawner,
+		mockBD:      mockBD,
+	}
+
+	// Register handlers with session ref notifier wired
+	registerHandlersWithSessionRefNotifier(stack, registry, mockBD, mockNotifier)
+
+	// Create V2Adapter with repositories for read-only operations
+	v2Adapter := adapter.NewV2Adapter(cmdProcessor,
+		adapter.WithProcessRepository(processRepo),
+		adapter.WithTaskRepository(taskRepo),
+		adapter.WithQueueRepository(queueRepo),
+	)
+	stack.adapter = v2Adapter
+
+	// Start processor loop
+	go cmdProcessor.Run(ctx)
+
+	// Wait for processor to be running
+	require.Eventually(t, func() bool {
+		return cmdProcessor.IsRunning()
+	}, time.Second, 10*time.Millisecond, "processor should start running")
+
+	return &testV2StackWithSessionRefNotifier{
+		testV2Stack:  stack,
+		mockNotifier: mockNotifier,
+	}
+}
+
+// registerHandlersWithSessionRefNotifier registers handlers with SessionRefNotifier wired.
+func registerHandlersWithSessionRefNotifier(
+	stack *testV2Stack,
+	registry *process.ProcessRegistry,
+	bdExec *mocks.MockBeadsExecutor,
+	notifier *mockSessionRefNotifierForIntegration,
+) {
+	processRepo := stack.processRepo
+	taskRepo := stack.taskRepo
+	queueRepo := stack.queueRepo
+	cmdProcessor := stack.processor
+
+	// Process Lifecycle handlers
+	cmdProcessor.RegisterHandler(command.CmdSpawnProcess,
+		handler.NewSpawnProcessHandler(processRepo, registry))
+	cmdProcessor.RegisterHandler(command.CmdRetireProcess,
+		handler.NewRetireProcessHandler(processRepo, registry))
+	cmdProcessor.RegisterHandler(command.CmdReplaceProcess,
+		handler.NewReplaceProcessHandler(processRepo, registry))
+
+	// Stop Worker handler
+	cmdProcessor.RegisterHandler(command.CmdStopProcess,
+		handler.NewStopWorkerHandler(processRepo, taskRepo, queueRepo, registry))
+
+	// Messaging handlers
+	cmdProcessor.RegisterHandler(command.CmdSendToProcess,
+		handler.NewSendToProcessHandler(processRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdBroadcast,
+		handler.NewBroadcastHandler(processRepo))
+	cmdProcessor.RegisterHandler(command.CmdDeliverProcessQueued,
+		handler.NewDeliverProcessQueuedHandler(processRepo, queueRepo, nil))
+
+	// Task Assignment handlers
+	cmdProcessor.RegisterHandler(command.CmdAssignTask,
+		handler.NewAssignTaskHandler(processRepo, taskRepo,
+			handler.WithBDExecutor(bdExec),
+			handler.WithQueueRepository(queueRepo)))
+	cmdProcessor.RegisterHandler(command.CmdAssignReview,
+		handler.NewAssignReviewHandler(processRepo, taskRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdApproveCommit,
+		handler.NewApproveCommitHandler(processRepo, taskRepo, queueRepo))
+	cmdProcessor.RegisterHandler(command.CmdAssignReviewFeedback,
+		handler.NewAssignReviewFeedbackHandler(processRepo, taskRepo, queueRepo))
+
+	// State Transition handlers
+	cmdProcessor.RegisterHandler(command.CmdReportComplete,
+		handler.NewReportCompleteHandler(processRepo, taskRepo, queueRepo,
+			handler.WithReportCompleteBDExecutor(bdExec)))
+	cmdProcessor.RegisterHandler(command.CmdReportVerdict,
+		handler.NewReportVerdictHandler(processRepo, taskRepo, queueRepo,
+			handler.WithReportVerdictBDExecutor(bdExec)))
+	cmdProcessor.RegisterHandler(command.CmdTransitionPhase,
+		handler.NewTransitionPhaseHandler(processRepo, queueRepo))
+
+	// ProcessTurnComplete handler with SessionRefNotifier wired
+	cmdProcessor.RegisterHandler(command.CmdProcessTurnComplete,
+		handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+			handler.WithTurnCompleteProcessRegistry(registry),
+			handler.WithSessionRefNotifier(notifier)))
+
+	// BD Task Status handlers
+	cmdProcessor.RegisterHandler(command.CmdMarkTaskComplete,
+		handler.NewMarkTaskCompleteHandler(bdExec, taskRepo))
+	cmdProcessor.RegisterHandler(command.CmdMarkTaskFailed,
+		handler.NewMarkTaskFailedHandler(bdExec))
+}
+
+// TestIntegration_SessionRefCapture_CoordinatorFirstSuccessfulTurn verifies that
+// coordinator session ref is captured and notifier is called after first successful turn.
+func TestIntegration_SessionRefCapture_CoordinatorFirstSuccessfulTurn(t *testing.T) {
+	stack := newTestV2StackWithSessionRefNotifier(t)
+	defer stack.cleanup()
+
+	// Step 1: Manually create a coordinator process in repository with first turn not completed
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	stack.processRepo.AddProcess(coord)
+
+	// Step 2: Create a mock live process with session ID via init event and register it
+	mockProc := newMockHeadlessProcessFull()
+	liveProc := process.New(repository.CoordinatorID, repository.RoleCoordinator, mockProc, nil, nil)
+	liveProc.Start()
+	mockProc.SendInitEvent("coord-session-abc-123")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	stack.registry.Register(liveProc)
+
+	// Step 3: Submit ProcessTurnCompleteCommand (first successful turn)
+	turnCmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := stack.processor.SubmitAndWait(stack.ctx, turnCmd)
+
+	// Step 4: Verify command succeeded
+	require.NoError(t, err)
+	require.True(t, result.Success, "turn complete should succeed")
+
+	// Step 5: Verify notifier was called with correct values
+	require.Eventually(t, func() bool {
+		calls := stack.mockNotifier.getCalls()
+		return len(calls) > 0
+	}, time.Second, 10*time.Millisecond, "notifier should be called")
+
+	calls := stack.mockNotifier.getCalls()
+	require.Len(t, calls, 1, "should have exactly one notifier call")
+	assert.Equal(t, repository.CoordinatorID, calls[0].ProcessID)
+	assert.Equal(t, "coord-session-abc-123", calls[0].SessionRef)
+	assert.Equal(t, "/test/workdir", calls[0].WorkDir) // From mockHeadlessProcessFull
+
+	// Step 6: Verify repository Process.SessionID was updated
+	updated, _ := stack.processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, "coord-session-abc-123", updated.SessionID)
+	assert.True(t, updated.HasCompletedTurn)
+
+	t.Log("Session ref capture wiring test passed: coordinator session ref captured on first successful turn")
+}
+
+// TestIntegration_SessionRefCapture_WorkerFirstSuccessfulTurn verifies that
+// worker session ref is captured and notifier is called after first successful turn.
+func TestIntegration_SessionRefCapture_WorkerFirstSuccessfulTurn(t *testing.T) {
+	stack := newTestV2StackWithSessionRefNotifier(t)
+	defer stack.cleanup()
+
+	// Step 1: Manually create a worker process in repository with first turn not completed
+	workerID := "worker-1"
+	worker := &repository.Process{
+		ID:               workerID,
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	stack.processRepo.AddProcess(worker)
+
+	// Step 2: Create a mock live process with session ID via init event and register it
+	mockProc := newMockHeadlessProcessFull()
+	liveProc := process.New(workerID, repository.RoleWorker, mockProc, nil, nil)
+	liveProc.Start()
+	mockProc.SendInitEvent("worker-session-xyz-789")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	stack.registry.Register(liveProc)
+
+	// Step 3: Submit ProcessTurnCompleteCommand (first successful turn)
+	turnCmd := command.NewProcessTurnCompleteCommand(workerID, true, nil, nil)
+	result, err := stack.processor.SubmitAndWait(stack.ctx, turnCmd)
+
+	// Step 4: Verify command succeeded
+	require.NoError(t, err)
+	require.True(t, result.Success, "turn complete should succeed")
+
+	// Step 5: Verify notifier was called with correct values
+	require.Eventually(t, func() bool {
+		calls := stack.mockNotifier.getCalls()
+		return len(calls) > 0
+	}, time.Second, 10*time.Millisecond, "notifier should be called")
+
+	calls := stack.mockNotifier.getCalls()
+	require.Len(t, calls, 1, "should have exactly one notifier call")
+	assert.Equal(t, workerID, calls[0].ProcessID)
+	assert.Equal(t, "worker-session-xyz-789", calls[0].SessionRef)
+	assert.Equal(t, "/test/workdir", calls[0].WorkDir) // From mockHeadlessProcessFull
+
+	// Step 6: Verify repository Process.SessionID was updated
+	updated, _ := stack.processRepo.Get(workerID)
+	assert.Equal(t, "worker-session-xyz-789", updated.SessionID)
+	assert.True(t, updated.HasCompletedTurn)
+
+	t.Log("Session ref capture wiring test passed: worker session ref captured on first successful turn")
+}
+
+// TestIntegration_SessionRefCapture_SecondTurnDoesNotRecapture verifies that
+// notifier is NOT called on second turn (only first successful turn).
+func TestIntegration_SessionRefCapture_SecondTurnDoesNotRecapture(t *testing.T) {
+	stack := newTestV2StackWithSessionRefNotifier(t)
+	defer stack.cleanup()
+
+	// Step 1: Create a worker that has already completed first turn
+	workerID := "worker-1"
+	worker := &repository.Process{
+		ID:               workerID,
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true, // Already completed first turn
+		SessionID:        "previous-session",
+	}
+	stack.processRepo.AddProcess(worker)
+
+	// Step 2: Create a mock live process with NEW session ID via init event (simulating refresh)
+	mockProc := newMockHeadlessProcessFull()
+	liveProc := process.New(workerID, repository.RoleWorker, mockProc, nil, nil)
+	liveProc.Start()
+	mockProc.SendInitEvent("new-session-id")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	stack.registry.Register(liveProc)
+
+	// Step 3: Submit ProcessTurnCompleteCommand (second turn)
+	turnCmd := command.NewProcessTurnCompleteCommand(workerID, true, nil, nil)
+	result, err := stack.processor.SubmitAndWait(stack.ctx, turnCmd)
+
+	// Step 4: Verify command succeeded
+	require.NoError(t, err)
+	require.True(t, result.Success, "turn complete should succeed")
+
+	// Step 5: Verify notifier was NOT called (second turn should not recapture)
+	time.Sleep(50 * time.Millisecond) // Give time for async operations
+	calls := stack.mockNotifier.getCalls()
+	assert.Len(t, calls, 0, "notifier should NOT be called on second turn")
+
+	// Step 6: Verify repository Process.SessionID was NOT changed
+	updated, _ := stack.processRepo.Get(workerID)
+	assert.Equal(t, "previous-session", updated.SessionID, "session ID should not be updated on second turn")
+
+	t.Log("Session ref capture wiring test passed: second turn does not recapture")
+}
+
+// TestIntegration_SessionRefCapture_SessionClosedBeforeFirstTurn verifies that
+// closing a session before first turn doesn't panic and session ref is not captured.
+func TestIntegration_SessionRefCapture_SessionClosedBeforeFirstTurn(t *testing.T) {
+	stack := newTestV2StackWithSessionRefNotifier(t)
+	defer stack.cleanup()
+
+	// Step 1: Create a coordinator that never completes first turn
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	stack.processRepo.AddProcess(coord)
+
+	// Step 2: Create a mock live process but do NOT register it (simulating session closing)
+	// The registry.Get will return nil
+
+	// Step 3: Submit ProcessTurnCompleteCommand (first turn, but process not in registry)
+	turnCmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := stack.processor.SubmitAndWait(stack.ctx, turnCmd)
+
+	// Step 4: Verify command succeeded (graceful handling of missing process)
+	require.NoError(t, err)
+	require.True(t, result.Success, "turn complete should succeed even without registry entry")
+
+	// Step 5: Verify notifier was NOT called (no process in registry to get session from)
+	time.Sleep(50 * time.Millisecond)
+	calls := stack.mockNotifier.getCalls()
+	assert.Len(t, calls, 0, "notifier should NOT be called when process not in registry")
+
+	// Step 6: Verify process state was still updated (Ready status)
+	updated, _ := stack.processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusReady, updated.Status)
+	assert.True(t, updated.HasCompletedTurn)
+	assert.Empty(t, updated.SessionID, "session ID should remain empty")
+
+	t.Log("Session ref capture wiring test passed: session closed before first turn handled gracefully")
 }

@@ -131,6 +131,16 @@ func (m *mockHeadlessProcess) Send(msg string) error {
 	return nil
 }
 
+// SendInitEvent sends an init event with the given session ID to the events channel.
+// This allows tests to set the session ID on a process through the normal init flow.
+func (m *mockHeadlessProcess) SendInitEvent(sessionID string) {
+	m.events <- client.OutputEvent{
+		Type:      client.EventSystem,
+		SubType:   "init",
+		SessionID: sessionID,
+	}
+}
+
 // phasePtr is a helper to create a pointer to a ProcessPhase.
 func phasePtr(p events.ProcessPhase) *events.ProcessPhase {
 	return &p

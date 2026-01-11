@@ -1239,6 +1239,293 @@ func TestProcessTurnCompleteHandler_EnforcementPreservesTraceID(t *testing.T) {
 }
 
 // ===========================================================================
+// ProcessTurnCompleteHandler Session Ref Capture Tests
+// ===========================================================================
+
+// mockSessionRefNotifier is a test implementation of SessionRefNotifier.
+type mockSessionRefNotifier struct {
+	calls   []sessionRefCall
+	callErr error
+}
+
+type sessionRefCall struct {
+	ProcessID  string
+	SessionRef string
+	WorkDir    string
+}
+
+func (m *mockSessionRefNotifier) NotifySessionRef(processID, sessionRef, workDir string) error {
+	m.calls = append(m.calls, sessionRefCall{processID, sessionRef, workDir})
+	return m.callErr
+}
+
+func TestProcessTurnCompleteHandler_FirstSuccessfulTurn_CapturesSessionRef(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	notifier := &mockSessionRefNotifier{}
+
+	// Create a coordinator in Working status, not yet completed first turn
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(coord)
+
+	// Create a live process and set session ID via init event (normal flow)
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New(repository.CoordinatorID, repository.RoleCoordinator, mockProc, nil, nil)
+	liveProcess.Start()
+	mockProc.SendInitEvent("session-xyz-123")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry),
+		handler.WithSessionRefNotifier(notifier))
+
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify notifier was called with correct parameters
+	require.Len(t, notifier.calls, 1)
+	assert.Equal(t, repository.CoordinatorID, notifier.calls[0].ProcessID)
+	assert.Equal(t, "session-xyz-123", notifier.calls[0].SessionRef)
+	assert.Equal(t, "/test", notifier.calls[0].WorkDir) // From mockHeadlessProcess.WorkDir()
+
+	// Verify repository entity has SessionID set
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, "session-xyz-123", updated.SessionID)
+}
+
+func TestProcessTurnCompleteHandler_SecondTurn_DoesNotRecaptureSessionRef(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	notifier := &mockSessionRefNotifier{}
+
+	// Create a worker that already completed first turn
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true, // Already completed first turn
+		SessionID:        "previous-session",
+	}
+	processRepo.AddProcess(worker)
+
+	// Create a live process and set session ID via init event (simulating a new session after refresh)
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New("worker-1", repository.RoleWorker, mockProc, nil, nil)
+	liveProcess.Start()
+	mockProc.SendInitEvent("new-session")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry),
+		handler.WithSessionRefNotifier(notifier))
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify notifier was NOT called (second turn should not recapture)
+	assert.Len(t, notifier.calls, 0)
+
+	// Verify repository entity still has the original SessionID
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, "previous-session", updated.SessionID)
+}
+
+func TestProcessTurnCompleteHandler_FailedFirstTurn_DoesNotCaptureSessionRef(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	notifier := &mockSessionRefNotifier{}
+
+	// Create a worker that has not completed first turn
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(worker)
+
+	// Create a live process and set session ID via init event
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New("worker-1", repository.RoleWorker, mockProc, nil, nil)
+	liveProcess.Start()
+	mockProc.SendInitEvent("some-session")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry),
+		handler.WithSessionRefNotifier(notifier))
+
+	// Failed first turn - this should transition to Failed status (startup failure)
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify notifier was NOT called (failed turn should not capture)
+	assert.Len(t, notifier.calls, 0)
+
+	// Verify process transitioned to Failed
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, repository.StatusFailed, updated.Status)
+	assert.Empty(t, updated.SessionID)
+}
+
+func TestProcessTurnCompleteHandler_MissingRegistry_GracefullySkipsCapture(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	notifier := &mockSessionRefNotifier{}
+	// No registry provided
+
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(coord)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		// Note: WithTurnCompleteProcessRegistry NOT called
+		handler.WithSessionRefNotifier(notifier))
+
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	// Should succeed without panic
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Notifier should not be called (no registry to get process from)
+	assert.Len(t, notifier.calls, 0)
+
+	// Process should still transition to Ready
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, repository.StatusReady, updated.Status)
+}
+
+func TestProcessTurnCompleteHandler_MissingNotifier_GracefullySkipsCapture(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	// No notifier provided
+
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(coord)
+
+	// Create a live process and set session ID via init event
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New(repository.CoordinatorID, repository.RoleCoordinator, mockProc, nil, nil)
+	liveProcess.Start()
+	mockProc.SendInitEvent("session-abc")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry))
+	// Note: WithSessionRefNotifier NOT called
+
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	// Should succeed without panic
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Repository entity should still have SessionID set (even if notifier not called)
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Equal(t, "session-abc", updated.SessionID)
+}
+
+func TestProcessTurnCompleteHandler_EmptySessionRef_DoesNotCallNotifier(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	notifier := &mockSessionRefNotifier{}
+
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(coord)
+
+	// Create a live process WITHOUT setting a session ID (empty string)
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New(repository.CoordinatorID, repository.RoleCoordinator, mockProc, nil, nil)
+	// Note: NOT calling SetSessionIDForTest - session ID remains empty
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry),
+		handler.WithSessionRefNotifier(notifier))
+
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Notifier should NOT be called (empty session ref)
+	assert.Len(t, notifier.calls, 0)
+
+	// Repository SessionID should remain empty
+	updated, _ := processRepo.Get(repository.CoordinatorID)
+	assert.Empty(t, updated.SessionID)
+}
+
+func TestProcessTurnCompleteHandler_RepositorySessionID_SetOnFirstSuccessfulTurn(t *testing.T) {
+	processRepo, queueRepo := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	// No notifier - just testing repository update
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: false,
+	}
+	processRepo.AddProcess(worker)
+
+	// Create a live process and set session ID via init event
+	mockProc := newMockHeadlessProcess(12345)
+	liveProcess := process.New("worker-1", repository.RoleWorker, mockProc, nil, nil)
+	liveProcess.Start()
+	mockProc.SendInitEvent("repo-session-test")
+	time.Sleep(10 * time.Millisecond) // Allow event to be processed
+	registry.Register(liveProcess)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithTurnCompleteProcessRegistry(registry))
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	_, err := h.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+
+	// Verify repository Process.SessionID is set
+	updated, _ := processRepo.Get("worker-1")
+	assert.Equal(t, "repo-session-test", updated.SessionID)
+	assert.True(t, updated.HasCompletedTurn)
+}
+
+// ===========================================================================
 // RetireProcessHandler Tests
 // ===========================================================================
 

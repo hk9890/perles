@@ -764,14 +764,15 @@ func (i *Initializer) createWorkspace() error {
 	i.mu.RUnlock()
 
 	v2Infra, err := v2.NewInfrastructure(v2.InfrastructureConfig{
-		Port:        port,
-		AIClient:    aiClient,
-		WorkDir:     effectiveWorkDir, // Use worktree path when enabled
-		Extensions:  extensions,
-		MessageRepo: msgRepo,
-		SessionID:   sess.ID,
-		SessionDir:  sessionDir, // Centralized session storage path
-		Tracer:      tracer,     // nil when tracing disabled - middleware handles this gracefully
+		Port:               port,
+		AIClient:           aiClient,
+		WorkDir:            effectiveWorkDir, // Use worktree path when enabled
+		Extensions:         extensions,
+		MessageRepo:        msgRepo,
+		SessionID:          sess.ID,
+		SessionDir:         sessionDir, // Centralized session storage path
+		Tracer:             tracer,     // nil when tracing disabled - middleware handles this gracefully
+		SessionRefNotifier: sess,       // Session implements SessionRefNotifier for crash-resilient resumption
 	})
 	if err != nil {
 		_ = listenerResult.Listener.Close()

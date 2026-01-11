@@ -66,6 +66,10 @@ type Session struct {
 	workers    []WorkerMetadata
 	tokenUsage TokenUsageSummary
 
+	// Session resumption fields.
+	coordinatorSessionRef string
+	resumable             bool
+
 	// Application context fields (set via options).
 	applicationName string
 	workDir         string
@@ -845,8 +849,8 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 
 	switch event.Type {
 	case events.ProcessSpawned:
-		// Add worker to metadata
-		s.addWorker(workerID, now)
+		// Add worker to metadata - use session's workDir (same for all processes currently)
+		s.addWorker(workerID, now, s.workDir)
 		// Log the spawn event as a system message
 		msg := chatrender.Message{
 			Role:      "system",
@@ -1005,7 +1009,8 @@ func (s *Session) updateTokenUsage(inputTokens, outputTokens int, costUSD float6
 }
 
 // addWorker adds a new worker to the session's metadata.
-func (s *Session) addWorker(workerID string, spawnedAt time.Time) {
+// workDir is captured at spawn time; sessionRef is set later via SetWorkerSessionRef.
+func (s *Session) addWorker(workerID string, spawnedAt time.Time, workDir string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1019,6 +1024,7 @@ func (s *Session) addWorker(workerID string, spawnedAt time.Time) {
 	s.workers = append(s.workers, WorkerMetadata{
 		ID:        workerID,
 		SpawnedAt: spawnedAt,
+		WorkDir:   workDir,
 	})
 }
 
@@ -1076,4 +1082,96 @@ func (s *Session) WriteWorkerAccountabilitySummary(workerID string, content []by
 	log.Debug(log.CatOrch, "Wrote worker accountability summary", "workerID", workerID, "path", summaryPath)
 
 	return summaryPath, nil
+}
+
+// SetCoordinatorSessionRef sets the coordinator's headless session reference.
+// This should be called after the coordinator's first successful turn.
+// Immediately persists metadata to ensure crash resilience.
+func (s *Session) SetCoordinatorSessionRef(ref string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	s.coordinatorSessionRef = ref
+	return s.saveMetadataLocked()
+}
+
+// SetWorkerSessionRef sets a worker's headless session reference.
+// Should be called after the worker's first successful turn.
+// Immediately persists metadata to ensure crash resilience.
+func (s *Session) SetWorkerSessionRef(workerID, ref, workDir string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	// Find worker and update
+	for i := range s.workers {
+		if s.workers[i].ID == workerID {
+			s.workers[i].HeadlessSessionRef = ref
+			s.workers[i].WorkDir = workDir
+			return s.saveMetadataLocked()
+		}
+	}
+
+	return fmt.Errorf("worker not found: %s", workerID)
+}
+
+// MarkResumable marks the session as resumable.
+// Called after coordinator session ref is captured.
+func (s *Session) MarkResumable() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	s.resumable = true
+	return s.saveMetadataLocked()
+}
+
+// saveMetadataLocked persists metadata to disk.
+// Caller must hold s.mu.
+func (s *Session) saveMetadataLocked() error {
+	meta, err := Load(s.Dir)
+	if err != nil {
+		// Create fresh metadata if file doesn't exist or is corrupted
+		meta = &Metadata{
+			SessionID:       s.ID,
+			StartTime:       s.StartTime,
+			Status:          s.Status,
+			SessionDir:      s.Dir,
+			ApplicationName: s.applicationName,
+			WorkDir:         s.workDir,
+			DatePartition:   s.datePartition,
+		}
+	}
+
+	// Update with current in-memory state
+	meta.CoordinatorSessionRef = s.coordinatorSessionRef
+	meta.Resumable = s.resumable
+	meta.Workers = s.workers
+	meta.TokenUsage = s.tokenUsage
+
+	return meta.Save(s.Dir)
+}
+
+// NotifySessionRef implements the SessionRefNotifier interface.
+// Called by ProcessTurnCompleteHandler after a process's first successful turn.
+func (s *Session) NotifySessionRef(processID, sessionRef, workDir string) error {
+	if processID == "coordinator" {
+		if err := s.SetCoordinatorSessionRef(sessionRef); err != nil {
+			return err
+		}
+		return s.MarkResumable()
+	}
+
+	// Worker session ref
+	return s.SetWorkerSessionRef(processID, sessionRef, workDir)
 }
