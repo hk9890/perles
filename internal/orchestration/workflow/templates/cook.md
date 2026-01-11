@@ -252,13 +252,21 @@ The reviewer will call `report_review_verdict(verdict, comments)` which:
 
 #### Step 5: Worker Cycling
 
-**Goal** Replace ONLY the workers that just finished working on the last task to avoid context pollution using your mcp tools.
+**Goal** Replace BOTH workers that worked on the task in a single step.
 
-Example: worker-1 wrote, worker-2 reviewed → replace worker-1 and worker-2 only.
+**CRITICAL CHECKLIST - Do ALL of these before proceeding to next task:**
+- [ ] `replace_worker(implementer-id, "Completed <task-id>")`
+- [ ] `replace_worker(reviewer-id, "Reviewed <task-id>")`
 
+**Both calls MUST happen together.** Do not proceed to the next task until both workers are replaced.
+
+**Self-check:** Did you call replace_worker for BOTH the implementer AND the reviewer?
+
+Example for Task 1 where worker-1 implemented and worker-2 reviewed:
 ```
-replace_worker(writer-id, "Completed <task-id>, cycling for fresh context")
-replace_worker(reviewer-id, "Reviewed <task-id>, cycling for fresh context")
+replace_worker(worker-1, "Completed perles-abc1.1, cycling for fresh context")
+replace_worker(worker-2, "Reviewed perles-abc1.1, cycling for fresh context")
+# WAIT for both new workers to report ready before starting Task 2
 ```
 
 This ensures:
@@ -637,6 +645,7 @@ Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and revi
 ❌ **Using send_to_worker for state changes** - Use structured tools (assign_task, assign_task_review, etc.) instead
 ❌ **Skipping query_worker_state** - Always check state before making assignments
 ❌ **Asking reviewer to re-review without assign_task_review** - After denial, reviewer is in Idle phase and MUST be re-assigned via `assign_task_review` before they can submit another verdict
+❌ **Replacing only one worker** - ALWAYS replace BOTH implementer AND reviewer after each task completes
 
 ## Adaptation for Different Scenarios
 
