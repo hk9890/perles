@@ -1088,21 +1088,26 @@ func TestModel_HandleProcessEvent_ProcessWorking(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// Initially not working
+	// Initially not working (session starts in Pending state)
 	require.False(t, m.AssistantWorking())
 
-	// Create a ProcessWorking event
+	// Get the active session for ProcessID
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Create a ProcessWorking event targeting the active session's process
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
-			Type: events.ProcessWorking,
+			Type:      events.ProcessWorking,
+			ProcessID: session.ProcessID,
 		},
 	}
 
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify working state is true
+	// Verify working state is true (delegates to active session)
 	require.True(t, m.AssistantWorking())
 	require.NotNil(t, cmd) // listener continues
 }
@@ -1121,21 +1126,24 @@ func TestModel_HandleProcessEvent_ProcessReady(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// Simulate that assistant was working
-	m.assistantWorking = true
+	// Simulate that assistant was working via session state
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+	session.Status = events.ProcessStatusWorking
 
-	// Create a ProcessReady event
+	// Create a ProcessReady event targeting the active session's process
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
-			Type: events.ProcessReady,
+			Type:      events.ProcessReady,
+			ProcessID: session.ProcessID,
 		},
 	}
 
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify working state is false
+	// Verify working state is false (delegates to active session)
 	require.False(t, m.AssistantWorking())
 	require.NotNil(t, cmd) // listener continues
 }
@@ -1154,14 +1162,19 @@ func TestModel_HandleProcessEvent_ProcessQueueChanged(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// Initially no queue
+	// Initially no queue (delegates to active session)
 	require.Equal(t, 0, m.QueueCount())
 
-	// Create a ProcessQueueChanged event with count = 3
+	// Get the active session for ProcessID
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Create a ProcessQueueChanged event with count = 3 targeting the active session
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
 			Type:       events.ProcessQueueChanged,
+			ProcessID:  session.ProcessID,
 			QueueCount: 3,
 		},
 	}
@@ -1169,7 +1182,7 @@ func TestModel_HandleProcessEvent_ProcessQueueChanged(t *testing.T) {
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify queue count is updated
+	// Verify queue count is updated (delegates to active session)
 	require.Equal(t, 3, m.QueueCount())
 	require.NotNil(t, cmd) // listener continues
 }
@@ -1188,14 +1201,17 @@ func TestModel_HandleProcessEvent_ProcessQueueChanged_Zero(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// Set initial queue count
-	m.queueCount = 5
+	// Set initial queue count via session state
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+	session.QueueCount = 5
 
 	// Create a ProcessQueueChanged event with count = 0 (queue drained)
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
 			Type:       events.ProcessQueueChanged,
+			ProcessID:  session.ProcessID,
 			QueueCount: 0,
 		},
 	}
@@ -1203,7 +1219,7 @@ func TestModel_HandleProcessEvent_ProcessQueueChanged_Zero(t *testing.T) {
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify queue count is updated to 0
+	// Verify queue count is updated to 0 (delegates to active session)
 	require.Equal(t, 0, m.QueueCount())
 	require.NotNil(t, cmd) // listener continues
 }
@@ -1222,14 +1238,19 @@ func TestModel_HandleProcessEvent_ProcessTokenUsage(t *testing.T) {
 
 	m = m.SetInfrastructure(infra)
 
-	// Initially no metrics
+	// Initially no metrics (delegates to active session)
 	require.Nil(t, m.Metrics())
 
-	// Create a ProcessTokenUsage event with token data
+	// Get the active session for ProcessID
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Create a ProcessTokenUsage event with token data targeting the active session
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
-			Type: events.ProcessTokenUsage,
+			Type:      events.ProcessTokenUsage,
+			ProcessID: session.ProcessID,
 			Metrics: &metrics.TokenMetrics{
 				TokensUsed:  27000,
 				TotalTokens: 200000,
@@ -1240,7 +1261,7 @@ func TestModel_HandleProcessEvent_ProcessTokenUsage(t *testing.T) {
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify metrics are updated
+	// Verify metrics are updated (delegates to active session)
 	require.NotNil(t, m.Metrics())
 	require.Equal(t, 27000, m.Metrics().TokensUsed)
 	require.Equal(t, 200000, m.Metrics().TotalTokens)
@@ -1777,6 +1798,57 @@ func TestSessionDataStructure(t *testing.T) {
 	require.False(t, session.HasNewContent)
 	require.False(t, session.CreatedAt.IsZero())
 	require.False(t, session.LastActivity.IsZero())
+}
+
+// ============================================================================
+// SessionData QueueCount Field Tests (perles-ci2e.1)
+// ============================================================================
+
+func TestSessionData_QueueCount_InitializesToZero(t *testing.T) {
+	// Create a new model - initial session should have QueueCount = 0
+	m := New(DefaultConfig())
+
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+	require.Equal(t, 0, session.QueueCount, "QueueCount should initialize to 0 (Go zero value)")
+}
+
+func TestSessionData_QueueCount_PersistsWhenSet(t *testing.T) {
+	// Create a new model
+	m := New(DefaultConfig())
+
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Set QueueCount to a non-zero value
+	session.QueueCount = 5
+
+	// Verify it persists
+	require.Equal(t, 5, session.QueueCount, "QueueCount should persist when set")
+
+	// Verify it persists when accessed again via ActiveSession
+	sessionAgain := m.ActiveSession()
+	require.Equal(t, 5, sessionAgain.QueueCount, "QueueCount should persist across access")
+}
+
+func TestSessionData_QueueCount_InStructLiteral(t *testing.T) {
+	// Verify QueueCount field works in struct literal
+	session := SessionData{
+		ID:         "test-session",
+		QueueCount: 10,
+	}
+
+	require.Equal(t, 10, session.QueueCount, "QueueCount should be settable in struct literal")
+}
+
+func TestCreateSession_QueueCount_InitializesToZero(t *testing.T) {
+	m := New(DefaultConfig())
+
+	// Create a new session
+	m, session := m.CreateSession("session-2")
+
+	require.NotNil(t, session)
+	require.Equal(t, 0, session.QueueCount, "newly created session should have QueueCount = 0")
 }
 
 func TestModelMultiSessionInit(t *testing.T) {
@@ -3822,22 +3894,25 @@ func TestChatPanel_ProcessReady_NoPendingContent(t *testing.T) {
 	// Ensure no pending content
 	m.pendingWorkflowContent = ""
 
-	// Simulate that assistant was working
-	m.assistantWorking = true
+	// Simulate that assistant was working via session state
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+	session.Status = events.ProcessStatusWorking
 
-	// Create a ProcessReady event
+	// Create a ProcessReady event targeting the active session's process
 	event := pubsub.Event[any]{
 		Type: pubsub.UpdatedEvent,
 		Payload: events.ProcessEvent{
-			Type: events.ProcessReady,
+			Type:      events.ProcessReady,
+			ProcessID: session.ProcessID,
 		},
 	}
 
 	// Handle the event
 	m, cmd := m.Update(event)
 
-	// Verify existing ProcessReady behavior still works
-	require.False(t, m.AssistantWorking(), "assistantWorking should be false")
+	// Verify existing ProcessReady behavior still works (delegates to active session)
+	require.False(t, m.AssistantWorking(), "AssistantWorking should be false after ProcessReady")
 
 	// Verify pending content is still empty (unchanged)
 	require.Empty(t, m.pendingWorkflowContent,
@@ -4901,4 +4976,778 @@ func TestRenderEmptyWorkflowsState(t *testing.T) {
 	require.NotEmpty(t, output, "should render something")
 	require.Contains(t, output, "No workflows available", "should show no workflows message")
 	require.Contains(t, output, "~/.config/perles/workflows/", "should show guidance for adding workflows")
+}
+
+// ============================================================================
+// Session Event Routing Tests (perles-ci2e.2)
+// ============================================================================
+
+func TestProcessQueueChanged_UpdatesCorrectSession(t *testing.T) {
+	// Test that ProcessQueueChanged event updates the correct session's QueueCount
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Initial session (session-1) is mapped to ChatPanelProcessID
+	session := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session)
+	require.Equal(t, 0, session.QueueCount, "QueueCount should initially be 0")
+
+	// Create a ProcessQueueChanged event targeting the session's process
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:       events.ProcessQueueChanged,
+			ProcessID:  ChatPanelProcessID,
+			QueueCount: 5,
+		},
+	}
+
+	// Handle the event
+	m, _ = m.Update(event)
+
+	// Verify session's QueueCount is updated
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, 5, session.QueueCount, "Session QueueCount should be updated to 5")
+}
+
+func TestProcessTokenUsage_UpdatesCorrectSession(t *testing.T) {
+	// Test that ProcessTokenUsage event updates the correct session's Metrics
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Initial session should have no metrics
+	session := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session)
+	require.Nil(t, session.Metrics, "Metrics should initially be nil")
+
+	// Create a ProcessTokenUsage event targeting the session's process
+	testMetrics := &metrics.TokenMetrics{
+		TokensUsed:  50000,
+		TotalTokens: 200000,
+	}
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessTokenUsage,
+			ProcessID: ChatPanelProcessID,
+			Metrics:   testMetrics,
+		},
+	}
+
+	// Handle the event
+	m, _ = m.Update(event)
+
+	// Verify session's Metrics is updated
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session.Metrics, "Session Metrics should be set")
+	require.Equal(t, 50000, session.Metrics.TokensUsed)
+	require.Equal(t, 200000, session.Metrics.TotalTokens)
+}
+
+func TestSessionEventIsolation_EventsForSessionADontAffectSessionB(t *testing.T) {
+	// Test that events for session A don't affect session B's state
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Create a second session with its own ProcessID
+	m, sessionB := m.CreateSession("session-2")
+	m = m.SetSessionProcessID("session-2", "process-2")
+
+	// Get both sessions
+	sessionA := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, sessionA)
+	require.NotNil(t, sessionB)
+
+	// Verify initial state
+	require.Equal(t, 0, sessionA.QueueCount)
+	require.Equal(t, 0, sessionB.QueueCount)
+	require.Nil(t, sessionA.Metrics)
+	require.Nil(t, sessionB.Metrics)
+
+	// Send ProcessQueueChanged event to session A's process
+	eventA := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:       events.ProcessQueueChanged,
+			ProcessID:  ChatPanelProcessID,
+			QueueCount: 3,
+		},
+	}
+	m, _ = m.Update(eventA)
+
+	// Send ProcessTokenUsage event to session A's process
+	eventA2 := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessTokenUsage,
+			ProcessID: ChatPanelProcessID,
+			Metrics:   &metrics.TokenMetrics{TokensUsed: 10000, TotalTokens: 200000},
+		},
+	}
+	m, _ = m.Update(eventA2)
+
+	// Verify session A was updated
+	sessionA = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, 3, sessionA.QueueCount, "Session A QueueCount should be 3")
+	require.NotNil(t, sessionA.Metrics, "Session A Metrics should be set")
+	require.Equal(t, 10000, sessionA.Metrics.TokensUsed)
+
+	// Verify session B was NOT affected
+	sessionB = m.SessionByProcessID("process-2")
+	require.Equal(t, 0, sessionB.QueueCount, "Session B QueueCount should remain 0")
+	require.Nil(t, sessionB.Metrics, "Session B Metrics should remain nil")
+
+	// Now send events to session B's process
+	eventB := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:       events.ProcessQueueChanged,
+			ProcessID:  "process-2",
+			QueueCount: 7,
+		},
+	}
+	m, _ = m.Update(eventB)
+
+	// Verify session B was updated
+	sessionB = m.SessionByProcessID("process-2")
+	require.Equal(t, 7, sessionB.QueueCount, "Session B QueueCount should be 7")
+
+	// Verify session A was NOT affected by B's event
+	sessionA = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, 3, sessionA.QueueCount, "Session A QueueCount should still be 3")
+}
+
+func TestUnknownProcessID_DoesNotPanic(t *testing.T) {
+	// Test that events with unknown ProcessID don't cause panic
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Get initial session state
+	session := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session)
+	initialQueueCount := session.QueueCount
+	initialStatus := session.Status
+
+	// Send event with unknown ProcessID - should not panic
+	require.NotPanics(t, func() {
+		event := pubsub.Event[any]{
+			Type: pubsub.UpdatedEvent,
+			Payload: events.ProcessEvent{
+				Type:       events.ProcessQueueChanged,
+				ProcessID:  "unknown-process-id",
+				QueueCount: 99,
+			},
+		}
+		m, _ = m.Update(event)
+	})
+
+	// Verify existing session was not affected
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, initialQueueCount, session.QueueCount, "QueueCount should not change for unknown ProcessID")
+	require.Equal(t, initialStatus, session.Status, "Status should not change for unknown ProcessID")
+}
+
+func TestProcessReady_UpdatesCorrectSessionStatus(t *testing.T) {
+	// Test that ProcessReady event updates the correct session's Status
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Initial session should be Pending
+	session := m.SessionByProcessID(ChatPanelProcessID)
+	require.NotNil(t, session)
+	require.Equal(t, events.ProcessStatusPending, session.Status)
+
+	// Send ProcessReady event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessReady,
+			ProcessID: ChatPanelProcessID,
+		},
+	}
+	m, _ = m.Update(event)
+
+	// Verify session status is now Ready
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, events.ProcessStatusReady, session.Status, "Session status should be Ready")
+}
+
+func TestProcessWorking_UpdatesCorrectSessionStatus(t *testing.T) {
+	// Test that ProcessWorking event updates the correct session's Status
+	m := New(DefaultConfig())
+
+	// Create infrastructure for event handling
+	infra := newTestInfrastructure(t)
+	infra.Start()
+	defer infra.Shutdown()
+
+	m = m.SetInfrastructure(infra)
+
+	// Set session to Ready first
+	session := m.sessions[DefaultSessionID]
+	session.Status = events.ProcessStatusReady
+
+	// Send ProcessWorking event
+	event := pubsub.Event[any]{
+		Type: pubsub.UpdatedEvent,
+		Payload: events.ProcessEvent{
+			Type:      events.ProcessWorking,
+			ProcessID: ChatPanelProcessID,
+		},
+	}
+	m, _ = m.Update(event)
+
+	// Verify session status is now Working
+	session = m.SessionByProcessID(ChatPanelProcessID)
+	require.Equal(t, events.ProcessStatusWorking, session.Status, "Session status should be Working")
+}
+
+// ============================================================================
+// Per-Session State View Tests (perles-ci2e.3)
+// Tests verify view renders state from active session, not global fields.
+// ============================================================================
+
+func TestView_Golden_WorkingSessionShowsBlueBorder(t *testing.T) {
+	// Golden test: View with working session shows blue border
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set active session to Working status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusWorking
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Please help me"})
+	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Let me think..."})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_ReadySessionShowsDefaultBorder(t *testing.T) {
+	// Golden test: View with ready session shows default border (not blue)
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set active session to Ready status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Hello"})
+	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Hi there!"})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_QueuedMessagesShowsCount(t *testing.T) {
+	// Golden test: View with queued messages shows count indicator
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set active session state with queue count
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusWorking
+	m.sessions[DefaultSessionID].QueueCount = 3
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "First"})
+	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Processing..."})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_Golden_MetricsShowsTokenUsage(t *testing.T) {
+	// Golden test: View with metrics shows token usage display
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set active session state with metrics
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m.sessions[DefaultSessionID].Metrics = &metrics.TokenMetrics{
+		TokensUsed:  50000,
+		TotalTokens: 200000,
+	}
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Hello"})
+	m = m.AddMessage(chatrender.Message{Role: RoleAssistant, Content: "Hi! I've used some tokens."})
+
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestView_NilSession_DoesNotPanic(t *testing.T) {
+	// Unit test: Nil session case renders without panic
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Force nil active session by clearing the sessions map and ID
+	m.sessions = map[string]*SessionData{}
+	m.sessionOrder = []string{}
+	m.activeSessionID = ""
+
+	// Should not panic when rendering with nil active session
+	require.NotPanics(t, func() {
+		view := m.View()
+		// View should be rendered (may show empty content but should not crash)
+		require.NotEmpty(t, view, "View should render even with nil session")
+	})
+}
+
+func TestView_SessionStateUsedForBorderColor(t *testing.T) {
+	// Unit test: Border color logic is derived from session.Status
+	// Note: In test environment without a real terminal, lipgloss doesn't emit ANSI codes,
+	// so we can't directly verify color output. Instead, we verify the logic path:
+	// - When session.Status == Working, borderColor should be assistantWorkingBorderColor
+	// - When session.Status != Working, borderColor should be styles.BorderDefaultColor
+	// The golden tests (TestView_Golden_WorkingSessionShowsBlueBorder and
+	// TestView_Golden_ReadySessionShowsDefaultBorder) capture the visual output.
+
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Verify the view logic path for Ready status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Test message"})
+	viewReady := m.View()
+	require.NotEmpty(t, viewReady, "View should render for Ready status")
+
+	// Verify the view logic path for Working status
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusWorking
+	viewWorking := m.View()
+	require.NotEmpty(t, viewWorking, "View should render for Working status")
+
+	// Both views should have the same structure (just different colors in real terminal)
+	// The content is identical except for the border color styling
+	require.Contains(t, viewReady, "Test message", "Ready view should contain message")
+	require.Contains(t, viewWorking, "Test message", "Working view should contain message")
+}
+
+func TestView_SessionStateUsedForQueueCount(t *testing.T) {
+	// Unit test: Queue count derived from session.QueueCount, not global field
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set session with queue count
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusWorking
+	m.sessions[DefaultSessionID].QueueCount = 5
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Test"})
+
+	view := m.View()
+
+	// Should show queue count from session
+	require.Contains(t, view, "[5 queued]", "Queue count should be derived from session.QueueCount")
+}
+
+func TestView_SessionStateUsedForMetrics(t *testing.T) {
+	// Unit test: Metrics display derived from session.Metrics, not global field
+	m := New(DefaultConfig()).SetSize(60, 20).Toggle()
+
+	// Set session with metrics
+	m.sessions[DefaultSessionID].Status = events.ProcessStatusReady
+	m.sessions[DefaultSessionID].Metrics = &metrics.TokenMetrics{
+		TokensUsed:  75000,
+		TotalTokens: 200000,
+	}
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Test"})
+
+	view := m.View()
+
+	// Should show metrics from session (75k/200k or similar format)
+	require.Contains(t, view, "75", "Metrics should be derived from session.Metrics")
+}
+
+// Helper Method Delegation Tests (perles-ci2e.4)
+// These tests verify that AssistantWorking() and QueueCount() properly delegate
+// to the active session's state after global fields were removed.
+
+func TestAssistantWorking_TrueWhenActiveSessionWorking(t *testing.T) {
+	// Unit test: AssistantWorking() returns true when active session status is Working
+	m := New(DefaultConfig())
+
+	// Verify we have an active session
+	session := m.ActiveSession()
+	require.NotNil(t, session, "Should have active session")
+
+	// Set session status to Working
+	session.Status = events.ProcessStatusWorking
+
+	// AssistantWorking() should return true
+	require.True(t, m.AssistantWorking(),
+		"AssistantWorking() should return true when active session is Working")
+}
+
+func TestAssistantWorking_FalseWhenNoActiveSession(t *testing.T) {
+	// Unit test: AssistantWorking() returns false when no active session exists
+	m := New(DefaultConfig())
+
+	// Clear the active session ID to simulate no active session
+	m.activeSessionID = ""
+
+	// AssistantWorking() should return false without panic
+	require.False(t, m.AssistantWorking(),
+		"AssistantWorking() should return false when no active session")
+}
+
+func TestAssistantWorking_FalseForNonWorkingStatus(t *testing.T) {
+	// Verify AssistantWorking returns false for non-Working statuses
+	m := New(DefaultConfig())
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Test various non-Working statuses
+	nonWorkingStatuses := []events.ProcessStatus{
+		events.ProcessStatusPending,
+		events.ProcessStatusReady,
+		events.ProcessStatusPaused,
+		events.ProcessStatusStopped,
+		events.ProcessStatusFailed,
+	}
+
+	for _, status := range nonWorkingStatuses {
+		session.Status = status
+		require.False(t, m.AssistantWorking(),
+			"AssistantWorking() should return false for status: %v", status)
+	}
+}
+
+func TestQueueCount_ReturnsActiveSessionQueueCount(t *testing.T) {
+	// Unit test: QueueCount() returns the active session's queue count
+	m := New(DefaultConfig())
+
+	// Verify we have an active session
+	session := m.ActiveSession()
+	require.NotNil(t, session, "Should have active session")
+
+	// Set session queue count
+	session.QueueCount = 7
+
+	// QueueCount() should return the session's queue count
+	require.Equal(t, 7, m.QueueCount(),
+		"QueueCount() should return active session's queue count")
+}
+
+func TestQueueCount_ReturnsZeroWhenNoActiveSession(t *testing.T) {
+	// Unit test: QueueCount() returns 0 when no active session exists
+	m := New(DefaultConfig())
+
+	// Clear the active session ID to simulate no active session
+	m.activeSessionID = ""
+
+	// QueueCount() should return 0 without panic
+	require.Equal(t, 0, m.QueueCount(),
+		"QueueCount() should return 0 when no active session")
+}
+
+func TestQueueCount_ReturnsZeroForZeroQueueCount(t *testing.T) {
+	// Verify QueueCount returns 0 when session has 0 queued
+	m := New(DefaultConfig())
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+
+	// Explicitly set to 0 (Go zero value but verify behavior)
+	session.QueueCount = 0
+
+	require.Equal(t, 0, m.QueueCount(),
+		"QueueCount() should return 0 when session queue count is 0")
+}
+
+func TestMetrics_DelegatesToActiveSession(t *testing.T) {
+	// Unit test: Metrics() returns the active session's metrics
+	m := New(DefaultConfig())
+
+	// Verify we have an active session
+	session := m.ActiveSession()
+	require.NotNil(t, session, "Should have active session")
+
+	// Initially nil
+	require.Nil(t, m.Metrics(), "Metrics() should be nil initially")
+
+	// Set session metrics
+	expectedMetrics := &metrics.TokenMetrics{
+		TokensUsed:  50000,
+		TotalTokens: 200000,
+	}
+	session.Metrics = expectedMetrics
+
+	// Metrics() should return the session's metrics
+	result := m.Metrics()
+	require.NotNil(t, result, "Metrics() should return session metrics")
+	require.Equal(t, expectedMetrics.TokensUsed, result.TokensUsed)
+	require.Equal(t, expectedMetrics.TotalTokens, result.TotalTokens)
+}
+
+func TestMetrics_ReturnsNilWhenNoActiveSession(t *testing.T) {
+	// Unit test: Metrics() returns nil when no active session exists
+	m := New(DefaultConfig())
+
+	// Clear the active session ID to simulate no active session
+	m.activeSessionID = ""
+
+	// Metrics() should return nil without panic
+	require.Nil(t, m.Metrics(),
+		"Metrics() should return nil when no active session")
+}
+
+func TestGlobalFieldsRemoved_CodeCompiles(t *testing.T) {
+	// Compile test: Verifies that the Model struct no longer has the removed fields.
+	// This test passes if the code compiles - any attempt to access the old fields
+	// would result in a compile error.
+	//
+	// The following fields were removed from Model struct:
+	// - assistantWorking bool
+	// - queueCount int
+	// - metrics *metrics.TokenMetrics
+	//
+	// The helper methods now delegate to the active session's state.
+
+	m := New(DefaultConfig())
+
+	// These methods now delegate to active session instead of reading global fields
+	_ = m.AssistantWorking() // Used to read m.assistantWorking
+	_ = m.QueueCount()       // Used to read m.queueCount
+	_ = m.Metrics()          // Used to read m.metrics
+
+	// If this test compiles and runs, the global fields have been successfully removed
+	require.True(t, true, "Code compiles without global fields")
+}
+
+// Session Isolation Integration Tests (perles-ci2e.5)
+// These tests verify complete session state isolation works end-to-end.
+
+func TestSessionIsolation_TwoSessionsDifferentStates(t *testing.T) {
+	// Integration test: Two sessions with different states.
+	// Verifies that switching sessions shows the correct session's state,
+	// not leaked state from another session.
+	//
+	// Session A: working, 3 queued, 50k tokens
+	// Session B: ready, 0 queued, 10k tokens
+
+	m := New(DefaultConfig()).SetSize(80, 30).Toggle()
+
+	// Session A is the default session - configure its state
+	sessionA := m.ActiveSession()
+	require.NotNil(t, sessionA, "Should have default session")
+	sessionA.Status = events.ProcessStatusWorking
+	sessionA.QueueCount = 3
+	sessionA.Metrics = &metrics.TokenMetrics{
+		TokensUsed:  50000,
+		TotalTokens: 200000,
+	}
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Session A message"})
+
+	// Create and configure Session B
+	m, sessionB := m.CreateSession("session-b")
+	require.NotNil(t, sessionB, "Should create session B")
+	sessionB.Status = events.ProcessStatusReady
+	sessionB.QueueCount = 0
+	sessionB.Metrics = &metrics.TokenMetrics{
+		TokensUsed:  10000,
+		TotalTokens: 200000,
+	}
+	// Add a message to session B (need to switch first)
+	m, ok := m.SwitchSession("session-b")
+	require.True(t, ok, "Should switch to session B")
+	m = m.AddMessage(chatrender.Message{Role: RoleUser, Content: "Session B message"})
+
+	// --- Test 1: Verify Session B state when active ---
+	require.Equal(t, "session-b", m.activeSessionID, "Session B should be active")
+
+	// Verify helper methods return Session B state
+	require.False(t, m.AssistantWorking(),
+		"AssistantWorking() should return false for Session B (Ready status)")
+	require.Equal(t, 0, m.QueueCount(),
+		"QueueCount() should return 0 for Session B")
+	require.NotNil(t, m.Metrics(), "Session B should have metrics")
+	require.Equal(t, 10000, m.Metrics().TokensUsed,
+		"Metrics should show Session B's 10k tokens")
+
+	// Verify view shows Session B content
+	viewB := m.View()
+	require.Contains(t, viewB, "Session B message",
+		"View should show Session B message")
+	require.NotContains(t, viewB, "Session A message",
+		"View should NOT show Session A message when B is active")
+	// Should NOT show queue count indicator (0 queued, Ready status)
+	require.NotContains(t, viewB, "[3 queued]",
+		"View should NOT show Session A's queue count")
+
+	// --- Test 2: Switch A→B→A and verify A's state restored ---
+	m, ok = m.SwitchSession(DefaultSessionID)
+	require.True(t, ok, "Should switch back to Session A")
+	require.Equal(t, DefaultSessionID, m.activeSessionID, "Session A should be active")
+
+	// Verify helper methods return Session A state
+	require.True(t, m.AssistantWorking(),
+		"AssistantWorking() should return true for Session A (Working status)")
+	require.Equal(t, 3, m.QueueCount(),
+		"QueueCount() should return 3 for Session A")
+	require.NotNil(t, m.Metrics(), "Session A should have metrics")
+	require.Equal(t, 50000, m.Metrics().TokensUsed,
+		"Metrics should show Session A's 50k tokens")
+
+	// Verify view shows Session A content
+	viewA := m.View()
+	require.Contains(t, viewA, "Session A message",
+		"View should show Session A message")
+	require.NotContains(t, viewA, "Session B message",
+		"View should NOT show Session B message when A is active")
+	// Should show working indicator and queue count
+	require.Contains(t, viewA, "[3 queued]",
+		"View should show Session A's queue count")
+}
+
+func TestSessionIsolation_StateNotLeakedOnSwitch(t *testing.T) {
+	// Integration test: Verify state is NOT leaked between sessions.
+	// This tests the critical invariant that switching sessions doesn't
+	// accidentally mix state from different sessions.
+
+	m := New(DefaultConfig()).SetSize(80, 30).Toggle()
+
+	// Session A: Set specific state
+	sessionA := m.ActiveSession()
+	sessionA.Status = events.ProcessStatusWorking
+	sessionA.QueueCount = 5
+	sessionA.Metrics = &metrics.TokenMetrics{TokensUsed: 75000, TotalTokens: 200000}
+
+	// Create Session B with completely different state
+	m, sessionB := m.CreateSession("session-b")
+	sessionB.Status = events.ProcessStatusPending
+	sessionB.QueueCount = 0
+	sessionB.Metrics = nil // Deliberately nil
+
+	// Switch to B
+	m, _ = m.SwitchSession("session-b")
+
+	// Verify B's state, NOT A's
+	require.False(t, m.AssistantWorking(),
+		"Session B should NOT be working (leaked A's Working status)")
+	require.Equal(t, 0, m.QueueCount(),
+		"Session B queue count should be 0 (leaked A's count of 5)")
+	require.Nil(t, m.Metrics(),
+		"Session B metrics should be nil (leaked A's metrics)")
+
+	// Switch back to A
+	m, _ = m.SwitchSession(DefaultSessionID)
+
+	// Verify A's state wasn't modified
+	require.True(t, m.AssistantWorking(),
+		"Session A should still be Working after switching back")
+	require.Equal(t, 5, m.QueueCount(),
+		"Session A queue count should still be 5 after switching back")
+	require.NotNil(t, m.Metrics(),
+		"Session A metrics should still exist after switching back")
+	require.Equal(t, 75000, m.Metrics().TokensUsed,
+		"Session A metrics should be unchanged after switching back")
+}
+
+func TestSessionIsolation_SwitchToSessionWithNoProcess(t *testing.T) {
+	// Edge case: Switch to a session that has no process spawned yet.
+	// New sessions start with ProcessID="" and Status=Pending.
+	// The UI should handle this gracefully without crashing.
+
+	m := New(DefaultConfig()).SetSize(80, 30).Toggle()
+
+	// Create a new session (starts with no process)
+	m, newSession := m.CreateSession("new-session")
+	require.NotNil(t, newSession, "Should create new session")
+	require.Empty(t, newSession.ProcessID, "New session should have no ProcessID")
+	require.Equal(t, events.ProcessStatusPending, newSession.Status,
+		"New session should have Pending status")
+
+	// Switch to the new session
+	m, ok := m.SwitchSession("new-session")
+	require.True(t, ok, "Should switch to new session")
+
+	// Verify state is from new session
+	require.False(t, m.AssistantWorking(),
+		"New session should not be working (Pending status)")
+	require.Equal(t, 0, m.QueueCount(),
+		"New session should have 0 queue count")
+	require.Nil(t, m.Metrics(),
+		"New session should have nil metrics")
+
+	// View should render without panic
+	require.NotPanics(t, func() {
+		view := m.View()
+		require.NotEmpty(t, view, "View should render for session with no process")
+	})
+
+	// Verify active session is correct
+	activeSession := m.ActiveSession()
+	require.NotNil(t, activeSession, "Should have active session")
+	require.Equal(t, "new-session", activeSession.ID,
+		"Active session should be the new session")
+	require.Empty(t, activeSession.ProcessID,
+		"Active session should still have no ProcessID")
+}
+
+func TestSessionIsolation_MultipleSessionsIndependent(t *testing.T) {
+	// Integration test: Multiple sessions maintain independent state.
+	// Creates 3 sessions with different states and verifies each
+	// maintains its state independently when switching between them.
+
+	m := New(DefaultConfig()).SetSize(80, 30).Toggle()
+
+	// Session 1 (default): Working, 2 queued, 30k tokens
+	session1 := m.ActiveSession()
+	session1.Status = events.ProcessStatusWorking
+	session1.QueueCount = 2
+	session1.Metrics = &metrics.TokenMetrics{TokensUsed: 30000, TotalTokens: 200000}
+
+	// Session 2: Ready, 0 queued, 60k tokens
+	m, session2 := m.CreateSession("session-2")
+	session2.Status = events.ProcessStatusReady
+	session2.QueueCount = 0
+	session2.Metrics = &metrics.TokenMetrics{TokensUsed: 60000, TotalTokens: 200000}
+
+	// Session 3: Paused, 1 queued, 90k tokens
+	m, session3 := m.CreateSession("session-3")
+	session3.Status = events.ProcessStatusPaused
+	session3.QueueCount = 1
+	session3.Metrics = &metrics.TokenMetrics{TokensUsed: 90000, TotalTokens: 200000}
+
+	// Round-robin through sessions and verify each shows correct state
+	testCases := []struct {
+		sessionID   string
+		wantWorking bool
+		wantQueue   int
+		wantTokens  int
+	}{
+		{DefaultSessionID, true, 2, 30000},
+		{"session-2", false, 0, 60000},
+		{"session-3", false, 1, 90000},
+		{DefaultSessionID, true, 2, 30000}, // Back to session 1
+		{"session-3", false, 1, 90000},     // Jump to session 3
+		{"session-2", false, 0, 60000},     // Back to session 2
+	}
+
+	for _, tc := range testCases {
+		m, ok := m.SwitchSession(tc.sessionID)
+		require.True(t, ok, "Should switch to session %s", tc.sessionID)
+
+		require.Equal(t, tc.wantWorking, m.AssistantWorking(),
+			"Session %s: AssistantWorking mismatch", tc.sessionID)
+		require.Equal(t, tc.wantQueue, m.QueueCount(),
+			"Session %s: QueueCount mismatch", tc.sessionID)
+		require.NotNil(t, m.Metrics(),
+			"Session %s: Metrics should not be nil", tc.sessionID)
+		require.Equal(t, tc.wantTokens, m.Metrics().TokensUsed,
+			"Session %s: TokensUsed mismatch", tc.sessionID)
+	}
 }

@@ -57,6 +57,8 @@ type SessionData struct {
 	Status events.ProcessStatus
 	// Metrics tracks token usage for this session.
 	Metrics *metrics.TokenMetrics
+	// QueueCount is the number of messages queued for the assistant.
+	QueueCount int
 	// ContentDirty indicates the viewport needs re-rendering.
 	ContentDirty bool
 	// HasNewContent indicates new content arrived while scrolled up.
@@ -80,11 +82,6 @@ type Model struct {
 	// UI components
 	input     vimtextarea.Model
 	viewports map[string]viewport.Model // Use map so changes persist in View (maps are reference types)
-
-	// Assistant state (for UI feedback like border color)
-	assistantWorking bool                  // True when AI is processing, false when ready
-	queueCount       int                   // Number of messages queued for assistant (for UI display)
-	metrics          *metrics.TokenMetrics // Token usage metrics for UI display
 
 	// Infrastructure for AI communication (uses v2.SimpleInfrastructure)
 	infra      *v2.SimpleInfrastructure
@@ -530,8 +527,7 @@ func (m Model) handlePubSubEvent(event pubsub.Event[any]) (Model, tea.Cmd) {
 	// Route event to correct session by ProcessID using O(1) lookup
 	m = m.handleProcessEvent(processEvent)
 
-	// Update legacy top-level state for backwards compatibility and UI indicators
-	// These fields are used for border color, queue count display, etc.
+	// Handle cross-session concerns (session ref tracking, pending workflows, errors)
 	switch processEvent.Type {
 	case events.ProcessSpawned:
 		// Process spawned - try to capture session ID from the process
@@ -553,8 +549,7 @@ func (m Model) handlePubSubEvent(event pubsub.Event[any]) (Model, tea.Cmd) {
 		m = m.updateInteractionTime()
 
 	case events.ProcessReady:
-		// Assistant finished its turn
-		m.assistantWorking = false
+		// Try to capture session ID if we haven't yet
 		if m.sessionRef == "" {
 			m = m.captureSessionRef()
 		}
@@ -568,20 +563,6 @@ func (m Model) handlePubSubEvent(event pubsub.Event[any]) (Model, tea.Cmd) {
 			m.pendingWorkflowContent = ""
 			// Return with both listener continuation and send command
 			return m, tea.Batch(m.v2Listener.Listen(), sendCmd)
-		}
-
-	case events.ProcessWorking:
-		// Assistant is actively processing
-		m.assistantWorking = true
-
-	case events.ProcessQueueChanged:
-		// Update queue count for UI display
-		m.queueCount = processEvent.QueueCount
-
-	case events.ProcessTokenUsage:
-		// Update token metrics for UI display (legacy top-level field)
-		if processEvent.Metrics != nil {
-			m.metrics = processEvent.Metrics
 		}
 
 	case events.ProcessError:
@@ -768,21 +749,36 @@ func (m Model) HasInfrastructure() bool {
 }
 
 // AssistantWorking returns whether the assistant is currently processing.
+// Delegates to the active session's status.
 // Used for UI feedback like border color changes.
 func (m Model) AssistantWorking() bool {
-	return m.assistantWorking
+	session := m.ActiveSession()
+	if session == nil {
+		return false
+	}
+	return session.Status == events.ProcessStatusWorking
 }
 
 // QueueCount returns the number of messages queued for the assistant.
+// Delegates to the active session's queue count.
 // Used for UI feedback like the "[N queued]" indicator.
 func (m Model) QueueCount() int {
-	return m.queueCount
+	session := m.ActiveSession()
+	if session == nil {
+		return 0
+	}
+	return session.QueueCount
 }
 
 // Metrics returns the token usage metrics for UI display.
+// Delegates to the active session's metrics.
 // Returns nil if no metrics have been received yet.
 func (m Model) Metrics() *metrics.TokenMetrics {
-	return m.metrics
+	session := m.ActiveSession()
+	if session == nil {
+		return nil
+	}
+	return session.Metrics
 }
 
 // Config returns the chat panel configuration.
@@ -1106,7 +1102,7 @@ func (m Model) handleProcessEvent(event events.ProcessEvent) Model {
 }
 
 // appendToSession applies an event to the specified session.
-// Handles ProcessOutput, ProcessStatusChange, ProcessTokenUsage, and ProcessStatusFailed events.
+// Handles ProcessOutput, ProcessStatusChange, ProcessTokenUsage, ProcessQueueChanged, and ProcessStatusFailed events.
 func (m Model) appendToSession(session *SessionData, event events.ProcessEvent) Model {
 	isActiveSession := session.ID == m.activeSessionID
 
@@ -1162,6 +1158,9 @@ func (m Model) appendToSession(session *SessionData, event events.ProcessEvent) 
 
 	case events.ProcessWorking:
 		session.Status = events.ProcessStatusWorking
+
+	case events.ProcessQueueChanged:
+		session.QueueCount = event.QueueCount
 
 	case events.ProcessError:
 		// Mark session as failed on error

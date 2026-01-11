@@ -104,22 +104,25 @@ func (m Model) View() string {
 		{Label: "Workflows", Content: tabContent},
 	}
 
-	// Determine border color based on assistant status
+	// Get active session for state-driven UI rendering
+	session := m.ActiveSession()
+
+	// Determine border color based on active session's status
 	borderColor := styles.BorderDefaultColor
-	if m.assistantWorking {
+	if session != nil && session.Status == events.ProcessStatusWorking {
 		borderColor = assistantWorkingBorderColor
 	}
 
-	// Build bottom-left queue indicator for message pane
+	// Build bottom-left queue indicator from active session's queue count
 	var bottomLeft string
-	if m.queueCount > 0 {
-		bottomLeft = QueuedCountStyle.Render(fmt.Sprintf("[%d queued]", m.queueCount))
+	if session != nil && session.QueueCount > 0 {
+		bottomLeft = QueuedCountStyle.Render(fmt.Sprintf("[%d queued]", session.QueueCount))
 	}
 
-	// Build bottom-right metrics display
+	// Build bottom-right metrics display from active session's metrics
 	var bottomRight string
-	if m.metrics != nil && m.metrics.TokensUsed > 0 {
-		bottomRight = m.metrics.FormatContextDisplay()
+	if session != nil && session.Metrics != nil && session.Metrics.TokensUsed > 0 {
+		bottomRight = session.Metrics.FormatContextDisplay()
 	}
 
 	// Render the tabbed pane
