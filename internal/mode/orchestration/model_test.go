@@ -1621,6 +1621,7 @@ func TestView_Golden_WithBranchSelectModal(t *testing.T) {
 				Key:   "branch",
 				Type:  formmodal.FieldTypeSearchSelect,
 				Label: "Base Branch",
+				Hint:  "enter to change",
 				Options: []formmodal.ListOption{
 					{Label: "main", Value: "main", Selected: false},
 					{Label: "develop", Value: "develop", Selected: true},
@@ -1639,7 +1640,7 @@ func TestView_Golden_WithBranchSelectModal(t *testing.T) {
 			},
 		},
 		HeaderContent: func(width int) string {
-			return "You're on 'develop'. The worktree creates an\nisolated copy from your chosen base branch.\nYour current work remains untouched."
+			return "You're on 'develop'. The worktree creates an isolated copy from your chosen base branch. Your current work remains untouched."
 		},
 	})
 	mdl = mdl.SetSize(m.width, m.height)

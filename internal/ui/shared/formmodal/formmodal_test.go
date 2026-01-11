@@ -2464,6 +2464,28 @@ func TestGolden_SearchSelectExpandedWithFilter(t *testing.T) {
 	compareGolden(t, "search_select_expanded_filtered", m.View())
 }
 
+func TestGolden_SearchSelectCollapsedLongLabel(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Branch",
+		Fields: []FieldConfig{
+			{
+				Key:   "branch",
+				Type:  FieldTypeSearchSelect,
+				Label: "Base Branch",
+				Options: []ListOption{
+					{Label: "a-really-long-branch-name-that-surely-will-wrap-because-its-long", Value: "long", Selected: true},
+					{Label: "main", Value: "main"},
+				},
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    47, // Match actual orchestration modal width
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	compareGolden(t, "search_select_collapsed_long_label", m.View())
+}
+
 // --- Editable List Golden Tests ---
 
 func TestGolden_EditableListFocusedOnList(t *testing.T) {

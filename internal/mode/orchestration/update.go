@@ -1553,6 +1553,7 @@ func (m Model) showBranchSelectionModal() (Model, tea.Cmd) {
 				Key:               "branch",
 				Type:              formmodal.FieldTypeSearchSelect,
 				Label:             "Base Branch",
+				Hint:              "enter to change",
 				Options:           options,
 				SearchPlaceholder: "Search branches...",
 				MaxVisibleItems:   7,
@@ -1592,7 +1593,7 @@ func (m Model) showBranchSelectionModal() (Model, tea.Cmd) {
 			return nil
 		},
 		HeaderContent: func(width int) string {
-			return fmt.Sprintf("You're on '%s'. The worktree creates an\nisolated copy from your chosen base branch.\nYour current work remains untouched.", currentBranch)
+			return fmt.Sprintf("You're on '%s'. The worktree creates an isolated copy from your chosen base branch. Your current work remains untouched.", currentBranch)
 		},
 	})
 	mdl = mdl.SetSize(m.width, m.height)

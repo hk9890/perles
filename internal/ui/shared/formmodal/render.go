@@ -107,6 +107,9 @@ func (m Model) renderField(index int, width int) string {
 
 	switch cfg.Type {
 	case FieldTypeText:
+		// Set input width to fill available space
+		// width - 2 for FormSection borders, - 1 for cursor padding
+		fs.textInput.Width = width - 3
 		return styles.FormSection(styles.FormSectionConfig{
 			Content:            []string{fs.textInput.View()},
 			Width:              width,
@@ -237,6 +240,8 @@ func (m Model) renderEditableListField(fs *fieldState, width int, focused bool) 
 	})
 
 	// Render input section
+	// Set input width: width - 2 (FormSection borders) - 1 (prefix) - 1 (cursor padding)
+	fs.addInput.Width = width - 4
 	inputPrefix := " "
 	if inputFocused {
 		inputPrefix = styles.SelectionIndicatorStyle.Render(">")
@@ -394,13 +399,18 @@ func (m Model) renderSearchSelectCollapsed(fs *fieldState, width int, focused bo
 		}
 	}
 
-	// Build content row (no indicator when collapsed, just indent)
-	row := " " + selectedLabel
+	// Calculate available width for label
+	// width = contentWidth (modal width - 2 for modal border)
+	// innerWidth = width - 2 for FormSection borders
+	innerWidth := width - 2
+	// Available for label: innerWidth - 1 (prefix space)
+	availableWidth := innerWidth - 1
 
-	// Add hint on the right
-	hintStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
-	hint := hintStyle.Render(" [enter to change]")
-	row += hint
+	// Truncate label if needed
+	displayLabel := styles.TruncateString(selectedLabel, availableWidth)
+
+	// Build content row (no indicator when collapsed, just indent)
+	row := " " + displayLabel
 
 	return styles.FormSection(styles.FormSectionConfig{
 		Content:            []string{row},
@@ -420,11 +430,13 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, width int, focused boo
 		maxVisible = 5
 	}
 
-	// Search input row
-	searchRow := " " + fs.searchInput.View()
-
 	// Divider spans full inner width (width - 2 for FormSection borders)
 	innerWidth := width - 2
+
+	// Search input row - set width to fill available space
+	// innerWidth - 1 (prefix space) - 1 (cursor padding)
+	fs.searchInput.Width = innerWidth - 2
+	searchRow := " " + fs.searchInput.View()
 	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
 	divider := dividerStyle.Render(strings.Repeat("─", innerWidth))
 
@@ -444,8 +456,11 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, width int, focused boo
 			actualIdx := fs.searchFiltered[i]
 			item := fs.listItems[actualIdx]
 
+			// Truncate label to fit within inner width (minus prefix space)
+			displayLabel := styles.TruncateString(item.label, innerWidth-1)
+
 			// Build row content with padding
-			rowContent := " " + item.label
+			rowContent := " " + displayLabel
 
 			// Highlight the cursor row (what user is about to select)
 			isCursorRow := focused && i == fs.listCursor

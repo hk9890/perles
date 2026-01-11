@@ -143,7 +143,7 @@ func newFieldState(cfg FieldConfig) fieldState {
 		ti := textinput.New()
 		ti.Placeholder = cfg.SearchPlaceholder
 		if ti.Placeholder == "" {
-			ti.Placeholder = "Search..."
+			ti.Placeholder = "Search... (enter to select)"
 		}
 		ti.Prompt = ""
 		ti.Width = 36
