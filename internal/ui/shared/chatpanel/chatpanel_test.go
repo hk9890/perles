@@ -3838,148 +3838,6 @@ func TestView_RoutesToMessagesForWorkingStatus(t *testing.T) {
 }
 
 // ============================================================================
-// ProcessReady Pending Workflow Content Flush Tests (perles-yt25.9)
-// ============================================================================
-
-func TestChatPanel_ProcessReady_FlushesPendingContent(t *testing.T) {
-	// Create infrastructure with spawn expectation (needed for SendMessage)
-	infra := newTestInfrastructureWithSpawnExpectation(t)
-	infra.Start()
-	defer infra.Shutdown()
-
-	cfg := Config{
-		ClientType: "claude",
-		WorkDir:    "/tmp/test",
-	}
-	m := New(cfg)
-	m = m.SetInfrastructure(infra)
-
-	// Set up pending workflow content (simulating workflow selected before ready)
-	m.pendingWorkflowContent = "[WORKFLOW: Test Workflow]\n\nWorkflow content here."
-
-	// Create a ProcessReady event
-	event := pubsub.Event[any]{
-		Type: pubsub.UpdatedEvent,
-		Payload: events.ProcessEvent{
-			Type:      events.ProcessReady,
-			ProcessID: ChatPanelProcessID,
-		},
-	}
-
-	// Handle the event
-	m, cmd := m.Update(event)
-
-	// Verify pending content was cleared (sent)
-	require.Empty(t, m.pendingWorkflowContent,
-		"pendingWorkflowContent should be cleared after ProcessReady flushes it")
-
-	// Verify a command was returned (tea.Batch with listener + send)
-	require.NotNil(t, cmd, "cmd should not be nil - should return batched commands")
-}
-
-func TestChatPanel_ProcessReady_NoPendingContent(t *testing.T) {
-	cfg := Config{
-		ClientType: "claude",
-		WorkDir:    "/tmp/test",
-	}
-	m := New(cfg)
-
-	// Create infrastructure
-	infra := newTestInfrastructure(t)
-	infra.Start()
-	defer infra.Shutdown()
-
-	m = m.SetInfrastructure(infra)
-
-	// Ensure no pending content
-	m.pendingWorkflowContent = ""
-
-	// Simulate that assistant was working via session state
-	session := m.ActiveSession()
-	require.NotNil(t, session)
-	session.Status = events.ProcessStatusWorking
-
-	// Create a ProcessReady event targeting the active session's process
-	event := pubsub.Event[any]{
-		Type: pubsub.UpdatedEvent,
-		Payload: events.ProcessEvent{
-			Type:      events.ProcessReady,
-			ProcessID: session.ProcessID,
-		},
-	}
-
-	// Handle the event
-	m, cmd := m.Update(event)
-
-	// Verify existing ProcessReady behavior still works (delegates to active session)
-	require.False(t, m.AssistantWorking(), "AssistantWorking should be false after ProcessReady")
-
-	// Verify pending content is still empty (unchanged)
-	require.Empty(t, m.pendingWorkflowContent,
-		"pendingWorkflowContent should remain empty when nothing was pending")
-
-	// Verify listener continues
-	require.NotNil(t, cmd, "cmd should not be nil - listener should continue")
-}
-
-func TestChatPanel_ProcessReady_ClearsPending(t *testing.T) {
-	// Create infrastructure with spawn expectation (needed for SendMessage)
-	infra := newTestInfrastructureWithSpawnExpectation(t)
-	infra.Start()
-	defer infra.Shutdown()
-
-	cfg := Config{
-		ClientType: "claude",
-		WorkDir:    "/tmp/test",
-	}
-	m := New(cfg)
-	m = m.SetInfrastructure(infra)
-
-	// Set up pending workflow content
-	originalContent := "[WORKFLOW: Clear Test]\n\nContent to be cleared."
-	m.pendingWorkflowContent = originalContent
-
-	// Verify content is set
-	require.Equal(t, originalContent, m.pendingWorkflowContent,
-		"pendingWorkflowContent should be set before ProcessReady")
-
-	// Create a ProcessReady event
-	event := pubsub.Event[any]{
-		Type: pubsub.UpdatedEvent,
-		Payload: events.ProcessEvent{
-			Type:      events.ProcessReady,
-			ProcessID: ChatPanelProcessID,
-		},
-	}
-
-	// Handle the event
-	m, _ = m.Update(event)
-
-	// Verify pending content was cleared immediately to prevent duplicate sends
-	require.Empty(t, m.pendingWorkflowContent,
-		"pendingWorkflowContent should be cleared after send to prevent duplicates")
-
-	// Handle another ProcessReady event (shouldn't try to send again)
-	event2 := pubsub.Event[any]{
-		Type: pubsub.UpdatedEvent,
-		Payload: events.ProcessEvent{
-			Type:      events.ProcessReady,
-			ProcessID: ChatPanelProcessID,
-		},
-	}
-
-	// Handle the second event - should not fail or try to resend
-	m, cmd2 := m.Update(event2)
-
-	// Verify still empty
-	require.Empty(t, m.pendingWorkflowContent,
-		"pendingWorkflowContent should remain empty after second ProcessReady")
-
-	// cmd2 should just be listener continuation (not batched with send)
-	require.NotNil(t, cmd2, "listener should continue")
-}
-
-// ============================================================================
 // Workflows Tab Helper Method Tests (perles-f3tm.1)
 // ============================================================================
 
@@ -4437,7 +4295,7 @@ func TestWorkflowsTab_BlocksInputForwarding(t *testing.T) {
 // selectWorkflowFromTab Tests (Task 2)
 // =============================================================================
 
-func TestSelectWorkflowFromTab_FormatsContentCorrectly(t *testing.T) {
+func TestSelectWorkflowFromTab_AlwaysSendsMessage(t *testing.T) {
 	registry := workflow.NewRegistry()
 	registry.Add(workflow.Workflow{
 		ID:         "test-wf",
@@ -4459,12 +4317,20 @@ func TestSelectWorkflowFromTab_FormatsContentCorrectly(t *testing.T) {
 	workflows := m.getWorkflowsForTab()
 	require.Len(t, workflows, 1)
 
-	// Call selectWorkflowFromTab
-	m, _ = m.selectWorkflowFromTab(workflows[0])
+	// Session status doesn't matter - SendMessage handles queuing internally
+	session := m.ActiveSession()
+	require.NotNil(t, session)
+	require.Equal(t, events.ProcessStatusPending, session.Status, "session starts as Pending")
 
-	// Verify content is formatted correctly
-	expectedContent := "[WORKFLOW: Test Workflow]\n\nThis is the workflow content."
-	require.Equal(t, expectedContent, m.pendingWorkflowContent, "content should be formatted as [WORKFLOW: name]\\n\\ncontent")
+	// Call selectWorkflowFromTab - should always return a command
+	m, cmd := m.selectWorkflowFromTab(workflows[0])
+
+	// Should return a command unconditionally (SendMessage queues if not ready)
+	require.NotNil(t, cmd, "should return send command regardless of session status")
+
+	// Verify activeWorkflow is set
+	require.NotNil(t, m.activeWorkflow)
+	require.Equal(t, "Test Workflow", m.activeWorkflow.Name)
 }
 
 func TestSelectWorkflowFromTab_SwitchesToChatTab(t *testing.T) {
@@ -4513,69 +4379,6 @@ func TestSelectWorkflowFromTab_SetsActiveWorkflow(t *testing.T) {
 
 	require.NotNil(t, m.activeWorkflow)
 	require.Equal(t, "test-wf", m.activeWorkflow.ID)
-}
-
-func TestSelectWorkflowFromTab_QueuesContentWhenSessionNotReady(t *testing.T) {
-	registry := workflow.NewRegistry()
-	registry.Add(workflow.Workflow{
-		ID:         "test-wf",
-		Name:       "Test Workflow",
-		Content:    "Content",
-		TargetMode: workflow.TargetChat,
-	})
-
-	cfg := Config{
-		ClientType:       "claude",
-		WorkDir:          "/test/dir",
-		SessionTimeout:   30 * time.Minute,
-		WorkflowRegistry: registry,
-	}
-	m := New(cfg).SetSize(60, 20).Toggle().Focus()
-
-	// Session is Pending (not ready)
-	session := m.ActiveSession()
-	require.NotNil(t, session)
-	require.Equal(t, events.ProcessStatusPending, session.Status)
-
-	workflows := m.getWorkflowsForTab()
-	m, cmd := m.selectWorkflowFromTab(workflows[0])
-
-	// Should queue content, not return a send command
-	require.Nil(t, cmd, "should not return send command when session not ready")
-	require.NotEmpty(t, m.pendingWorkflowContent, "should queue pending content")
-	require.Contains(t, m.pendingWorkflowContent, "[WORKFLOW: Test Workflow]")
-}
-
-func TestSelectWorkflowFromTab_SendsImmediatelyWhenSessionReady(t *testing.T) {
-	registry := workflow.NewRegistry()
-	registry.Add(workflow.Workflow{
-		ID:         "test-wf",
-		Name:       "Test Workflow",
-		Content:    "Content",
-		TargetMode: workflow.TargetChat,
-	})
-
-	cfg := Config{
-		ClientType:       "claude",
-		WorkDir:          "/test/dir",
-		SessionTimeout:   30 * time.Minute,
-		WorkflowRegistry: registry,
-	}
-	m := New(cfg).SetSize(60, 20).Toggle().Focus()
-
-	// Set session to Ready and set up infrastructure
-	session := m.ActiveSession()
-	session.Status = events.ProcessStatusReady
-
-	// Note: Without infrastructure, SendMessage returns an error command
-	// We're testing that it TRIES to send (returns a command)
-	workflows := m.getWorkflowsForTab()
-	m, cmd := m.selectWorkflowFromTab(workflows[0])
-
-	// Should return a command (SendMessage attempt)
-	require.NotNil(t, cmd, "should return send command when session is ready")
-	// Pending content should be empty since we're sending immediately
-	require.Empty(t, m.pendingWorkflowContent, "should not queue content when sending immediately")
 }
 
 // =============================================================================

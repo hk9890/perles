@@ -107,10 +107,9 @@ type Model struct {
 	spinnerFrame int // Current spinner frame index
 
 	// Workflow state
-	workflowRegistry       *workflow.Registry // Workflow template registry (from config)
-	activeWorkflow         *workflow.Workflow // Currently active workflow (if any)
-	pendingWorkflowContent string             // Workflow content waiting to be sent when session ready
-	workflowListCursor     int                // Cursor position in Workflows tab list
+	workflowRegistry   *workflow.Registry // Workflow template registry (from config)
+	activeWorkflow     *workflow.Workflow // Currently active workflow (if any)
+	workflowListCursor int                // Cursor position in Workflows tab list
 
 	// Clock is the time source for testing. If nil, uses time.Now().
 	Clock func() time.Time
@@ -554,17 +553,6 @@ func (m Model) handlePubSubEvent(event pubsub.Event[any]) (Model, tea.Cmd) {
 			m = m.captureSessionRef()
 		}
 
-		// Flush pending workflow content if session is now ready
-		// This handles the race condition where workflow was selected before session ready
-		if m.pendingWorkflowContent != "" {
-			// Send the pending content
-			sendCmd := m.SendMessage(m.pendingWorkflowContent)
-			// Clear pending content to prevent duplicate sends
-			m.pendingWorkflowContent = ""
-			// Return with both listener continuation and send command
-			return m, tea.Batch(m.v2Listener.Listen(), sendCmd)
-		}
-
 	case events.ProcessError:
 		if processEvent.Error != nil {
 			// Return error message for toast display
@@ -935,27 +923,12 @@ func (m Model) clampWorkflowListCursor() Model {
 }
 
 // selectWorkflowFromTab handles selection of a workflow from the Workflows tab.
-// Formats workflow content, sends it (or queues if session not ready), and switches to Chat tab.
+// Formats workflow content, sends it via SendMessage (which queues if not ready), and switches to Chat tab.
 func (m Model) selectWorkflowFromTab(wf workflow.Workflow) (Model, tea.Cmd) {
-	// Store as active workflow (matches existing behavior)
 	m.activeWorkflow = &wf
-
-	// Format content with workflow header (matches existing format)
 	content := fmt.Sprintf("[WORKFLOW: %s]\n\n%s", wf.Name, wf.Content)
-
-	// Switch to Chat tab to show the conversation
 	m.activeTab = TabChat
-
-	// Check if session is ready to receive messages
-	session := m.ActiveSession()
-	if session != nil && session.Status == events.ProcessStatusReady {
-		// Session ready - send immediately
-		return m, m.SendMessage(content)
-	}
-
-	// Session not ready - queue for later (existing mechanism)
-	m.pendingWorkflowContent = content
-	return m, nil
+	return m, m.SendMessage(content)
 }
 
 // NextSession cycles to the next session in the session order.
