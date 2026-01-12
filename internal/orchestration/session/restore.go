@@ -8,7 +8,9 @@ import (
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 )
 
@@ -57,6 +59,61 @@ func RestoreProcessRepository(repo repository.ProcessRepository, session *Resuma
 		if err := repo.Save(proc); err != nil {
 			return fmt.Errorf("failed to save retired worker %s: %w", w.ID, err)
 		}
+	}
+
+	return nil
+}
+
+// RestoreProcessRegistry populates a ProcessRegistry with dormant processes from session data.
+// Creates dormant process.Process instances for coordinator and active workers only.
+// Retired workers are NOT added to the registry (they can't receive messages).
+//
+// Dormant processes:
+// - Have session IDs set (for --resume flag when spawning)
+// - Have no live AI subprocess attached
+// - Can be activated via Resume() when a message is delivered
+//
+// Parameters:
+//   - registry: ProcessRegistry to populate with dormant processes
+//   - session: loaded session data containing coordinator and worker metadata
+//   - submitter: CommandSubmitter for processes to submit commands on state transitions
+//   - eventBus: event bus for processes to publish events
+func RestoreProcessRegistry(
+	registry *process.ProcessRegistry,
+	session *ResumableSession,
+	submitter process.CommandSubmitter,
+	eventBus *pubsub.Broker[any],
+) error {
+	if session == nil {
+		return fmt.Errorf("session is nil")
+	}
+
+	meta := session.Metadata
+	if meta == nil {
+		return fmt.Errorf("session metadata is nil")
+	}
+
+	// Restore coordinator as dormant process
+	coordinator := process.NewDormant(
+		repository.CoordinatorID,
+		repository.RoleCoordinator,
+		meta.CoordinatorSessionRef,
+		submitter,
+		eventBus,
+	)
+	registry.Register(coordinator)
+
+	// Restore active workers as dormant processes
+	// Retired workers are NOT added - they can't receive messages
+	for _, w := range session.ActiveWorkers {
+		worker := process.NewDormant(
+			w.ID,
+			repository.RoleWorker,
+			w.HeadlessSessionRef,
+			submitter,
+			eventBus,
+		)
+		registry.Register(worker)
 	}
 
 	return nil

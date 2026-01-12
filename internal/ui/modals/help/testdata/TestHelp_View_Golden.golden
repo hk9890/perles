@@ -1,24 +1,24 @@
-                                                                                                                        
-                                                                                                                        
-╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  Keybindings                                                                                                         │
-│──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
-│                                                                                                                      │
-│  Actions                         Views                       Navigation                General                       │
-│  enter      open tree view       ctrl+j/n   next view        h/l        left/right     ?          toggle help        │
-│  r          refresh issues       ctrl+k/p   previous view    j/k        up/down        w          toggle status bar  │
-│  y          copy issue ID        ctrl+v     view menu        ^space     search mode    esc        go back            │
-│  a          add column           /          search column                              ctrl+c     quit               │
-│  e          edit column                                                                                              │
-│  d          delete column                                                                                            │
-│  ctrl+h     move column left                                                                                         │
-│  ctrl+l     move column right                                                                                        │
-│  ctrl+e     edit issue                                                                                               │
-│  ctrl+d     delete issue                                                                                             │
-│                                                                                                                      │
-│                                                                                                                      │
-│  Press ? or Esc to close                                                                                             │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+                                                                                                                             
+                                                                                                                             
+╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  Keybindings                                                                                                              │
+│───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+│                                                                                                                           │
+│  Actions                         Views                            Navigation                General                       │
+│  enter      open tree view       ctrl+j/n   next view             h/l        left/right     ?          toggle help        │
+│  r          refresh issues       ctrl+k/p   previous view         j/k        up/down        w          toggle status bar  │
+│  y          copy issue ID        ctrl+v     view menu             ^space     search mode    esc        go back            │
+│  a          add column           /          search column                                   ctrl+c     quit               │
+│  e          edit column          ctrl+o     orchestration mode                                                            │
+│  d          delete column        ctrl+r     resume session                                                                │
+│  ctrl+h     move column left                                                                                              │
+│  ctrl+l     move column right                                                                                             │
+│  ctrl+e     edit issue                                                                                                    │
+│  ctrl+d     delete issue                                                                                                  │
+│                                                                                                                           │
+│                                                                                                                           │
+│  Press ? or Esc to close                                                                                                  │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+                                                                                                                             
+                                                                                                                             
+                                                                                                                             

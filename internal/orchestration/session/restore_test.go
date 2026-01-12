@@ -9,7 +9,9 @@ import (
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 )
 
@@ -742,4 +744,124 @@ func TestBuildRestoredUIState_NilMetadata(t *testing.T) {
 	require.True(t, state.EndTime.IsZero())
 	require.True(t, state.IsResumed)
 	require.Len(t, state.CoordinatorMessages, 1)
+}
+
+// --- RestoreProcessRegistry Tests ---
+
+func TestRestoreProcessRegistry_CoordinatorAndActiveWorkers(t *testing.T) {
+	registry := process.NewProcessRegistry()
+	eventBus := pubsub.NewBroker[any]()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	session := &ResumableSession{
+		Metadata: &Metadata{
+			SessionID:             "test-session",
+			StartTime:             now.Add(-time.Hour),
+			EndTime:               now,
+			CoordinatorSessionRef: "coord-session-ref",
+		},
+		ActiveWorkers: []WorkerMetadata{
+			{ID: "worker-1", SpawnedAt: now.Add(-30 * time.Minute), HeadlessSessionRef: "worker-1-ref"},
+			{ID: "worker-2", SpawnedAt: now.Add(-20 * time.Minute), HeadlessSessionRef: "worker-2-ref"},
+		},
+		RetiredWorkers: []WorkerMetadata{
+			{ID: "worker-3", SpawnedAt: now.Add(-40 * time.Minute), RetiredAt: now.Add(-10 * time.Minute)},
+		},
+	}
+
+	err := RestoreProcessRegistry(registry, session, nil, eventBus)
+	require.NoError(t, err)
+
+	// Verify coordinator was registered with session ID
+	coordinator := registry.GetCoordinator()
+	require.NotNil(t, coordinator)
+	require.Equal(t, repository.CoordinatorID, coordinator.ID)
+	require.Equal(t, "coord-session-ref", coordinator.SessionID())
+
+	// Verify active workers were registered with session IDs
+	worker1 := registry.Get("worker-1")
+	require.NotNil(t, worker1)
+	require.Equal(t, "worker-1-ref", worker1.SessionID())
+
+	worker2 := registry.Get("worker-2")
+	require.NotNil(t, worker2)
+	require.Equal(t, "worker-2-ref", worker2.SessionID())
+
+	// Verify retired workers are NOT registered (they can't receive messages)
+	worker3 := registry.Get("worker-3")
+	require.Nil(t, worker3, "Retired workers should not be in registry")
+}
+
+func TestRestoreProcessRegistry_DormantProcessesCanBeResumed(t *testing.T) {
+	registry := process.NewProcessRegistry()
+	eventBus := pubsub.NewBroker[any]()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	session := &ResumableSession{
+		Metadata: &Metadata{
+			SessionID:             "test-session",
+			StartTime:             now.Add(-time.Hour),
+			EndTime:               now,
+			CoordinatorSessionRef: "coord-session-ref",
+		},
+		ActiveWorkers:  []WorkerMetadata{},
+		RetiredWorkers: []WorkerMetadata{},
+	}
+
+	err := RestoreProcessRegistry(registry, session, nil, eventBus)
+	require.NoError(t, err)
+
+	// Get the dormant coordinator
+	coordinator := registry.GetCoordinator()
+	require.NotNil(t, coordinator)
+
+	// Verify it's dormant (no live process)
+	// The process should be resumable without blocking
+	// This is tested more thoroughly in process_test.go
+}
+
+func TestRestoreProcessRegistry_NilSession(t *testing.T) {
+	registry := process.NewProcessRegistry()
+
+	err := RestoreProcessRegistry(registry, nil, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "session is nil")
+}
+
+func TestRestoreProcessRegistry_NilMetadata(t *testing.T) {
+	registry := process.NewProcessRegistry()
+
+	session := &ResumableSession{
+		Metadata: nil,
+	}
+
+	err := RestoreProcessRegistry(registry, session, nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata is nil")
+}
+
+func TestRestoreProcessRegistry_EmptyActiveWorkers(t *testing.T) {
+	registry := process.NewProcessRegistry()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	session := &ResumableSession{
+		Metadata: &Metadata{
+			SessionID:             "test-session",
+			StartTime:             now.Add(-time.Hour),
+			EndTime:               now,
+			CoordinatorSessionRef: "coord-ref",
+		},
+		ActiveWorkers:  []WorkerMetadata{},
+		RetiredWorkers: []WorkerMetadata{},
+	}
+
+	err := RestoreProcessRegistry(registry, session, nil, nil)
+	require.NoError(t, err)
+
+	// Should only have coordinator
+	all := registry.All()
+	require.Len(t, all, 1)
+
+	coordinator := registry.GetCoordinator()
+	require.NotNil(t, coordinator)
 }

@@ -51,7 +51,7 @@ func (m Model) renderCoordinatorPane(width, height int, fullscreen bool) string 
 		}
 	}
 
-	// Build bottom-left queue indicator
+	// Add queue count if any messages are queued
 	if m.coordinatorPane.queueCount > 0 {
 		bottomLeft = QueuedCountStyle.Render(fmt.Sprintf("[%d queued]", m.coordinatorPane.queueCount))
 	}

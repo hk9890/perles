@@ -13,6 +13,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/coleditor"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/details"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
@@ -55,6 +56,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	// Forward events to session picker when visible
+	if m.showSessionPicker && m.sessionPicker != nil {
+		return m.handleSessionPickerKey(msg)
+	}
+
 	// Dismiss error on any key press (except Ctrl+C)
 	// Don't return early - let the key continue to be processed
 	if m.err != nil && msg.Type != tea.KeyCtrlC {
@@ -298,6 +304,10 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, func() tea.Msg {
 			return SwitchToOrchestrationMsg{}
 		}
+
+	case key.Matches(msg, keys.Kanban.OrchestrateResume):
+		// Open session picker to resume orchestration session
+		return m.openSessionPicker()
 
 	case key.Matches(msg, keys.Component.EditAction):
 		// Open issue editor for the selected issue
@@ -785,4 +795,29 @@ func (m Model) handleIssueDeleted(msg issueDeletedMsg) (Model, tea.Cmd) {
 		m.board.LoadAllColumns(),
 		func() tea.Msg { return mode.ShowToastMsg{Message: "Issue deleted", Style: toaster.StyleSuccess} },
 	)
+}
+
+// handleSessionPickerKey forwards key events to the session picker.
+func (m Model) handleSessionPickerKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	picker := *m.sessionPicker
+	var cmd tea.Cmd
+	picker, cmd = picker.Update(msg)
+	m.sessionPicker = &picker
+	return m, cmd
+}
+
+// handleSessionPickerSelect processes session picker selection.
+func (m Model) handleSessionPickerSelect(item commandpalette.Item) (Model, tea.Cmd) {
+	m.showSessionPicker = false
+	m.sessionPicker = nil
+	return m, func() tea.Msg {
+		return SwitchToOrchestrationMsg{ResumeSessionDir: item.ID}
+	}
+}
+
+// handleSessionPickerCancel processes session picker cancellation.
+func (m Model) handleSessionPickerCancel() (Model, tea.Cmd) {
+	m.showSessionPicker = false
+	m.sessionPicker = nil
+	return m, nil
 }

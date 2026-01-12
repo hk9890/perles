@@ -4,6 +4,9 @@
 package orchestration
 
 import (
+	"fmt"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/zjrosen/perles/internal/log"
@@ -69,6 +72,24 @@ func (m Model) handleResumeSession(msg ResumeSessionMsg) (Model, tea.Cmd) {
 	// Store loaded session for infrastructure creation
 	m.resumedSession = loadedSession
 
+	// Skip worktree prompt - decision was already made in original session
+	m.worktreeDecisionMade = true
+
+	// Set resume indicator state
+	m.isResumedSession = true
+	m.resumedAt = time.Now()
+	m.originalStartTime = uiState.StartTime
+
+	// Add separator message to coordinator pane
+	separatorContent := formatResumedSeparator(m.resumedAt)
+	m = m.AddChatMessage("system", separatorContent)
+
+	log.Debug(log.CatOrch, "Resume indicator state set",
+		"subsystem", "resume",
+		"isResumedSession", m.isResumedSession,
+		"resumedAt", m.resumedAt,
+		"originalStartTime", m.originalStartTime)
+
 	// Return command to start the restored session flow
 	return m, startRestoredSession(loadedSession)
 }
@@ -103,4 +124,11 @@ func (m Model) handleStartRestoredSession(msg StartRestoredSessionMsg) (Model, t
 	return m, func() tea.Msg {
 		return StartCoordinatorMsg{}
 	}
+}
+
+// formatResumedSeparator creates the separator message content for resumed sessions.
+// Format: "─── Session Resumed (Jan 2 15:04) ───"
+func formatResumedSeparator(resumedAt time.Time) string {
+	timeStr := resumedAt.Format("Jan 2 15:04")
+	return fmt.Sprintf("─── Session Resumed (%s) ───", timeStr)
 }

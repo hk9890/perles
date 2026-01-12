@@ -143,6 +143,10 @@ type Model struct {
 	coordinatorWorking bool                      // True when coordinator is processing, false when waiting for input
 	session            *session.Session          // Session tracking for this orchestration run
 	resumedSession     *session.ResumableSession // Loaded session data for restoration (set during resume flow)
+	resumeSessionDir   string                    // Path to session directory to resume (from Config)
+	isResumedSession   bool                      // True if this is a resumed session (set after RestoreFromSession)
+	resumedAt          time.Time                 // When the session was resumed
+	originalStartTime  time.Time                 // Original session start time (from loaded session)
 
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"
@@ -261,6 +265,8 @@ type Config struct {
 	TracingConfig config.TracingConfig // Distributed tracing configuration
 	// Session storage settings
 	SessionStorageConfig config.SessionStorageConfig // Centralized session storage configuration
+	// Session resumption settings
+	ResumeSessionDir string // Path to session directory to resume (empty = new session)
 }
 
 // New creates a new orchestration mode model with the given configuration.
@@ -298,6 +304,7 @@ func New(cfg Config) Model {
 		activeWorkflowRef:     &activeWorkflowHolder{},
 		tracingConfig:         cfg.TracingConfig,
 		sessionStorageConfig:  cfg.SessionStorageConfig,
+		resumeSessionDir:      cfg.ResumeSessionDir,
 		quitModal: quitmodal.New(quitmodal.Config{
 			Title:   "Exit Orchestration Mode?",
 			Message: "Active workers will be stopped.",
@@ -347,7 +354,14 @@ func newWorkerPane() WorkerPane {
 }
 
 // Init returns initial commands for the mode.
+// If resumeSessionDir is set, returns ResumeSessionMsg to trigger session resumption.
+// Otherwise returns StartCoordinatorMsg to start a new session.
 func (m Model) Init() tea.Cmd {
+	if m.resumeSessionDir != "" {
+		return func() tea.Msg {
+			return ResumeSessionMsg{SessionDir: m.resumeSessionDir}
+		}
+	}
 	return func() tea.Msg { return StartCoordinatorMsg{} }
 }
 

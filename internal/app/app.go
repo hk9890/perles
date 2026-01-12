@@ -390,7 +390,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case kanban.SwitchToOrchestrationMsg:
-		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "orchestration")
+		// Log mode switch with resume status
+		isResume := msg.ResumeSessionDir != ""
+		if isResume {
+			log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "orchestration", "resume", true, "sessionDir", msg.ResumeSessionDir)
+		} else {
+			log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "orchestration", "resume", false)
+		}
 
 		// Close chat panel if open to prevent "two AIs" confusion
 		// Must call Cleanup() before entering orchestration to stop the AI process
@@ -422,6 +428,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			DisableWorktrees:     orchConfig.DisableWorktrees,
 			TracingConfig:        orchConfig.Tracing,
 			SessionStorageConfig: orchConfig.SessionStorage,
+			ResumeSessionDir:     msg.ResumeSessionDir,
 		}).SetSize(m.width, m.height)
 		return m, m.orchestration.Init()
 

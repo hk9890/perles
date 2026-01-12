@@ -79,6 +79,41 @@ func New(id string, role repository.ProcessRole, proc client.HeadlessProcess, su
 	}
 }
 
+// NewDormant creates a Process without a live AI subprocess.
+// Used for session restoration - the process holds the session ID and can be
+// activated later via Resume() when a message needs to be delivered.
+//
+// The dormant process is in a "ready to resume" state:
+// - No AI subprocess attached (proc is nil)
+// - No event loop running
+// - eventDone is pre-closed so Resume() won't block waiting for a prior event loop
+//
+// Parameters:
+//   - id: unique process identifier (e.g., "coordinator", "worker-1")
+//   - role: RoleCoordinator or RoleWorker
+//   - sessionID: the AI session ID for resuming conversations (from saved session)
+//   - submitter: for submitting commands on state transitions
+//   - eventBus: for publishing process events to subscribers
+func NewDormant(id string, role repository.ProcessRole, sessionID string, submitter CommandSubmitter, eventBus *pubsub.Broker[any]) *Process {
+	ctx, cancel := context.WithCancel(context.Background())
+	// Pre-close eventDone so Resume() won't block waiting for a prior event loop
+	eventDone := make(chan struct{})
+	close(eventDone)
+	return &Process{
+		ID:           id,
+		Role:         role,
+		proc:         nil, // No live subprocess yet
+		sessionID:    sessionID,
+		output:       NewOutputBuffer(DefaultOutputBufferCapacity),
+		cmdSubmitter: submitter,
+		eventBus:     eventBus,
+		ctx:          ctx,
+		cancel:       cancel,
+		eventDone:    eventDone,
+		metrics:      &metrics.TokenMetrics{},
+	}
+}
+
 // Start launches the event loop goroutine.
 // The goroutine processes AI events and submits a ProcessTurnCompleteCommand when done.
 func (p *Process) Start() {

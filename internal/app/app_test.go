@@ -2198,3 +2198,61 @@ func TestApp_OrchestrationQuit_SetsSizeCorrectly(t *testing.T) {
 		require.NotEmpty(t, view, "kanban view should render without panic")
 	})
 }
+
+// ============================================================================
+// Session Resumption Tests (perles-mewu.4)
+// ============================================================================
+
+func TestSwitchToOrchestration_NewSession(t *testing.T) {
+	m := createTestModel(t)
+
+	// Set terminal size
+	newModel, _ := m.Update(tea.WindowSizeMsg{Width: 150, Height: 40})
+	m = newModel.(Model)
+
+	// Verify initial state is kanban mode
+	require.Equal(t, mode.ModeKanban, m.currentMode, "should start in kanban mode")
+
+	// Send SwitchToOrchestrationMsg with empty ResumeSessionDir (new session)
+	newModel, cmd := m.Update(kanban.SwitchToOrchestrationMsg{})
+	m = newModel.(Model)
+
+	// Verify mode switched to orchestration
+	require.Equal(t, mode.ModeOrchestration, m.currentMode, "should be in orchestration mode")
+
+	// Verify orchestration model was created with empty ResumeSessionDir
+	// The Init() command should return StartCoordinatorMsg (not ResumeSessionMsg)
+	require.NotNil(t, cmd, "Init command should be returned")
+	msg := cmd()
+	_, isStartMsg := msg.(orchestration.StartCoordinatorMsg)
+	require.True(t, isStartMsg, "expected StartCoordinatorMsg for new session, got %T", msg)
+}
+
+func TestSwitchToOrchestration_WithResume(t *testing.T) {
+	m := createTestModel(t)
+
+	// Set terminal size
+	newModel, _ := m.Update(tea.WindowSizeMsg{Width: 150, Height: 40})
+	m = newModel.(Model)
+
+	// Verify initial state is kanban mode
+	require.Equal(t, mode.ModeKanban, m.currentMode, "should start in kanban mode")
+
+	// Send SwitchToOrchestrationMsg with populated ResumeSessionDir
+	sessionDir := "/path/to/session/2026-01-12/abc123"
+	newModel, cmd := m.Update(kanban.SwitchToOrchestrationMsg{
+		ResumeSessionDir: sessionDir,
+	})
+	m = newModel.(Model)
+
+	// Verify mode switched to orchestration
+	require.Equal(t, mode.ModeOrchestration, m.currentMode, "should be in orchestration mode")
+
+	// Verify orchestration model was created with ResumeSessionDir
+	// The Init() command should return ResumeSessionMsg (not StartCoordinatorMsg)
+	require.NotNil(t, cmd, "Init command should be returned")
+	msg := cmd()
+	resumeMsg, isResumeMsg := msg.(orchestration.ResumeSessionMsg)
+	require.True(t, isResumeMsg, "expected ResumeSessionMsg for resume session, got %T", msg)
+	require.Equal(t, sessionDir, resumeMsg.SessionDir, "ResumeSessionDir should match")
+}

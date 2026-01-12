@@ -241,5 +241,3 @@ func (m Model) formatTraceIDDisplay() string {
 	}
 	return TraceIDStyle.Render("trace:" + displayID)
 }
-
-// Resume prompt styles

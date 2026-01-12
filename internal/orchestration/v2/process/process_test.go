@@ -135,6 +135,101 @@ func TestNew_InitializesEmptyMetrics(t *testing.T) {
 }
 
 // ===========================================================================
+// Dormant Process Tests
+// ===========================================================================
+
+func TestNewDormant_CreatesProcessWithSessionID(t *testing.T) {
+	submitter := &mockCommandSubmitter{}
+	eventBus := pubsub.NewBroker[any]()
+
+	p := NewDormant("coordinator", repository.RoleCoordinator, "saved-session-123", submitter, eventBus)
+
+	assert.Equal(t, "coordinator", p.ID)
+	assert.Equal(t, repository.RoleCoordinator, p.Role)
+	assert.Equal(t, "saved-session-123", p.SessionID())
+}
+
+func TestNewDormant_HasNoLiveProcess(t *testing.T) {
+	p := NewDormant("worker-1", repository.RoleWorker, "session-abc", nil, nil)
+
+	// proc should be nil (no live subprocess)
+	assert.Nil(t, p.proc)
+}
+
+func TestNewDormant_EventDoneIsPreClosed(t *testing.T) {
+	p := NewDormant("worker-1", repository.RoleWorker, "session-abc", nil, nil)
+
+	// eventDone should be already closed so Resume() doesn't block
+	select {
+	case <-p.eventDone:
+		// Good - channel is closed
+	default:
+		require.FailNow(t, "eventDone should be pre-closed for dormant process")
+	}
+}
+
+func TestNewDormant_CanBeResumed(t *testing.T) {
+	submitter := &mockCommandSubmitter{}
+	eventBus := pubsub.NewBroker[any]()
+
+	// Create dormant process
+	p := NewDormant("worker-1", repository.RoleWorker, "saved-session-123", submitter, eventBus)
+
+	// Create a new mock process to attach
+	newProc := newMockHeadlessProcess()
+
+	// Resume should not block (eventDone is pre-closed)
+	done := make(chan struct{})
+	go func() {
+		p.Resume(newProc)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Good - Resume completed
+	case <-time.After(time.Second):
+		require.FailNow(t, "Resume should not block for dormant process")
+	}
+
+	// Verify the process is now attached
+	assert.Equal(t, newProc, p.proc)
+
+	// Clean up - complete the new process
+	newProc.Complete()
+
+	// Wait for event loop to finish
+	select {
+	case <-p.eventDone:
+		// Good
+	case <-time.After(time.Second):
+		require.FailNow(t, "event loop should complete after process completion")
+	}
+}
+
+func TestNewDormant_PreservesSessionIDAfterResume(t *testing.T) {
+	submitter := &mockCommandSubmitter{}
+	eventBus := pubsub.NewBroker[any]()
+
+	// Create dormant process with session ID
+	p := NewDormant("coordinator", repository.RoleCoordinator, "original-session-123", submitter, eventBus)
+
+	// Verify session ID is set
+	assert.Equal(t, "original-session-123", p.SessionID())
+
+	// Resume with new process
+	newProc := newMockHeadlessProcess()
+	p.Resume(newProc)
+
+	// Session ID should still be the original (until init event updates it)
+	assert.Equal(t, "original-session-123", p.SessionID())
+
+	// Clean up
+	newProc.Complete()
+	<-p.eventDone
+}
+
+// ===========================================================================
 // Event Loop Tests
 // ===========================================================================
 

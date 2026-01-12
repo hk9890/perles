@@ -7,6 +7,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ============================================================================
+// OrchestrateResume Keybinding Tests
+// ============================================================================
+
+func TestKanban_OrchestrateResume_KeyAssignment(t *testing.T) {
+	// Test that OrchestrateResume is bound to ctrl+r
+	keys := Kanban.OrchestrateResume.Keys()
+	require.Equal(t, []string{"ctrl+r"}, keys, "OrchestrateResume should be bound to ctrl+r")
+}
+
+func TestKanban_OrchestrateResume_HelpText(t *testing.T) {
+	// Test that OrchestrateResume has proper help text
+	help := Kanban.OrchestrateResume.Help()
+	require.NotEmpty(t, help.Key, "OrchestrateResume key help should not be empty")
+	require.NotEmpty(t, help.Desc, "OrchestrateResume description should not be empty")
+	require.Equal(t, "ctrl+r", help.Key, "OrchestrateResume help key should be ctrl+r")
+	require.Equal(t, "resume session", help.Desc, "OrchestrateResume help desc should be 'resume session'")
+}
+
+func TestKanban_OrchestrateResume_NotOrchestrate(t *testing.T) {
+	// Test that OrchestrateResume is distinct from Orchestrate
+	orchestrateKeys := Kanban.Orchestrate.Keys()
+	orchestrateResumeKeys := Kanban.OrchestrateResume.Keys()
+
+	require.NotEqual(t, orchestrateKeys, orchestrateResumeKeys,
+		"Orchestrate and OrchestrateResume should have different key bindings")
+	require.Contains(t, orchestrateKeys, "ctrl+o", "Orchestrate should use ctrl+o")
+	require.Contains(t, orchestrateResumeKeys, "ctrl+r", "OrchestrateResume should use ctrl+r")
+}
+
 func TestDiffViewer_ExportedStruct(t *testing.T) {
 	// Verify DiffViewer struct is exported and accessible
 	require.NotNil(t, DiffViewer.Open)

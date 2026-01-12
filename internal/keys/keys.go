@@ -50,25 +50,26 @@ var Common = struct {
 
 // Kanban contains keybindings specific to kanban mode.
 var Kanban = struct {
-	Enter            key.Binding // Kanban-specific enter (open tree view)
-	Escape           key.Binding // Kanban-specific escape (go back)
-	Refresh          key.Binding
-	Yank             key.Binding
-	Status           key.Binding
-	Priority         key.Binding
-	AddColumn        key.Binding
-	EditColumn       key.Binding
-	MoveColumnLeft   key.Binding
-	MoveColumnRight  key.Binding
-	NextView         key.Binding
-	PrevView         key.Binding
-	ViewMenu         key.Binding
-	DeleteColumn     key.Binding
-	SearchFromColumn key.Binding
-	SwitchMode       key.Binding
-	ToggleStatus     key.Binding
-	Orchestrate      key.Binding // Start orchestration mode
-	QuitConfirm      key.Binding // Ctrl+C quit with confirmation (kanban-specific)
+	Enter             key.Binding // Kanban-specific enter (open tree view)
+	Escape            key.Binding // Kanban-specific escape (go back)
+	Refresh           key.Binding
+	Yank              key.Binding
+	Status            key.Binding
+	Priority          key.Binding
+	AddColumn         key.Binding
+	EditColumn        key.Binding
+	MoveColumnLeft    key.Binding
+	MoveColumnRight   key.Binding
+	NextView          key.Binding
+	PrevView          key.Binding
+	ViewMenu          key.Binding
+	DeleteColumn      key.Binding
+	SearchFromColumn  key.Binding
+	SwitchMode        key.Binding
+	ToggleStatus      key.Binding
+	Orchestrate       key.Binding // Start orchestration mode
+	OrchestrateResume key.Binding // Resume orchestration session
+	QuitConfirm       key.Binding // Ctrl+C quit with confirmation (kanban-specific)
 }{
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
@@ -141,6 +142,10 @@ var Kanban = struct {
 	Orchestrate: key.NewBinding(
 		key.WithKeys("ctrl+o"),
 		key.WithHelp("ctrl+o", "orchestration mode"),
+	),
+	OrchestrateResume: key.NewBinding(
+		key.WithKeys("ctrl+r"),
+		key.WithHelp("ctrl+r", "resume session"),
 	),
 	QuitConfirm: key.NewBinding(
 		key.WithKeys("ctrl+c"),

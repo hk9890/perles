@@ -230,6 +230,8 @@ func (m Model) renderKanbanContent() string {
 	viewsCol.WriteString(renderBinding(keys.Kanban.PrevView))
 	viewsCol.WriteString(renderBinding(keys.Kanban.ViewMenu))
 	viewsCol.WriteString(renderBinding(keys.Kanban.SearchFromColumn))
+	viewsCol.WriteString(renderBinding(keys.Kanban.Orchestrate))
+	viewsCol.WriteString(renderBinding(keys.Kanban.OrchestrateResume))
 
 	// General column
 	var generalCol strings.Builder

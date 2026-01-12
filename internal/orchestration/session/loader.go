@@ -45,14 +45,14 @@ func LoadInterAgentMessages(sessionDir string) ([]message.Entry, error) {
 // Returns an empty slice if the file doesn't exist.
 // Malformed JSON lines are skipped gracefully to provide resilience against partial writes.
 func loadMessagesJSONL(path string) ([]chatrender.Message, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // path is constructed internally from session directory
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []chatrender.Message{}, nil
 		}
 		return nil, fmt.Errorf("opening messages file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var messages []chatrender.Message
 	scanner := bufio.NewScanner(file)
@@ -252,14 +252,14 @@ func sortWorkersByRetiredAt(workers []WorkerMetadata) {
 // Returns an empty slice if the file doesn't exist.
 // Malformed JSON lines are skipped gracefully to provide resilience against partial writes.
 func loadInterAgentMessagesJSONL(path string) ([]message.Entry, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // path is constructed internally from session directory
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []message.Entry{}, nil
 		}
 		return nil, fmt.Errorf("opening inter-agent messages file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var entries []message.Entry
 	scanner := bufio.NewScanner(file)

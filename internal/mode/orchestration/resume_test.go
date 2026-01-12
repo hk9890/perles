@@ -544,8 +544,11 @@ func TestHandleResumeSession_EmptySession(t *testing.T) {
 	require.NotNil(t, m.resumedSession)
 	require.NotNil(t, cmd)
 
-	// UI state should be empty but valid
-	require.Empty(t, m.coordinatorPane.messages)
+	// UI state should be empty but valid, except for the separator message
+	// which is always added on resume
+	require.Len(t, m.coordinatorPane.messages, 1, "should have exactly the separator message")
+	require.Equal(t, "system", m.coordinatorPane.messages[0].Role, "separator should be system role")
+	require.Contains(t, m.coordinatorPane.messages[0].Content, "Session Resumed", "separator content")
 	require.Empty(t, m.workerPane.workerIDs)
 	require.Empty(t, m.messagePane.entries)
 }
@@ -679,4 +682,130 @@ func TestStartRestoredSessionMsg_Type(t *testing.T) {
 	startMsg, ok := teaMsg.(StartRestoredSessionMsg)
 	require.True(t, ok)
 	require.Equal(t, "test", startMsg.Session.Metadata.SessionID)
+}
+
+// =============================================================================
+// Resume Indicator State Tests
+// =============================================================================
+
+func TestResumeIndicatorState_NotSetForNewSession(t *testing.T) {
+	// When a new session is created, isResumedSession should be false
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Verify default state for new session
+	require.False(t, m.isResumedSession, "isResumedSession should be false for new session")
+	require.True(t, m.resumedAt.IsZero(), "resumedAt should be zero for new session")
+	require.True(t, m.originalStartTime.IsZero(), "originalStartTime should be zero for new session")
+}
+
+func TestResumeIndicatorState_SetForResumedSession(t *testing.T) {
+	sessionDir := createTestSessionDirWithContent(t)
+
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Verify initial state
+	require.False(t, m.isResumedSession)
+
+	msg := ResumeSessionMsg{SessionDir: sessionDir}
+	beforeResume := time.Now()
+	m, _ = m.handleResumeSession(msg)
+	afterResume := time.Now()
+
+	// Verify resume indicator state is set
+	require.True(t, m.isResumedSession, "isResumedSession should be true after resume")
+
+	// Verify resumedAt is set to approximately now
+	require.False(t, m.resumedAt.IsZero(), "resumedAt should be set")
+	require.True(t, m.resumedAt.After(beforeResume) || m.resumedAt.Equal(beforeResume),
+		"resumedAt should be >= beforeResume")
+	require.True(t, m.resumedAt.Before(afterResume) || m.resumedAt.Equal(afterResume),
+		"resumedAt should be <= afterResume")
+
+	// Verify originalStartTime is set from session metadata
+	require.False(t, m.originalStartTime.IsZero(), "originalStartTime should be set")
+}
+
+func TestResumeSession_SetsSeparatorMessage(t *testing.T) {
+	sessionDir := createTestSessionDirWithContent(t)
+
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Count existing messages
+	initialMsgCount := len(m.coordinatorPane.messages)
+
+	msg := ResumeSessionMsg{SessionDir: sessionDir}
+	m, _ = m.handleResumeSession(msg)
+
+	// The session has 2 coordinator messages + 1 separator we add
+	// The original session has "Hello coordinator" and "Hello! I'll help you."
+	require.Greater(t, len(m.coordinatorPane.messages), initialMsgCount,
+		"coordinator messages should include restored messages plus separator")
+
+	// Find the separator message (last message after restoration)
+	lastMsg := m.coordinatorPane.messages[len(m.coordinatorPane.messages)-1]
+
+	// Verify it's a system message with separator format
+	require.Equal(t, "system", lastMsg.Role, "separator should have role='system'")
+	require.Contains(t, lastMsg.Content, "───", "separator should contain horizontal line characters")
+	require.Contains(t, lastMsg.Content, "Session Resumed", "separator should contain 'Session Resumed'")
+}
+
+func TestResumeSession_SeparatorMessageFormat(t *testing.T) {
+	// Test the separator format function directly
+	testTime := time.Date(2026, time.January, 15, 14, 30, 0, 0, time.UTC)
+
+	separator := formatResumedSeparator(testTime)
+
+	require.Equal(t, "─── Session Resumed (Jan 15 14:30) ───", separator,
+		"separator should match expected format")
+}
+
+func TestInit_NewSession_IsResumedSessionFalse(t *testing.T) {
+	// Verify that isResumedSession remains false when starting a new session
+	m := New(Config{})
+
+	// New session should have isResumedSession = false
+	require.False(t, m.isResumedSession, "new session should have isResumedSession=false")
+
+	// Calling Init() doesn't change the flag for new sessions
+	cmd := m.Init()
+	require.NotNil(t, cmd)
+
+	// Execute to verify it's StartCoordinatorMsg (not resume)
+	resultMsg := cmd()
+	_, ok := resultMsg.(StartCoordinatorMsg)
+	require.True(t, ok, "new session Init() should return StartCoordinatorMsg")
+
+	// isResumedSession should still be false
+	require.False(t, m.isResumedSession)
+}
+
+func TestResumeSession_SetsWorktreeDecisionMade(t *testing.T) {
+	// When resuming a session, the worktree decision was already made in the original session.
+	// The worktreeDecisionMade flag should be set to true to skip the prompt.
+	sessionDir := createTestSessionDirWithContent(t)
+
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Verify initial state - worktreeDecisionMade is false
+	require.False(t, m.worktreeDecisionMade, "new model should have worktreeDecisionMade=false")
+
+	msg := ResumeSessionMsg{SessionDir: sessionDir}
+	m, _ = m.handleResumeSession(msg)
+
+	// After resume, worktreeDecisionMade should be true
+	require.True(t, m.worktreeDecisionMade,
+		"worktreeDecisionMade should be true after resume to skip worktree prompt")
+}
+
+func TestNewSession_DoesNotSetWorktreeDecisionMade(t *testing.T) {
+	// For new sessions, worktreeDecisionMade should remain false so the prompt can be shown
+	m := New(Config{})
+
+	// New session should have worktreeDecisionMade = false
+	require.False(t, m.worktreeDecisionMade, "new session should have worktreeDecisionMade=false")
 }

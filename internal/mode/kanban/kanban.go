@@ -14,6 +14,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/ui/board"
 	"github.com/zjrosen/perles/internal/ui/coleditor"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/details"
 	"github.com/zjrosen/perles/internal/ui/modals/help"
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
@@ -77,6 +78,10 @@ type Model struct {
 
 	// UI visibility toggles
 	showStatusBar bool
+
+	// Session picker state
+	sessionPicker     *commandpalette.Model // Session picker modal
+	showSessionPicker bool                  // Whether session picker is visible
 }
 
 // New creates a new kanban mode controller.
@@ -290,6 +295,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case modal.CancelMsg:
 		return m.handleModalCancel()
+
+	case commandpalette.SelectMsg:
+		// Handle session picker selection
+		if m.showSessionPicker && m.sessionPicker != nil {
+			return m.handleSessionPickerSelect(msg.Item)
+		}
+		return m, nil
+
+	case commandpalette.CancelMsg:
+		// Handle session picker cancel
+		if m.showSessionPicker && m.sessionPicker != nil {
+			return m.handleSessionPickerCancel()
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -297,6 +316,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // View renders the kanban mode.
 func (m Model) View() string {
+	// Render session picker overlay on top of board (takes priority over view mode)
+	if m.showSessionPicker && m.sessionPicker != nil {
+		bg := m.renderBoardWithStatusBar()
+		return m.sessionPicker.Overlay(bg)
+	}
+
 	switch m.view {
 	case ViewHelp:
 		// Render help overlay on top of board
@@ -621,7 +646,13 @@ type SwitchToSearchMsg struct {
 }
 
 // SwitchToOrchestrationMsg requests switching to orchestration mode.
-type SwitchToOrchestrationMsg struct{}
+// If ResumeSessionDir is set, the orchestration mode will resume the specified session.
+// If ResumeSessionDir is empty, a new session will be started.
+type SwitchToOrchestrationMsg struct {
+	// ResumeSessionDir is the path to the session directory to resume.
+	// Empty string means start a new session.
+	ResumeSessionDir string
+}
 
 // OpenEditMenuMsg requests opening the issue editor modal.
 type OpenEditMenuMsg struct {

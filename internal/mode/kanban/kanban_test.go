@@ -2,6 +2,7 @@ package kanban
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/mock"
@@ -12,7 +13,9 @@ import (
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	"github.com/zjrosen/perles/internal/ui/board"
+	"github.com/zjrosen/perles/internal/ui/commandpalette"
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 )
@@ -479,4 +482,220 @@ func TestKanban_CtrlG_OpensDiffViewer(t *testing.T) {
 	// Verify it's a ShowDiffViewerMsg
 	_, ok := result.(diffviewer.ShowDiffViewerMsg)
 	require.True(t, ok, "expected diffviewer.ShowDiffViewerMsg, got %T", result)
+}
+
+// =============================================================================
+// Session Picker Integration Tests (Phase 5c)
+// =============================================================================
+
+func TestResumeKeybinding_OpensPicker(t *testing.T) {
+	// Create model with session storage config pointing to temp directory with sessions
+	tempDir := t.TempDir()
+	now := time.Now()
+
+	// Create test session
+	pathBuilder := session.NewSessionPathBuilder(tempDir, "testapp")
+	createResumableTestSession(t, pathBuilder, "test-session-1", now.Add(-1*time.Hour), 2)
+
+	clock := mocks.NewMockClock(t)
+	clock.EXPECT().Now().Return(now).Maybe()
+
+	cfg := config.Defaults()
+	cfg.Orchestration.SessionStorage = config.SessionStorageConfig{
+		BaseDir:         tempDir,
+		ApplicationName: "testapp",
+	}
+
+	services := createTestServices(t, &cfg, clock, nil)
+
+	m := Model{
+		services: services,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Call openSessionPicker directly since that's what the keybinding handler does
+	// (Testing the keybinding mapping itself would require Bubble Tea integration tests)
+	m, cmd := m.openSessionPicker()
+
+	// Should show picker with sessions
+	require.True(t, m.showSessionPicker, "expected showSessionPicker to be true")
+	require.NotNil(t, m.sessionPicker, "expected sessionPicker to not be nil")
+	require.Nil(t, cmd, "expected nil command when sessions exist")
+}
+
+func TestPickerForwarding_WhenVisible(t *testing.T) {
+	// Create model with picker visible
+	pickerModel := commandpalette.New(commandpalette.Config{
+		Title: "Resume Session",
+		Items: []commandpalette.Item{
+			{ID: "/path/to/session1", Name: "Session 1", Description: "1 hour ago"},
+			{ID: "/path/to/session2", Name: "Session 2", Description: "2 hours ago"},
+		},
+	})
+	pickerModel = pickerModel.SetSize(100, 40)
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	m := Model{
+		services:          services,
+		width:             100,
+		height:            40,
+		view:              ViewBoard,
+		sessionPicker:     &pickerModel,
+		showSessionPicker: true,
+	}
+
+	// Initial cursor should be at 0
+	require.Equal(t, 0, m.sessionPicker.Cursor(), "precondition: cursor should be at 0")
+
+	// Simulate Down arrow keypress
+	msg := tea.KeyMsg{Type: tea.KeyDown}
+	m, _ = m.handleBoardKey(msg)
+
+	// Event should be forwarded to picker - cursor should move
+	require.NotNil(t, m.sessionPicker, "picker should still exist")
+	require.Equal(t, 1, m.sessionPicker.Cursor(), "expected cursor to move to 1 after down key")
+}
+
+func TestSessionPickerSelection_TriggersModeSwitch(t *testing.T) {
+	// Create model with picker visible
+	pickerModel := commandpalette.New(commandpalette.Config{
+		Title: "Resume Session",
+		Items: []commandpalette.Item{
+			{ID: "/path/to/session1", Name: "Session 1", Description: "1 hour ago"},
+		},
+	})
+	pickerModel = pickerModel.SetSize(100, 40)
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	m := Model{
+		services:          services,
+		width:             100,
+		height:            40,
+		view:              ViewBoard,
+		sessionPicker:     &pickerModel,
+		showSessionPicker: true,
+	}
+
+	// Handle selection message
+	selectMsg := commandpalette.SelectMsg{
+		Item: commandpalette.Item{
+			ID:          "/path/to/session1",
+			Name:        "Session 1",
+			Description: "1 hour ago",
+		},
+	}
+	m, cmd := m.Update(selectMsg)
+
+	// Should hide picker
+	require.False(t, m.showSessionPicker, "expected showSessionPicker to be false")
+	require.Nil(t, m.sessionPicker, "expected sessionPicker to be nil")
+
+	// Should return command that produces SwitchToOrchestrationMsg with ResumeSessionDir
+	require.NotNil(t, cmd, "expected command from selection")
+	result := cmd()
+	switchMsg, ok := result.(SwitchToOrchestrationMsg)
+	require.True(t, ok, "expected SwitchToOrchestrationMsg, got %T", result)
+	require.Equal(t, "/path/to/session1", switchMsg.ResumeSessionDir, "expected ResumeSessionDir to match selected item ID")
+}
+
+func TestSessionPickerCancel_HidesPicker(t *testing.T) {
+	// Create model with picker visible
+	pickerModel := commandpalette.New(commandpalette.Config{
+		Title: "Resume Session",
+		Items: []commandpalette.Item{
+			{ID: "/path/to/session1", Name: "Session 1", Description: "1 hour ago"},
+		},
+	})
+	pickerModel = pickerModel.SetSize(100, 40)
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	m := Model{
+		services:          services,
+		width:             100,
+		height:            40,
+		view:              ViewBoard,
+		sessionPicker:     &pickerModel,
+		showSessionPicker: true,
+	}
+
+	// Handle cancel message
+	cancelMsg := commandpalette.CancelMsg{}
+	m, cmd := m.Update(cancelMsg)
+
+	// Should hide picker
+	require.False(t, m.showSessionPicker, "expected showSessionPicker to be false")
+	require.Nil(t, m.sessionPicker, "expected sessionPicker to be nil")
+
+	// Should return nil command (stay in Kanban)
+	require.Nil(t, cmd, "expected nil command on cancel")
+	require.Equal(t, ViewBoard, m.view, "expected to stay in ViewBoard")
+}
+
+func TestPickerOverlay_RenderedWhenVisible(t *testing.T) {
+	// Create model with picker visible
+	pickerModel := commandpalette.New(commandpalette.Config{
+		Title: "Resume Session",
+		Items: []commandpalette.Item{
+			{ID: "/path/to/session1", Name: "Session 1", Description: "1 hour ago"},
+		},
+	})
+	pickerModel = pickerModel.SetSize(100, 40)
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	m := Model{
+		services:          services,
+		width:             100,
+		height:            40,
+		view:              ViewBoard,
+		sessionPicker:     &pickerModel,
+		showSessionPicker: true,
+	}
+
+	// Render the view
+	view := m.View()
+
+	// View should contain session picker content
+	require.Contains(t, view, "Resume Session", "expected view to contain picker title")
+	require.Contains(t, view, "Session 1", "expected view to contain session name")
+}
+
+func TestPickerOverlay_NotRenderedWhenHidden(t *testing.T) {
+	// Create model without picker visible
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	m := Model{
+		services:          services,
+		width:             100,
+		height:            40,
+		view:              ViewBoard,
+		showSessionPicker: false,
+		sessionPicker:     nil,
+	}
+
+	// Render the view
+	view := m.View()
+
+	// View should NOT contain session picker content
+	require.NotContains(t, view, "Resume Session", "expected view to NOT contain picker title")
 }

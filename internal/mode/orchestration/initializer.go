@@ -355,7 +355,18 @@ func (i *Initializer) run() {
 		return
 	}
 
-	// Phase 2: Spawn coordinator
+	// For resumed sessions, skip spawning coordinator and waiting for first message.
+	// The coordinator and workers are already restored in the ProcessRepository.
+	// Just transition directly to ready.
+	if i.cfg.RestoredSession != nil {
+		log.Debug(log.CatOrch, "Session resume: skipping coordinator spawn, transitioning to ready",
+			"subsystem", "init",
+			"sessionID", i.cfg.RestoredSession.Metadata.SessionID)
+		i.transitionTo(InitReady)
+		return
+	}
+
+	// Phase 2: Spawn coordinator (new sessions only)
 	i.transitionTo(InitSpawningCoordinator)
 	if err := i.spawnCoordinator(); err != nil {
 		i.fail(err)
@@ -859,6 +870,22 @@ func (i *Initializer) createWorkspace() error {
 			"activeWorkers", len(i.cfg.RestoredSession.ActiveWorkers),
 			"retiredWorkers", len(i.cfg.RestoredSession.RetiredWorkers))
 
+		// Restore ProcessRegistry with dormant processes for coordinator and active workers
+		// This enables Resume() to work when messages are delivered
+		if err := session.RestoreProcessRegistry(
+			v2Infra.Internal.ProcessRegistry,
+			i.cfg.RestoredSession,
+			v2Infra.Core.CmdSubmitter,
+			v2Infra.Core.EventBus,
+		); err != nil {
+			_ = listenerResult.Listener.Close()
+			v2Infra.Drain()
+			return fmt.Errorf("restoring process registry: %w", err)
+		}
+		log.Debug(log.CatOrch, "Restored ProcessRegistry with dormant processes", "subsystem", "init",
+			"coordinator", true,
+			"activeWorkers", len(i.cfg.RestoredSession.ActiveWorkers))
+
 		// Restore MessageRepository with inter-agent messages from session
 		if err := session.RestoreMessageRepository(msgRepo, i.cfg.RestoredSession.InterAgentMessages); err != nil {
 			_ = listenerResult.Listener.Close()
@@ -934,6 +961,9 @@ func (i *Initializer) createWorkspace() error {
 // spawnCoordinator creates and starts the coordinator using the v2 command processor.
 // This submits a SpawnProcessCommand which handles all the AI spawning, registry registration,
 // and ProcessRepository updates through the unified command pattern.
+//
+// Note: This method is only called for new sessions. Resumed sessions skip coordinator
+// spawning entirely in the run() method since the coordinator is already restored.
 func (i *Initializer) spawnCoordinator() error {
 	i.mu.RLock()
 	v2Infra := i.v2Infra

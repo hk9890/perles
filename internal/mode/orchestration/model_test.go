@@ -2077,3 +2077,65 @@ func TestRestoreFromSession_NilMapHandling(t *testing.T) {
 
 	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus["worker-1"])
 }
+
+// =============================================================================
+// ResumeSessionDir Config and Init Tests (perles-mewu.1)
+// =============================================================================
+
+func TestNew_ResumeSessionDir_PropagatesFromConfig(t *testing.T) {
+	// When ResumeSessionDir is set in config, it should be stored in the model
+	m := New(Config{ResumeSessionDir: "/path/to/session"})
+
+	require.Equal(t, "/path/to/session", m.resumeSessionDir,
+		"resumeSessionDir should be set from config")
+}
+
+func TestNew_ResumeSessionDir_DefaultEmpty(t *testing.T) {
+	// When ResumeSessionDir is not set, it defaults to empty string
+	m := New(Config{})
+
+	require.Empty(t, m.resumeSessionDir,
+		"resumeSessionDir should be empty by default")
+}
+
+func TestInit_NewSession_ReturnsStartCoordinatorMsg(t *testing.T) {
+	// When resumeSessionDir is empty, Init() should return StartCoordinatorMsg
+	m := New(Config{})
+
+	cmd := m.Init()
+	require.NotNil(t, cmd, "Init should return a command")
+
+	// Execute the command and check the message type
+	msg := cmd()
+	_, ok := msg.(StartCoordinatorMsg)
+	require.True(t, ok, "Init() should return StartCoordinatorMsg when resumeSessionDir is empty")
+}
+
+func TestInit_ResumeSession_ReturnsResumeSessionMsg(t *testing.T) {
+	// When resumeSessionDir is set, Init() should return ResumeSessionMsg
+	sessionDir := "/path/to/session"
+	m := New(Config{ResumeSessionDir: sessionDir})
+
+	cmd := m.Init()
+	require.NotNil(t, cmd, "Init should return a command")
+
+	// Execute the command and check the message type
+	msg := cmd()
+	resumeMsg, ok := msg.(ResumeSessionMsg)
+	require.True(t, ok, "Init() should return ResumeSessionMsg when resumeSessionDir is set")
+	require.Equal(t, sessionDir, resumeMsg.SessionDir,
+		"ResumeSessionMsg.SessionDir should match the configured path")
+}
+
+func TestInit_ResumeSession_WithEmptyString_ReturnsStartCoordinatorMsg(t *testing.T) {
+	// Explicit empty string should behave like not set
+	m := New(Config{ResumeSessionDir: ""})
+
+	cmd := m.Init()
+	require.NotNil(t, cmd, "Init should return a command")
+
+	// Execute the command and check the message type
+	msg := cmd()
+	_, ok := msg.(StartCoordinatorMsg)
+	require.True(t, ok, "Init() should return StartCoordinatorMsg when resumeSessionDir is explicitly empty")
+}
