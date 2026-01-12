@@ -4132,3 +4132,413 @@ func TestSession_SaveMetadataLocked_CreatesMetadataIfMissing(t *testing.T) {
 	require.Equal(t, "/test/project", meta.WorkDir)
 	require.Equal(t, "2026-01-11", meta.DatePartition)
 }
+
+// =============================================================================
+// Reopen Tests
+// =============================================================================
+
+func TestReopen_ReturnsSessionWithCorrectID(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-id"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Reopen the session
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	// Verify session has correct ID and directory
+	require.Equal(t, sessionID, sess.ID)
+	require.Equal(t, sessionDir, sess.Dir)
+	require.Equal(t, StatusRunning, sess.Status)
+}
+
+func TestReopen_SetsStartTime(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-starttime"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	originalStartTime := origSess.StartTime
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Wait a moment to ensure different timestamp
+	time.Sleep(10 * time.Millisecond)
+
+	// Reopen the session
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	// StartTime should be set to current time (not original)
+	require.True(t, sess.StartTime.After(originalStartTime))
+}
+
+func TestReopen_AppliesOptions(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-options"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Reopen with options
+	sess, err := Reopen(sessionID, sessionDir,
+		WithWorkDir("/new/work/dir"),
+		WithApplicationName("new-app-name"),
+		WithDatePartition("2026-01-12"),
+	)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	// Verify options were applied
+	require.Equal(t, "/new/work/dir", sess.workDir)
+	require.Equal(t, "new-app-name", sess.applicationName)
+	require.Equal(t, "2026-01-12", sess.datePartition)
+}
+
+func TestReopen_OpensFilesInAppendMode(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-append"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session and write some content
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Write initial messages
+	now := time.Now()
+	initialMsg := chatrender.Message{
+		Role:      "user",
+		Content:   "Initial message",
+		Timestamp: &now,
+	}
+	err = origSess.WriteCoordinatorMessage(initialMsg)
+	require.NoError(t, err)
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify initial content exists
+	coordMsgsPath := filepath.Join(sessionDir, "coordinator", "messages.jsonl")
+	initialContent, err := os.ReadFile(coordMsgsPath)
+	require.NoError(t, err)
+	require.Contains(t, string(initialContent), "Initial message")
+
+	// Reopen and write more content
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	newMsg := chatrender.Message{
+		Role:      "assistant",
+		Content:   "New message after reopen",
+		Timestamp: &now,
+	}
+	err = sess.WriteCoordinatorMessage(newMsg)
+	require.NoError(t, err)
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify both messages exist (append, not overwrite)
+	finalContent, err := os.ReadFile(coordMsgsPath)
+	require.NoError(t, err)
+	require.Contains(t, string(finalContent), "Initial message")
+	require.Contains(t, string(finalContent), "New message after reopen")
+}
+
+func TestReopen_AppendsToExistingMessages(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-append-verify"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session and write messages
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Write to messages.jsonl (inter-agent messages)
+	entry1 := message.Entry{
+		ID:      "msg-1",
+		From:    "coordinator",
+		To:      "worker-1",
+		Content: "First inter-agent message",
+	}
+	err = origSess.WriteMessage(entry1)
+	require.NoError(t, err)
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Reopen and write more
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	entry2 := message.Entry{
+		ID:      "msg-2",
+		From:    "worker-1",
+		To:      "coordinator",
+		Content: "Second message after reopen",
+	}
+	err = sess.WriteMessage(entry2)
+	require.NoError(t, err)
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify both messages exist in JSONL file
+	messagesPath := filepath.Join(sessionDir, "messages.jsonl")
+	content, err := os.ReadFile(messagesPath)
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	require.Len(t, lines, 2, "Expected 2 JSONL lines")
+	require.Contains(t, lines[0], "First inter-agent message")
+	require.Contains(t, lines[1], "Second message after reopen")
+}
+
+func TestReopen_HandlesNonexistentDir(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionDir := filepath.Join(baseDir, "nonexistent", "session")
+
+	// Attempt to reopen non-existent directory
+	_, err := Reopen("test-id", sessionDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "session directory does not exist")
+}
+
+func TestReopen_CleansUpOnPartialFailure(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-cleanup"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session structure
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Delete coordinator/messages.jsonl to cause partial failure
+	coordMsgsPath := filepath.Join(sessionDir, "coordinator", "messages.jsonl")
+	err = os.Remove(coordMsgsPath)
+	require.NoError(t, err)
+
+	// Make coordinator directory read-only to prevent file creation
+	coordDir := filepath.Join(sessionDir, "coordinator")
+	err = os.Chmod(coordDir, 0500)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		// Restore permissions for cleanup
+		_ = os.Chmod(coordDir, 0750)
+	})
+
+	// Skip this test on non-Unix systems where permissions might work differently
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping permission-based test on Windows")
+	}
+
+	// Attempt to reopen (should fail when trying to open messages.jsonl)
+	_, err = Reopen(sessionID, sessionDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reopening coordinator messages.jsonl")
+
+	// Verify the previously opened file (raw.jsonl) was cleaned up
+	// We can't directly check file descriptors, but we can verify the error
+	// message indicates proper cleanup flow (it got to messages.jsonl after raw.jsonl)
+}
+
+func TestReopen_ThenWriteMessages(t *testing.T) {
+	// Integration test: Full flow of create -> close -> reopen -> write -> verify append
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-integration"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Phase 1: Create and populate initial session
+	origSess, err := New(sessionID, sessionDir,
+		WithWorkDir("/project"),
+		WithApplicationName("test-app"),
+	)
+	require.NoError(t, err)
+
+	// Add workers and messages
+	now := time.Now()
+	origSess.addWorker("worker-1", now, "/project")
+
+	msg1 := chatrender.Message{Role: "user", Content: "User question", Timestamp: &now}
+	err = origSess.WriteCoordinatorMessage(msg1)
+	require.NoError(t, err)
+
+	msg2 := chatrender.Message{Role: "assistant", Content: "Initial response", Timestamp: &now}
+	err = origSess.WriteCoordinatorMessage(msg2)
+	require.NoError(t, err)
+
+	// Set session refs for resumability
+	err = origSess.SetCoordinatorSessionRef("coord-session-123")
+	require.NoError(t, err)
+	err = origSess.MarkResumable()
+	require.NoError(t, err)
+	err = origSess.SetWorkerSessionRef("worker-1", "worker-session-456", "/project")
+	require.NoError(t, err)
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Phase 2: Reopen and verify state restoration
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Verify workers were restored from metadata
+	require.Len(t, sess.workers, 1)
+	require.Equal(t, "worker-1", sess.workers[0].ID)
+	require.Equal(t, "worker-session-456", sess.workers[0].HeadlessSessionRef)
+
+	// Verify session refs were restored
+	require.Equal(t, "coord-session-123", sess.coordinatorSessionRef)
+	require.True(t, sess.resumable)
+
+	// Verify application context was restored
+	require.Equal(t, "/project", sess.workDir)
+	require.Equal(t, "test-app", sess.applicationName)
+
+	// Phase 3: Write new content
+	msg3 := chatrender.Message{Role: "user", Content: "Follow-up question", Timestamp: &now}
+	err = sess.WriteCoordinatorMessage(msg3)
+	require.NoError(t, err)
+
+	msg4 := chatrender.Message{Role: "assistant", Content: "Continued response", Timestamp: &now}
+	err = sess.WriteCoordinatorMessage(msg4)
+	require.NoError(t, err)
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Phase 4: Verify all content was preserved and appended
+	coordMsgsPath := filepath.Join(sessionDir, "coordinator", "messages.jsonl")
+	content, err := os.ReadFile(coordMsgsPath)
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	require.Len(t, lines, 4, "Expected 4 JSONL lines (2 original + 2 new)")
+
+	// Verify content order (original messages first, then new)
+	require.Contains(t, lines[0], "User question")
+	require.Contains(t, lines[1], "Initial response")
+	require.Contains(t, lines[2], "Follow-up question")
+	require.Contains(t, lines[3], "Continued response")
+}
+
+func TestReopen_RestoresWorkersFromMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-restore-workers"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session with workers
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	now := time.Now().Truncate(time.Second)
+	origSess.addWorker("worker-1", now, "/project")
+	origSess.addWorker("worker-2", now.Add(time.Minute), "/project")
+
+	// Set session refs
+	err = origSess.SetWorkerSessionRef("worker-1", "session-ref-1", "/project")
+	require.NoError(t, err)
+	err = origSess.SetWorkerSessionRef("worker-2", "session-ref-2", "/project")
+	require.NoError(t, err)
+
+	// Retire one worker
+	origSess.retireWorker("worker-1", now.Add(30*time.Minute), "completed")
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Reopen and verify workers were restored
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	require.Len(t, sess.workers, 2)
+
+	// Worker 1 (retired)
+	require.Equal(t, "worker-1", sess.workers[0].ID)
+	require.Equal(t, "session-ref-1", sess.workers[0].HeadlessSessionRef)
+	require.Equal(t, "completed", sess.workers[0].FinalPhase)
+	require.False(t, sess.workers[0].RetiredAt.IsZero())
+
+	// Worker 2 (active)
+	require.Equal(t, "worker-2", sess.workers[1].ID)
+	require.Equal(t, "session-ref-2", sess.workers[1].HeadlessSessionRef)
+	require.True(t, sess.workers[1].RetiredAt.IsZero())
+}
+
+func TestReopen_CanAddNewWorkersAfterReopen(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-reopen-add-workers"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create initial session with one worker
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	now := time.Now().Truncate(time.Second)
+	origSess.addWorker("worker-1", now, "/project")
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Reopen and add new worker
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Add new worker
+	sess.addWorker("worker-2", now.Add(time.Hour), "/project")
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify both workers exist in metadata
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Len(t, meta.Workers, 2)
+	require.Equal(t, "worker-1", meta.Workers[0].ID)
+	require.Equal(t, "worker-2", meta.Workers[1].ID)
+}
+
+func TestReopen_InvalidPath_NotADirectory(t *testing.T) {
+	baseDir := t.TempDir()
+
+	// Create a file instead of a directory
+	filePath := filepath.Join(baseDir, "not-a-dir")
+	err := os.WriteFile(filePath, []byte("test"), 0600)
+	require.NoError(t, err)
+
+	// Attempt to reopen
+	_, err = Reopen("test-id", filePath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "session path is not a directory")
+}
+
+func TestReopen_MissingMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Create directory without metadata
+	err := os.MkdirAll(sessionDir, 0750)
+	require.NoError(t, err)
+
+	// Attempt to reopen
+	_, err = Reopen("test-id", sessionDir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "loading session metadata")
+}

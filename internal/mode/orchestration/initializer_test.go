@@ -1886,3 +1886,387 @@ func TestNewInitializer_WorktreeBranchName_PassedViaConfig(t *testing.T) {
 	// Verify the config was stored (accessed via cfg field)
 	require.Equal(t, "custom-branch-name", init.cfg.WorktreeBranchName)
 }
+
+// ===========================================================================
+// Session Restoration Tests (Phase 4e - perles-x977.5)
+// ===========================================================================
+
+func TestInitializerConfig_RestoredSession_FieldExists(t *testing.T) {
+	// Verify the RestoredSession field exists and can be set
+	config := InitializerConfig{
+		WorkDir:         "/test/dir",
+		RestoredSession: nil,
+	}
+
+	// Field should be nil by default
+	require.Nil(t, config.RestoredSession)
+}
+
+func TestInitializerConfig_RestoredSession_AcceptsResumableSession(t *testing.T) {
+	// Verify RestoredSession accepts a *session.ResumableSession
+	meta := &session.Metadata{
+		SessionID:             "test-session-id",
+		SessionDir:            "/test/session/dir",
+		CoordinatorSessionRef: "coord-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	config := InitializerConfig{
+		WorkDir:         "/test/dir",
+		RestoredSession: resumable,
+	}
+
+	// Verify it was set
+	require.NotNil(t, config.RestoredSession)
+	require.Equal(t, "test-session-id", config.RestoredSession.Metadata.SessionID)
+}
+
+func TestNewInitializer_WithRestoredSession(t *testing.T) {
+	// Verify NewInitializer accepts RestoredSession in config
+	meta := &session.Metadata{
+		SessionID:             "restored-session-id",
+		SessionDir:            "/restored/session/dir",
+		CoordinatorSessionRef: "coord-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	cfg := InitializerConfig{
+		WorkDir:         t.TempDir(),
+		RestoredSession: resumable,
+	}
+
+	init := NewInitializer(cfg)
+	require.NotNil(t, init)
+
+	// Verify the config was stored
+	require.NotNil(t, init.cfg.RestoredSession)
+	require.Equal(t, "restored-session-id", init.cfg.RestoredSession.Metadata.SessionID)
+}
+
+func TestInitializer_WithoutRestoredSession_UsesNew(t *testing.T) {
+	// Verify createSession() uses session.New() when RestoredSession is nil
+	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
+
+	init := NewInitializer(InitializerConfig{
+		WorkDir:    workDir,
+		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
+		RestoredSession: nil, // Not restoring
+	})
+
+	// Set session ID (normally done by Start())
+	init.mu.Lock()
+	init.sessionID = "new-session-uuid-12345678"
+	init.mu.Unlock()
+
+	// Call createSession directly
+	sess, err := init.createSession()
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	t.Cleanup(func() { _ = sess.Close(session.StatusCompleted) })
+
+	// Verify it's a new session with the generated ID
+	require.Equal(t, "new-session-uuid-12345678", sess.ID)
+
+	// Verify session directory was created in the standard location
+	today := time.Now().Format("2006-01-02")
+	expectedDir := filepath.Join(sessionsBaseDir, "test-app", today, sess.ID)
+	info, err := os.Stat(expectedDir)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
+func TestInitializer_WithRestoredSession_UsesReopen(t *testing.T) {
+	// Verify createSession() uses session.Reopen() when RestoredSession is set
+	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
+
+	// First, create an actual session to restore from
+	existingSessionID := "existing-session-id-abc123"
+	existingSessionDir := filepath.Join(sessionsBaseDir, "test-app", "2026-01-12", existingSessionID)
+
+	// Create the session using session.New
+	existingSession, err := session.New(existingSessionID, existingSessionDir,
+		session.WithWorkDir(workDir),
+		session.WithApplicationName("test-app"),
+		session.WithDatePartition("2026-01-12"),
+	)
+	require.NoError(t, err)
+	err = existingSession.Close(session.StatusCompleted)
+	require.NoError(t, err)
+
+	// Create metadata for restoration
+	meta := &session.Metadata{
+		SessionID:             existingSessionID,
+		SessionDir:            existingSessionDir,
+		CoordinatorSessionRef: "coord-session-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+		DatePartition:         "2026-01-12",
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	init := NewInitializer(InitializerConfig{
+		WorkDir:    workDir,
+		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
+		RestoredSession: resumable, // Restoring from existing session
+	})
+
+	// Call createSession directly
+	sess, err := init.createSession()
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	t.Cleanup(func() { _ = sess.Close(session.StatusCompleted) })
+
+	// Verify it reopened the existing session
+	require.Equal(t, existingSessionID, sess.ID)
+	require.Equal(t, existingSessionDir, sess.Dir)
+
+	// Verify initializer's sessionDir was updated to match
+	require.Equal(t, existingSessionDir, init.SessionDir())
+}
+
+func TestInitializer_WithRestoredSession_CoordinatorHasSessionID(t *testing.T) {
+	// Verify that coordinator process has correct SessionID after restoration
+	// This is a documentation test showing that RestoreProcessRepository
+	// populates SessionID from Metadata.CoordinatorSessionRef
+	workDir := t.TempDir()
+
+	// Create a resumable session with coordinator ref
+	meta := &session.Metadata{
+		SessionID:             "session-with-coord",
+		SessionDir:            "/tmp/session", // Not a real dir, just for config
+		CoordinatorSessionRef: "coord-headless-session-abc",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	cfg := InitializerConfig{
+		WorkDir:         workDir,
+		RestoredSession: resumable,
+	}
+
+	init := NewInitializer(cfg)
+	require.NotNil(t, init)
+
+	// Verify the coordinator session ref is accessible via config
+	require.Equal(t, "coord-headless-session-abc", init.cfg.RestoredSession.Metadata.CoordinatorSessionRef)
+
+	// Note: The actual ProcessRepository restoration is tested separately in
+	// session/restore_test.go - TestRestoreProcessRepository_CoordinatorSessionID
+}
+
+func TestInitializer_WithRestoredSession_WorkersHaveSessionIDs(t *testing.T) {
+	// Verify that worker processes have correct SessionIDs after restoration
+	// This is a documentation test showing that RestoreProcessRepository
+	// populates SessionID from WorkerMetadata.HeadlessSessionRef
+	workDir := t.TempDir()
+
+	// Create a resumable session with worker refs
+	worker1 := session.WorkerMetadata{
+		ID:                 "worker-1",
+		HeadlessSessionRef: "worker-1-headless-ref",
+	}
+	worker2 := session.WorkerMetadata{
+		ID:                 "worker-2",
+		HeadlessSessionRef: "worker-2-headless-ref",
+	}
+
+	meta := &session.Metadata{
+		SessionID:             "session-with-workers",
+		SessionDir:            "/tmp/session",
+		CoordinatorSessionRef: "coord-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+		Workers:               []session.WorkerMetadata{worker1, worker2},
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata:      meta,
+		ActiveWorkers: []session.WorkerMetadata{worker1, worker2},
+	}
+
+	cfg := InitializerConfig{
+		WorkDir:         workDir,
+		RestoredSession: resumable,
+	}
+
+	init := NewInitializer(cfg)
+	require.NotNil(t, init)
+
+	// Verify worker session refs are accessible via config
+	require.Len(t, init.cfg.RestoredSession.ActiveWorkers, 2)
+	require.Equal(t, "worker-1-headless-ref", init.cfg.RestoredSession.ActiveWorkers[0].HeadlessSessionRef)
+	require.Equal(t, "worker-2-headless-ref", init.cfg.RestoredSession.ActiveWorkers[1].HeadlessSessionRef)
+
+	// Note: The actual ProcessRepository restoration is tested separately in
+	// session/restore_test.go - TestRestoreProcessRepository_WorkerSessionIDs
+}
+
+func TestInitializer_RestoredSessionWithNoWorkers(t *testing.T) {
+	// Edge case: Verify restoration works with coordinator only (no workers)
+	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
+
+	// Create an actual session to restore from
+	existingSessionID := "session-no-workers"
+	existingSessionDir := filepath.Join(sessionsBaseDir, "test-app", "2026-01-12", existingSessionID)
+
+	// Create the session using session.New
+	existingSession, err := session.New(existingSessionID, existingSessionDir,
+		session.WithWorkDir(workDir),
+		session.WithApplicationName("test-app"),
+		session.WithDatePartition("2026-01-12"),
+	)
+	require.NoError(t, err)
+	err = existingSession.Close(session.StatusCompleted)
+	require.NoError(t, err)
+
+	// Create metadata with no workers
+	meta := &session.Metadata{
+		SessionID:             existingSessionID,
+		SessionDir:            existingSessionDir,
+		CoordinatorSessionRef: "coord-only-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+		DatePartition:         "2026-01-12",
+		Workers:               []session.WorkerMetadata{}, // No workers
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata:       meta,
+		ActiveWorkers:  []session.WorkerMetadata{}, // Empty
+		RetiredWorkers: []session.WorkerMetadata{}, // Empty
+	}
+
+	init := NewInitializer(InitializerConfig{
+		WorkDir:    workDir,
+		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
+		RestoredSession: resumable,
+	})
+
+	// Call createSession - should succeed even with no workers
+	sess, err := init.createSession()
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	t.Cleanup(func() { _ = sess.Close(session.StatusCompleted) })
+
+	require.Equal(t, existingSessionID, sess.ID)
+}
+
+func TestInitializer_ReopenSession_PropagatesError(t *testing.T) {
+	// Verify that reopenSession propagates errors from session.Reopen
+	workDir := t.TempDir()
+	nonExistentDir := "/nonexistent/session/dir/that/does/not/exist"
+
+	meta := &session.Metadata{
+		SessionID:             "nonexistent-session",
+		SessionDir:            nonExistentDir,
+		CoordinatorSessionRef: "coord-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	init := NewInitializer(InitializerConfig{
+		WorkDir:    workDir,
+		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         t.TempDir(),
+			ApplicationName: "test-app",
+		},
+		RestoredSession: resumable,
+	})
+
+	// Call createSession - should fail because session dir doesn't exist
+	sess, err := init.createSession()
+	require.Error(t, err)
+	require.Nil(t, sess)
+	require.Contains(t, err.Error(), "failed to reopen session")
+}
+
+func TestInitializer_ReopenSession_SetsSessionIDAndDir(t *testing.T) {
+	// Verify reopenSession sets the initializer's sessionID and sessionDir
+	workDir := t.TempDir()
+	sessionsBaseDir := t.TempDir()
+
+	// Create an actual session to restore from
+	existingSessionID := "session-to-restore"
+	existingSessionDir := filepath.Join(sessionsBaseDir, "test-app", "2026-01-12", existingSessionID)
+
+	existingSession, err := session.New(existingSessionID, existingSessionDir,
+		session.WithWorkDir(workDir),
+		session.WithApplicationName("test-app"),
+		session.WithDatePartition("2026-01-12"),
+	)
+	require.NoError(t, err)
+	err = existingSession.Close(session.StatusCompleted)
+	require.NoError(t, err)
+
+	meta := &session.Metadata{
+		SessionID:             existingSessionID,
+		SessionDir:            existingSessionDir,
+		CoordinatorSessionRef: "coord-ref",
+		Resumable:             true,
+		Status:                session.StatusCompleted,
+		DatePartition:         "2026-01-12",
+	}
+
+	resumable := &session.ResumableSession{
+		Metadata: meta,
+	}
+
+	init := NewInitializer(InitializerConfig{
+		WorkDir:    workDir,
+		ClientType: "claude",
+		SessionStorage: config.SessionStorageConfig{
+			BaseDir:         sessionsBaseDir,
+			ApplicationName: "test-app",
+		},
+		RestoredSession: resumable,
+	})
+
+	// Initially, sessionID and sessionDir are empty
+	require.Empty(t, init.SessionDir())
+
+	// Call createSession
+	sess, err := init.createSession()
+	require.NoError(t, err)
+	require.NotNil(t, sess)
+	t.Cleanup(func() { _ = sess.Close(session.StatusCompleted) })
+
+	// After reopening, initializer's sessionDir should be updated
+	require.Equal(t, existingSessionDir, init.SessionDir())
+}

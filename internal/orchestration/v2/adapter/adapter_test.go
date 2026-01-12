@@ -176,6 +176,14 @@ func (m *mockFullMessageRepository) Broker() *pubsub.Broker[message.Event] {
 	return nil
 }
 
+func (m *mockFullMessageRepository) AppendRestored(entry message.Entry) (*message.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries = append(m.entries, entry)
+	m.count++
+	return &entry, nil
+}
+
 func (m *mockFullMessageRepository) addEntry(entry message.Entry) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

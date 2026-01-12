@@ -69,6 +69,8 @@ type InitializerConfig struct {
 	TracingConfig config.TracingConfig // Distributed tracing settings
 	// Session storage configuration
 	SessionStorage config.SessionStorageConfig // Centralized session storage settings
+	// Session restoration configuration
+	RestoredSession *session.ResumableSession // Set to restore from a previous session
 }
 
 // InitializerResources holds the resources created during initialization.
@@ -392,11 +394,24 @@ func (i *Initializer) run() {
 	}
 }
 
-// createSession creates a new orchestration session with its directory structure.
-// It uses the session ID generated during Start(), creates the session directory
-// in the centralized storage location, and initializes the session tracking object
-// with application context metadata.
+// createSession creates a new orchestration session with its directory structure,
+// or reopens an existing session if RestoredSession is configured.
+//
+// For new sessions:
+// - Uses the session ID generated during Start()
+// - Creates the session directory in the centralized storage location
+// - Initializes the session tracking object with application context metadata
+//
+// For restored sessions (RestoredSession is set):
+// - Uses session.Reopen() to continue writing to existing session files
+// - Passes SessionID and SessionDir from RestoredSession.Metadata
+// - Applies the same SessionOptions as normal creation
 func (i *Initializer) createSession() (*session.Session, error) {
+	// Check if we're restoring from a previous session
+	if i.cfg.RestoredSession != nil && i.cfg.RestoredSession.Metadata != nil {
+		return i.reopenSession()
+	}
+
 	// Use the session ID generated during Start()
 	i.mu.RLock()
 	sessionID := i.sessionID
@@ -445,6 +460,57 @@ func (i *Initializer) createSession() (*session.Session, error) {
 	log.Debug(log.CatOrch, "Session created", "subsystem", "init",
 		"sessionID", sessionID, "dir", sessionDir,
 		"app", pathBuilder.ApplicationName(), "date", datePartition)
+	return sess, nil
+}
+
+// reopenSession reopens an existing session directory for continued writing.
+// Called when RestoredSession is configured, enabling session resumption.
+// Uses session.Reopen() to open existing files in append mode so new messages
+// continue writing to the same JSONL files without overwriting.
+func (i *Initializer) reopenSession() (*session.Session, error) {
+	meta := i.cfg.RestoredSession.Metadata
+	sessionID := meta.SessionID
+	sessionDir := meta.SessionDir
+
+	// Determine effective work directory (use worktree path if created)
+	effectiveWorkDir := i.cfg.WorkDir
+	i.mu.RLock()
+	if i.worktreePath != "" {
+		effectiveWorkDir = i.worktreePath
+	}
+	i.mu.RUnlock()
+
+	// Build path builder for consistency (needed for index updates)
+	appName := i.cfg.SessionStorage.ApplicationName
+	if appName == "" {
+		appName = session.DeriveApplicationName(effectiveWorkDir, i.cfg.GitExecutor)
+	}
+
+	pathBuilder := session.NewSessionPathBuilder(
+		i.cfg.SessionStorage.BaseDir,
+		appName,
+	)
+
+	// Reopen the existing session in append mode
+	sess, err := session.Reopen(sessionID, sessionDir,
+		session.WithWorkDir(effectiveWorkDir),
+		session.WithApplicationName(pathBuilder.ApplicationName()),
+		session.WithDatePartition(meta.DatePartition),
+		session.WithPathBuilder(pathBuilder),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reopen session: %w", err)
+	}
+
+	// Override the generated session ID with the restored one
+	i.mu.Lock()
+	i.sessionID = sessionID
+	i.sessionDir = sessionDir
+	i.mu.Unlock()
+
+	log.Debug(log.CatOrch, "Session reopened for resumption", "subsystem", "init",
+		"sessionID", sessionID, "dir", sessionDir,
+		"app", pathBuilder.ApplicationName())
 	return sess, nil
 }
 
@@ -777,6 +843,30 @@ func (i *Initializer) createWorkspace() error {
 	if err != nil {
 		_ = listenerResult.Listener.Close()
 		return fmt.Errorf("creating v2 infrastructure: %w", err)
+	}
+
+	// ============================================================
+	// Step 5a: Restore repositories from session if resuming
+	// ============================================================
+	if i.cfg.RestoredSession != nil {
+		// Restore ProcessRepository with coordinator and workers from session
+		if err := session.RestoreProcessRepository(v2Infra.Repositories.ProcessRepo, i.cfg.RestoredSession); err != nil {
+			_ = listenerResult.Listener.Close()
+			v2Infra.Drain()
+			return fmt.Errorf("restoring process repository: %w", err)
+		}
+		log.Debug(log.CatOrch, "Restored ProcessRepository from session", "subsystem", "init",
+			"activeWorkers", len(i.cfg.RestoredSession.ActiveWorkers),
+			"retiredWorkers", len(i.cfg.RestoredSession.RetiredWorkers))
+
+		// Restore MessageRepository with inter-agent messages from session
+		if err := session.RestoreMessageRepository(msgRepo, i.cfg.RestoredSession.InterAgentMessages); err != nil {
+			_ = listenerResult.Listener.Close()
+			v2Infra.Drain()
+			return fmt.Errorf("restoring message repository: %w", err)
+		}
+		log.Debug(log.CatOrch, "Restored MessageRepository from session", "subsystem", "init",
+			"messageCount", len(i.cfg.RestoredSession.InterAgentMessages))
 	}
 
 	// Attach session to brokers for event logging

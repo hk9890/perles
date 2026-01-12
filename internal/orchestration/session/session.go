@@ -261,6 +261,109 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	return sess, nil
 }
 
+// Reopen reopens an existing session directory for continued writing.
+// This is used for session resumption - it opens existing JSONL files in append mode
+// so new messages continue writing to the same files without overwriting.
+//
+// Unlike New(), Reopen:
+//   - Does NOT create directories (they must already exist)
+//   - Does NOT create/overwrite metadata.json
+//   - Opens files in append mode to continue from existing content
+//   - Loads existing worker metadata to preserve the workers list
+//
+// The sessionDir must be an existing session directory with a valid metadata.json.
+// Worker files (under workers/{id}/) are still created on-demand when workers are spawned.
+func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, error) {
+	// Verify the session directory exists
+	info, err := os.Stat(sessionDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("session directory does not exist: %s", sessionDir)
+		}
+		return nil, fmt.Errorf("checking session directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("session path is not a directory: %s", sessionDir)
+	}
+
+	// Load metadata to get existing workers list and other session state.
+	// Per reviewer recommendation: We need to restore workers slice so that
+	// AddWorker/UpdateWorker calls don't corrupt the session state.
+	meta, err := Load(sessionDir)
+	if err != nil {
+		return nil, fmt.Errorf("loading session metadata: %w", err)
+	}
+
+	// Open coordinator/raw.jsonl in append mode
+	coordPath := filepath.Join(sessionDir, coordinatorDir)
+	coordRawPath := filepath.Join(coordPath, rawJSONLFile)
+	coordRawFile, err := os.OpenFile(coordRawPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		return nil, fmt.Errorf("reopening coordinator raw.jsonl: %w", err)
+	}
+	coordRaw := NewBufferedWriter(coordRawFile)
+
+	// Open coordinator/messages.jsonl in append mode
+	coordMsgsPath := filepath.Join(coordPath, chatMessagesFile)
+	coordMsgsFile, err := os.OpenFile(coordMsgsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		return nil, fmt.Errorf("reopening coordinator messages.jsonl: %w", err)
+	}
+	coordMessages := NewBufferedWriter(coordMsgsFile)
+
+	// Open messages.jsonl (inter-agent messages) in append mode
+	messagesPath := filepath.Join(sessionDir, messagesJSONLFile)
+	messageLogFile, err := os.OpenFile(messagesPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		_ = coordMessages.Close()
+		return nil, fmt.Errorf("reopening messages.jsonl: %w", err)
+	}
+	messageLog := NewBufferedWriter(messageLogFile)
+
+	// Open mcp_requests.jsonl in append mode
+	mcpPath := filepath.Join(sessionDir, mcpRequestsFile)
+	mcpLogFile, err := os.OpenFile(mcpPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		_ = coordMessages.Close()
+		_ = messageLog.Close()
+		return nil, fmt.Errorf("reopening mcp_requests.jsonl: %w", err)
+	}
+	mcpLog := NewBufferedWriter(mcpLogFile)
+
+	// Create session with current time as start time for this resumed session
+	sess := &Session{
+		ID:             sessionID,
+		Dir:            sessionDir,
+		StartTime:      time.Now(),
+		Status:         StatusRunning,
+		coordRaw:       coordRaw,
+		coordMessages:  coordMessages,
+		workerRaws:     make(map[string]*BufferedWriter),
+		workerMessages: make(map[string]*BufferedWriter),
+		messageLog:     messageLog,
+		mcpLog:         mcpLog,
+		// Restore workers from metadata to preserve existing worker list
+		workers:               meta.Workers,
+		tokenUsage:            meta.TokenUsage,
+		coordinatorSessionRef: meta.CoordinatorSessionRef,
+		resumable:             meta.Resumable,
+		applicationName:       meta.ApplicationName,
+		workDir:               meta.WorkDir,
+		datePartition:         meta.DatePartition,
+		closed:                false,
+	}
+
+	// Apply any provided options
+	for _, opt := range opts {
+		opt(sess)
+	}
+
+	return sess, nil
+}
+
 // WriteCoordinatorMessage writes a structured chat message to coordinator/messages.jsonl.
 // The message is serialized to JSON and appended as a single JSONL line.
 func (s *Session) WriteCoordinatorMessage(msg chatrender.Message) error {

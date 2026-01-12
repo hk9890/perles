@@ -139,9 +139,10 @@ type Model struct {
 	worktreeEnabled    bool // Whether worktree isolation is enabled
 	disableWorktrees   bool // Skip worktree prompt and always run in current directory
 	services           mode.Services
-	coordinatorMetrics *metrics.TokenMetrics // Token usage and cost data for coordinator
-	coordinatorWorking bool                  // True when coordinator is processing, false when waiting for input
-	session            *session.Session      // Session tracking for this orchestration run
+	coordinatorMetrics *metrics.TokenMetrics     // Token usage and cost data for coordinator
+	coordinatorWorking bool                      // True when coordinator is processing, false when waiting for input
+	session            *session.Session          // Session tracking for this orchestration run
+	resumedSession     *session.ResumableSession // Loaded session data for restoration (set during resume flow)
 
 	// AI client configuration
 	clientType  string // "claude" (default) or "amp"
@@ -900,4 +901,107 @@ func (m *Model) GetWorkflowConfig(agentType roles.AgentType) *roles.WorkflowConf
 		SystemPromptOverride: roleConfig.SystemPromptOverride,
 		Constraints:          roleConfig.Constraints,
 	}
+}
+
+// RestoreFromSession populates the TUI panes from a RestoredUIState.
+// This method is called during session resumption to restore the visual state
+// from a previously saved session.
+//
+// It restores:
+// - Coordinator pane: messages
+// - Worker pane: workerIDs, workerStatus, workerPhases, workerMessages, retiredOrder
+// - Message pane: entries
+//
+// All viewports are initialized for workers (including retired) and all
+// contentDirty flags are set to true to trigger re-rendering.
+// Queue counts are zeroed since live queue state is not persisted.
+func (m Model) RestoreFromSession(state *session.RestoredUIState) Model {
+	if state == nil {
+		return m
+	}
+
+	// === Restore Coordinator Pane ===
+	m.coordinatorPane.messages = state.CoordinatorMessages
+	m.coordinatorPane.contentDirty = true
+
+	// === Restore Worker Pane ===
+	// First, ensure all maps are initialized to prevent nil map panics.
+	// These should be initialized by newWorkerPane(), but we check just in case.
+	if m.workerPane.workerStatus == nil {
+		m.workerPane.workerStatus = make(map[string]events.ProcessStatus)
+	}
+	if m.workerPane.workerPhases == nil {
+		m.workerPane.workerPhases = make(map[string]events.ProcessPhase)
+	}
+	if m.workerPane.workerMessages == nil {
+		m.workerPane.workerMessages = make(map[string][]ChatMessage)
+	}
+	if m.workerPane.workerTaskIDs == nil {
+		m.workerPane.workerTaskIDs = make(map[string]string)
+	}
+	if m.workerPane.workerMetrics == nil {
+		m.workerPane.workerMetrics = make(map[string]*metrics.TokenMetrics)
+	}
+	if m.workerPane.workerQueueCounts == nil {
+		m.workerPane.workerQueueCounts = make(map[string]int)
+	}
+	if m.workerPane.viewports == nil {
+		m.workerPane.viewports = make(map[string]viewport.Model)
+	}
+	if m.workerPane.contentDirty == nil {
+		m.workerPane.contentDirty = make(map[string]bool)
+	}
+	if m.workerPane.hasNewContent == nil {
+		m.workerPane.hasNewContent = make(map[string]bool)
+	}
+
+	// Restore workerIDs (display order: active workers first, then retired)
+	// Note: RestoredUIState.WorkerIDs already has the correct order
+	m.workerPane.workerIDs = make([]string, 0, len(state.WorkerIDs))
+	for _, workerID := range state.WorkerIDs {
+		// Only add active workers to workerIDs (retired are tracked via retiredOrder)
+		if state.WorkerStatus[workerID] != events.ProcessStatusRetired {
+			m.workerPane.workerIDs = append(m.workerPane.workerIDs, workerID)
+		}
+	}
+
+	// Restore retired order
+	m.workerPane.retiredOrder = make([]string, len(state.RetiredOrder))
+	copy(m.workerPane.retiredOrder, state.RetiredOrder)
+
+	// Restore per-worker state for ALL workers (active and retired)
+	for _, workerID := range state.WorkerIDs {
+		// Status
+		if status, ok := state.WorkerStatus[workerID]; ok {
+			m.workerPane.workerStatus[workerID] = status
+		}
+
+		// Phase
+		if phase, ok := state.WorkerPhases[workerID]; ok {
+			m.workerPane.workerPhases[workerID] = phase
+		}
+
+		// Messages
+		if msgs, ok := state.WorkerMessages[workerID]; ok {
+			m.workerPane.workerMessages[workerID] = msgs
+		}
+
+		// Initialize viewport (size 0,0 since actual size is set during render)
+		m.workerPane.viewports[workerID] = viewport.New(0, 0)
+
+		// Set dirty flag to trigger re-render
+		m.workerPane.contentDirty[workerID] = true
+
+		// Clear new content indicator
+		m.workerPane.hasNewContent[workerID] = false
+
+		// Zero queue count (not restored from session)
+		m.workerPane.workerQueueCounts[workerID] = 0
+	}
+
+	// === Restore Message Pane ===
+	m.messagePane.entries = state.MessageLogEntries
+	m.messagePane.contentDirty = true
+
+	return m
 }

@@ -366,4 +366,15 @@ type MessageRepository interface {
 	// The broker emits message.Event payloads when messages are appended.
 	// Returns nil if pub/sub is not supported by this implementation.
 	Broker() *pubsub.Broker[message.Event]
+
+	// AppendRestored adds a message with existing ID and timestamp (for session restoration).
+	// Unlike Append(), this preserves the entry's existing fields and does NOT generate
+	// new IDs or timestamps.
+	//
+	// CRITICAL: This method does NOT publish to the broker. When restoring sessions,
+	// the TUI state is populated directly from loaded data - publishing would cause
+	// duplicate display since messagePane.entries is already set.
+	//
+	// Use this method only for session restoration; use Append() for normal operation.
+	AppendRestored(entry Message) (*Message, error)
 }

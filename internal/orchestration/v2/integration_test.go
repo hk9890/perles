@@ -959,6 +959,23 @@ func (m *mockMessageRepository) Broker() *pubsub.Broker[message.Event] {
 	return nil
 }
 
+func (m *mockMessageRepository) AppendRestored(entry message.Entry) (*message.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	m.messages = append(m.messages, mockLogMessage{
+		From:    entry.From,
+		To:      entry.To,
+		Content: entry.Content,
+	})
+
+	return &entry, nil
+}
+
 func (m *mockMessageRepository) getMessages() []mockLogMessage {
 	m.mu.Lock()
 	defer m.mu.Unlock()

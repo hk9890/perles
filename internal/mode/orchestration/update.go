@@ -623,6 +623,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	// Handle session resumption messages
+	case ResumeSessionMsg:
+		return m.handleResumeSession(msg)
+
+	case StartRestoredSessionMsg:
+		return m.handleStartRestoredSession(msg)
 	}
 
 	return m, nil
@@ -1078,6 +1085,7 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 		GitExecutor:        m.gitExecutor,
 		TracingConfig:      m.tracingConfig,
 		SessionStorage:     m.sessionStorageConfig,
+		RestoredSession:    m.resumedSession, // Set for session restoration (nil for normal start)
 	})
 
 	// Create context for subscriptions

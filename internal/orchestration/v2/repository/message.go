@@ -133,6 +133,29 @@ func (r *MemoryMessageRepository) Broker() *pubsub.Broker[message.Event] {
 	return r.broker
 }
 
+// AppendRestored adds a message with existing ID and timestamp (for session restoration).
+// Unlike Append(), this preserves the entry's existing fields.
+//
+// CRITICAL: Does NOT publish to broker - TUI state is restored separately.
+// Publishing would cause duplicate display since messagePane.entries is already set.
+func (r *MemoryMessageRepository) AppendRestored(entry Message) (*Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.entries = append(r.entries, entry)
+
+	// Intentionally NO broker publish - TUI state is restored separately
+	// via RestoreFromSession() which populates messagePane.entries directly
+
+	log.Debug(log.CatBeads, "Message restored",
+		"id", entry.ID,
+		"from", entry.From,
+		"to", entry.To,
+		"type", entry.Type)
+
+	return &entry, nil
+}
+
 // ===========================================================================
 // Test Helpers
 // ===========================================================================

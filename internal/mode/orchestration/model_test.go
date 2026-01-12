@@ -15,6 +15,7 @@ import (
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
@@ -1768,4 +1769,311 @@ func TestModel_WorktreeCustomBranch_EmptyIsZeroValue(t *testing.T) {
 
 	m.worktreeCustomBranch = ""
 	require.Empty(t, m.worktreeCustomBranch, "empty string should clear worktreeCustomBranch")
+}
+
+// =============================================================================
+// RestoreFromSession Tests
+// =============================================================================
+
+func TestRestoreFromSession_PopulatesCoordinatorPane(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	state := &session.RestoredUIState{
+		CoordinatorMessages: []ChatMessage{
+			{Role: "user", Content: "Hello coordinator"},
+			{Role: "assistant", Content: "Hello user, I'll help you."},
+			{Role: "user", Content: "Start the task"},
+		},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify coordinator messages were restored
+	require.Len(t, m.coordinatorPane.messages, 3)
+	require.Equal(t, "Hello coordinator", m.coordinatorPane.messages[0].Content)
+	require.Equal(t, "user", m.coordinatorPane.messages[0].Role)
+	require.Equal(t, "Hello user, I'll help you.", m.coordinatorPane.messages[1].Content)
+	require.Equal(t, "assistant", m.coordinatorPane.messages[1].Role)
+	require.Equal(t, "Start the task", m.coordinatorPane.messages[2].Content)
+
+	// Verify dirty flag is set
+	require.True(t, m.coordinatorPane.contentDirty, "coordinatorPane.contentDirty should be true")
+}
+
+func TestRestoreFromSession_PopulatesWorkerPane(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	state := &session.RestoredUIState{
+		WorkerIDs: []string{"worker-1", "worker-2", "worker-3"},
+		WorkerStatus: map[string]events.ProcessStatus{
+			"worker-1": events.ProcessStatusReady,
+			"worker-2": events.ProcessStatusWorking,
+			"worker-3": events.ProcessStatusRetired,
+		},
+		WorkerPhases: map[string]events.ProcessPhase{
+			"worker-1": events.ProcessPhaseImplementing,
+			"worker-2": events.ProcessPhaseReviewing,
+			"worker-3": events.ProcessPhaseCommitting,
+		},
+		WorkerMessages: map[string][]ChatMessage{
+			"worker-1": {
+				{Role: "coordinator", Content: "Implement feature X"},
+				{Role: "worker", Content: "Working on it..."},
+			},
+			"worker-2": {
+				{Role: "coordinator", Content: "Review PR #123"},
+			},
+			"worker-3": {
+				{Role: "worker", Content: "Task completed"},
+			},
+		},
+		RetiredOrder: []string{"worker-3"},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify workerIDs only contains active workers (not retired)
+	require.Len(t, m.workerPane.workerIDs, 2)
+	require.Contains(t, m.workerPane.workerIDs, "worker-1")
+	require.Contains(t, m.workerPane.workerIDs, "worker-2")
+	require.NotContains(t, m.workerPane.workerIDs, "worker-3") // Retired workers not in workerIDs
+
+	// Verify retired order
+	require.Len(t, m.workerPane.retiredOrder, 1)
+	require.Equal(t, "worker-3", m.workerPane.retiredOrder[0])
+
+	// Verify status for all workers (including retired)
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus["worker-1"])
+	require.Equal(t, events.ProcessStatusWorking, m.workerPane.workerStatus["worker-2"])
+	require.Equal(t, events.ProcessStatusRetired, m.workerPane.workerStatus["worker-3"])
+
+	// Verify phases
+	require.Equal(t, events.ProcessPhaseImplementing, m.workerPane.workerPhases["worker-1"])
+	require.Equal(t, events.ProcessPhaseReviewing, m.workerPane.workerPhases["worker-2"])
+	require.Equal(t, events.ProcessPhaseCommitting, m.workerPane.workerPhases["worker-3"])
+
+	// Verify messages
+	require.Len(t, m.workerPane.workerMessages["worker-1"], 2)
+	require.Equal(t, "Implement feature X", m.workerPane.workerMessages["worker-1"][0].Content)
+	require.Len(t, m.workerPane.workerMessages["worker-2"], 1)
+	require.Len(t, m.workerPane.workerMessages["worker-3"], 1)
+}
+
+func TestRestoreFromSession_PopulatesMessagePane(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	state := &session.RestoredUIState{
+		MessageLogEntries: []message.Entry{
+			{ID: "msg-1", Timestamp: now, From: "COORDINATOR", To: "WORKER.1", Content: "Task assigned"},
+			{ID: "msg-2", Timestamp: now.Add(time.Second), From: "WORKER.1", To: "COORDINATOR", Content: "Task completed"},
+			{ID: "msg-3", Timestamp: now.Add(2 * time.Second), From: "COORDINATOR", To: "ALL", Content: "All done"},
+		},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify message entries were restored
+	require.Len(t, m.messagePane.entries, 3)
+	require.Equal(t, "msg-1", m.messagePane.entries[0].ID)
+	require.Equal(t, "Task assigned", m.messagePane.entries[0].Content)
+	require.Equal(t, "msg-2", m.messagePane.entries[1].ID)
+	require.Equal(t, "msg-3", m.messagePane.entries[2].ID)
+
+	// Verify dirty flag is set
+	require.True(t, m.messagePane.contentDirty, "messagePane.contentDirty should be true")
+}
+
+func TestRestoreFromSession_InitializesViewports(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	state := &session.RestoredUIState{
+		WorkerIDs: []string{"worker-1", "worker-2", "worker-3"},
+		WorkerStatus: map[string]events.ProcessStatus{
+			"worker-1": events.ProcessStatusReady,
+			"worker-2": events.ProcessStatusReady,
+			"worker-3": events.ProcessStatusRetired,
+		},
+		RetiredOrder: []string{"worker-3"},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify viewports initialized for ALL workers (including retired)
+	_, hasViewport1 := m.workerPane.viewports["worker-1"]
+	_, hasViewport2 := m.workerPane.viewports["worker-2"]
+	_, hasViewport3 := m.workerPane.viewports["worker-3"]
+
+	require.True(t, hasViewport1, "worker-1 should have viewport initialized")
+	require.True(t, hasViewport2, "worker-2 should have viewport initialized")
+	require.True(t, hasViewport3, "worker-3 (retired) should have viewport initialized")
+}
+
+func TestRestoreFromSession_SetsDirtyFlags(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Clear dirty flags to test they get set by RestoreFromSession
+	m.coordinatorPane.contentDirty = false
+	m.messagePane.contentDirty = false
+
+	state := &session.RestoredUIState{
+		CoordinatorMessages: []ChatMessage{{Role: "user", Content: "test"}},
+		WorkerIDs:           []string{"worker-1", "worker-2"},
+		WorkerStatus: map[string]events.ProcessStatus{
+			"worker-1": events.ProcessStatusReady,
+			"worker-2": events.ProcessStatusReady,
+		},
+		MessageLogEntries: []message.Entry{{ID: "msg-1", Content: "test"}},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify all dirty flags are set
+	require.True(t, m.coordinatorPane.contentDirty, "coordinatorPane.contentDirty should be true")
+	require.True(t, m.messagePane.contentDirty, "messagePane.contentDirty should be true")
+
+	// Verify per-worker dirty flags
+	require.True(t, m.workerPane.contentDirty["worker-1"], "worker-1 contentDirty should be true")
+	require.True(t, m.workerPane.contentDirty["worker-2"], "worker-2 contentDirty should be true")
+
+	// Verify hasNewContent is false (not set)
+	require.False(t, m.workerPane.hasNewContent["worker-1"], "worker-1 hasNewContent should be false")
+	require.False(t, m.workerPane.hasNewContent["worker-2"], "worker-2 hasNewContent should be false")
+}
+
+func TestRestoreFromSession_ZerosQueueCounts(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	state := &session.RestoredUIState{
+		WorkerIDs: []string{"worker-1", "worker-2"},
+		WorkerStatus: map[string]events.ProcessStatus{
+			"worker-1": events.ProcessStatusReady,
+			"worker-2": events.ProcessStatusReady,
+		},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify queue counts are zero (not restored from session)
+	require.Equal(t, 0, m.workerPane.workerQueueCounts["worker-1"])
+	require.Equal(t, 0, m.workerPane.workerQueueCounts["worker-2"])
+}
+
+func TestRestoreFromSession_EmptyState(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Add some initial state to verify it gets replaced
+	m = m.AddChatMessage("user", "existing message")
+	m = m.UpdateWorker("existing-worker", events.ProcessStatusReady)
+
+	state := &session.RestoredUIState{
+		CoordinatorMessages: []ChatMessage{},
+		WorkerIDs:           []string{},
+		WorkerStatus:        map[string]events.ProcessStatus{},
+		WorkerPhases:        map[string]events.ProcessPhase{},
+		WorkerMessages:      map[string][]ChatMessage{},
+		RetiredOrder:        []string{},
+		MessageLogEntries:   []message.Entry{},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Verify coordinator pane is now empty
+	require.Empty(t, m.coordinatorPane.messages)
+
+	// Verify workerIDs is now empty
+	require.Empty(t, m.workerPane.workerIDs)
+
+	// Verify message pane is empty
+	require.Empty(t, m.messagePane.entries)
+
+	// Dirty flags should still be set
+	require.True(t, m.coordinatorPane.contentDirty)
+	require.True(t, m.messagePane.contentDirty)
+}
+
+func TestRestoreFromSession_NoWorkers(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	state := &session.RestoredUIState{
+		CoordinatorMessages: []ChatMessage{
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi there"},
+		},
+		WorkerIDs:         []string{},
+		WorkerStatus:      map[string]events.ProcessStatus{},
+		WorkerPhases:      map[string]events.ProcessPhase{},
+		WorkerMessages:    map[string][]ChatMessage{},
+		RetiredOrder:      []string{},
+		MessageLogEntries: []message.Entry{},
+	}
+
+	m = m.RestoreFromSession(state)
+
+	// Coordinator messages should be restored
+	require.Len(t, m.coordinatorPane.messages, 2)
+
+	// No workers
+	require.Empty(t, m.workerPane.workerIDs)
+	require.Empty(t, m.workerPane.retiredOrder)
+	require.Empty(t, m.workerPane.viewports)
+}
+
+func TestRestoreFromSession_NilState(t *testing.T) {
+	m := New(Config{})
+	m = m.SetSize(120, 30)
+
+	// Add initial state
+	m = m.AddChatMessage("user", "should persist")
+
+	// Call with nil state
+	m = m.RestoreFromSession(nil)
+
+	// Original state should be preserved
+	require.Len(t, m.coordinatorPane.messages, 1)
+	require.Equal(t, "should persist", m.coordinatorPane.messages[0].Content)
+}
+
+func TestRestoreFromSession_NilMapHandling(t *testing.T) {
+	// Test that RestoreFromSession handles nil maps gracefully
+	m := Model{} // Uninitialized model with nil maps
+
+	state := &session.RestoredUIState{
+		WorkerIDs: []string{"worker-1"},
+		WorkerStatus: map[string]events.ProcessStatus{
+			"worker-1": events.ProcessStatusReady,
+		},
+		WorkerPhases: map[string]events.ProcessPhase{
+			"worker-1": events.ProcessPhaseImplementing,
+		},
+		WorkerMessages: map[string][]ChatMessage{
+			"worker-1": {{Role: "coordinator", Content: "Task"}},
+		},
+	}
+
+	// Should not panic due to nil map assignment
+	require.NotPanics(t, func() {
+		m = m.RestoreFromSession(state)
+	})
+
+	// Verify state was properly restored
+	require.NotNil(t, m.workerPane.workerStatus)
+	require.NotNil(t, m.workerPane.workerPhases)
+	require.NotNil(t, m.workerPane.workerMessages)
+	require.NotNil(t, m.workerPane.viewports)
+	require.NotNil(t, m.workerPane.contentDirty)
+	require.NotNil(t, m.workerPane.hasNewContent)
+	require.NotNil(t, m.workerPane.workerQueueCounts)
+	require.NotNil(t, m.workerPane.workerTaskIDs)
+	require.NotNil(t, m.workerPane.workerMetrics)
+
+	require.Equal(t, events.ProcessStatusReady, m.workerPane.workerStatus["worker-1"])
 }
