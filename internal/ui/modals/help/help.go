@@ -4,6 +4,7 @@ package help
 import (
 	"strings"
 
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/ui/shared/overlay"
 	"github.com/zjrosen/perles/internal/ui/styles"
@@ -128,6 +129,7 @@ type Model struct {
 	mode   HelpMode
 	width  int
 	height int
+	flags  *flags.Registry
 }
 
 // New creates a new help view for kanban mode.
@@ -135,6 +137,12 @@ func New() Model {
 	return Model{
 		mode: ModeKanban,
 	}
+}
+
+// WithFlags sets the feature flags registry for conditional rendering.
+func (m Model) WithFlags(f *flags.Registry) Model {
+	m.flags = f
+	return m
 }
 
 // NewSearch creates a new help view for search mode.
@@ -231,7 +239,9 @@ func (m Model) renderKanbanContent() string {
 	viewsCol.WriteString(renderBinding(keys.Kanban.ViewMenu))
 	viewsCol.WriteString(renderBinding(keys.Kanban.SearchFromColumn))
 	viewsCol.WriteString(renderBinding(keys.Kanban.Orchestrate))
-	viewsCol.WriteString(renderBinding(keys.Kanban.OrchestrateResume))
+	if m.flags.Enabled(flags.FlagSessionResume) {
+		viewsCol.WriteString(renderBinding(keys.Kanban.OrchestrateResume))
+	}
 
 	// General column
 	var generalCol strings.Builder

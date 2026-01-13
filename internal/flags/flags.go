@@ -8,6 +8,12 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 )
 
+// Flag name constants for type-safe flag access.
+const (
+	// FlagSessionResume controls whether session resumption (ctrl+r) is enabled.
+	FlagSessionResume = "session-resume"
+)
+
 // Registry holds feature flag state loaded from configuration.
 // Flags are read-only after initialization.
 type Registry struct {

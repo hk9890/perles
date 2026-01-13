@@ -8,6 +8,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
@@ -306,7 +307,10 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, keys.Kanban.OrchestrateResume):
-		// Open session picker to resume orchestration session
+		// Open session picker to resume orchestration session (requires flag)
+		if !m.services.Flags.Enabled(flags.FlagSessionResume) {
+			return m, nil
+		}
 		return m.openSessionPicker()
 
 	case key.Matches(msg, keys.Component.EditAction):

@@ -95,7 +95,7 @@ func New(services mode.Services) Model {
 		services:            services,
 		view:                ViewBoard,
 		board:               boardModel,
-		help:                help.New(),
+		help:                help.New().WithFlags(services.Flags),
 		loading:             true,
 		showStatusBar:       services.Config.UI.ShowStatusBar,
 		pendingDeleteColumn: -1,

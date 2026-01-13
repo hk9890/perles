@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/git"
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
@@ -393,4 +395,105 @@ func TestOpenSessionPicker_DeriveApplicationName(t *testing.T) {
 	// With no sessions, should show toast
 	require.NotNil(t, cmd)
 	require.False(t, m.showSessionPicker)
+}
+
+// TestHandleBoardKey_OrchestrateResume_FlagDisabled verifies ctrl+r does nothing when flag is disabled.
+func TestHandleBoardKey_OrchestrateResume_FlagDisabled(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags *flags.Registry
+	}{
+		{
+			name:  "nil flags registry returns nil",
+			flags: nil,
+		},
+		{
+			name:  "flag explicitly false returns nil",
+			flags: flags.New(map[string]bool{flags.FlagSessionResume: false}),
+		},
+		{
+			name:  "unrelated flags only returns nil",
+			flags: flags.New(map[string]bool{"other-flag": true}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Defaults()
+			clipboard := mocks.NewMockClipboard(t)
+			clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+			mockExecutor := mocks.NewMockBQLExecutor(t)
+
+			services := mode.Services{
+				Config:    &cfg,
+				Clipboard: clipboard,
+				Executor:  mockExecutor,
+				Flags:     tt.flags,
+			}
+
+			m := Model{
+				services: services,
+				width:    100,
+				height:   40,
+				view:     ViewBoard,
+			}
+
+			// Simulate ctrl+r key press
+			msg := tea.KeyMsg{Type: tea.KeyCtrlR}
+			_, cmd := m.handleBoardKey(msg)
+
+			// Should return nil (no-op) when flag is disabled
+			require.Nil(t, cmd, "expected nil command when flag disabled")
+		})
+	}
+}
+
+// TestHandleBoardKey_OrchestrateResume_FlagEnabled verifies ctrl+r opens session picker when flag is enabled.
+func TestHandleBoardKey_OrchestrateResume_FlagEnabled(t *testing.T) {
+	tempDir := t.TempDir()
+
+	clock := mocks.NewMockClock(t)
+	clock.EXPECT().Now().Return(time.Date(2026, 1, 12, 15, 0, 0, 0, time.UTC)).Maybe()
+
+	cfg := config.Defaults()
+	cfg.Orchestration.SessionStorage = config.SessionStorageConfig{
+		BaseDir:         tempDir,
+		ApplicationName: "testapp",
+	}
+
+	clipboard := mocks.NewMockClipboard(t)
+	clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+	mockExecutor := mocks.NewMockBQLExecutor(t)
+
+	// Enable the session-resume flag
+	flagRegistry := flags.New(map[string]bool{flags.FlagSessionResume: true})
+
+	services := mode.Services{
+		Config:    &cfg,
+		Clipboard: clipboard,
+		Executor:  mockExecutor,
+		Clock:     clock,
+		Flags:     flagRegistry,
+		WorkDir:   "/test/workdir",
+	}
+
+	m := Model{
+		services: services,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Simulate ctrl+r key press
+	msg := tea.KeyMsg{Type: tea.KeyCtrlR}
+	m, cmd := m.handleBoardKey(msg)
+
+	// With flag enabled but no sessions, should show "No resumable sessions found" toast
+	// (verifies the keybinding proceeded to openSessionPicker, not blocked by flag check)
+	require.NotNil(t, cmd, "expected command to be returned")
+	result := cmd()
+	toastMsg, ok := result.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg, got %T", result)
+	require.Equal(t, "No resumable sessions found", toastMsg.Message, "expected 'no sessions' message when flag enabled")
+	require.False(t, m.showSessionPicker, "expected picker not shown when no sessions")
 }
