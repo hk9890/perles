@@ -197,9 +197,8 @@ type Model struct {
 	// Exit state
 	exitMessage string // Message to display when exiting (e.g., worktree cleanup info)
 
-	// Tracing state
-	activeTraceID string               // Current trace ID for display (updated from command events)
-	debugMode     bool                 // Debug mode flag (enables full trace ID display)
+	// Debug mode flag (enables full session ID display in input bar)
+	debugMode     bool
 	tracingConfig config.TracingConfig // Tracing configuration (passed to Initializer)
 
 	// Session storage configuration

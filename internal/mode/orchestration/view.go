@@ -208,11 +208,8 @@ func (m Model) renderInputBar() string {
 	// Build target label for left title - show who we're messaging (uppercase for consistency)
 	targetLabel := strings.ToUpper(m.messageTarget)
 
-	// Build trace ID display for bottom-right (only show when tracing is active)
-	var traceIDDisplay string
-	if m.activeTraceID != "" {
-		traceIDDisplay = m.formatTraceIDDisplay()
-	}
+	// Build session ID display for bottom-right
+	sessionIDDisplay := m.formatSessionIDDisplay()
 
 	return panes.BorderedPane(panes.BorderConfig{
 		Content:            content,
@@ -220,24 +217,24 @@ func (m Model) renderInputBar() string {
 		Height:             inputHeight,
 		TopLeft:            targetLabel,             // Left title shows target
 		BottomLeft:         m.input.ModeIndicator(), // Vim mode indicator (styled by component)
-		BottomRight:        traceIDDisplay,          // Trace ID display (only when active)
+		BottomRight:        sessionIDDisplay,        // Session ID display
 		Focused:            m.input.Focused(),       // Highlight border when input is focused
 		TitleColor:         titleColor,
 		FocusedBorderColor: borderColor,
 	})
 }
 
-// formatTraceIDDisplay formats the trace ID for display in the status bar.
-// Returns abbreviated (first 8 chars) in normal mode, full 32-char in debug mode.
-// Format: "trace:a1b2c3d4" for abbreviated or "trace:full32chartraceidentifier" for debug.
-func (m Model) formatTraceIDDisplay() string {
-	if m.activeTraceID == "" {
+// formatSessionIDDisplay formats the session ID for display in the input bar.
+// Returns abbreviated (first 8 chars) in normal mode, full UUID in debug mode.
+// Format: "session:a1b2c3d4" for abbreviated or "session:full-uuid-here" for debug.
+func (m Model) formatSessionIDDisplay() string {
+	if m.session == nil {
 		return ""
 	}
 
-	displayID := m.activeTraceID
+	displayID := m.session.ID
 	if !m.debugMode && len(displayID) > 8 {
 		displayID = displayID[:8]
 	}
-	return TraceIDStyle.Render("trace:" + displayID)
+	return SessionIDStyle.Render("session:" + displayID)
 }

@@ -36,7 +36,7 @@ var TitleContextStyle = lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 var QueuedCountStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFB347"})
 
-// TraceIDStyle is used for trace ID display in status bar and command log.
+// SessionIDStyle is used for session ID display in the input bar status area.
 // Uses muted/secondary color to avoid visual noise while still being visible.
-var TraceIDStyle = lipgloss.NewStyle().
+var SessionIDStyle = lipgloss.NewStyle().
 	Foreground(styles.TextMutedColor)

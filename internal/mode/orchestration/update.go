@@ -728,11 +728,6 @@ func (m Model) handleV2Event(event pubsub.Event[any]) (Model, tea.Cmd) {
 
 		m.commandPane.contentDirty = true
 
-		// Update activeTraceID from the most recent command event (for status bar display)
-		if payload.TraceID != "" {
-			m.activeTraceID = payload.TraceID
-		}
-
 		// Only check hasNewContent if pane is visible and not at bottom
 		if m.showCommandPane && !m.commandPane.viewports[viewportKey].AtBottom() {
 			m.commandPane.hasNewContent = true

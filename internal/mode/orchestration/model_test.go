@@ -1310,20 +1310,20 @@ func TestView_Golden_CommandPaneHidden(t *testing.T) {
 }
 
 // ============================================================================
-// Trace ID Display Golden Tests
+// Session ID Display Golden Tests
 // ============================================================================
 
-func TestView_Golden_WithTraceID(t *testing.T) {
+func TestView_Golden_WithSessionID(t *testing.T) {
 	m := newReadyModel(120, 30)
 
-	// Set an active trace ID (simulating tracing is enabled)
-	m.activeTraceID = "abc123def456789012345678901234ff"
+	// Set a session (simulating active session)
+	m.session = &session.Session{ID: "a1b2c3d4-5678-9012-abcd-ef1234567890"}
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
-func TestView_Golden_WithTraceID_DebugMode(t *testing.T) {
+func TestView_Golden_WithSessionID_DebugMode(t *testing.T) {
 	m := New(Config{DebugMode: true})
 	m = m.SetSize(120, 30)
 	m.input.Blur() // Blur input for consistent golden test
@@ -1331,8 +1331,8 @@ func TestView_Golden_WithTraceID_DebugMode(t *testing.T) {
 	// Mark initialization as complete
 	m.initializer = &Initializer{phase: InitReady}
 
-	// Set an active trace ID (simulating tracing is enabled)
-	m.activeTraceID = "abc123def456789012345678901234ff"
+	// Set a session (simulating active session)
+	m.session = &session.Session{ID: "a1b2c3d4-5678-9012-abcd-ef1234567890"}
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
@@ -1344,7 +1344,7 @@ func TestView_Golden_CommandPaneWithTraceID(t *testing.T) {
 	// Show the command pane
 	m.showCommandPane = true
 
-	// Add sample command log entries with trace IDs
+	// Add sample command log entries with trace IDs (command log still shows trace IDs)
 	m.commandPane.entries = []CommandLogEntry{
 		{
 			Timestamp:   testNow,
@@ -1376,8 +1376,8 @@ func TestView_Golden_CommandPaneWithTraceID(t *testing.T) {
 	}
 	m.commandPane.contentDirty = true
 
-	// Also set active trace ID for status bar
-	m.activeTraceID = "trace2abc456789012345678901234ff"
+	// Set session ID for status bar display
+	m.session = &session.Session{ID: "a1b2c3d4-5678-9012-abcd-ef1234567890"}
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
@@ -1652,58 +1652,58 @@ func TestView_Golden_WithBranchSelectModal(t *testing.T) {
 }
 
 // ============================================================================
-// Trace ID Display Tests
+// Session ID Display Tests
 // ============================================================================
 
-func TestFormatTraceIDDisplay_Empty(t *testing.T) {
+func TestFormatSessionIDDisplay_NilSession(t *testing.T) {
 	m := New(Config{})
-	m.activeTraceID = ""
+	m.session = nil
 
-	display := m.formatTraceIDDisplay()
-	require.Empty(t, display, "Empty trace ID should produce empty display")
+	display := m.formatSessionIDDisplay()
+	require.Empty(t, display, "Nil session should produce empty display")
 }
 
-func TestFormatTraceIDDisplay_NormalMode_Abbreviated(t *testing.T) {
+func TestFormatSessionIDDisplay_NormalMode_Abbreviated(t *testing.T) {
 	m := New(Config{DebugMode: false})
-	m.activeTraceID = "abc123def456789012345678901234ff"
+	m.session = &session.Session{ID: "a1b2c3d4-5678-9012-abcd-ef1234567890"}
 
-	display := m.formatTraceIDDisplay()
+	display := m.formatSessionIDDisplay()
 
-	// Should contain abbreviated trace ID (first 8 chars)
-	require.Contains(t, display, "trace:abc123de")
+	// Should contain abbreviated session ID (first 8 chars)
+	require.Contains(t, display, "session:a1b2c3d4")
 
-	// Should NOT contain full trace ID
-	require.NotContains(t, display, "abc123def456789012345678901234ff")
+	// Should NOT contain full session ID
+	require.NotContains(t, display, "a1b2c3d4-5678-9012-abcd-ef1234567890")
 }
 
-func TestFormatTraceIDDisplay_DebugMode_Full(t *testing.T) {
+func TestFormatSessionIDDisplay_DebugMode_Full(t *testing.T) {
 	m := New(Config{DebugMode: true})
-	m.activeTraceID = "abc123def456789012345678901234ff"
+	m.session = &session.Session{ID: "a1b2c3d4-5678-9012-abcd-ef1234567890"}
 
-	display := m.formatTraceIDDisplay()
+	display := m.formatSessionIDDisplay()
 
-	// Should contain full trace ID (32 chars)
-	require.Contains(t, display, "trace:abc123def456789012345678901234ff")
+	// Should contain full session ID (UUID format)
+	require.Contains(t, display, "session:a1b2c3d4-5678-9012-abcd-ef1234567890")
 }
 
-func TestFormatTraceIDDisplay_ShortTraceID(t *testing.T) {
+func TestFormatSessionIDDisplay_ShortID(t *testing.T) {
 	m := New(Config{DebugMode: false})
-	m.activeTraceID = "abc123" // Only 6 chars
+	m.session = &session.Session{ID: "abc123"} // Only 6 chars
 
-	display := m.formatTraceIDDisplay()
+	display := m.formatSessionIDDisplay()
 
-	// Should contain full short trace ID (no truncation needed)
-	require.Contains(t, display, "trace:abc123")
+	// Should contain full short session ID (no truncation needed)
+	require.Contains(t, display, "session:abc123")
 }
 
-func TestFormatTraceIDDisplay_Exactly8Chars(t *testing.T) {
+func TestFormatSessionIDDisplay_Exactly8Chars(t *testing.T) {
 	m := New(Config{DebugMode: false})
-	m.activeTraceID = "abc12345" // Exactly 8 chars
+	m.session = &session.Session{ID: "abc12345"} // Exactly 8 chars
 
-	display := m.formatTraceIDDisplay()
+	display := m.formatSessionIDDisplay()
 
-	// Should contain full 8-char trace ID
-	require.Contains(t, display, "trace:abc12345")
+	// Should contain full 8-char session ID
+	require.Contains(t, display, "session:abc12345")
 }
 
 func TestModel_DebugModePreserved(t *testing.T) {
@@ -1716,24 +1716,6 @@ func TestModel_DebugModePreserved(t *testing.T) {
 
 	m3 := New(Config{}) // Default
 	require.False(t, m3.debugMode, "debugMode should be false by default")
-}
-
-func TestModel_ActiveTraceID_UpdatedFromEvent(t *testing.T) {
-	m := New(Config{})
-	m = m.SetSize(120, 30)
-
-	// Verify activeTraceID is initially empty
-	require.Empty(t, m.activeTraceID, "activeTraceID should be empty initially")
-
-	// Set activeTraceID (simulating what handleV2Event does)
-	m.activeTraceID = "test-trace-id-123"
-
-	// Verify it was set
-	require.Equal(t, "test-trace-id-123", m.activeTraceID)
-
-	// Verify formatTraceIDDisplay uses it
-	display := m.formatTraceIDDisplay()
-	require.Contains(t, display, "trace:test-tra") // First 8 chars
 }
 
 // ============================================================================
