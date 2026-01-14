@@ -66,6 +66,16 @@ type Metadata struct {
 
 	// DatePartition is the date-based partition (YYYY-MM-DD format) for organizing sessions.
 	DatePartition string `json:"date_partition,omitempty"`
+
+	// WorkflowCompletionStatus indicates the workflow outcome.
+	// Values: "success", "partial", "aborted", or empty (not yet completed).
+	WorkflowCompletionStatus string `json:"workflow_completion_status,omitempty"`
+
+	// WorkflowCompletedAt is when signal_workflow_complete was called (zero if not completed).
+	WorkflowCompletedAt time.Time `json:"workflow_completed_at,omitzero"`
+
+	// WorkflowSummary is the completion summary provided by the coordinator.
+	WorkflowSummary string `json:"workflow_summary,omitempty"`
 }
 
 // WorkerMetadata tracks individual worker lifecycle.

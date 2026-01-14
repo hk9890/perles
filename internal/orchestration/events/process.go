@@ -26,6 +26,8 @@ const (
 	ProcessReady ProcessEventType = "ready"
 	// ProcessWorking is emitted when a process starts processing.
 	ProcessWorking ProcessEventType = "working"
+	// ProcessWorkflowComplete is emitted when a workflow completes.
+	ProcessWorkflowComplete ProcessEventType = "workflow_complete"
 )
 
 // ProcessRole identifies what kind of process this is.

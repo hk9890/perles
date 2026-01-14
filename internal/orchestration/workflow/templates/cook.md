@@ -257,6 +257,7 @@ The reviewer will call `report_review_verdict(verdict, comments)` which:
 **CRITICAL CHECKLIST - Do ALL of these before proceeding to next task:**
 - [ ] `replace_worker(implementer-id, "Completed <task-id>")`
 - [ ] `replace_worker(reviewer-id, "Reviewed <task-id>")`
+- [ ] `query_worker_state()` shows old workers as retried and two new ready workers
 
 **Both calls MUST happen together.** Do not proceed to the next task until both workers are replaced.
 
@@ -275,7 +276,7 @@ This ensures:
 
 **Handling replacement worker "ready" messages:**
 
-After calling `replace_worker`, new workers will spawn and send "ready" messages. The human will nudge you with "[worker-X sent a message]".
+After calling `replace_worker` for both workers, new workers will spawn and send "ready" messages. The human will nudge you with "[worker-X, worker-Y sent a message]".
 
 When this happens:
 1. Call `read_message_log()` to confirm the new workers are ready
@@ -314,7 +315,7 @@ you when they are done.
 
 ### Phase 4: Epic Completion
 
-When all tasks in the epic are complete and accountability summaries are collected:
+When all tasks in the epic are complete and accountability summaries are collected YOU MUST do all of the follow steps:
 
 1. **Verify all tasks are closed**: Check that every subtask has been completed
    ```bash
@@ -331,6 +332,15 @@ When all tasks in the epic are complete and accountability summaries are collect
    Epic <epic-id> is now complete. All X tasks have been implemented and reviewed.
    ```
 
+4. **Signal workflow complete**: Call the workflow completion signal to notify the system
+   ```
+   signal_workflow_complete(
+       status="success",
+       summary="Completed epic <epic-id>: <epic-title>. All X tasks implemented, reviewed, and committed.",
+       epic_id="<epic-id>"
+   )
+   ```
+
 **Important:** Do not close the epic until ALL subtasks are verified complete. The epic closure signifies that the entire body of work is done.
 
 ## Task Assignment Strategy
@@ -338,11 +348,11 @@ When all tasks in the epic are complete and accountability summaries are collect
 ### Rotation Pattern
 
 ```
-Task 1: worker-1 implements → worker-2 reviews → both retire
-Task 2: worker-3 implements → worker-4 reviews → both retire
-Task 3: worker-5 implements → worker-6 reviews → both retire
-Task 4: worker-7 implements → worker-8 reviews → both retire
-Task 5: worker-9 implements → worker-10 reviews → both retire
+Task 1: worker-1 implements → worker-2 reviews → replace both workers
+Task 2: worker-3 implements → worker-4 reviews → replace both workers
+Task 3: worker-5 implements → worker-6 reviews → replace both workers
+Task 4: worker-7 implements → worker-8 reviews → replace both workers
+Task 5: worker-9 implements → worker-10 reviews → replace both workers
 ...
 ```
 
@@ -483,13 +493,6 @@ Update after each task completion to show progress.
 
 ## Error Handling
 
-### Worker Replacement Failures
-
-If `replace_worker` fails with "max workers limit reached":
-- New workers are still spawned automatically
-- Check message log for new worker ready messages
-- Continue with available workers
-
 ### Review Failures
 
 If review finds critical issues:
@@ -552,8 +555,8 @@ Coordinator: Presents execution plan → User approves
 
 [Task 1: perles-abc1.1]
 # Query state before assignment
-Coordinator: query_worker_state(task_id="perles-abc1.1")
-# Response: task not assigned, worker-1 in ready_workers
+Coordinator: query_worker_state()
+# Response: task not assigned, worker-1, worker-2 in ready_workers
 
 # Assign implementation
 Coordinator: assign_task(worker_id="worker-1", task_id="perles-abc1.1")
@@ -565,7 +568,7 @@ Worker-1: report_implementation_complete(summary="Added validation logic for use
 # Coordinator receives message via message log
 
 # Query state before review assignment
-Coordinator: query_worker_state(worker_id="worker-1")
+Coordinator: query_worker_state()
 # Response: worker-1 phase is "awaiting_review", worker-2 in ready_workers
 
 # Assign review
@@ -590,7 +593,7 @@ Coordinator: approve_commit(
 )
 # worker-1 phase transitions: AwaitingReview → Committing
 
-# Wait for commit confirmation, then mark task complete
+# Wait for commit confirmation, then YOU MUST mark task complete
 Coordinator: mark_task_complete(task_id="perles-abc1.1")
 
 # Cycle workers
@@ -599,7 +602,7 @@ Coordinator: replace_worker(worker-2, "Reviewed perles-abc1.1")
 
 [Task 2: perles-abc1.2]
 # Same pattern with worker-3 (implement) and worker-4 (review)
-Coordinator: query_worker_state(task_id="perles-abc1.2")
+Coordinator: query_worker_state()
 Coordinator: assign_task(worker_id="worker-3", task_id="perles-abc1.2")
 Worker-3: report_implementation_complete(summary="...")
 Coordinator: assign_task_review(reviewer_id="worker-4", ...)
@@ -613,6 +616,11 @@ Coordinator: mark_task_complete(task_id="perles-abc1.2"), replace workers
 Coordinator: Verifies all 7 tasks are closed via bd show perles-abc1 --json
 Coordinator: bd close perles-abc1 --reason "All tasks completed"
 Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and reviewed."
+Coordinator: signal_workflow_complete(
+   status="success",
+   summary="Completed epic <epic-id>: <epic-title>. All X tasks implemented, reviewed, and committed.",
+   epic_id="<epic-id>"
+)
 ```
 
 ## Key Success Metrics
@@ -716,6 +724,7 @@ Coordinator: "Epic perles-abc1 is now complete. All 7 tasks implemented and revi
 ### Why This Matters
 
 Without state checks:
+- Workers might be in an incorrect state you failed to have an implementer and reviewer worker
 - Same task might be assigned to multiple workers
 - Reviewer might be assigned when implementer isn't ready
 - Self-review might accidentally occur (reviewer == implementer)
@@ -725,10 +734,10 @@ Without state checks:
 
 ```
 # Before any assignment, query current state
-query_worker_state(task_id="<task-id>")
+query_worker_state()
 
 # Check the response:
-# - ready_workers: list of workers available for assignment
+# - ready_workers: list of workers available for assignment, there MUST be two ready workers
 # - task_assignments: map showing who's working on what
 # - workers: list with phase/role for each worker
 
@@ -742,18 +751,18 @@ query_worker_state(task_id="<task-id>")
 
 **Before assigning implementation:**
 ```
-query_worker_state(task_id="perles-abc.1")
+query_worker_state()
 # Response shows task not in task_assignments
-# worker-3 in ready_workers
-assign_task(worker_id="worker-3", task_id="perles-abc.1")
+# worker-1, worker-2 in ready_workers
+assign_task(worker_id="worker-1", task_id="perles-abc.1")
 ```
 
 **Before assigning review:**
 ```
-query_worker_state(worker_id="worker-3")
-# Response shows worker-3 phase is "awaiting_review"
-# worker-4 in ready_workers (and worker-4 ≠ worker-3)
-assign_task_review(reviewer_id="worker-4", task_id="perles-abc.1", implementer_id="worker-3", summary="...")
+query_worker_state()
+# Response shows worker-1 phase is "awaiting_review"
+# worker-2 in ready_workers (and worker-2 ≠ worker-1)
+assign_task_review(reviewer_id="worker-2", task_id="perles-abc.1", implementer_id="worker-1", summary="...")
 ```
 
 ---
@@ -794,7 +803,3 @@ send_to_worker(worker_id="worker-1", "Note: Pay special attention to error handl
 # Don't use send_to_worker for task assignment!
 send_to_worker(worker_id="worker-1", "You are being assigned task perles-abc.1...")  # ❌ NO STATE TRACKING
 ```
-
----
-
-**This workflow has proven effective for coordinating multi-worker task execution with quality gates, deterministic state tracking, and fresh context per task.**

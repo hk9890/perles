@@ -572,6 +572,19 @@ A successful debate should:
 
 ---
 
+## Workflow Completion
+
+After the voting phase (and optional iterative refinement) completes, signal workflow completion:
+
+```
+signal_workflow_complete(
+    status="success",
+    summary="Completed technical debate on '{proposition}'. Final vote: {X}-{Y} in favor of {winning-position}. Debate document at {path/to/debate.md}"
+)
+```
+
+---
+
 ## File Location
 
 Store this format document at: `/path/to/debate_format.md`

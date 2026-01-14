@@ -92,6 +92,11 @@ const (
 
 	// CmdStopProcess stops a process (coordinator or worker) with optional forceful termination.
 	CmdStopProcess CommandType = "stop_process"
+
+	// Workflow Lifecycle Commands
+
+	// CmdSignalWorkflowComplete signals that the workflow has completed.
+	CmdSignalWorkflowComplete CommandType = "signal_workflow_complete"
 )
 
 // String returns the string representation of the CommandType.

@@ -190,6 +190,14 @@ type spawnWorkerArgs struct {
 	AgentType string `json:"agent_type,omitempty"`
 }
 
+// signalWorkflowCompleteArgs holds arguments for signal_workflow_complete tool.
+type signalWorkflowCompleteArgs struct {
+	Status      string `json:"status"`                 // Required: "success", "partial", or "aborted"
+	Summary     string `json:"summary"`                // Required: summary of what was accomplished
+	EpicID      string `json:"epic_id,omitempty"`      // Optional: epic ID that was completed
+	TasksClosed int    `json:"tasks_closed,omitempty"` // Optional: number of tasks closed during workflow
+}
+
 // ===========================================================================
 // Process Lifecycle Handlers
 // ===========================================================================
@@ -1016,6 +1024,56 @@ func (a *V2Adapter) HandleGenerateAccountabilitySummary(ctx context.Context, arg
 	}
 
 	return mcptypes.SuccessResult(fmt.Sprintf("Accountability summary task assigned to worker %s", parsed.WorkerID)), nil
+}
+
+// ===========================================================================
+// Workflow Lifecycle Handlers
+// ===========================================================================
+
+// HandleSignalWorkflowComplete handles the signal_workflow_complete MCP tool call.
+// This signals that the workflow has completed with a given status and summary.
+// Routes through the v2 command processor using CmdSignalWorkflowComplete.
+func (a *V2Adapter) HandleSignalWorkflowComplete(ctx context.Context, args json.RawMessage) (*mcptypes.ToolCallResult, error) {
+	var parsed signalWorkflowCompleteArgs
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	// Validate required fields
+	if parsed.Status == "" {
+		return nil, fmt.Errorf("status is required")
+	}
+	if parsed.Summary == "" {
+		return nil, fmt.Errorf("summary is required")
+	}
+
+	// Convert string status to command.WorkflowStatus
+	status := command.WorkflowStatus(parsed.Status)
+
+	cmd := command.NewSignalWorkflowCompleteCommand(command.SourceMCPTool, status, parsed.Summary, parsed.EpicID, parsed.TasksClosed)
+	if err := cmd.Validate(); err != nil {
+		return nil, fmt.Errorf("signal_workflow_complete command validation failed: %w", err)
+	}
+
+	result, err := a.submitWithTimeout(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("signal_workflow_complete command failed: %w", err)
+	}
+
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Error.Error()), nil
+	}
+
+	// Build response message based on optional fields
+	msg := fmt.Sprintf("Workflow marked as %s", parsed.Status)
+	if parsed.EpicID != "" {
+		msg += fmt.Sprintf(" (epic: %s)", parsed.EpicID)
+	}
+	if parsed.TasksClosed > 0 {
+		msg += fmt.Sprintf(" - %d tasks closed", parsed.TasksClosed)
+	}
+
+	return mcptypes.SuccessResult(msg), nil
 }
 
 // ===========================================================================

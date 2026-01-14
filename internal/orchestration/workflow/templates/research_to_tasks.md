@@ -658,7 +658,13 @@ The epic and tasks are ready for implementation. Each task includes:
 Ensure the summary accurately reflects the planning process and outcome.
 ```
 
-**Coordinator:** Wait for completion.
+**Coordinator:** Wait for completion, then signal workflow complete:
+```
+signal_workflow_complete(
+    status="success",
+    summary="Translated research document into epic {epic-id} with {count} tasks. Both reviewers approved. Plan document at docs/plans/{filename}.md"
+)
+```
 
 ---
 

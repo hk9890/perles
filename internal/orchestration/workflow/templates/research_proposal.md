@@ -341,6 +341,14 @@ Each worker reviewing others should address:
 - **Worker approval**: [All workers approved? Any concerns remaining?]
 ```
 
+**After finalizing acceptance criteria, signal workflow complete:**
+```
+signal_workflow_complete(
+    status="success",
+    summary="Completed research proposal for {feature-name}. All workers approved. Proposal at docs/proposals/{filename}.md with {count} acceptance criteria defined."
+)
+```
+
 ---
 
 ## Coordinator Instructions

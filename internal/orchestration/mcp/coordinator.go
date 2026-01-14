@@ -352,6 +352,34 @@ func (cs *CoordinatorServer) registerTools() {
 			Required: []string{"worker_id"},
 		},
 	}, cs.handleGenerateAccountabilitySummary)
+
+	cs.RegisterTool(Tool{
+		Name:        "signal_workflow_complete",
+		Description: "Signal that the workflow has completed. Call this when the orchestration workflow reaches its natural conclusion.",
+		InputSchema: &InputSchema{
+			Type: "object",
+			Properties: map[string]*PropertySchema{
+				"status": {
+					Type:        "string",
+					Description: "Completion status: 'success' (all goals achieved), 'partial' (some goals achieved), or 'aborted' (workflow terminated early)",
+					Enum:        []string{"success", "partial", "aborted"},
+				},
+				"summary": {
+					Type:        "string",
+					Description: "Summary of what was accomplished during the workflow",
+				},
+				"epic_id": {
+					Type:        "string",
+					Description: "Optional: The epic ID that was completed (if workflow was epic-based)",
+				},
+				"tasks_closed": {
+					Type:        "number",
+					Description: "Optional: Number of tasks closed during the workflow",
+				},
+			},
+			Required: []string{"status", "summary"},
+		},
+	}, cs.handleSignalWorkflowComplete)
 }
 
 // Tool argument structs for JSON parsing.
@@ -573,4 +601,12 @@ func (cs *CoordinatorServer) handleGenerateAccountabilitySummary(ctx context.Con
 		return nil, fmt.Errorf("v2Adapter required for generate_accountability_summary")
 	}
 	return cs.v2Adapter.HandleGenerateAccountabilitySummary(ctx, rawArgs)
+}
+
+// handleSignalWorkflowComplete signals that the workflow has completed.
+func (cs *CoordinatorServer) handleSignalWorkflowComplete(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	if cs.v2Adapter == nil {
+		return nil, fmt.Errorf("v2Adapter required for signal_workflow_complete")
+	}
+	return cs.v2Adapter.HandleSignalWorkflowComplete(ctx, rawArgs)
 }

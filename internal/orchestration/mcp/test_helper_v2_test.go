@@ -51,6 +51,7 @@ func (h *testV2Handler) SetResult(result *command.CommandResult) {
 	h.results[command.CmdMarkTaskFailed] = result
 	h.results[command.CmdApproveCommit] = result
 	h.results[command.CmdStopProcess] = result
+	h.results[command.CmdSignalWorkflowComplete] = result
 }
 
 func (h *testV2Handler) GetCommands() []command.Command {
@@ -100,6 +101,7 @@ func injectV2AdapterToCoordinator(t *testing.T, cs *CoordinatorServer) (*testV2H
 	proc.RegisterHandler(command.CmdApproveCommit, handler)
 	proc.RegisterHandler(command.CmdAssignReviewFeedback, handler)
 	proc.RegisterHandler(command.CmdStopProcess, handler)
+	proc.RegisterHandler(command.CmdSignalWorkflowComplete, handler)
 
 	// Start processor in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -177,6 +179,7 @@ func NewTestCoordinatorServer(t *testing.T) *TestCoordinatorServerWrapper {
 	proc.RegisterHandler(command.CmdApproveCommit, handler)
 	proc.RegisterHandler(command.CmdAssignReviewFeedback, handler)
 	proc.RegisterHandler(command.CmdStopProcess, handler)
+	proc.RegisterHandler(command.CmdSignalWorkflowComplete, handler)
 
 	// Start processor in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -266,6 +269,7 @@ func NewTestWorkerServer(t *testing.T, workerID string, store MessageStore) *Tes
 	proc.RegisterHandler(command.CmdApproveCommit, handler)
 	proc.RegisterHandler(command.CmdAssignReviewFeedback, handler)
 	proc.RegisterHandler(command.CmdStopProcess, handler)
+	proc.RegisterHandler(command.CmdSignalWorkflowComplete, handler)
 
 	// Start processor in background
 	ctx, cancel := context.WithCancel(context.Background())

@@ -63,6 +63,9 @@ type InfrastructureConfig struct {
 	// SoundService provides audio feedback for orchestration events.
 	// Optional - if nil, uses NoopSoundService (no audio).
 	SoundService sound.SoundService
+	// SessionMetadataProvider provides access to session metadata for workflow completion.
+	// Optional - if nil, workflow completion status is not persisted to session metadata.
+	SessionMetadataProvider handler.SessionMetadataProvider
 }
 
 // Validate checks that all required configuration is provided.
@@ -180,7 +183,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	// Register all command handlers
 	registerHandlers(cmdProcessor, processRepo, taskRepo, queueRepo, processRegistry, turnEnforcer,
 		cfg.AIClient, cfg.Extensions, beadsExec, cfg.Port, eventBus, cfg.WorkDir, cfg.Tracer,
-		cfg.SessionRefNotifier, cfg.SoundService)
+		cfg.SessionRefNotifier, cfg.SoundService, cfg.SessionMetadataProvider)
 
 	// Create command submitter adapter
 	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
@@ -272,6 +275,7 @@ func registerHandlers(
 	tracer trace.Tracer,
 	sessionRefNotifier handler.SessionRefNotifier,
 	soundService sound.SoundService,
+	sessionMetadataProvider handler.SessionMetadataProvider,
 ) {
 	// Create shared infrastructure components
 	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
@@ -368,4 +372,10 @@ func registerHandlers(
 	// ============================================================
 	cmdProcessor.RegisterHandler(command.CmdGenerateAccountabilitySummary,
 		handler.NewGenerateAccountabilitySummaryHandler(processRepo, queueRepo))
+
+	// ============================================================
+	// Workflow Completion handlers (1)
+	// ============================================================
+	cmdProcessor.RegisterHandler(command.CmdSignalWorkflowComplete,
+		handler.NewSignalWorkflowCompleteHandler(handler.WithSessionMetadataProvider(sessionMetadataProvider)))
 }

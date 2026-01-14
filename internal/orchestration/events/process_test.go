@@ -6,6 +6,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProcessWorkflowComplete_ConstantValue(t *testing.T) {
+	// Verify ProcessWorkflowComplete has the correct string value
+	require.Equal(t, "workflow_complete", string(ProcessWorkflowComplete))
+}
+
+func TestProcessWorkflowComplete_UsableInProcessEvent(t *testing.T) {
+	// Verify the event type can be used in ProcessEvent struct
+	event := ProcessEvent{
+		Type:      ProcessWorkflowComplete,
+		ProcessID: "coordinator-1",
+		Role:      RoleCoordinator,
+	}
+
+	require.Equal(t, ProcessWorkflowComplete, event.Type)
+	require.Equal(t, "workflow_complete", string(event.Type))
+}
+
 func TestProcessPhase_Values(t *testing.T) {
 	// Verify all ProcessPhase constants have correct string values
 	tests := []struct {

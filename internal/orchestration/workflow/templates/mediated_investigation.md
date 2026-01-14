@@ -707,7 +707,13 @@ See: `docs/investigations/{filename}-outline.md`
 This plan has been validated through adversarial review. High confidence in approach.
 ```
 
-**Coordinator:** Wait for completion, then report to user.
+**Coordinator:** Wait for completion, then signal workflow complete:
+```
+signal_workflow_complete(
+    status="success",
+    summary="Completed high-quality investigation for '{problem-title}'. All quality gates passed: devil's advocate, counter-investigation, review sub-agents, external validation. Implementation plan at docs/investigations/{filename}-plan.md"
+)
+```
 
 ---
 

@@ -4542,3 +4542,199 @@ func TestReopen_MissingMetadata(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "loading session metadata")
 }
+
+// Tests for GetWorkflowCompletedAt and UpdateWorkflowCompletion
+
+func TestSession_GetWorkflowCompletedAt_ReturnsZeroWhenNotSet(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-not-set"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Workflow completed at should be zero when not set
+	completedAt := sess.GetWorkflowCompletedAt()
+	require.True(t, completedAt.IsZero())
+}
+
+func TestSession_GetWorkflowCompletedAt_ReturnsZeroWhenClosed(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-closed"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Close the session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Should return zero time when session is closed
+	completedAt := sess.GetWorkflowCompletedAt()
+	require.True(t, completedAt.IsZero())
+}
+
+func TestSession_GetWorkflowCompletedAt_ReturnsTimestampWhenSet(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-set"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Set workflow completion
+	expectedTime := time.Now().UTC().Truncate(time.Second)
+	err = sess.UpdateWorkflowCompletion("success", "All tasks completed", expectedTime)
+	require.NoError(t, err)
+
+	// Should return the completion timestamp
+	completedAt := sess.GetWorkflowCompletedAt()
+	require.True(t, expectedTime.Equal(completedAt),
+		"Expected %v, got %v", expectedTime, completedAt)
+}
+
+func TestSession_UpdateWorkflowCompletion_PersistsImmediately(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-persist"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Update workflow completion
+	completedAt := time.Now().UTC().Truncate(time.Second)
+	err = sess.UpdateWorkflowCompletion("partial", "Completed 3 of 5 tasks", completedAt)
+	require.NoError(t, err)
+
+	// Verify metadata was persisted immediately (without closing session)
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, "partial", meta.WorkflowCompletionStatus)
+	require.Equal(t, "Completed 3 of 5 tasks", meta.WorkflowSummary)
+	require.True(t, completedAt.Equal(meta.WorkflowCompletedAt),
+		"Expected %v, got %v", completedAt, meta.WorkflowCompletedAt)
+}
+
+func TestSession_UpdateWorkflowCompletion_ReturnsErrClosedWhenClosed(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-err-closed"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Close the session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Attempt to update workflow completion
+	err = sess.UpdateWorkflowCompletion("success", "summary", time.Now())
+	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+func TestSession_UpdateWorkflowCompletion_AllStatusValues(t *testing.T) {
+	testCases := []struct {
+		status  string
+		summary string
+	}{
+		{"success", "All tasks completed successfully"},
+		{"partial", "Completed 3 of 5 tasks"},
+		{"aborted", "User cancelled workflow"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.status, func(t *testing.T) {
+			baseDir := t.TempDir()
+			sessionID := "test-workflow-status-" + tc.status
+			sessionDir := filepath.Join(baseDir, "session")
+
+			sess, err := New(sessionID, sessionDir)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+			completedAt := time.Now().UTC().Truncate(time.Second)
+			err = sess.UpdateWorkflowCompletion(tc.status, tc.summary, completedAt)
+			require.NoError(t, err)
+
+			// Verify via Load
+			meta, err := Load(sessionDir)
+			require.NoError(t, err)
+			require.Equal(t, tc.status, meta.WorkflowCompletionStatus)
+			require.Equal(t, tc.summary, meta.WorkflowSummary)
+			require.True(t, completedAt.Equal(meta.WorkflowCompletedAt))
+		})
+	}
+}
+
+func TestSession_UpdateWorkflowCompletion_OverwritesPreviousValues(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-overwrite"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	sess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// First update
+	firstTime := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	err = sess.UpdateWorkflowCompletion("partial", "First summary", firstTime)
+	require.NoError(t, err)
+
+	// Second update (overwrites)
+	secondTime := time.Now().UTC().Truncate(time.Second)
+	err = sess.UpdateWorkflowCompletion("success", "Second summary", secondTime)
+	require.NoError(t, err)
+
+	// Verify second values are persisted
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, "success", meta.WorkflowCompletionStatus)
+	require.Equal(t, "Second summary", meta.WorkflowSummary)
+	require.True(t, secondTime.Equal(meta.WorkflowCompletedAt))
+}
+
+func TestSession_UpdateWorkflowCompletion_PreservesOtherMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-workflow-preserve"
+	sessionDir := filepath.Join(baseDir, "session")
+	workDir := "/project/path"
+
+	sess, err := New(sessionID, sessionDir,
+		WithWorkDir(workDir),
+		WithApplicationName("test-app"),
+		WithDatePartition("2026-01-14"),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sess.Close(StatusCompleted) })
+
+	// Add a worker
+	sess.addWorker("worker-1", time.Now(), workDir)
+
+	// Set coordinator session ref
+	err = sess.SetCoordinatorSessionRef("coord-session-abc")
+	require.NoError(t, err)
+
+	// Update workflow completion
+	completedAt := time.Now().UTC().Truncate(time.Second)
+	err = sess.UpdateWorkflowCompletion("success", "All done", completedAt)
+	require.NoError(t, err)
+
+	// Verify other metadata fields are preserved
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+
+	// Workflow fields
+	require.Equal(t, "success", meta.WorkflowCompletionStatus)
+	require.Equal(t, "All done", meta.WorkflowSummary)
+
+	// Other fields should be preserved
+	require.Equal(t, sessionID, meta.SessionID)
+	require.Equal(t, StatusRunning, meta.Status)
+	require.Equal(t, workDir, meta.WorkDir)
+	require.Equal(t, "test-app", meta.ApplicationName)
+	require.Equal(t, "2026-01-14", meta.DatePartition)
+}

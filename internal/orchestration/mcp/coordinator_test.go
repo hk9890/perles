@@ -99,6 +99,7 @@ func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
 		"approve_commit",
 		"stop_worker",
 		"generate_accountability_summary",
+		"signal_workflow_complete",
 	}
 
 	for _, toolName := range expectedTools {
@@ -1330,4 +1331,189 @@ func TestCoordinatorMCP_SpawnWorkerSchema_IncludesAgentType(t *testing.T) {
 	for _, req := range tool.InputSchema.Required {
 		require.NotEqual(t, "agent_type", req, "agent_type should NOT be in Required list (it's optional)")
 	}
+}
+
+// ============================================================================
+// Signal Workflow Complete MCP Tool Tests
+// ============================================================================
+
+// TestSignalWorkflowComplete_ToolRegistered verifies signal_workflow_complete tool is registered with correct name.
+func TestSignalWorkflowComplete_ToolRegistered(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Verify tool is registered
+	tool, ok := cs.tools["signal_workflow_complete"]
+	require.True(t, ok, "signal_workflow_complete tool should be registered")
+	require.NotNil(t, tool, "signal_workflow_complete tool should not be nil")
+	require.Equal(t, "signal_workflow_complete", tool.Name)
+
+	// Verify handler is registered
+	_, ok = cs.handlers["signal_workflow_complete"]
+	require.True(t, ok, "Handler for signal_workflow_complete should be registered")
+}
+
+// TestSignalWorkflowComplete_SchemaHasRequiredFields verifies input schema has correct required/optional fields.
+func TestSignalWorkflowComplete_SchemaHasRequiredFields(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	tool, ok := cs.tools["signal_workflow_complete"]
+	require.True(t, ok, "signal_workflow_complete tool not registered")
+
+	// Verify input schema structure
+	require.NotNil(t, tool.InputSchema, "InputSchema should not be nil")
+	require.Equal(t, "object", tool.InputSchema.Type, "InputSchema type should be object")
+
+	// Verify required fields
+	require.Contains(t, tool.InputSchema.Required, "status", "status should be required")
+	require.Contains(t, tool.InputSchema.Required, "summary", "summary should be required")
+	require.Len(t, tool.InputSchema.Required, 2, "should have exactly 2 required fields")
+
+	// Verify status property
+	statusProp, ok := tool.InputSchema.Properties["status"]
+	require.True(t, ok, "status property should exist")
+	require.Equal(t, "string", statusProp.Type, "status property type should be string")
+	require.NotNil(t, statusProp.Enum, "status property should have enum values")
+	require.Contains(t, statusProp.Enum, "success", "status enum should include 'success'")
+	require.Contains(t, statusProp.Enum, "partial", "status enum should include 'partial'")
+	require.Contains(t, statusProp.Enum, "aborted", "status enum should include 'aborted'")
+	require.Len(t, statusProp.Enum, 3, "status should have exactly 3 enum values")
+
+	// Verify summary property
+	summaryProp, ok := tool.InputSchema.Properties["summary"]
+	require.True(t, ok, "summary property should exist")
+	require.Equal(t, "string", summaryProp.Type, "summary property type should be string")
+
+	// Verify optional fields exist
+	epicIDProp, ok := tool.InputSchema.Properties["epic_id"]
+	require.True(t, ok, "epic_id property should exist")
+	require.Equal(t, "string", epicIDProp.Type, "epic_id property type should be string")
+	require.NotContains(t, tool.InputSchema.Required, "epic_id", "epic_id should NOT be required")
+
+	tasksClosedProp, ok := tool.InputSchema.Properties["tasks_closed"]
+	require.True(t, ok, "tasks_closed property should exist")
+	require.Equal(t, "number", tasksClosedProp.Type, "tasks_closed property type should be number")
+	require.NotContains(t, tool.InputSchema.Required, "tasks_closed", "tasks_closed should NOT be required")
+}
+
+// TestSignalWorkflowComplete_ValidCall verifies valid tool call succeeds and routes to v2 adapter.
+func TestSignalWorkflowComplete_ValidCall(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Workflow completed",
+	})
+
+	handler := cs.handlers["signal_workflow_complete"]
+
+	// Call with valid arguments
+	args := `{"status": "success", "summary": "All tasks completed successfully"}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Result should not be an error")
+	require.NotEmpty(t, result.Content, "Result content should not be empty")
+
+	// Verify command was routed to v2
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdSignalWorkflowComplete, cmds[0].Type())
+}
+
+// TestSignalWorkflowComplete_MissingStatusReturnsError verifies missing required 'status' field returns error.
+func TestSignalWorkflowComplete_MissingStatusReturnsError(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test (validation happens in adapter)
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	handler := cs.handlers["signal_workflow_complete"]
+
+	// Call without status field
+	args := `{"summary": "Some summary"}`
+	_, err := handler(context.Background(), json.RawMessage(args))
+	require.Error(t, err, "Should return error when status is missing")
+	require.Contains(t, err.Error(), "status", "Error should mention 'status'")
+}
+
+// TestSignalWorkflowComplete_MissingSummaryReturnsError verifies missing required 'summary' field returns error.
+func TestSignalWorkflowComplete_MissingSummaryReturnsError(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test (validation happens in adapter)
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	handler := cs.handlers["signal_workflow_complete"]
+
+	// Call without summary field
+	args := `{"status": "success"}`
+	_, err := handler(context.Background(), json.RawMessage(args))
+	require.Error(t, err, "Should return error when summary is missing")
+	require.Contains(t, err.Error(), "summary", "Error should mention 'summary'")
+}
+
+// TestSignalWorkflowComplete_InvalidStatusEnumReturnsError verifies invalid status enum value returns validation error.
+func TestSignalWorkflowComplete_InvalidStatusEnumReturnsError(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test (validation happens in adapter)
+	_, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	handler := cs.handlers["signal_workflow_complete"]
+
+	// Call with invalid status value
+	args := `{"status": "invalid_status", "summary": "Some summary"}`
+	_, err := handler(context.Background(), json.RawMessage(args))
+	require.Error(t, err, "Should return error for invalid status enum value")
+	require.Contains(t, err.Error(), "status", "Error should mention 'status'")
+}
+
+// TestSignalWorkflowComplete_CoordinatorOnly verifies tool is NOT available to workers.
+func TestSignalWorkflowComplete_CoordinatorOnly(t *testing.T) {
+	// Create coordinator server and verify tool is registered
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+	_, coordHas := cs.tools["signal_workflow_complete"]
+	require.True(t, coordHas, "Coordinator should have signal_workflow_complete tool")
+
+	// Create worker server and verify tool is NOT registered
+	ws := NewWorkerServer("worker-1", nil)
+	_, workerHas := ws.tools["signal_workflow_complete"]
+	require.False(t, workerHas, "Worker should NOT have signal_workflow_complete tool")
+}
+
+// TestSignalWorkflowComplete_WithOptionalFields verifies optional fields are handled correctly.
+func TestSignalWorkflowComplete_WithOptionalFields(t *testing.T) {
+	cs := NewCoordinatorServer(claude.NewClient(), nil, "/tmp/test", 8765, nil, mocks.NewMockBeadsExecutor(t))
+
+	// Inject v2 adapter for test
+	v2handler, cleanup := injectV2AdapterToCoordinator(t, cs)
+	defer cleanup()
+
+	// Configure v2 handler to return success
+	v2handler.SetResult(&command.CommandResult{
+		Success: true,
+		Data:    "Workflow completed",
+	})
+
+	handler := cs.handlers["signal_workflow_complete"]
+
+	// Call with all fields including optional ones
+	args := `{"status": "success", "summary": "Epic completed", "epic_id": "perles-abc1", "tasks_closed": 5}`
+	result, err := handler(context.Background(), json.RawMessage(args))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.IsError, "Result should not be an error")
+
+	// Verify command was routed to v2
+	cmds := v2handler.GetCommands()
+	require.Len(t, cmds, 1, "Expected one command")
+	require.Equal(t, command.CmdSignalWorkflowComplete, cmds[0].Type())
 }

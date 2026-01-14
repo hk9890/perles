@@ -423,6 +423,14 @@ Once Worker 4 approves:
 **Ready for implementation.** Use `/cook` or `/pickup` to start executing tasks.
 ```
 
+2. **Signal workflow complete:**
+```
+signal_workflow_complete(
+    status="success",
+    summary="Created proposal docs/proposals/{filename}.md and epic {epic-id} with {count} tasks ready for implementation."
+)
+```
+
 ---
 
 ## Coordinator Instructions

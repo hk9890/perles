@@ -1278,3 +1278,54 @@ func (s *Session) NotifySessionRef(processID, sessionRef, workDir string) error 
 	// Worker session ref
 	return s.SetWorkerSessionRef(processID, sessionRef, workDir)
 }
+
+// GetWorkflowCompletedAt returns the workflow completion timestamp from session metadata.
+// Returns zero time if workflow has not been completed.
+// Implements handler.SessionMetadataProvider interface.
+func (s *Session) GetWorkflowCompletedAt() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return time.Time{}
+	}
+
+	meta, err := Load(s.Dir)
+	if err != nil {
+		return time.Time{}
+	}
+	return meta.WorkflowCompletedAt
+}
+
+// UpdateWorkflowCompletion updates the workflow completion fields in session metadata.
+// If WorkflowCompletedAt is already set (non-zero), the timestamp is preserved for idempotency.
+// Implements handler.SessionMetadataProvider interface.
+func (s *Session) UpdateWorkflowCompletion(status, summary string, completedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	meta, err := Load(s.Dir)
+	if err != nil {
+		// Create fresh metadata if file doesn't exist or is corrupted
+		meta = &Metadata{
+			SessionID:       s.ID,
+			StartTime:       s.StartTime,
+			Status:          s.Status,
+			SessionDir:      s.Dir,
+			ApplicationName: s.applicationName,
+			WorkDir:         s.workDir,
+			DatePartition:   s.datePartition,
+		}
+	}
+
+	// Update workflow completion fields
+	meta.WorkflowCompletionStatus = status
+	meta.WorkflowSummary = summary
+	meta.WorkflowCompletedAt = completedAt
+
+	return meta.Save(s.Dir)
+}

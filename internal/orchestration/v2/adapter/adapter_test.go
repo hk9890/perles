@@ -228,6 +228,7 @@ func testAdapter(t *testing.T, opts ...Option) (*V2Adapter, *mockHandler, func()
 		command.CmdMarkTaskComplete,
 		command.CmdMarkTaskFailed,
 		command.CmdStopProcess,
+		command.CmdSignalWorkflowComplete,
 	} {
 		p.RegisterHandler(cmdType, handler)
 	}
@@ -2897,5 +2898,246 @@ func TestHandleGenerateAccountabilitySummary_UsesStoredSessionDir(t *testing.T) 
 		// Should use the stored sessionDir, NOT reconstruct from workDir
 		assert.Equal(t, centralizedSessionDir, summaryCmd.SessionDir)
 		assert.NotEqual(t, "/work/.perles/sessions/sess-123", summaryCmd.SessionDir)
+	})
+}
+
+// ===========================================================================
+// Workflow Lifecycle Tests
+// ===========================================================================
+
+func TestHandleSignalWorkflowComplete(t *testing.T) {
+	t.Run("success_with_required_fields_only", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":  "success",
+			"summary": "All tasks completed successfully",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "Workflow marked as success")
+
+		// Verify command was created correctly
+		cmds := handler.getCommands()
+		require.Len(t, cmds, 1)
+		workflowCmd, ok := cmds[0].(*command.SignalWorkflowCompleteCommand)
+		require.True(t, ok)
+		assert.Equal(t, command.WorkflowStatusSuccess, workflowCmd.Status)
+		assert.Equal(t, "All tasks completed successfully", workflowCmd.Summary)
+		assert.Empty(t, workflowCmd.EpicID)
+		assert.Equal(t, 0, workflowCmd.TasksClosed)
+	})
+
+	t.Run("success_with_all_fields", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":       "partial",
+			"summary":      "Completed 3 of 5 tasks",
+			"epic_id":      "epic-123",
+			"tasks_closed": 3,
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "Workflow marked as partial")
+		assert.Contains(t, result.Content[0].Text, "epic: epic-123")
+		assert.Contains(t, result.Content[0].Text, "3 tasks closed")
+
+		// Verify command was created correctly
+		cmds := handler.getCommands()
+		require.Len(t, cmds, 1)
+		workflowCmd, ok := cmds[0].(*command.SignalWorkflowCompleteCommand)
+		require.True(t, ok)
+		assert.Equal(t, command.WorkflowStatusPartial, workflowCmd.Status)
+		assert.Equal(t, "Completed 3 of 5 tasks", workflowCmd.Summary)
+		assert.Equal(t, "epic-123", workflowCmd.EpicID)
+		assert.Equal(t, 3, workflowCmd.TasksClosed)
+	})
+
+	t.Run("success_aborted_status", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":  "aborted",
+			"summary": "Workflow aborted due to blocking issue",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "Workflow marked as aborted")
+
+		// Verify command
+		cmds := handler.getCommands()
+		require.Len(t, cmds, 1)
+		workflowCmd, ok := cmds[0].(*command.SignalWorkflowCompleteCommand)
+		require.True(t, ok)
+		assert.Equal(t, command.WorkflowStatusAborted, workflowCmd.Status)
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
+		defer cleanup()
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), []byte("invalid"))
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "invalid arguments")
+	})
+
+	t.Run("missing_status", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"summary": "All tasks completed",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "status is required")
+	})
+
+	t.Run("missing_summary", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status": "success",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "summary is required")
+	})
+
+	t.Run("invalid_status", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":  "invalid_status",
+			"summary": "Some summary",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "signal_workflow_complete command validation failed")
+		assert.Contains(t, err.Error(), "status must be success, partial, or aborted")
+	})
+
+	t.Run("optional_epic_id_only", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":  "success",
+			"summary": "Epic completed",
+			"epic_id": "epic-456",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "epic: epic-456")
+		assert.NotContains(t, result.Content[0].Text, "tasks closed")
+
+		// Verify command
+		cmds := handler.getCommands()
+		require.Len(t, cmds, 1)
+		workflowCmd, ok := cmds[0].(*command.SignalWorkflowCompleteCommand)
+		require.True(t, ok)
+		assert.Equal(t, "epic-456", workflowCmd.EpicID)
+		assert.Equal(t, 0, workflowCmd.TasksClosed)
+	})
+
+	t.Run("optional_tasks_closed_only", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		args := toJSON(t, map[string]any{
+			"status":       "success",
+			"summary":      "Tasks completed",
+			"tasks_closed": 5,
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "5 tasks closed")
+		assert.NotContains(t, result.Content[0].Text, "epic:")
+
+		// Verify command
+		cmds := handler.getCommands()
+		require.Len(t, cmds, 1)
+		workflowCmd, ok := cmds[0].(*command.SignalWorkflowCompleteCommand)
+		require.True(t, ok)
+		assert.Empty(t, workflowCmd.EpicID)
+		assert.Equal(t, 5, workflowCmd.TasksClosed)
+	})
+
+	t.Run("handler_error", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		handler.returnErr = errors.New("handler failed")
+
+		args := toJSON(t, map[string]any{
+			"status":  "success",
+			"summary": "Some summary",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "handler failed")
+	})
+
+	t.Run("result_not_success", func(t *testing.T) {
+		adapter, handler, cleanup := testAdapter(t)
+		defer cleanup()
+
+		handler.returnResult = &command.CommandResult{
+			Success: false,
+			Error:   errors.New("workflow completion failed"),
+		}
+
+		args := toJSON(t, map[string]any{
+			"status":  "success",
+			"summary": "Some summary",
+		})
+
+		result, err := adapter.HandleSignalWorkflowComplete(context.Background(), args)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Contains(t, result.Content[0].Text, "workflow completion failed")
 	})
 }
