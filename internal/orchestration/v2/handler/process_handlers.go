@@ -21,6 +21,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/zjrosen/perles/internal/sound"
 )
 
 // ===========================================================================
@@ -397,6 +398,7 @@ type ProcessTurnCompleteHandler struct {
 	enforcer        TurnCompletionEnforcer
 	registry        *process.ProcessRegistry
 	sessionNotifier SessionRefNotifier
+	soundService    sound.SoundService
 }
 
 // ProcessTurnCompleteHandlerOption configures ProcessTurnCompleteHandler.
@@ -429,6 +431,16 @@ func WithSessionRefNotifier(notifier SessionRefNotifier) ProcessTurnCompleteHand
 	}
 }
 
+// WithProcessTurnSoundService sets the sound service for audio feedback.
+// If svc is nil, the handler keeps its default NoopSoundService.
+func WithProcessTurnSoundService(svc sound.SoundService) ProcessTurnCompleteHandlerOption {
+	return func(h *ProcessTurnCompleteHandler) {
+		if svc != nil {
+			h.soundService = svc
+		}
+	}
+}
+
 // NewProcessTurnCompleteHandler creates a new ProcessTurnCompleteHandler.
 func NewProcessTurnCompleteHandler(
 	processRepo repository.ProcessRepository,
@@ -436,8 +448,9 @@ func NewProcessTurnCompleteHandler(
 	opts ...ProcessTurnCompleteHandlerOption,
 ) *ProcessTurnCompleteHandler {
 	h := &ProcessTurnCompleteHandler{
-		processRepo: processRepo,
-		queueRepo:   queueRepo,
+		processRepo:  processRepo,
+		queueRepo:    queueRepo,
+		soundService: sound.NoopSoundService{},
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -494,6 +507,9 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			// Transition to Worker to failed since they cannot respond
 			proc.Status = repository.StatusFailed
 			proc.LastActivityAt = time.Now()
+
+			// Play sound to alert user
+			h.soundService.Play("deny", "worker_out_of_context")
 
 			if err := h.processRepo.Save(proc); err != nil {
 				return nil, fmt.Errorf("failed to save process: %w", err)

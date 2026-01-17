@@ -973,6 +973,99 @@ func TestProcessTurnCompleteHandler_WorkerContextExceeded_TraceIDPropagated(t *t
 	assert.Equal(t, "trace-123", deliverCmd.TraceID())
 }
 
+func TestProcessTurnCompleteHandler_WorkerContextExceeded_PlaysSound(t *testing.T) {
+	// Tests that sound is played when worker runs out of context
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		TaskID:           "task-123",
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(worker)
+
+	mockSound := &mockSoundService{}
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithProcessTurnSoundService(mockSound))
+
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, contextErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify sound was played
+	require.Len(t, mockSound.playedSounds, 1, "sound should be played once")
+	assert.Equal(t, "deny", mockSound.playedSounds[0].soundFile)
+	assert.Equal(t, "worker_out_of_context", mockSound.playedSounds[0].useCase)
+}
+
+func TestProcessTurnCompleteHandler_NonContextExceededError_NoSound(t *testing.T) {
+	// Tests that sound is NOT played for non-context-exceeded errors
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(worker)
+
+	mockSound := &mockSoundService{}
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithProcessTurnSoundService(mockSound))
+
+	// Use a generic error (not ContextExceededError)
+	genericErr := fmt.Errorf("some other error")
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", false, nil, genericErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify sound was NOT played
+	assert.Len(t, mockSound.playedSounds, 0, "sound should not be played for non-context-exceeded errors")
+}
+
+func TestProcessTurnCompleteHandler_CoordinatorContextExceeded_NoSound(t *testing.T) {
+	// Tests that sound is NOT played for coordinator context exhaustion
+	processRepo, queueRepo := setupProcessRepos()
+
+	coord := &repository.Process{
+		ID:               repository.CoordinatorID,
+		Role:             repository.RoleCoordinator,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(coord)
+
+	mockSound := &mockSoundService{}
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithProcessTurnSoundService(mockSound))
+
+	// Context exceeded error but for coordinator
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand(repository.CoordinatorID, false, nil, contextErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify sound was NOT played (context exceeded handling is only for workers)
+	assert.Len(t, mockSound.playedSounds, 0, "sound should not be played for coordinator")
+}
+
 // ===========================================================================
 // ProcessTurnCompleteHandler Turn Enforcement Tests
 // ===========================================================================
@@ -1712,6 +1805,69 @@ func TestProcessTurnCompleteHandler_RepositorySessionID_SetOnFirstSuccessfulTurn
 	updated, _ := processRepo.Get("worker-1")
 	assert.Equal(t, "repo-session-test", updated.SessionID)
 	assert.True(t, updated.HasCompletedTurn)
+}
+
+func TestProcessTurnCompleteHandler_WithSoundService_AcceptsOption(t *testing.T) {
+	// Verifies that WithProcessTurnSoundService option is accepted and doesn't cause panics
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(worker)
+
+	// Create handler with sound service option
+	mockSound := &mockSoundService{}
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithProcessTurnSoundService(mockSound))
+
+	// Execute a normal turn completion
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+}
+
+func TestProcessTurnCompleteHandler_WithNilSoundService_UsesDefault(t *testing.T) {
+	// Verifies that nil sound service keeps the default NoopSoundService (no panic)
+	processRepo, queueRepo := setupProcessRepos()
+
+	worker := &repository.Process{
+		ID:               "worker-1",
+		Role:             repository.RoleWorker,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(worker)
+
+	// Create handler with nil sound service (should keep NoopSoundService default)
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
+		handler.WithProcessTurnSoundService(nil))
+
+	cmd := command.NewProcessTurnCompleteCommand("worker-1", true, nil, nil)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+}
+
+// mockSoundService is a simple test implementation of SoundService
+type mockSoundService struct {
+	playedSounds []struct {
+		soundFile string
+		useCase   string
+	}
+}
+
+func (m *mockSoundService) Play(soundFile, useCase string) {
+	m.playedSounds = append(m.playedSounds, struct {
+		soundFile string
+		useCase   string
+	}{soundFile, useCase})
 }
 
 // ===========================================================================

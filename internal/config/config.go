@@ -640,6 +640,7 @@ func Defaults() Config {
 				"chat_welcome":           {Enabled: false},
 				"workflow_complete":      {Enabled: false},
 				"orchestration_welcome":  {Enabled: false},
+				"worker_out_of_context":  {Enabled: false},
 			},
 		},
 	}

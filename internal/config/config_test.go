@@ -1050,12 +1050,13 @@ func TestConfig_SoundDefaults(t *testing.T) {
 	// Verify Sound field exists and has Events map
 	require.NotNil(t, cfg.Sound.Events, "Events map should not be nil")
 
-	// Verify all five sound events exist and are disabled by default
+	// Verify all six sound events exist and are disabled by default
 	require.False(t, cfg.Sound.Events["review_verdict_approve"].Enabled, "review_verdict_approve should be disabled by default")
 	require.False(t, cfg.Sound.Events["review_verdict_deny"].Enabled, "review_verdict_deny should be disabled by default")
 	require.False(t, cfg.Sound.Events["chat_welcome"].Enabled, "chat_welcome should be disabled by default")
 	require.False(t, cfg.Sound.Events["workflow_complete"].Enabled, "workflow_complete should be disabled by default")
 	require.False(t, cfg.Sound.Events["orchestration_welcome"].Enabled, "orchestration_welcome should be disabled by default")
+	require.False(t, cfg.Sound.Events["worker_out_of_context"].Enabled, "worker_out_of_context should be disabled by default")
 }
 
 func TestConfig_LoadSoundConfig(t *testing.T) {
@@ -1191,10 +1192,10 @@ func TestDefaults_SoundEventConfigValues(t *testing.T) {
 	cfg := Defaults()
 
 	// All events should exist in the map
-	require.Len(t, cfg.Sound.Events, 5)
+	require.Len(t, cfg.Sound.Events, 6)
 
 	// Check each event has correct default values
-	for _, eventName := range []string{"review_verdict_approve", "review_verdict_deny", "chat_welcome", "workflow_complete", "orchestration_welcome"} {
+	for _, eventName := range []string{"review_verdict_approve", "review_verdict_deny", "chat_welcome", "workflow_complete", "orchestration_welcome", "worker_out_of_context"} {
 		eventConfig, exists := cfg.Sound.Events[eventName]
 		require.True(t, exists, "Event %q should exist in defaults", eventName)
 		require.False(t, eventConfig.Enabled, "Event %q should be disabled by default", eventName)

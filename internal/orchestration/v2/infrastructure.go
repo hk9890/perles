@@ -323,7 +323,8 @@ func registerHandlers(
 		handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
 			handler.WithProcessTurnEnforcer(turnEnforcer),
 			handler.WithTurnCompleteProcessRegistry(processRegistry),
-			handler.WithSessionRefNotifier(sessionRefNotifier)))
+			handler.WithSessionRefNotifier(sessionRefNotifier),
+			handler.WithProcessTurnSoundService(soundService)))
 
 	// ============================================================
 	// BD Task Status handlers (2)
