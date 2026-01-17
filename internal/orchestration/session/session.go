@@ -721,7 +721,7 @@ func (s *Session) updateSessionIndex(meta *Metadata) error {
 		return fmt.Errorf("loading session index: %w", err)
 	}
 
-	index.Sessions = append(index.Sessions, entry)
+	index.Sessions = upsertSessionEntry(index.Sessions, entry)
 
 	if err := SaveSessionIndex(indexPath, index); err != nil {
 		return fmt.Errorf("saving session index: %w", err)
@@ -746,8 +746,8 @@ func (s *Session) updateApplicationIndex(entry SessionIndexEntry) error {
 		appIndex.ApplicationName = s.applicationName
 	}
 
-	// Append entry
-	appIndex.Sessions = append(appIndex.Sessions, entry)
+	// Update existing entry or append new one
+	appIndex.Sessions = upsertSessionEntry(appIndex.Sessions, entry)
 
 	// Save with atomic rename
 	if err := SaveApplicationIndex(indexPath, appIndex); err != nil {
@@ -768,8 +768,8 @@ func (s *Session) updateGlobalIndex(entry SessionIndexEntry) error {
 		return fmt.Errorf("loading global index: %w", err)
 	}
 
-	// Append entry
-	globalIndex.Sessions = append(globalIndex.Sessions, entry)
+	// Update existing entry or append new one
+	globalIndex.Sessions = upsertSessionEntry(globalIndex.Sessions, entry)
 
 	// Save with atomic rename
 	if err := SaveSessionIndex(indexPath, globalIndex); err != nil {
@@ -777,6 +777,18 @@ func (s *Session) updateGlobalIndex(entry SessionIndexEntry) error {
 	}
 
 	return nil
+}
+
+// upsertSessionEntry updates an existing entry with the same ID, or appends if not found.
+// This handles resumed sessions correctly by updating in place rather than duplicating.
+func upsertSessionEntry(sessions []SessionIndexEntry, entry SessionIndexEntry) []SessionIndexEntry {
+	for i, existing := range sessions {
+		if existing.ID == entry.ID {
+			sessions[i] = entry
+			return sessions
+		}
+	}
+	return append(sessions, entry)
 }
 
 // AttachToBrokers subscribes to all event brokers and spawns goroutines to stream events to disk.

@@ -3355,6 +3355,66 @@ func TestClose_AppendsToExistingIndexes(t *testing.T) {
 	require.Equal(t, "new-session", loadedGlobalIndex.Sessions[1].ID)
 }
 
+func TestClose_ResumedSession_UpdatesInPlace(t *testing.T) {
+	// Setup centralized storage
+	baseDir := t.TempDir()
+	appName := "resume-test-app"
+	sessionID := "resumed-session"
+	pathBuilder := NewSessionPathBuilder(baseDir, appName)
+
+	// Create and close a session (first run)
+	sessionDir := pathBuilder.SessionDir(sessionID, time.Now())
+	sess, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir("/project/path"),
+		WithDatePartition("2026-01-17"),
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify initial state - both indexes have exactly one entry
+	appIndexPath := pathBuilder.ApplicationIndexPath()
+	globalIndexPath := pathBuilder.IndexPath()
+
+	loadedAppIndex, err := LoadApplicationIndex(appIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedAppIndex.Sessions, 1)
+	require.Equal(t, sessionID, loadedAppIndex.Sessions[0].ID)
+	require.Equal(t, StatusCompleted, loadedAppIndex.Sessions[0].Status)
+
+	loadedGlobalIndex, err := LoadSessionIndex(globalIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedGlobalIndex.Sessions, 1)
+
+	// "Resume" the session (simulate by creating same ID again)
+	sess2, err := New(sessionID, sessionDir,
+		WithApplicationName(appName),
+		WithWorkDir("/project/path"),
+		WithDatePartition("2026-01-17"),
+		WithPathBuilder(pathBuilder),
+	)
+	require.NoError(t, err)
+
+	// Close with different status to prove it updated
+	err = sess2.Close(StatusFailed)
+	require.NoError(t, err)
+
+	// Verify indexes still have exactly one entry (updated in place, not appended)
+	loadedAppIndex, err = LoadApplicationIndex(appIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedAppIndex.Sessions, 1, "Should update in place, not append duplicate")
+	require.Equal(t, sessionID, loadedAppIndex.Sessions[0].ID)
+	require.Equal(t, StatusFailed, loadedAppIndex.Sessions[0].Status, "Status should be updated")
+
+	loadedGlobalIndex, err = LoadSessionIndex(globalIndexPath)
+	require.NoError(t, err)
+	require.Len(t, loadedGlobalIndex.Sessions, 1, "Should update in place, not append duplicate")
+	require.Equal(t, StatusFailed, loadedGlobalIndex.Sessions[0].Status, "Status should be updated")
+}
+
 func TestClose_IndexEntryContainsAllMetadataFields(t *testing.T) {
 	baseDir := t.TempDir()
 	appName := "metadata-fields-app"
