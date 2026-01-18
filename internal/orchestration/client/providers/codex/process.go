@@ -31,10 +31,16 @@ func Resume(ctx context.Context, sessionID string, cfg Config) (*Process, error)
 // spawnProcess is the internal implementation for both Spawn and Resume.
 // Uses SpawnBuilder for clean process lifecycle management.
 func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, error) {
+	// Find executable via PATH only (no known paths to maintain backwards compatibility)
+	execPath, err := client.NewExecutableFinder("codex").Find()
+	if err != nil {
+		return nil, err
+	}
+
 	args := buildArgs(cfg, isResume)
 
 	base, err := client.NewSpawnBuilder(ctx).
-		WithExecutable("codex", args).
+		WithExecutable(execPath, args).
 		WithWorkDir(cfg.WorkDir).
 		WithSessionRef(cfg.SessionID).
 		WithTimeout(cfg.Timeout).

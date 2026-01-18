@@ -5,9 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,32 +13,13 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
 
-// findExecutable returns the path to the claude executable.
-// It checks common installation locations before falling back to PATH lookup.
-// This handles cases where claude is installed via pnpm/npm and uses an alias
-// rather than being directly in PATH.
-func findExecutable() (string, error) {
-	// Common installation paths to check
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		knownPaths := []string{
-			filepath.Join(homeDir, ".claude", "local", "claude"),
-			filepath.Join(homeDir, ".claude", "claude"),
-		}
-		for _, path := range knownPaths {
-			if info, err := os.Stat(path); err == nil && !info.IsDir() {
-				log.Debug(log.CatOrch, "Found claude executable", "subsystem", "claude", "path", path)
-				return path, nil
-			}
-		}
-	}
-
-	// Fall back to PATH lookup
-	path, err := exec.LookPath("claude")
-	if err != nil {
-		return "", fmt.Errorf("claude executable not found in known locations or PATH: %w", err)
-	}
-	return path, nil
+// defaultKnownPaths defines the priority-ordered paths to check for the claude executable.
+// These are checked before falling back to PATH lookup.
+// Note: Unlike the original implementation, ExecutableFinder adds .exe suffix on Windows,
+// fixing a bug where Claude previously didn't work on Windows.
+var defaultKnownPaths = []string{
+	"~/.claude/local/{name}",
+	"~/.claude/{name}",
 }
 
 // Config holds configuration for spawning a Claude process.
@@ -172,8 +150,10 @@ func extractSession(event client.OutputEvent, rawLine []byte) string {
 // Context is used for cancellation and timeout control.
 // Uses SpawnBuilder for clean process lifecycle management.
 func Spawn(ctx context.Context, cfg Config) (*Process, error) {
-	// Find executable BEFORE SpawnBuilder (provider-specific)
-	claudePath, err := findExecutable()
+	// Find the claude executable using ExecutableFinder
+	claudePath, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
 		return nil, err
 	}

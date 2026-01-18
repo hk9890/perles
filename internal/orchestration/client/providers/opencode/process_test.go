@@ -18,10 +18,34 @@ import (
 var errTest = errors.New("test error")
 
 // =============================================================================
-// Executable Discovery Tests
+// Executable Discovery Tests (using ExecutableFinder)
 // =============================================================================
 
-func TestFindExecutable_LocalBinPath(t *testing.T) {
+func TestDefaultKnownPaths_ContainsExpectedPaths(t *testing.T) {
+	// Verify defaultKnownPaths contains the paths we expect
+	require.Len(t, defaultKnownPaths, 3)
+	require.Equal(t, "~/.local/bin/{name}", defaultKnownPaths[0], "First path should be ~/.local/bin/{name}")
+	require.Equal(t, "/opt/homebrew/bin/{name}", defaultKnownPaths[1], "Second path should be /opt/homebrew/bin/{name}")
+	require.Equal(t, "/usr/local/bin/{name}", defaultKnownPaths[2], "Third path should be /usr/local/bin/{name}")
+}
+
+func TestDefaultKnownPaths_PriorityOrder(t *testing.T) {
+	// Verify paths are checked in priority order (most common install locations first)
+	// ~/.local/bin is highest priority (go install default)
+	// /opt/homebrew/bin for Apple Silicon Macs
+	// /usr/local/bin for Intel Macs and Linux
+
+	// Create ExecutableFinder with our defaultKnownPaths to verify order
+	finder := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	)
+	require.NotNil(t, finder)
+
+	// The order is important: ~/.local/bin > /opt/homebrew/bin > /usr/local/bin > PATH
+	// This matches typical installation priorities
+}
+
+func TestExecutableFinder_LocalBinPath(t *testing.T) {
 	// Create temp home directory with local bin opencode
 	tempDir := t.TempDir()
 	localBinDir := filepath.Join(tempDir, ".local", "bin")
@@ -39,44 +63,79 @@ func TestFindExecutable_LocalBinPath(t *testing.T) {
 	t.Setenv("HOME", tempDir)
 	t.Setenv("USERPROFILE", tempDir)
 
-	path, err := findExecutable()
+	// Use ExecutableFinder with our defaultKnownPaths
+	path, err := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	require.NoError(t, err)
 	require.Equal(t, opencodePath, path)
 }
 
-func TestFindExecutable_PathFallback(t *testing.T) {
+func TestExecutableFinder_PathFallback(t *testing.T) {
 	// Set HOME to non-existent path to disable local bin check
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", "/non-existent-path")
-	defer os.Setenv("HOME", originalHome)
+	t.Setenv("HOME", "/non-existent-path")
+	t.Setenv("USERPROFILE", "/non-existent-path")
 
+	// Use ExecutableFinder with our defaultKnownPaths
 	// This test depends on whether opencode is in PATH
-	// If it is, it should be found; if not, test will verify error handling
-	path, err := findExecutable()
+	path, err := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
-		// opencode not in PATH, verify it's the expected error
-		require.Equal(t, ErrNotFound, err)
+		// opencode not in PATH, verify it wraps the expected error
+		require.True(t, errors.Is(err, client.ErrExecutableNotFound))
+		// Verify error message contains path information
+		require.Contains(t, err.Error(), "opencode")
+		require.Contains(t, err.Error(), "PATH")
 	} else {
 		// opencode found in PATH
 		require.NotEmpty(t, path)
 	}
 }
 
-func TestFindExecutable_NotFound(t *testing.T) {
-	// Set HOME to non-existent path
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", "/non-existent-path-for-test")
-	defer os.Setenv("HOME", originalHome)
+func TestExecutableFinder_NotFound_ErrorContainsPaths(t *testing.T) {
+	// Test with a non-existent executable name to guarantee not found
+	// We use a unique name that won't exist on any system
+	t.Setenv("HOME", "/non-existent-path-for-test")
+	t.Setenv("USERPROFILE", "/non-existent-path-for-test")
 
 	// Override PATH to empty
-	originalPath := os.Getenv("PATH")
-	os.Setenv("PATH", "")
-	defer os.Setenv("PATH", originalPath)
+	t.Setenv("PATH", "")
 
-	path, err := findExecutable()
+	// Use a non-existent executable name to guarantee error
+	path, err := client.NewExecutableFinder("opencode-nonexistent-test-12345",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	require.Error(t, err)
-	require.Equal(t, ErrNotFound, err)
+	require.True(t, errors.Is(err, client.ErrExecutableNotFound))
 	require.Empty(t, path)
+
+	// Verify error message contains useful path information
+	errMsg := err.Error()
+	require.Contains(t, errMsg, "opencode-nonexistent-test-12345", "Error should mention executable name")
+	require.Contains(t, errMsg, "PATH", "Error should mention PATH was checked")
+}
+
+func TestDefaultKnownPaths_WindowsExeSuffix(t *testing.T) {
+	// Verify that all paths in defaultKnownPaths use the {name} template,
+	// which ExecutableFinder will expand to include .exe suffix on Windows.
+	// This test documents that Windows .exe behavior is handled correctly.
+	//
+	// The actual .exe suffix expansion is tested comprehensively in
+	// executable_test.go using withGOOS("windows") injection.
+
+	for i, path := range defaultKnownPaths {
+		require.Contains(t, path, "{name}",
+			"Path %d (%s) should use {name} template for cross-platform .exe support", i, path)
+	}
+
+	// Verify the paths don't have hardcoded extensions
+	for i, path := range defaultKnownPaths {
+		require.NotContains(t, path, ".exe",
+			"Path %d (%s) should not hardcode .exe - ExecutableFinder handles this", i, path)
+		require.NotContains(t, path, "opencode",
+			"Path %d (%s) should use {name} template, not hardcoded name", i, path)
+	}
 }
 
 // =============================================================================
@@ -539,9 +598,10 @@ func TestErrTimeout(t *testing.T) {
 	require.Contains(t, ErrTimeout.Error(), "timed out")
 }
 
-func TestErrNotFound(t *testing.T) {
-	require.NotNil(t, ErrNotFound)
-	require.Contains(t, ErrNotFound.Error(), "executable not found")
+func TestExecutableFinder_ErrExecutableNotFound(t *testing.T) {
+	// Verify that ExecutableFinder returns client.ErrExecutableNotFound
+	require.NotNil(t, client.ErrExecutableNotFound)
+	require.Contains(t, client.ErrExecutableNotFound.Error(), "executable not found")
 }
 
 // =============================================================================

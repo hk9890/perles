@@ -108,82 +108,57 @@ func TestValidateAuth_NoAuth(t *testing.T) {
 // Executable Discovery Tests
 // =============================================================================
 
-func TestFindExecutable_NpmPath(t *testing.T) {
+func TestDefaultKnownPaths_ContainsExpectedPaths(t *testing.T) {
+	// Verify the expected paths are defined in priority order
+	require.Len(t, defaultKnownPaths, 3, "should have 3 known paths")
+	require.Equal(t, "~/.npm/bin/{name}", defaultKnownPaths[0], "npm path should be first")
+	require.Equal(t, "/opt/homebrew/bin/{name}", defaultKnownPaths[1], "Apple Silicon Homebrew path should be second")
+	require.Equal(t, "/usr/local/bin/{name}", defaultKnownPaths[2], "Intel/Linux path should be third")
+}
+
+func TestExecutableFinder_NpmPath(t *testing.T) {
 	// Create temp home directory with npm gemini
 	tempDir := t.TempDir()
 	npmBinDir := filepath.Join(tempDir, ".npm", "bin")
 	require.NoError(t, os.MkdirAll(npmBinDir, 0755))
 
-	// On Windows, executables need .exe extension; on Unix, no extension
-	execName := "gemini"
-	if os.PathSeparator == '\\' {
-		execName = "gemini.exe"
-	}
-	geminiPath := filepath.Join(npmBinDir, execName)
+	// On Unix, create executable file
+	geminiPath := filepath.Join(npmBinDir, "gemini")
 	require.NoError(t, os.WriteFile(geminiPath, []byte("#!/bin/bash\necho test"), 0755))
 
 	// Override HOME/USERPROFILE for this test (t.Setenv handles both platforms)
 	t.Setenv("HOME", tempDir)
 	t.Setenv("USERPROFILE", tempDir)
 
-	path, err := findExecutable()
+	// Use ExecutableFinder with the same paths as production
+	path, err := client.NewExecutableFinder("gemini",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	require.NoError(t, err)
 	require.Equal(t, geminiPath, path)
 }
 
-func TestFindExecutable_LocalBin(t *testing.T) {
-	// Skip if we don't have permission to check /usr/local/bin
-	// or if there's already a gemini there
-	_, err := os.Stat("/usr/local/bin/gemini")
-	if err == nil {
-		// gemini exists in /usr/local/bin, test passes
-		path, err := findExecutable()
-		// Need to disable npm path check
-		originalHome := os.Getenv("HOME")
-		os.Setenv("HOME", "/non-existent-path")
-		defer os.Setenv("HOME", originalHome)
+func TestExecutableFinder_ErrorContainsPathInfo(t *testing.T) {
+	// This test verifies that when ExecutableFinder fails, error messages contain
+	// the executable name. Since gemini may be installed on the system, we use
+	// a non-existent executable name to guarantee failure.
+	nonExistentExec := "gemini-nonexistent-test-executable"
 
-		path, err = findExecutable()
-		require.NoError(t, err)
-		require.Equal(t, "/usr/local/bin/gemini", path)
-	} else {
-		t.Skip("gemini not found in /usr/local/bin")
-	}
-}
+	// Set HOME to temp directory (no such executable there)
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
 
-func TestFindExecutable_PathFallback(t *testing.T) {
-	// Set HOME to non-existent path to disable npm check
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", "/non-existent-path")
-	defer os.Setenv("HOME", originalHome)
+	// Override PATH to a non-existent directory so LookPath fails
+	t.Setenv("PATH", "/non-existent-path-for-test-only")
 
-	// This test depends on whether gemini is in PATH
-	// If it is, it should be found; if not, test will verify error handling
-	path, err := findExecutable()
-	if err != nil {
-		// gemini not in PATH, verify it's the expected error
-		require.Equal(t, ErrNotFound, err)
-	} else {
-		// gemini found in PATH
-		require.NotEmpty(t, path)
-	}
-}
-
-func TestFindExecutable_NotFound(t *testing.T) {
-	// Set HOME to non-existent path
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", "/non-existent-path-for-test")
-	defer os.Setenv("HOME", originalHome)
-
-	// Override PATH to empty
-	originalPath := os.Getenv("PATH")
-	os.Setenv("PATH", "")
-	defer os.Setenv("PATH", originalPath)
-
-	path, err := findExecutable()
+	// Use ExecutableFinder with the same paths as production
+	_, err := client.NewExecutableFinder(nonExistentExec,
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	require.Error(t, err)
-	require.Equal(t, ErrNotFound, err)
-	require.Empty(t, path)
+	// Error should contain the executable name
+	require.Contains(t, err.Error(), nonExistentExec)
 }
 
 // =============================================================================

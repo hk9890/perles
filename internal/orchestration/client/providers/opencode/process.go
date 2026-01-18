@@ -3,13 +3,17 @@ package opencode
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 )
+
+// defaultKnownPaths defines the priority-ordered paths to check for the opencode executable.
+// These are checked before falling back to PATH lookup.
+var defaultKnownPaths = []string{
+	"~/.local/bin/{name}",      // Common Go binary location (go install)
+	"/opt/homebrew/bin/{name}", // Apple Silicon Mac (Homebrew)
+	"/usr/local/bin/{name}",    // Intel Mac / Linux
+}
 
 // Process represents a headless OpenCode CLI process.
 // Process implements client.HeadlessProcess by embedding BaseProcess.
@@ -19,44 +23,6 @@ type Process struct {
 
 // ErrTimeout is returned when an OpenCode process exceeds its configured timeout.
 var ErrTimeout = fmt.Errorf("opencode process timed out")
-
-// ErrNotFound is returned when the opencode executable cannot be found.
-var ErrNotFound = fmt.Errorf("opencode: executable not found - ensure 'opencode' is in PATH")
-
-// findExecutable locates the opencode executable.
-func findExecutable() (string, error) {
-	// On Windows, executables need .exe extension
-	execName := "opencode"
-	if os.PathSeparator == '\\' {
-		execName = "opencode.exe"
-	}
-
-	// Check ~/.local/bin/opencode first (common Go binary location)
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		localPath := filepath.Join(homeDir, ".local", "bin", execName)
-		if _, err := os.Stat(localPath); err == nil {
-			log.Debug(log.CatOrch, "Found opencode at local bin", "subsystem", "opencode", "path", localPath)
-			return localPath, nil
-		}
-	}
-
-	// Check /usr/local/bin/opencode
-	localPath := "/usr/local/bin/opencode"
-	if _, err := os.Stat(localPath); err == nil {
-		log.Debug(log.CatOrch, "Found opencode at system bin", "subsystem", "opencode", "path", localPath)
-		return localPath, nil
-	}
-
-	// Fall back to exec.LookPath
-	path, err := exec.LookPath("opencode")
-	if err == nil {
-		log.Debug(log.CatOrch, "Found opencode via PATH", "subsystem", "opencode", "path", path)
-		return path, nil
-	}
-
-	return "", ErrNotFound
-}
 
 // Spawn creates and starts a new headless OpenCode process.
 // Context is used for cancellation and timeout control.
@@ -73,8 +39,10 @@ func Resume(ctx context.Context, sessionID string, cfg Config) (*Process, error)
 // spawnProcess is the internal implementation for both Spawn and Resume.
 // Uses SpawnBuilder for clean process lifecycle management.
 func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, error) {
-	// Find the opencode executable (provider-specific)
-	execPath, err := findExecutable()
+	// Find the opencode executable using ExecutableFinder
+	execPath, err := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
 		return nil, err
 	}

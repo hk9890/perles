@@ -21,7 +21,9 @@ import (
 // skipIfOpenCodeNotAvailable skips the test if opencode CLI is not installed.
 func skipIfOpenCodeNotAvailable(t *testing.T) {
 	t.Helper()
-	_, err := findExecutable()
+	_, err := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
 		t.Skip("opencode CLI not available, skipping integration test")
 	}
@@ -32,7 +34,9 @@ func skipIfOpenCodeNotAvailable(t *testing.T) {
 func skipIfOpenCodeNotConfigured(t *testing.T) {
 	t.Helper()
 	// Try running opencode --version to check if it's properly configured
-	path, err := findExecutable()
+	path, err := client.NewExecutableFinder("opencode",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
 		t.Skip("opencode CLI not available")
 	}

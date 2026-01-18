@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/zjrosen/perles/internal/log"
@@ -27,6 +26,14 @@ var ErrNoAuth = fmt.Errorf("gemini: no authentication found - set GEMINI_API_KEY
 
 // ErrNotFound is returned when the gemini executable cannot be found.
 var ErrNotFound = fmt.Errorf("gemini: executable not found - install with 'npm install -g @anthropic-ai/claude-code-gemini' or ensure 'gemini' is in PATH")
+
+// defaultKnownPaths defines the priority-ordered paths to check for the gemini executable.
+// These are checked before falling back to PATH lookup.
+var defaultKnownPaths = []string{
+	"~/.npm/bin/{name}",        // npm global install location
+	"/opt/homebrew/bin/{name}", // Apple Silicon Mac (Homebrew)
+	"/usr/local/bin/{name}",    // Intel Mac / Linux
+}
 
 // validateAuth checks for valid Gemini authentication.
 // It checks in order: OAuth token file, GEMINI_API_KEY env, GOOGLE_API_KEY env.
@@ -54,42 +61,6 @@ func validateAuth() error {
 	}
 
 	return ErrNoAuth
-}
-
-// findExecutable locates the gemini executable.
-// It checks in order: ~/.npm/bin/gemini, /usr/local/bin/gemini, then exec.LookPath.
-func findExecutable() (string, error) {
-	// On Windows, executables need .exe extension
-	execName := "gemini"
-	if os.PathSeparator == '\\' {
-		execName = "gemini.exe"
-	}
-
-	// Check ~/.npm/bin/gemini first
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		npmPath := filepath.Join(homeDir, ".npm", "bin", execName)
-		if _, err := os.Stat(npmPath); err == nil {
-			log.Debug(log.CatOrch, "Found gemini at npm path", "subsystem", "gemini", "path", npmPath)
-			return npmPath, nil
-		}
-	}
-
-	// Check /usr/local/bin/gemini
-	localPath := "/usr/local/bin/gemini"
-	if _, err := os.Stat(localPath); err == nil {
-		log.Debug(log.CatOrch, "Found gemini at local bin", "subsystem", "gemini", "path", localPath)
-		return localPath, nil
-	}
-
-	// Fall back to exec.LookPath
-	path, err := exec.LookPath("gemini")
-	if err == nil {
-		log.Debug(log.CatOrch, "Found gemini via PATH", "subsystem", "gemini", "path", path)
-		return path, nil
-	}
-
-	return "", ErrNotFound
 }
 
 // setupMCPConfig creates or updates the .gemini/settings.json file with MCP configuration.
@@ -191,7 +162,9 @@ func spawnProcess(ctx context.Context, cfg Config, _ bool) (*Process, error) {
 	}
 
 	// PRE-SPAWN EXECUTABLE DISCOVERY (stays in provider)
-	execPath, err := findExecutable()
+	execPath, err := client.NewExecutableFinder("gemini",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
 	if err != nil {
 		return nil, err
 	}

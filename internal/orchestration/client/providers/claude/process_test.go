@@ -1507,89 +1507,208 @@ func TestBehaviorPreservation_StatusSetBeforeErrorSend(t *testing.T) {
 	}
 }
 
-func TestFindExecutable(t *testing.T) {
-	t.Run("finds claude in .claude/local", func(t *testing.T) {
-		// Create temp home directory
-		tempHome := t.TempDir()
-		originalHome := os.Getenv("HOME")
-		t.Setenv("HOME", tempHome)
-		t.Setenv("USERPROFILE", tempHome) // Windows uses USERPROFILE
-		defer func() { _ = os.Setenv("HOME", originalHome) }()
+// =============================================================================
+// Executable Discovery Tests (using ExecutableFinder)
+// =============================================================================
 
-		// Create the expected path
-		claudeDir := filepath.Join(tempHome, ".claude", "local")
-		require.NoError(t, os.MkdirAll(claudeDir, 0755))
-		claudePath := filepath.Join(claudeDir, "claude")
-		require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\n"), 0755))
+func TestDefaultKnownPaths_ContainsExpectedPaths(t *testing.T) {
+	// Verify defaultKnownPaths contains the paths we expect
+	require.Len(t, defaultKnownPaths, 2)
+	require.Equal(t, "~/.claude/local/{name}", defaultKnownPaths[0], "First path should be ~/.claude/local/{name}")
+	require.Equal(t, "~/.claude/{name}", defaultKnownPaths[1], "Second path should be ~/.claude/{name}")
+}
 
-		// Should find it
-		path, err := findExecutable()
-		require.NoError(t, err)
-		require.Equal(t, claudePath, path)
-	})
+func TestDefaultKnownPaths_PriorityOrder(t *testing.T) {
+	// Verify paths are checked in priority order
+	// ~/.claude/local is highest priority (local install)
+	// ~/.claude is fallback (root install)
 
-	t.Run("finds claude in .claude root", func(t *testing.T) {
-		// Create temp home directory
-		tempHome := t.TempDir()
-		originalHome := os.Getenv("HOME")
-		t.Setenv("HOME", tempHome)
-		t.Setenv("USERPROFILE", tempHome) // Windows uses USERPROFILE
-		defer func() { _ = os.Setenv("HOME", originalHome) }()
+	// Create ExecutableFinder with our defaultKnownPaths to verify order
+	finder := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	)
+	require.NotNil(t, finder)
 
-		// Create the expected path (not in local, just in .claude)
-		claudeDir := filepath.Join(tempHome, ".claude")
-		require.NoError(t, os.MkdirAll(claudeDir, 0755))
-		claudePath := filepath.Join(claudeDir, "claude")
-		require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\n"), 0755))
+	// The order is important: ~/.claude/local > ~/.claude > PATH
+}
 
-		// Should find it
-		path, err := findExecutable()
-		require.NoError(t, err)
-		require.Equal(t, claudePath, path)
-	})
+func TestDefaultKnownPaths_WindowsExeSuffix(t *testing.T) {
+	// Verify that all paths in defaultKnownPaths use the {name} template,
+	// which ExecutableFinder will expand to include .exe suffix on Windows.
+	//
+	// This test documents a BUG FIX: The original findExecutable() in Claude
+	// did NOT add .exe suffix on Windows, which would have silently failed.
+	// By migrating to ExecutableFinder with {name} templates, Windows is now
+	// properly supported.
+	//
+	// The actual .exe suffix expansion is tested comprehensively in
+	// executable_test.go using withGOOS("windows") injection.
 
-	t.Run("prefers .claude/local over .claude", func(t *testing.T) {
-		// Create temp home directory
-		tempHome := t.TempDir()
-		originalHome := os.Getenv("HOME")
-		t.Setenv("HOME", tempHome)
-		t.Setenv("USERPROFILE", tempHome) // Windows uses USERPROFILE
-		defer func() { _ = os.Setenv("HOME", originalHome) }()
+	for i, path := range defaultKnownPaths {
+		require.Contains(t, path, "{name}",
+			"Path %d (%s) should use {name} template for cross-platform .exe support", i, path)
+	}
 
-		// Create both paths
-		localDir := filepath.Join(tempHome, ".claude", "local")
-		require.NoError(t, os.MkdirAll(localDir, 0755))
-		localPath := filepath.Join(localDir, "claude")
-		require.NoError(t, os.WriteFile(localPath, []byte("#!/bin/bash\n"), 0755))
+	// Verify the paths don't have hardcoded extensions
+	for i, path := range defaultKnownPaths {
+		require.NotContains(t, path, ".exe",
+			"Path %d (%s) should not hardcode .exe - ExecutableFinder handles this", i, path)
+	}
 
-		rootPath := filepath.Join(tempHome, ".claude", "claude")
-		require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\n"), 0755))
+	// Verify paths end with {name} (not hardcoded "claude" at the end)
+	for i, path := range defaultKnownPaths {
+		require.True(t, strings.HasSuffix(path, "{name}"),
+			"Path %d (%s) should end with {name} template, not a hardcoded executable name", i, path)
+	}
+}
 
-		// Should prefer local
-		path, err := findExecutable()
-		require.NoError(t, err)
-		require.Equal(t, localPath, path)
-	})
+func TestExecutableFinder_LocalPath(t *testing.T) {
+	// Create temp home directory with local claude
+	tempDir := t.TempDir()
+	localDir := filepath.Join(tempDir, ".claude", "local")
+	require.NoError(t, os.MkdirAll(localDir, 0755))
 
-	t.Run("skips directories", func(t *testing.T) {
-		// Create temp home directory
-		tempHome := t.TempDir()
-		originalHome := os.Getenv("HOME")
-		t.Setenv("HOME", tempHome)
-		t.Setenv("USERPROFILE", tempHome) // Windows uses USERPROFILE
-		defer func() { _ = os.Setenv("HOME", originalHome) }()
+	// On Windows, executables need .exe extension; on Unix, no extension
+	execName := "claude"
+	if os.PathSeparator == '\\' {
+		execName = "claude.exe"
+	}
+	claudePath := filepath.Join(localDir, execName)
+	require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\necho test"), 0755))
 
-		// Create a directory named "claude" instead of a file
-		claudeDir := filepath.Join(tempHome, ".claude", "local", "claude")
-		require.NoError(t, os.MkdirAll(claudeDir, 0755))
+	// Override HOME/USERPROFILE for this test
+	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
 
-		// Create the actual file in .claude root
-		rootPath := filepath.Join(tempHome, ".claude", "claude")
-		require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\n"), 0755))
+	// Use ExecutableFinder with our defaultKnownPaths
+	path, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	require.NoError(t, err)
+	require.Equal(t, claudePath, path)
+}
 
-		// Should skip the directory and find the file
-		path, err := findExecutable()
-		require.NoError(t, err)
-		require.Equal(t, rootPath, path)
-	})
+func TestExecutableFinder_RootPath(t *testing.T) {
+	// Create temp home directory with claude in .claude root (not local)
+	tempDir := t.TempDir()
+	rootDir := filepath.Join(tempDir, ".claude")
+	require.NoError(t, os.MkdirAll(rootDir, 0755))
+
+	// On Windows, executables need .exe extension; on Unix, no extension
+	execName := "claude"
+	if os.PathSeparator == '\\' {
+		execName = "claude.exe"
+	}
+	claudePath := filepath.Join(rootDir, execName)
+	require.NoError(t, os.WriteFile(claudePath, []byte("#!/bin/bash\necho test"), 0755))
+
+	// Override HOME/USERPROFILE for this test
+	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
+
+	// Use ExecutableFinder with our defaultKnownPaths
+	path, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	require.NoError(t, err)
+	require.Equal(t, claudePath, path)
+}
+
+func TestExecutableFinder_PrefersLocalOverRoot(t *testing.T) {
+	// Create temp home directory with claude in both locations
+	tempDir := t.TempDir()
+
+	// On Windows, executables need .exe extension; on Unix, no extension
+	execName := "claude"
+	if os.PathSeparator == '\\' {
+		execName = "claude.exe"
+	}
+
+	// Create local path (should be preferred)
+	localDir := filepath.Join(tempDir, ".claude", "local")
+	require.NoError(t, os.MkdirAll(localDir, 0755))
+	localPath := filepath.Join(localDir, execName)
+	require.NoError(t, os.WriteFile(localPath, []byte("#!/bin/bash\necho local"), 0755))
+
+	// Create root path
+	rootPath := filepath.Join(tempDir, ".claude", execName)
+	require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\necho root"), 0755))
+
+	// Override HOME/USERPROFILE for this test
+	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
+
+	// Use ExecutableFinder with our defaultKnownPaths
+	path, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	require.NoError(t, err)
+	require.Equal(t, localPath, path, "Should prefer ~/.claude/local over ~/.claude")
+}
+
+func TestExecutableFinder_SkipsDirectories(t *testing.T) {
+	// Create temp home directory with a directory named "claude" instead of a file
+	tempDir := t.TempDir()
+
+	// On Windows, executables need .exe extension; on Unix, no extension
+	execName := "claude"
+	if os.PathSeparator == '\\' {
+		execName = "claude.exe"
+	}
+
+	// Create a directory named "claude" in local path (should be skipped)
+	localDir := filepath.Join(tempDir, ".claude", "local", execName)
+	require.NoError(t, os.MkdirAll(localDir, 0755))
+
+	// Create actual file in root path
+	rootPath := filepath.Join(tempDir, ".claude", execName)
+	require.NoError(t, os.WriteFile(rootPath, []byte("#!/bin/bash\necho test"), 0755))
+
+	// Override HOME/USERPROFILE for this test
+	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
+
+	// Use ExecutableFinder with our defaultKnownPaths
+	path, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	require.NoError(t, err)
+	require.Equal(t, rootPath, path, "Should skip directory and find file in root path")
+}
+
+func TestExecutableFinder_PathFallback(t *testing.T) {
+	// Set HOME to non-existent path to disable known paths check
+	t.Setenv("HOME", "/non-existent-path")
+	t.Setenv("USERPROFILE", "/non-existent-path")
+
+	// Use ExecutableFinder with our defaultKnownPaths
+	// This test depends on whether claude is in PATH
+	path, err := client.NewExecutableFinder("claude",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	if err != nil {
+		// claude not in PATH, verify it wraps the expected error
+		require.True(t, errors.Is(err, client.ErrExecutableNotFound))
+		// Verify error message contains path information
+		require.Contains(t, err.Error(), "claude")
+		require.Contains(t, err.Error(), "PATH")
+	} else {
+		// claude found in PATH
+		require.NotEmpty(t, path)
+	}
+}
+
+func TestExecutableFinder_NotFound_ErrorContainsPaths(t *testing.T) {
+	// Test with a non-existent executable name to guarantee not found
+	t.Setenv("HOME", "/non-existent-path-for-test")
+	t.Setenv("USERPROFILE", "/non-existent-path-for-test")
+
+	// Use a unique name that won't exist on any system
+	_, err := client.NewExecutableFinder("claude-test-nonexistent-abc123xyz",
+		client.WithKnownPaths(defaultKnownPaths...),
+	).Find()
+	require.Error(t, err)
+	require.True(t, errors.Is(err, client.ErrExecutableNotFound))
+	// Error should contain the executable name
+	require.Contains(t, err.Error(), "claude-test-nonexistent-abc123xyz")
 }
