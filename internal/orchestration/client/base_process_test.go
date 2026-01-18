@@ -5,12 +5,27 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// stderrExitCommand returns a command that writes to stderr and exits with code 1.
+// Cross-platform: works on both Unix and Windows.
+// Uses Python for reliable stderr flushing across all platforms.
+func stderrExitCommand() *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		// Windows: use cmd to echo to stderr and exit
+		return exec.Command("cmd", "/c", "echo stderr error 1>&2 && exit 1")
+	}
+	// Use Python for reliable stderr output with explicit flush
+	// This avoids shell buffering issues that can occur on Linux CI
+	return exec.Command("python3", "-c",
+		"import sys; sys.stderr.write('stderr error\\n'); sys.stderr.flush(); sys.exit(1)")
+}
 
 func TestNewBaseProcess_Defaults(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -972,8 +987,8 @@ func TestBaseProcess_waitForCompletion_IncludesStderrInError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Command that will fail
-	cmd := exec.Command("sh", "-c", "echo 'stderr error' >&2; exit 1")
+	// Command that will fail and write to stderr (cross-platform)
+	cmd := stderrExitCommand()
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 

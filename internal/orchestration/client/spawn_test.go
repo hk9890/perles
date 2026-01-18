@@ -4,12 +4,46 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// Cross-platform test command helpers.
+// These return executable paths and arguments that work on both Unix and Windows.
+
+func echoCommand() (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "cmd", []string{"/c", "echo", "hello"}
+	}
+	return "/bin/echo", []string{"hello"}
+}
+
+func sleepCommand(seconds string) (string, []string) {
+	if runtime.GOOS == "windows" {
+		// Windows: use ping to localhost as a delay (ping -n 2 = ~1 second)
+		return "ping", []string{"-n", seconds, "127.0.0.1"}
+	}
+	return "/bin/sleep", []string{seconds}
+}
+
+func catCommand() (string, []string) {
+	if runtime.GOOS == "windows" {
+		// Windows: use findstr without args to read from stdin
+		return "findstr", []string{".*"}
+	}
+	return "/bin/cat", nil
+}
+
+func shellEchoEnvCommand(envVar string) (string, []string) {
+	if runtime.GOOS == "windows" {
+		return "cmd", []string{"/c", "echo", "%" + envVar + "%"}
+	}
+	return "/bin/sh", []string{"-c", "echo $" + envVar}
+}
 
 // mockParser is a minimal EventParser implementation for testing.
 type mockParser struct {
@@ -60,9 +94,10 @@ func TestSpawnBuilder_Validation_MissingParser_ReturnsError(t *testing.T) {
 // Build() succeeds with valid configuration and returns a BaseProcess.
 func TestSpawnBuilder_Validation_ValidConfig_ReturnsBaseProcess(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithProviderName("test").
 		Build()
@@ -81,10 +116,11 @@ func TestSpawnBuilder_Validation_ValidConfig_ReturnsBaseProcess(t *testing.T) {
 // a positive timeout creates a context with deadline.
 func TestSpawnBuilder_WithTimeout_CreatesTimeoutContext(t *testing.T) {
 	ctx := context.Background()
+	exe, args := sleepCommand("10")
 
 	// Use a short timeout with sleep to verify timeout works
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/sleep", []string{"10"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithTimeout(100 * time.Millisecond).
 		WithProviderName("test").
@@ -109,9 +145,10 @@ func TestSpawnBuilder_WithTimeout_CreatesTimeoutContext(t *testing.T) {
 // zero timeout creates a cancel-only context (no deadline).
 func TestSpawnBuilder_NoTimeout_CreatesCancelContext(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithTimeout(0). // Explicit zero timeout
 		WithProviderName("test").
@@ -133,10 +170,11 @@ func TestSpawnBuilder_NoTimeout_CreatesCancelContext(t *testing.T) {
 // environment variables are appended to os.Environ(), not replacing them.
 func TestSpawnBuilder_WithEnv_AppendsToOsEnviron(t *testing.T) {
 	ctx := context.Background()
+	exe, args := shellEchoEnvCommand("SPAWN_TEST_VAR")
 
 	// Create a process that prints an env var
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/sh", []string{"-c", "echo $SPAWN_TEST_VAR"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithEnv([]string{"SPAWN_TEST_VAR=test_value"}).
 		WithProviderName("test").
@@ -177,9 +215,10 @@ func TestSpawnBuilder_WithEnv_AppendsToOsEnviron(t *testing.T) {
 // custom environment is set, the process inherits os.Environ() (default behavior).
 func TestSpawnBuilder_WithEnv_Empty_UsesOsEnviron(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithProviderName("test").
 		// Note: no WithEnv call
@@ -200,9 +239,10 @@ func TestSpawnBuilder_WithEnv_Empty_UsesOsEnviron(t *testing.T) {
 // creates a stdin pipe accessible via Stdin().
 func TestSpawnBuilder_WithStdin_CreatesStdinPipe(t *testing.T) {
 	ctx := context.Background()
+	exe, args := catCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/cat", nil).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithStdin(true).
 		WithProviderName("test").
@@ -226,9 +266,10 @@ func TestSpawnBuilder_WithStdin_CreatesStdinPipe(t *testing.T) {
 // Stdin() returns nil.
 func TestSpawnBuilder_WithoutStdin_NoStdinPipe(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithProviderName("test").
 		// Note: no WithStdin call
@@ -276,12 +317,13 @@ func TestSpawnBuilder_WithCommandFactory_AllowsMocking(t *testing.T) {
 	var capturedName string
 	var capturedArgs []string
 
+	exe, exeArgs := echoCommand()
 	mockFactory := func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		factoryCalled = true
 		capturedName = name
 		capturedArgs = args
 		// Return a real command that will work
-		return exec.CommandContext(ctx, "/bin/echo", "mocked")
+		return exec.CommandContext(ctx, exe, exeArgs...)
 	}
 
 	bp, err := NewSpawnBuilder(ctx).
@@ -307,9 +349,10 @@ func TestSpawnBuilder_WithCommandFactory_AllowsMocking(t *testing.T) {
 func TestSpawnBuilder_WithWorkDir_SetsCommandDir(t *testing.T) {
 	ctx := context.Background()
 	workDir := os.TempDir()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithWorkDir(workDir).
 		WithProviderName("test").
@@ -329,9 +372,10 @@ func TestSpawnBuilder_WithWorkDir_SetsCommandDir(t *testing.T) {
 // WithSessionRef sets the initial session reference on the BaseProcess.
 func TestSpawnBuilder_WithSessionRef_SetsInitialSessionRef(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithSessionRef("session-123").
 		WithProviderName("test").
@@ -350,9 +394,10 @@ func TestSpawnBuilder_WithSessionRef_SetsInitialSessionRef(t *testing.T) {
 // WithStderrCapture enables stderr capture on the BaseProcess.
 func TestSpawnBuilder_WithStderrCapture_EnablesCapture(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithStderrCapture(true).
 		WithProviderName("test").
@@ -371,6 +416,7 @@ func TestSpawnBuilder_WithStderrCapture_EnablesCapture(t *testing.T) {
 // WithOnInitEvent sets the init event callback on the BaseProcess.
 func TestSpawnBuilder_WithOnInitEvent_SetsCallback(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	callbackCalled := false
 	callback := func(event OutputEvent, rawLine []byte) {
@@ -378,7 +424,7 @@ func TestSpawnBuilder_WithOnInitEvent_SetsCallback(t *testing.T) {
 	}
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithOnInitEvent(callback).
 		WithProviderName("test").
@@ -402,11 +448,12 @@ func TestSpawnBuilder_WithOnInitEvent_SetsCallback(t *testing.T) {
 func TestSpawnBuilder_FluentChaining(t *testing.T) {
 	ctx := context.Background()
 	parser := newMockParser()
+	exe, args := echoCommand()
 
 	// This test verifies compile-time that chaining works
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
-		WithWorkDir("/tmp").
+		WithExecutable(exe, args).
+		WithWorkDir(os.TempDir()).
 		WithSessionRef("session-xyz").
 		WithTimeout(5 * time.Second).
 		WithParser(parser).
@@ -430,9 +477,10 @@ func TestSpawnBuilder_FluentChaining(t *testing.T) {
 // actually runs and produces output.
 func TestSpawnBuilder_ProcessActuallyRuns(t *testing.T) {
 	ctx := context.Background()
+	exe, args := echoCommand()
 
 	bp, err := NewSpawnBuilder(ctx).
-		WithExecutable("/bin/echo", []string{"hello"}).
+		WithExecutable(exe, args).
 		WithParser(newMockParser()).
 		WithProviderName("test").
 		Build()

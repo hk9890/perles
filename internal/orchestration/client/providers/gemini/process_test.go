@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -122,17 +123,22 @@ func TestExecutableFinder_NpmPath(t *testing.T) {
 	npmBinDir := filepath.Join(tempDir, ".npm", "bin")
 	require.NoError(t, os.MkdirAll(npmBinDir, 0755))
 
-	// On Unix, create executable file
-	geminiPath := filepath.Join(npmBinDir, "gemini")
+	// Create executable file with platform-appropriate name
+	execName := "gemini"
+	if runtime.GOOS == "windows" {
+		execName = "gemini.exe"
+	}
+	geminiPath := filepath.Join(npmBinDir, execName)
 	require.NoError(t, os.WriteFile(geminiPath, []byte("#!/bin/bash\necho test"), 0755))
 
 	// Override HOME/USERPROFILE for this test (t.Setenv handles both platforms)
 	t.Setenv("HOME", tempDir)
 	t.Setenv("USERPROFILE", tempDir)
 
-	// Use ExecutableFinder with the same paths as production
+	// Use only the npm path which works cross-platform (uses ~ expansion)
+	npmPathTemplate := "~/.npm/bin/{name}"
 	path, err := client.NewExecutableFinder("gemini",
-		client.WithKnownPaths(defaultKnownPaths...),
+		client.WithKnownPaths(npmPathTemplate),
 	).Find()
 	require.NoError(t, err)
 	require.Equal(t, geminiPath, path)

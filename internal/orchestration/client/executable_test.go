@@ -280,18 +280,20 @@ func TestExecutableFinder_Find_EnvOverride(t *testing.T) {
 	})
 
 	t.Run("skips env override if file not executable", func(t *testing.T) {
-		t.Setenv("CLAUDE_PATH", "/custom/claude")
+		envPath := filepath.FromSlash("/custom/claude")
+		t.Setenv("CLAUDE_PATH", envPath)
 
+		expectedPath := filepath.FromSlash("/home/test/.claude/local/claude")
 		f := NewExecutableFinder("claude",
 			WithEnvOverride("CLAUDE_PATH"),
 			WithKnownPaths("~/.claude/local/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/custom/claude" {
+				if path == envPath {
 					return mockFileInfo{name: "claude", mode: 0644}, nil // Not executable
 				}
-				if path == "/home/test/.claude/local/claude" {
+				if path == expectedPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -303,20 +305,21 @@ func TestExecutableFinder_Find_EnvOverride(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Clean("/home/test/.claude/local/claude"), path)
+		require.Equal(t, expectedPath, path)
 	})
 
 	t.Run("skips env override if not set", func(t *testing.T) {
 		// Ensure env var is not set
 		os.Unsetenv("NONEXISTENT_VAR")
 
+		expectedPath := filepath.FromSlash("/home/test/.claude/claude")
 		f := NewExecutableFinder("claude",
 			WithEnvOverride("NONEXISTENT_VAR"),
 			WithKnownPaths("~/.claude/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/home/test/.claude/claude" {
+				if path == expectedPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -328,21 +331,23 @@ func TestExecutableFinder_Find_EnvOverride(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Clean("/home/test/.claude/claude"), path)
+		require.Equal(t, expectedPath, path)
 	})
 }
 
 func TestExecutableFinder_Find_KnownPaths(t *testing.T) {
 	t.Run("finds in first known path", func(t *testing.T) {
+		firstPath := filepath.FromSlash("/home/test/.claude/local/claude")
+		secondPath := filepath.FromSlash("/home/test/.claude/claude")
 		f := NewExecutableFinder("claude",
 			WithKnownPaths("~/.claude/local/{name}", "~/.claude/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/home/test/.claude/local/claude" {
+				if path == firstPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
-				if path == "/home/test/.claude/claude" {
+				if path == secondPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -354,16 +359,17 @@ func TestExecutableFinder_Find_KnownPaths(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Clean("/home/test/.claude/local/claude"), path)
+		require.Equal(t, firstPath, path)
 	})
 
 	t.Run("finds in second known path when first doesn't exist", func(t *testing.T) {
+		expectedPath := filepath.FromSlash("/home/test/.claude/claude")
 		f := NewExecutableFinder("claude",
 			WithKnownPaths("~/.claude/local/{name}", "~/.claude/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/home/test/.claude/claude" {
+				if path == expectedPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -375,19 +381,22 @@ func TestExecutableFinder_Find_KnownPaths(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Clean("/home/test/.claude/claude"), path)
+		require.Equal(t, expectedPath, path)
 	})
 
 	t.Run("respects priority order", func(t *testing.T) {
 		checkedOrder := []string{}
+		firstPath := filepath.FromSlash("/first/myapp")
+		secondPath := filepath.FromSlash("/second/myapp")
+		thirdPath := filepath.FromSlash("/third/myapp")
 
 		f := NewExecutableFinder("myapp",
 			WithKnownPaths("/first/{name}", "/second/{name}", "/third/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
 				checkedOrder = append(checkedOrder, path)
-				if path == "/third/myapp" {
+				if path == thirdPath {
 					return mockFileInfo{name: "myapp", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -399,8 +408,8 @@ func TestExecutableFinder_Find_KnownPaths(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, "/third/myapp", path)
-		require.Equal(t, []string{"/first/myapp", "/second/myapp", "/third/myapp"}, checkedOrder)
+		require.Equal(t, thirdPath, path)
+		require.Equal(t, []string{firstPath, secondPath, thirdPath}, checkedOrder)
 	})
 }
 
@@ -520,7 +529,7 @@ func TestExecutableFinder_Find_ErrorMessage(t *testing.T) {
 		f := NewExecutableFinder("notfound",
 			WithKnownPaths("~/.local/bin/{name}", "/opt/tools/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
 				return nil, os.ErrNotExist
 			}),
@@ -533,8 +542,9 @@ func TestExecutableFinder_Find_ErrorMessage(t *testing.T) {
 		require.Error(t, err)
 		require.True(t, errors.Is(err, ErrExecutableNotFound))
 		require.Contains(t, err.Error(), "notfound")
-		require.Contains(t, err.Error(), "/home/test/.local/bin/notfound")
-		require.Contains(t, err.Error(), "/opt/tools/notfound")
+		// Use platform-agnostic path checks
+		require.Contains(t, err.Error(), filepath.FromSlash("/home/test/.local/bin/notfound"))
+		require.Contains(t, err.Error(), filepath.FromSlash("/opt/tools/notfound"))
 		require.Contains(t, err.Error(), "PATH")
 	})
 
@@ -601,10 +611,11 @@ func TestExecutableFinder_Find_CrossPlatform(t *testing.T) {
 
 	t.Run("Darwin: no .exe suffix", func(t *testing.T) {
 		var statPath string
+		expectedPath := filepath.FromSlash("/Applications/Claude.app/Contents/MacOS/claude")
 		f := NewExecutableFinder("claude",
 			WithKnownPaths("/Applications/Claude.app/Contents/MacOS/{name}"),
 			withGOOS("darwin"),
-			withUserHomeFunc(func() (string, error) { return "/Users/test", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/Users/test"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
 				statPath = path
 				return mockFileInfo{name: "claude", mode: 0755}, nil
@@ -616,17 +627,18 @@ func TestExecutableFinder_Find_CrossPlatform(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, "/Applications/Claude.app/Contents/MacOS/claude", path)
-		require.Equal(t, "/Applications/Claude.app/Contents/MacOS/claude", statPath)
+		require.Equal(t, expectedPath, path)
+		require.Equal(t, expectedPath, statPath)
 	})
 
 	t.Run("Linux: no .exe suffix", func(t *testing.T) {
+		expectedPath := filepath.FromSlash("/home/user/.npm/bin/gemini")
 		f := NewExecutableFinder("gemini",
 			WithKnownPaths("~/.npm/bin/{name}"),
 			withGOOS("linux"),
-			withUserHomeFunc(func() (string, error) { return "/home/user", nil }),
+			withUserHomeFunc(func() (string, error) { return filepath.FromSlash("/home/user"), nil }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/home/user/.npm/bin/gemini" {
+				if path == expectedPath {
 					return mockFileInfo{name: "gemini", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -638,18 +650,19 @@ func TestExecutableFinder_Find_CrossPlatform(t *testing.T) {
 
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, filepath.Clean("/home/user/.npm/bin/gemini"), path)
+		require.Equal(t, expectedPath, path)
 	})
 }
 
 func TestExecutableFinder_Find_SkipsInvalidTemplates(t *testing.T) {
 	t.Run("skips path when home directory lookup fails", func(t *testing.T) {
+		expectedPath := filepath.FromSlash("/usr/local/bin/claude")
 		f := NewExecutableFinder("claude",
 			WithKnownPaths("~/.claude/{name}", "/usr/local/bin/{name}"),
 			withGOOS("linux"),
 			withUserHomeFunc(func() (string, error) { return "", errors.New("no home") }),
 			withStatFunc(func(path string) (os.FileInfo, error) {
-				if path == "/usr/local/bin/claude" {
+				if path == expectedPath {
 					return mockFileInfo{name: "claude", mode: 0755}, nil
 				}
 				return nil, os.ErrNotExist
@@ -662,7 +675,7 @@ func TestExecutableFinder_Find_SkipsInvalidTemplates(t *testing.T) {
 		// Should skip the ~ path and find in /usr/local/bin
 		path, err := f.Find()
 		require.NoError(t, err)
-		require.Equal(t, "/usr/local/bin/claude", path)
+		require.Equal(t, expectedPath, path)
 	})
 }
 
