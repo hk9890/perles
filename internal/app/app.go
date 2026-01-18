@@ -19,10 +19,12 @@ import (
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
+	"github.com/zjrosen/perles/internal/mode/dashboard"
 	"github.com/zjrosen/perles/internal/mode/kanban"
 	"github.com/zjrosen/perles/internal/mode/orchestration"
 	"github.com/zjrosen/perles/internal/mode/search"
 	"github.com/zjrosen/perles/internal/mode/shared"
+	"github.com/zjrosen/perles/internal/orchestration/controlplane"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
@@ -45,6 +47,10 @@ type Model struct {
 	kanban        kanban.Model
 	search        search.Model
 	orchestration orchestration.Model
+	dashboard     dashboard.Model
+
+	// ControlPlane for multi-workflow management (lazy initialized on dashboard entry)
+	controlPlane controlplane.ControlPlane
 
 	// Shared services (passed to mode controllers)
 	services mode.Services
@@ -259,6 +265,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.kanban = m.kanban.SetSize(mainWidth, msg.Height)
 		m.search = m.search.SetSize(mainWidth, msg.Height)
 		m.orchestration = m.orchestration.SetSize(msg.Width, msg.Height)
+		m.dashboard = m.dashboard.SetSize(msg.Width, msg.Height).(dashboard.Model)
 		m.toaster = m.toaster.SetSize(msg.Width, msg.Height)
 		m.logOverlay.SetSize(msg.Width, msg.Height)
 		m.diffViewer = m.diffViewer.SetSize(msg.Width, msg.Height)
@@ -468,6 +475,54 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.kanban, cmd = m.kanban.RefreshFromConfig()
 		return m, cmd
 
+	case kanban.SwitchToDashboardMsg:
+		log.Info(log.CatMode, "Switching mode", "from", "kanban", "to", "dashboard")
+
+		// Close chat panel if open to prevent "two AIs" confusion
+		if m.chatPanel.Visible() {
+			m.chatPanel.Cleanup()
+			m.chatPanel = m.chatPanel.Toggle().Blur()
+			m.chatPanelFocused = false
+			log.Info(log.CatMode, "Chat panel closed on dashboard entry")
+		}
+
+		m.currentMode = mode.ModeDashboard
+
+		// Lazy initialize ControlPlane if needed
+		if m.controlPlane == nil {
+			m.controlPlane = m.createControlPlane()
+		}
+
+		// Create dashboard model
+		m.dashboard = dashboard.New(dashboard.Config{
+			ControlPlane:       m.controlPlane,
+			Services:           m.services,
+			Registry:           m.workflowRegistry,
+			GitExecutorFactory: m.services.GitExecutorFactory,
+			WorkDir:            m.services.WorkDir,
+		}).SetSize(m.width, m.height).(dashboard.Model)
+
+		return m, m.dashboard.Init()
+
+	case dashboard.QuitMsg:
+		log.Info(log.CatMode, "Switching mode", "from", "dashboard", "to", "kanban")
+
+		// Clean up dashboard resources
+		m.dashboard.Cleanup()
+
+		m.currentMode = mode.ModeKanban
+
+		// Calculate main content width based on chatpanel state
+		mainWidth := m.width
+		if m.chatPanel.Visible() {
+			mainWidth = m.width - m.chatPanelWidth()
+		}
+		m.kanban = m.kanban.SetSize(mainWidth, m.height)
+
+		var cmd tea.Cmd
+		m.kanban, cmd = m.kanban.RefreshFromConfig()
+		return m, cmd
+
 	case search.SaveSearchAsColumnMsg:
 		return m.handleSaveSearchAsColumn(msg)
 
@@ -672,6 +727,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mode.ModeOrchestration:
 		var cmd tea.Cmd
 		m.orchestration, cmd = m.orchestration.Update(msg)
+
+		return m, cmd
+
+	case mode.ModeDashboard:
+		var cmd tea.Cmd
+		controller, cmd := m.dashboard.Update(msg)
+		m.dashboard = controller.(dashboard.Model)
 
 		return m, cmd
 	}
@@ -1007,8 +1069,10 @@ func (m Model) handleNewSessionRequest() (tea.Model, tea.Cmd) {
 
 // View implements tea.Model.
 func (m Model) View() string {
-	// Determine if chat panel should be shown (excluded from orchestration mode)
-	showChatPanel := m.chatPanel.Visible() && m.currentMode != mode.ModeOrchestration
+	// Determine if chat panel should be shown (excluded from orchestration and dashboard modes)
+	showChatPanel := m.chatPanel.Visible() &&
+		m.currentMode != mode.ModeOrchestration &&
+		m.currentMode != mode.ModeDashboard
 
 	var view string
 	switch m.currentMode {
@@ -1016,6 +1080,8 @@ func (m Model) View() string {
 		view = m.search.View()
 	case mode.ModeOrchestration:
 		view = m.orchestration.View()
+	case mode.ModeDashboard:
+		view = m.dashboard.View()
 	default:
 		view = m.kanban.View()
 	}
@@ -1081,4 +1147,91 @@ func (m *Model) Close() error {
 	}
 
 	return nil
+}
+
+// createControlPlane creates a minimal in-memory ControlPlane for the dashboard.
+func (m *Model) createControlPlane() controlplane.ControlPlane {
+	registry := controlplane.NewInMemoryRegistry()
+	eventBus := controlplane.NewCrossWorkflowEventBus()
+
+	// Get orchestration config for agent provider
+	orchConfig := m.services.Config.Orchestration
+	agentProvider := orchConfig.AgentProvider()
+
+	// Create port allocator for MCP servers
+	portAllocator := controlplane.NewPortAllocator(&controlplane.PortAllocatorConfig{
+		StartPort: 19000,
+		EndPort:   19100,
+	})
+
+	// Create supervisor with full configuration
+	supervisor, err := controlplane.NewSupervisor(controlplane.SupervisorConfig{
+		PortAllocator:      portAllocator,
+		AgentProvider:      agentProvider,
+		WorkflowRegistry:   m.workflowRegistry,
+		GitExecutorFactory: m.services.GitExecutorFactory,
+		Flags:              m.services.Flags,
+	})
+	if err != nil {
+		log.Error(log.CatMode, "Failed to create Supervisor", "error", err)
+		return nil
+	}
+
+	// Create recovery executor for automatic recovery actions
+	recoveryExecutor, err := controlplane.NewRecoveryExecutor(controlplane.RecoveryExecutorConfig{
+		WorkflowProvider: registry,
+		OnHealthEvent: func(event controlplane.HealthEvent) {
+			log.Debug(log.CatOrch, "Recovery event",
+				"type", event.Type,
+				"workflowID", event.WorkflowID,
+				"action", event.RecoveryAction,
+				"details", event.Details)
+		},
+	})
+	if err != nil {
+		log.Error(log.CatOrch, "Failed to create RecoveryExecutor", "error", err)
+		return nil
+	}
+
+	// Create health monitor for workflow health tracking
+	healthMonitor := controlplane.NewHealthMonitor(controlplane.HealthMonitorConfig{
+		Policy: controlplane.HealthPolicy{
+			HeartbeatTimeout:  2 * time.Minute,
+			ProgressTimeout:   5 * time.Minute,
+			MaxRecoveries:     3,
+			RecoveryBackoff:   30 * time.Second,
+			EnableAutoNudge:   true,
+			MaxNudges:         2, // Nudge twice before escalation
+			EnableAutoReplace: false,
+			EnableAutoPause:   false,
+		},
+		EventBus:         eventBus.Broker(),
+		RecoveryExecutor: recoveryExecutor,
+		OnHealthEvent: func(event controlplane.HealthEvent) {
+			log.Debug(log.CatOrch, "Health event",
+				"type", event.Type,
+				"workflowID", event.WorkflowID,
+				"details", event.Details)
+		},
+	})
+
+	// Start the health monitor in background
+	go func() {
+		if err := healthMonitor.Start(context.Background()); err != nil {
+			log.Error(log.CatOrch, "Failed to start HealthMonitor", "error", err)
+		}
+	}()
+
+	cp, err := controlplane.NewControlPlane(controlplane.ControlPlaneConfig{
+		Registry:      registry,
+		Supervisor:    supervisor,
+		EventBus:      eventBus,
+		HealthMonitor: healthMonitor,
+	})
+	if err != nil {
+		log.Error(log.CatMode, "Failed to create ControlPlane", "error", err)
+		return nil
+	}
+
+	return cp
 }

@@ -306,6 +306,15 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return SwitchToOrchestrationMsg{}
 		}
 
+	case key.Matches(msg, keys.Kanban.Dashboard):
+		// Open multi-workflow dashboard (requires flag)
+		if !m.services.Flags.Enabled(flags.FlagControlPlane) {
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			return SwitchToDashboardMsg{}
+		}
+
 	case key.Matches(msg, keys.Kanban.OrchestrateResume):
 		// Open session picker to resume orchestration session (requires flag)
 		if !m.services.Flags.Enabled(flags.FlagSessionResume) {

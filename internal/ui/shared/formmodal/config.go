@@ -127,6 +127,12 @@ const (
 	// Supports Options, SearchPlaceholder, MaxVisibleItems.
 	// Returns the selected option's Value (string).
 	FieldTypeSearchSelect
+
+	// FieldTypeTextArea is a multi-line text input with vim-style editing.
+	// Uses vimtextarea with vim mode enabled (starts in Insert mode).
+	// Supports Placeholder, MaxLength (char limit), MaxHeight, InitialValue.
+	// Returns the content as a string.
+	FieldTypeTextArea
 )
 
 // FieldConfig defines a single form field.
@@ -186,6 +192,24 @@ type FieldConfig struct {
 	// SearchSelect field options (FieldTypeSearchSelect)
 	SearchPlaceholder string // Placeholder for search input (default: "Search...")
 	MaxVisibleItems   int    // Max items visible before scrolling (default: 5)
+
+	// TextArea field options (FieldTypeTextArea)
+	MaxHeight  int  // Max display height in lines (default: 3)
+	VimEnabled bool // Enable vim mode for textarea (default: false, starts in Insert mode)
+
+	// Conditional visibility
+	// VisibleWhen determines if this field is visible based on current form values.
+	// If nil, the field is always visible. If the function returns false, the field
+	// is hidden and skipped during navigation. Hidden fields retain their values
+	// but are not included in the submitted values.
+	//
+	// Example - show "base_branch" only when "use_worktree" is "true":
+	//
+	//	VisibleWhen: func(values map[string]any) bool {
+	//	    v, _ := values["use_worktree"].(string)
+	//	    return v == "true"
+	//	}
+	VisibleWhen func(values map[string]any) bool
 }
 
 // ListOption represents an item in a list or select field.
@@ -195,6 +219,7 @@ type FieldConfig struct {
 // Color is optional - if set, the label will be rendered in this color.
 type ListOption struct {
 	Label    string                 // Display text
+	Subtext  string                 // Optional secondary text displayed below label
 	Value    string                 // Programmatic value (returned in SubmitMsg)
 	Selected bool                   // Initially selected (for multi-select lists)
 	Color    lipgloss.TerminalColor // Optional color for the label

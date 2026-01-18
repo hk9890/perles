@@ -21,6 +21,7 @@ const (
 	ModeKanban AppMode = iota
 	ModeSearch
 	ModeOrchestration
+	ModeDashboard
 )
 
 // SubMode represents the two rendering modes within search.

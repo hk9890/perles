@@ -654,6 +654,9 @@ type SwitchToOrchestrationMsg struct {
 	ResumeSessionDir string
 }
 
+// SwitchToDashboardMsg requests switching to the multi-workflow dashboard mode.
+type SwitchToDashboardMsg struct{}
+
 // OpenEditMenuMsg requests opening the issue editor modal.
 type OpenEditMenuMsg struct {
 	Issue beads.Issue

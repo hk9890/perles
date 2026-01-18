@@ -254,8 +254,8 @@ func TestGetTokenCategories(t *testing.T) {
 func TestComponentRegistry(t *testing.T) {
 	demos := GetComponentDemos()
 
-	// Should have 16 demos (including theme tokens, issuebadge, issueeditor, commandpalette, and tabpane)
-	require.Len(t, demos, 16, "Should have 16 component demos")
+	// Should have 17 demos (including theme tokens, issuebadge, issueeditor, commandpalette, tabpane, and table)
+	require.Len(t, demos, 17, "Should have 17 component demos")
 
 	// Each demo should have valid Create function
 	for _, demo := range demos {

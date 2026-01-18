@@ -3,6 +3,8 @@ package formmodal
 import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 )
 
 // subFocus tracks which part of a composite field has focus.
@@ -22,6 +24,9 @@ type fieldState struct {
 
 	// Text field state
 	textInput textinput.Model
+
+	// TextArea field state
+	textArea vimtextarea.Model
 
 	// Color field state
 	selectedColor string // Current hex color
@@ -47,6 +52,7 @@ type fieldState struct {
 // listItem tracks selection state for list items.
 type listItem struct {
 	label    string
+	subtext  string
 	value    string
 	selected bool
 	color    lipgloss.TerminalColor // Optional color for the label
@@ -83,6 +89,7 @@ func newFieldState(cfg FieldConfig) fieldState {
 		for i, opt := range cfg.Options {
 			fs.listItems[i] = listItem{
 				label:    opt.Label,
+				subtext:  opt.Subtext,
 				value:    opt.Value,
 				selected: opt.Selected,
 				color:    opt.Color,
@@ -99,6 +106,7 @@ func newFieldState(cfg FieldConfig) fieldState {
 		for i, opt := range cfg.Options {
 			fs.listItems[i] = listItem{
 				label:    opt.Label,
+				subtext:  opt.Subtext,
 				value:    opt.Value,
 				selected: opt.Selected,
 			}
@@ -130,6 +138,7 @@ func newFieldState(cfg FieldConfig) fieldState {
 		for i, opt := range cfg.Options {
 			fs.listItems[i] = listItem{
 				label:    opt.Label,
+				subtext:  opt.Subtext,
 				value:    opt.Value,
 				selected: opt.Selected,
 				color:    opt.Color,
@@ -159,6 +168,20 @@ func newFieldState(cfg FieldConfig) fieldState {
 		if selectedIdx >= 0 {
 			fs.listCursor = selectedIdx
 		}
+
+	case FieldTypeTextArea:
+		// Initialize vimtextarea, starting in Insert mode
+		ta := vimtextarea.New(vimtextarea.Config{
+			VimEnabled:  cfg.VimEnabled,
+			DefaultMode: vimtextarea.ModeInsert,
+			Placeholder: cfg.Placeholder,
+			CharLimit:   cfg.MaxLength,
+			MaxHeight:   cfg.MaxHeight,
+		})
+		if cfg.InitialValue != "" {
+			ta.SetValue(cfg.InitialValue)
+		}
+		fs.textArea = ta
 	}
 
 	return fs
@@ -217,6 +240,9 @@ func (fs *fieldState) value() any {
 			}
 		}
 		return ""
+
+	case FieldTypeTextArea:
+		return fs.textArea.Value()
 	}
 	return nil
 }

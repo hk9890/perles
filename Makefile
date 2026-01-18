@@ -54,10 +54,12 @@ test-update:
 		./internal/ui/shared/modal/... \
 		./internal/ui/shared/overlay/... \
 		./internal/ui/shared/picker/... \
+		./internal/ui/shared/table/... \
 		./internal/ui/shared/toaster/... \
 		./internal/ui/shared/vimtextarea/... \
 		./internal/ui/styles/... \
 		./internal/ui/tree/... \
+		./internal/mode/dashboard/... \
 		./internal/mode/search/... \
 		./internal/mode/orchestration/... \
 		./internal/mode/playground/... \

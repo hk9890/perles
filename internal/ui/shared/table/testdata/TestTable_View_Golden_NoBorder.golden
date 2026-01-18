@@ -1,0 +1,11 @@
+#   St  Name                                                   Workers     Tokens
+1   ▶   Build authentication system                                  3     125000
+2   ⏸   Fix payment bug                                              1      45000
+3   ✓   Deploy to production                                         0      87500
+4   ✗   Integration tests                                            0      12300
+5   ○   Database refactoring                                         0          0
+
+
+
+
+

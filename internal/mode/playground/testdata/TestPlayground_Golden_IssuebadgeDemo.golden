@@ -16,8 +16,8 @@
 │ ● issuebadge               │  │                                                                  │
 │   issueeditor              │  │ Priority Levels (P0-P4):                                         │
 │   tabpane                  │  │  [B][P0][demo-p0] P0 Critical: Security vulnerability            │
-│   Theme Tokens             │  │  [F][P1][demo-p1] P1 High: Core feature request                  │
-│                            │  │  [T][P2][demo-p2] P2 Medium: Standard work item                  │
+│   table                    │  │  [F][P1][demo-p1] P1 High: Core feature request                  │
+│   Theme Tokens             │  │  [T][P2][demo-p2] P2 Medium: Standard work item                  │
 │                            │  │  [C][P3][demo-p3] P3 Low: Nice to have improvement               │
 │                            │  │  [T][P4][demo-p4] P4 Backlog: Future consideration               │
 │                            │  │                                                                  │

@@ -5,6 +5,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -82,19 +83,23 @@ func New(cfg FormConfig) Model {
 		m.fields[i] = newFieldState(fieldCfg)
 	}
 
-	// Focus the first focusable input if it exists
-	if len(m.fields) > 0 {
-		switch m.fields[0].config.Type {
+	// Find the first visible field to focus
+	firstVisible := m.firstVisibleFieldIndex()
+	if firstVisible >= 0 {
+		m.focusedIndex = firstVisible
+		// Focus the first visible focusable input
+		fs := &m.fields[firstVisible]
+		switch fs.config.Type {
 		case FieldTypeText:
-			m.fields[0].textInput.Focus()
+			fs.textInput.Focus()
+		case FieldTypeTextArea:
+			fs.textArea.Focus()
 		case FieldTypeSearchSelect:
 			// Start collapsed - don't focus search input yet
-			m.fields[0].searchExpanded = false
+			fs.searchExpanded = false
 		}
-	}
-
-	// If no fields, start on submit button
-	if len(m.fields) == 0 {
+	} else {
+		// No visible fields, start on submit button
 		m.focusedIndex = -1
 	}
 
@@ -139,6 +144,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case colorpicker.CancelMsg:
 		m.showColorPicker = false
 		return m, nil
+
+	case vimtextarea.SubmitMsg:
+		// When a textarea submits (Enter key), advance to next field
+		if m.focusedIndex >= 0 && m.focusedIndex < len(m.fields) {
+			fs := &m.fields[m.focusedIndex]
+			if fs.config.Type == FieldTypeTextArea {
+				m = m.nextField()
+				return m, m.blinkCmd()
+			}
+		}
+		return m, nil
 	}
 
 	// Forward all messages to colorpicker when it's open
@@ -172,15 +188,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 // handleKeyMsg processes keyboard input.
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
-	// Handle Esc - check if search field is expanded first
+	// Handle Esc - check if it should be consumed by the current field first
 	if key.Matches(msg, keys.Common.Escape) {
-		// If a SearchSelect field is expanded, collapse it instead of closing modal
 		if m.focusedIndex >= 0 && m.focusedIndex < len(m.fields) {
 			fs := &m.fields[m.focusedIndex]
+			// If a SearchSelect field is expanded, collapse it instead of closing modal
 			if fs.config.Type == FieldTypeSearchSelect && fs.searchExpanded {
 				fs.searchExpanded = false
 				fs.searchInput.Blur()
 				return m, nil
+			}
+			// If a TextArea field has vim enabled and is in Insert mode, let Esc switch to Normal mode
+			if fs.config.Type == FieldTypeTextArea && fs.config.VimEnabled && fs.textArea.Mode() == vimtextarea.ModeInsert {
+				var cmd tea.Cmd
+				fs.textArea, cmd = fs.textArea.Update(msg)
+				return m, cmd
 			}
 		}
 		// Otherwise, cancel the modal
@@ -203,6 +225,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m.handleKeyForEditableList(msg, fs)
 		case FieldTypeSearchSelect:
 			return m.handleKeyForSearchSelect(msg, fs)
+		case FieldTypeTextArea:
+			return m.handleKeyForTextArea(msg, fs)
 		}
 	}
 
@@ -283,8 +307,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if m.focusedButton == 0 {
 				m.focusedButton = 1
 				return m, nil
-			} else if len(m.fields) > 0 {
-				m.focusedIndex = 0
+			} else if firstVisible := m.firstVisibleFieldIndex(); firstVisible >= 0 {
+				m.focusedIndex = firstVisible
 				m.focusNextFieldByType()
 				return m, m.blinkCmd()
 			}
@@ -325,8 +349,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 			if m.focusedButton == 1 {
 				m.focusedButton = 0
 				return m, nil
-			} else if len(m.fields) > 0 {
-				m.focusedIndex = len(m.fields) - 1
+			} else if lastVisible := m.lastVisibleFieldIndex(); lastVisible >= 0 {
+				m.focusedIndex = lastVisible
 				m.focusPrevFieldByType()
 				return m, m.blinkCmd()
 			}
@@ -421,10 +445,12 @@ func (m Model) submit() (Model, tea.Cmd) {
 	// Clear previous error
 	m.validationError = ""
 
-	// Build values map
+	// Build values map (only include visible fields)
 	values := make(map[string]any)
 	for i := range m.fields {
-		values[m.fields[i].config.Key] = m.fields[i].value()
+		if m.isFieldVisible(i) {
+			values[m.fields[i].config.Key] = m.fields[i].value()
+		}
 	}
 
 	// Run validation if provided
@@ -442,7 +468,7 @@ func (m Model) submit() (Model, tea.Cmd) {
 	return m, func() tea.Msg { return SubmitMsg{Values: values} }
 }
 
-// nextField moves focus to the next field or button.
+// nextField moves focus to the next visible field or button.
 func (m Model) nextField() Model {
 	if m.focusedIndex >= 0 {
 		// Blur current field
@@ -450,6 +476,8 @@ func (m Model) nextField() Model {
 		switch fs.config.Type {
 		case FieldTypeText:
 			fs.textInput.Blur()
+		case FieldTypeTextArea:
+			fs.textArea.Blur()
 		case FieldTypeEditableList:
 			fs.addInput.Blur()
 			fs.subFocus = SubFocusList // Reset for next time
@@ -458,9 +486,15 @@ func (m Model) nextField() Model {
 			fs.searchExpanded = false // Collapse when leaving field
 		}
 
-		if m.focusedIndex < len(m.fields)-1 {
-			// Move to next field
-			m.focusedIndex++
+		// Find next visible field
+		nextIdx := m.focusedIndex + 1
+		for nextIdx < len(m.fields) && !m.isFieldVisible(nextIdx) {
+			nextIdx++
+		}
+
+		if nextIdx < len(m.fields) {
+			// Move to next visible field
+			m.focusedIndex = nextIdx
 			m.focusNextFieldByType()
 		} else {
 			// Move to submit button
@@ -472,9 +506,10 @@ func (m Model) nextField() Model {
 		if m.focusedButton == 0 {
 			m.focusedButton = 1
 		} else {
-			// Wrap to first field (or stay on buttons if no fields)
-			if len(m.fields) > 0 {
-				m.focusedIndex = 0
+			// Wrap to first visible field (or stay on buttons if no visible fields)
+			firstVisible := m.firstVisibleFieldIndex()
+			if firstVisible >= 0 {
+				m.focusedIndex = firstVisible
 				m.focusNextFieldByType()
 			} else {
 				m.focusedButton = 0
@@ -484,6 +519,26 @@ func (m Model) nextField() Model {
 	return m
 }
 
+// firstVisibleFieldIndex returns the index of the first visible field, or -1 if none.
+func (m Model) firstVisibleFieldIndex() int {
+	for i := range m.fields {
+		if m.isFieldVisible(i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// lastVisibleFieldIndex returns the index of the last visible field, or -1 if none.
+func (m Model) lastVisibleFieldIndex() int {
+	for i := len(m.fields) - 1; i >= 0; i-- {
+		if m.isFieldVisible(i) {
+			return i
+		}
+	}
+	return -1
+}
+
 // focusNextFieldByType sets focus on the current field based on its type.
 // Called when navigating forward into a field.
 func (m *Model) focusNextFieldByType() {
@@ -491,6 +546,8 @@ func (m *Model) focusNextFieldByType() {
 	switch fs.config.Type {
 	case FieldTypeText:
 		fs.textInput.Focus()
+	case FieldTypeTextArea:
+		fs.textArea.Focus()
 	case FieldTypeEditableList:
 		fs.subFocus = SubFocusList // Start on list when navigating forward
 	case FieldTypeList, FieldTypeSelect:
@@ -502,7 +559,7 @@ func (m *Model) focusNextFieldByType() {
 	}
 }
 
-// prevField moves focus to the previous field or button.
+// prevField moves focus to the previous visible field or button.
 func (m Model) prevField() Model {
 	if m.focusedIndex >= 0 {
 		// Blur current field
@@ -510,6 +567,8 @@ func (m Model) prevField() Model {
 		switch fs.config.Type {
 		case FieldTypeText:
 			fs.textInput.Blur()
+		case FieldTypeTextArea:
+			fs.textArea.Blur()
 		case FieldTypeEditableList:
 			fs.addInput.Blur()
 			fs.subFocus = SubFocusList // Reset for next time
@@ -518,9 +577,15 @@ func (m Model) prevField() Model {
 			fs.searchExpanded = false // Collapse when leaving field
 		}
 
-		if m.focusedIndex > 0 {
-			// Move to previous field
-			m.focusedIndex--
+		// Find previous visible field
+		prevIdx := m.focusedIndex - 1
+		for prevIdx >= 0 && !m.isFieldVisible(prevIdx) {
+			prevIdx--
+		}
+
+		if prevIdx >= 0 {
+			// Move to previous visible field
+			m.focusedIndex = prevIdx
 			m.focusPrevFieldByType()
 		} else {
 			// Wrap to cancel button
@@ -532,9 +597,10 @@ func (m Model) prevField() Model {
 		if m.focusedButton == 1 {
 			m.focusedButton = 0
 		} else {
-			// Move to last field (or stay on buttons if no fields)
-			if len(m.fields) > 0 {
-				m.focusedIndex = len(m.fields) - 1
+			// Move to last visible field (or stay on buttons if no visible fields)
+			lastVisible := m.lastVisibleFieldIndex()
+			if lastVisible >= 0 {
+				m.focusedIndex = lastVisible
 				m.focusPrevFieldByType()
 			} else {
 				m.focusedButton = 1
@@ -551,6 +617,8 @@ func (m *Model) focusPrevFieldByType() {
 	switch fs.config.Type {
 	case FieldTypeText:
 		fs.textInput.Focus()
+	case FieldTypeTextArea:
+		fs.textArea.Focus()
 	case FieldTypeEditableList:
 		// When navigating backward, land on the input section first
 		fs.subFocus = SubFocusInput
@@ -603,6 +671,29 @@ func (m Model) listContains(fs *fieldState, value string) bool {
 		}
 	}
 	return false
+}
+
+// currentValues returns a map of all current field values.
+// Used by VisibleWhen callbacks to check other field states.
+func (m Model) currentValues() map[string]any {
+	values := make(map[string]any)
+	for i := range m.fields {
+		values[m.fields[i].config.Key] = m.fields[i].value()
+	}
+	return values
+}
+
+// isFieldVisible returns whether a field should be visible based on its VisibleWhen callback.
+// If no callback is set, the field is always visible.
+func (m Model) isFieldVisible(index int) bool {
+	if index < 0 || index >= len(m.fields) {
+		return false
+	}
+	fs := &m.fields[index]
+	if fs.config.VisibleWhen == nil {
+		return true
+	}
+	return fs.config.VisibleWhen(m.currentValues())
 }
 
 // handleKeyForEditableList processes keyboard input for editable list fields.
@@ -870,4 +961,26 @@ func (m Model) ensureSearchCursorVisible(fs *fieldState) Model {
 	}
 
 	return m
+}
+
+// handleKeyForTextArea processes keyboard input for textarea fields.
+// Tab/Shift+Tab/Ctrl+N/Ctrl+P navigate between fields. All other keys are forwarded to vimtextarea.
+// Enter is handled by vimtextarea which emits SubmitMsg (handled in Update).
+func (m Model) handleKeyForTextArea(msg tea.KeyMsg, fs *fieldState) (Model, tea.Cmd) {
+	// Tab or Ctrl+N navigates to next field
+	if key.Matches(msg, keys.Component.Tab) || key.Matches(msg, keys.Component.Next) {
+		m = m.nextField()
+		return m, m.blinkCmd()
+	}
+
+	// Shift+Tab or Ctrl+P navigates to previous field
+	if key.Matches(msg, keys.Component.ShiftTab) || key.Matches(msg, keys.Component.Prev) {
+		m = m.prevField()
+		return m, m.blinkCmd()
+	}
+
+	// Forward all other keys to the vimtextarea
+	var cmd tea.Cmd
+	fs.textArea, cmd = fs.textArea.Update(msg)
+	return m, cmd
 }

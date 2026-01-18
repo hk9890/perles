@@ -25,6 +25,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
+	"github.com/zjrosen/perles/internal/ui/shared/table"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
 	"github.com/zjrosen/perles/internal/ui/styles"
@@ -123,6 +124,11 @@ func GetComponentDemos() []ComponentDemo {
 			Name:        "tabpane",
 			Description: "Tab mode for bordered panes",
 			Create:      createTabDemo,
+		},
+		{
+			Name:        "table",
+			Description: "Config-driven table component",
+			Create:      createTableDemo,
 		},
 		{
 			Name:        "Theme Tokens",
@@ -848,6 +854,15 @@ func (m *FormmodalDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) {
 								{Label: "hotfix-123", Value: "hotfix-123"},
 								{Label: "release-v1.0", Value: "release-v1.0"},
 							},
+						},
+						{
+							Key:         "description",
+							Type:        formmodal.FieldTypeTextArea,
+							Label:       "Description",
+							Hint:        "optional",
+							Placeholder: "Enter a detailed description...",
+							MaxHeight:   4,
+							VimEnabled:  true,
 						},
 					},
 					SubmitLabel: "Create",
@@ -2042,3 +2057,241 @@ func (m *TabDemoModel) Reset() DemoModel {
 }
 
 func (m *TabDemoModel) NeedsEscKey() bool { return false }
+
+// =============================================================================
+// Table Demo
+// =============================================================================
+
+// TableDemoModel demonstrates the shared table component.
+type TableDemoModel struct {
+	table       table.Model
+	selectedIdx int
+	showBorder  bool
+	showHeader  bool
+	lastAction  string
+	width       int
+	height      int
+}
+
+// sampleUser represents a demo user for the table.
+type sampleUser struct {
+	ID       int
+	Name     string
+	Email    string
+	Role     string
+	Status   string
+	Activity string
+}
+
+// sampleUsers provides demo data for the table.
+var sampleUsers = []sampleUser{
+	{ID: 1, Name: "Alice Johnson", Email: "alice@example.com", Role: "Admin", Status: "Active", Activity: "2 min ago"},
+	{ID: 2, Name: "Bob Smith", Email: "bob@example.com", Role: "Developer", Status: "Active", Activity: "5 min ago"},
+	{ID: 3, Name: "Carol Williams", Email: "carol@example.com", Role: "Designer", Status: "Away", Activity: "1 hour ago"},
+	{ID: 4, Name: "David Brown", Email: "david@example.com", Role: "Developer", Status: "Active", Activity: "Just now"},
+	{ID: 5, Name: "Eve Davis", Email: "eve@example.com", Role: "Manager", Status: "Busy", Activity: "30 min ago"},
+	{ID: 6, Name: "Frank Miller", Email: "frank@example.com", Role: "Developer", Status: "Offline", Activity: "3 days ago"},
+	{ID: 7, Name: "Grace Lee", Email: "grace@example.com", Role: "QA", Status: "Active", Activity: "15 min ago"},
+	{ID: 8, Name: "Henry Wilson", Email: "henry@example.com", Role: "DevOps", Status: "Active", Activity: "1 min ago"},
+}
+
+func createTableDemo(width, height int) DemoModel {
+	m := &TableDemoModel{
+		selectedIdx: 0,
+		showBorder:  true,
+		showHeader:  true,
+		lastAction:  "j/k: navigate, b: toggle border, h: toggle header",
+		width:       width,
+		height:      height,
+	}
+	m.table = m.buildTable()
+	return m
+}
+
+func (m *TableDemoModel) buildTable() table.Model {
+	cfg := table.TableConfig{
+		Columns: []table.ColumnConfig{
+			{
+				Key:    "id",
+				Header: "#",
+				Width:  3,
+				Align:  lipgloss.Right,
+				Render: func(row any, _ string, w int, _ bool) string {
+					u := row.(sampleUser)
+					return fmt.Sprintf("%*d", w, u.ID)
+				},
+			},
+			{
+				Key:      "name",
+				Header:   "Name",
+				MinWidth: 12,
+				Render: func(row any, _ string, w int, _ bool) string {
+					u := row.(sampleUser)
+					return styles.TruncateString(u.Name, w)
+				},
+			},
+			{
+				Key:      "email",
+				Header:   "Email",
+				MinWidth: 15,
+				Render: func(row any, _ string, w int, _ bool) string {
+					u := row.(sampleUser)
+					return styles.TruncateString(u.Email, w)
+				},
+			},
+			{
+				Key:    "role",
+				Header: "Role",
+				Width:  10,
+				Render: func(row any, _ string, w int, _ bool) string {
+					u := row.(sampleUser)
+					return styles.TruncateString(u.Role, w)
+				},
+			},
+			{
+				Key:    "status",
+				Header: "Status",
+				Width:  8,
+				Render: func(row any, _ string, w int, selected bool) string {
+					u := row.(sampleUser)
+					status := u.Status
+					// Color-code status
+					var color lipgloss.TerminalColor
+					switch status {
+					case "Active":
+						color = styles.StatusSuccessColor
+					case "Away":
+						color = styles.StatusInProgressColor
+					case "Busy":
+						color = styles.PriorityHighColor
+					default:
+						color = styles.TextMutedColor
+					}
+					styled := lipgloss.NewStyle().Foreground(color).Render(status)
+					return styles.TruncateString(styled, w)
+				},
+			},
+			{
+				Key:      "activity",
+				Header:   "Activity",
+				MinWidth: 10,
+				Render: func(row any, _ string, w int, _ bool) string {
+					u := row.(sampleUser)
+					return styles.TruncateString(u.Activity, w)
+				},
+			},
+		},
+		ShowHeader:   m.showHeader,
+		ShowBorder:   m.showBorder,
+		Title:        "Users",
+		EmptyMessage: "No users found",
+		BorderColor:  styles.BorderDefaultColor,
+	}
+
+	// Convert to []any for table
+	rows := make([]any, len(sampleUsers))
+	for i, u := range sampleUsers {
+		rows[i] = u
+	}
+
+	return table.New(cfg).SetRows(rows).SetSize(m.width, m.height)
+}
+
+func (m *TableDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "j", "down":
+			if m.selectedIdx < len(sampleUsers)-1 {
+				m.selectedIdx++
+				m.lastAction = fmt.Sprintf("Selected row %d: %s", m.selectedIdx+1, sampleUsers[m.selectedIdx].Name)
+			}
+			return m, nil, m.lastAction
+		case "k", "up":
+			if m.selectedIdx > 0 {
+				m.selectedIdx--
+				m.lastAction = fmt.Sprintf("Selected row %d: %s", m.selectedIdx+1, sampleUsers[m.selectedIdx].Name)
+			}
+			return m, nil, m.lastAction
+		case "b":
+			m.showBorder = !m.showBorder
+			m.table = m.buildTable()
+			if m.showBorder {
+				m.lastAction = "Border: ON"
+			} else {
+				m.lastAction = "Border: OFF"
+			}
+			return m, nil, m.lastAction
+		case "H":
+			m.showHeader = !m.showHeader
+			m.table = m.buildTable()
+			if m.showHeader {
+				m.lastAction = "Header: ON"
+			} else {
+				m.lastAction = "Header: OFF"
+			}
+			return m, nil, m.lastAction
+		case "g":
+			m.selectedIdx = 0
+			m.lastAction = "Jumped to first row"
+			return m, nil, m.lastAction
+		case "G":
+			m.selectedIdx = len(sampleUsers) - 1
+			m.lastAction = "Jumped to last row"
+			return m, nil, m.lastAction
+		}
+	}
+	return m, nil, ""
+}
+
+func (m *TableDemoModel) View() string {
+	var sb strings.Builder
+
+	// Instructions
+	instructionStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	sb.WriteString(instructionStyle.Render("Table Component Demo"))
+	sb.WriteString("\n")
+
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.StatusInProgressColor)
+	descStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+	sb.WriteString(keyStyle.Render("j/k") + descStyle.Render(": navigate  "))
+	sb.WriteString(keyStyle.Render("g/G") + descStyle.Render(": first/last  "))
+	sb.WriteString(keyStyle.Render("b") + descStyle.Render(": toggle border  "))
+	sb.WriteString(keyStyle.Render("H") + descStyle.Render(": toggle header"))
+	sb.WriteString("\n\n")
+
+	// Status indicators
+	statusStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+	borderStatus := "ON"
+	if !m.showBorder {
+		borderStatus = "OFF"
+	}
+	headerStatus := "ON"
+	if !m.showHeader {
+		headerStatus = "OFF"
+	}
+	sb.WriteString(statusStyle.Render(fmt.Sprintf("Border: %s | Header: %s | Row %d/%d",
+		borderStatus, headerStatus, m.selectedIdx+1, len(sampleUsers))))
+	sb.WriteString("\n\n")
+
+	// Render the table with current settings
+	tableHeight := m.height - 6 // Account for instructions
+	tableWidth := min(m.width, 80)
+	tableModel := m.table.SetSize(tableWidth, tableHeight)
+	sb.WriteString(tableModel.ViewWithSelection(m.selectedIdx))
+
+	return sb.String()
+}
+
+func (m *TableDemoModel) SetSize(width, height int) DemoModel {
+	m.width = width
+	m.height = height
+	m.table = m.table.SetSize(width, height-6)
+	return m
+}
+
+func (m *TableDemoModel) Reset() DemoModel {
+	return createTableDemo(m.width, m.height)
+}
+
+func (m *TableDemoModel) NeedsEscKey() bool { return false }

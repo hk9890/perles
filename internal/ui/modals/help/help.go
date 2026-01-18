@@ -122,6 +122,7 @@ const (
 	ModeKanban HelpMode = iota
 	ModeSearch
 	ModeSearchTree // Tree sub-mode within search
+	ModeDashboard  // Dashboard mode
 )
 
 // Model holds the help view state.
@@ -197,6 +198,8 @@ func (m Model) renderContent() string {
 		return m.renderTreeContent()
 	case ModeSearch:
 		return m.renderSearchContent()
+	case ModeDashboard:
+		return m.renderDashboardContent()
 	default:
 		return m.renderKanbanContent()
 	}
@@ -499,4 +502,96 @@ func (m Model) renderTreeContent() string {
 	content.WriteString(body)
 
 	return boxStyle.Width(boxWidth).Render(content.String())
+}
+
+// renderDashboardContent renders the dashboard mode help.
+func (m Model) renderDashboardContent() string {
+	// Column style with right margin for spacing
+	columnStyle := lipgloss.NewStyle().MarginRight(4)
+
+	// Navigation column
+	var navCol strings.Builder
+	navCol.WriteString(sectionStyle.Render("Navigation"))
+	navCol.WriteString("\n")
+	navCol.WriteString(renderBinding(keys.Dashboard.Up))
+	navCol.WriteString(renderBinding(keys.Dashboard.Down))
+	navCol.WriteString(renderBinding(keys.Dashboard.Left))
+	navCol.WriteString(renderBinding(keys.Dashboard.Right))
+	navCol.WriteString(renderBinding(keys.Dashboard.Tab))
+	navCol.WriteString(renderBinding(keys.Dashboard.GotoTop))
+	navCol.WriteString(renderBinding(keys.Dashboard.GotoBottom))
+	navCol.WriteString(renderBinding(keys.Dashboard.Enter))
+
+	// Workflow Actions column
+	var actionsCol strings.Builder
+	actionsCol.WriteString(sectionStyle.Render("Workflow Actions"))
+	actionsCol.WriteString("\n")
+	actionsCol.WriteString(renderBinding(keys.Dashboard.Stop))
+	actionsCol.WriteString(renderBinding(keys.Dashboard.New))
+
+	// Filter & General column
+	var generalCol strings.Builder
+	generalCol.WriteString(sectionStyle.Render("Filter & General"))
+	generalCol.WriteString("\n")
+	generalCol.WriteString(renderBinding(keys.Dashboard.Filter))
+	generalCol.WriteString(renderBinding(keys.Dashboard.ClearFilter))
+	generalCol.WriteString(renderBinding(keys.Dashboard.Help))
+	generalCol.WriteString(renderBinding(keys.Dashboard.Quit))
+
+	// Status Indicators column
+	var statusCol strings.Builder
+	statusCol.WriteString(sectionStyle.Render("Status Indicators"))
+	statusCol.WriteString("\n")
+	statusCol.WriteString(renderKeyDesc("●", "running (green)"))
+	statusCol.WriteString(renderKeyDesc("◐", "paused (yellow)"))
+	statusCol.WriteString(renderKeyDesc("✓", "completed (green)"))
+	statusCol.WriteString(renderKeyDesc("✗", "failed (red)"))
+	statusCol.WriteString(renderKeyDesc("■", "stopped (gray)"))
+
+	// Health Indicators column
+	var healthCol strings.Builder
+	healthCol.WriteString(sectionStyle.Render("Health Indicators"))
+	healthCol.WriteString("\n")
+	healthCol.WriteString(renderKeyDesc("✓", "OK (green)"))
+	healthCol.WriteString(renderKeyDesc("⚠", "slow (yellow)"))
+	healthCol.WriteString(renderKeyDesc("✗", "stuck (red)"))
+	healthCol.WriteString(renderKeyDesc("↻", "recovering (yellow)"))
+	healthCol.WriteString(renderKeyDesc("-", "N/A (gray)"))
+
+	// Join columns horizontally, aligned at top
+	columns := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		columnStyle.Render(navCol.String()),
+		columnStyle.Render(actionsCol.String()),
+		columnStyle.Render(generalCol.String()),
+		columnStyle.Render(statusCol.String()),
+		healthCol.String(),
+	)
+
+	// Calculate box width based on columns content
+	columnsWidth := lipgloss.Width(columns)
+	boxWidth := columnsWidth + 4 // Add horizontal padding (2 each side)
+
+	// Build body content with padding
+	body := contentStyle.Render(columns + "\n" + footerStyle.Render("Press ? or Esc to close"))
+
+	// Divider spans full box width
+	divider := dividerStyle.Render(strings.Repeat("─", boxWidth))
+
+	// Build final content: title, divider, body
+	var content strings.Builder
+	content.WriteString(titleStyle.Render("Dashboard Help"))
+	content.WriteString("\n")
+	content.WriteString(divider)
+	content.WriteString("\n")
+	content.WriteString(body)
+
+	return boxStyle.Width(boxWidth).Render(content.String())
+}
+
+// NewDashboard creates a new help view for dashboard mode.
+func NewDashboard() Model {
+	return Model{
+		mode: ModeDashboard,
+	}
 }

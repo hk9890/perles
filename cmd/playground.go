@@ -3,16 +3,16 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/mode/playground"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+
+	"github.com/zjrosen/perles/internal/mode/playground"
 )
 
 var playgroundCmd = &cobra.Command{
 	Use:   "playground",
-	Short: "Interactive playground for testing vimtextarea",
-	Long:  `Launch an interactive playground to test vim keybindings and text editing features.`,
+	Short: "Interactive playground for testing UI components",
+	Long:  `Launch an interactive playground to test UI components and their features.`,
 	RunE:  runPlayground,
 }
 

@@ -69,6 +69,7 @@ var Kanban = struct {
 	ToggleStatus      key.Binding
 	Orchestrate       key.Binding // Start orchestration mode
 	OrchestrateResume key.Binding // Resume orchestration session
+	Dashboard         key.Binding // Open multi-workflow dashboard
 	QuitConfirm       key.Binding // Ctrl+C quit with confirmation (kanban-specific)
 }{
 	Enter: key.NewBinding(
@@ -146,6 +147,10 @@ var Kanban = struct {
 	OrchestrateResume: key.NewBinding(
 		key.WithKeys("ctrl+r"),
 		key.WithHelp("ctrl+r", "resume session"),
+	),
+	Dashboard: key.NewBinding(
+		key.WithKeys("ctrl+t"),
+		key.WithHelp("ctrl+t", "dashboard"),
 	),
 	QuitConfirm: key.NewBinding(
 		key.WithKeys("ctrl+c"),
@@ -493,6 +498,81 @@ func FullHelp() [][]key.Binding {
 	}
 }
 
+// Dashboard contains keybindings specific to dashboard mode.
+var Dashboard = struct {
+	Up          key.Binding
+	Down        key.Binding
+	Left        key.Binding
+	Right       key.Binding
+	Tab         key.Binding
+	GotoTop     key.Binding
+	GotoBottom  key.Binding
+	Enter       key.Binding
+	Stop        key.Binding
+	New         key.Binding
+	Filter      key.Binding
+	ClearFilter key.Binding
+	Help        key.Binding
+	Quit        key.Binding
+}{
+	Up: key.NewBinding(
+		key.WithKeys("k", "up"),
+		key.WithHelp("k/↑", "move up"),
+	),
+	Down: key.NewBinding(
+		key.WithKeys("j", "down"),
+		key.WithHelp("j/↓", "move down"),
+	),
+	Left: key.NewBinding(
+		key.WithKeys("h", "left"),
+		key.WithHelp("h/←", "focus list"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("l", "right"),
+		key.WithHelp("l/→", "focus details"),
+	),
+	Tab: key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "cycle focus"),
+	),
+	GotoTop: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("g", "go to first"),
+	),
+	GotoBottom: key.NewBinding(
+		key.WithKeys("G"),
+		key.WithHelp("G", "go to last"),
+	),
+	Enter: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "view details"),
+	),
+	Stop: key.NewBinding(
+		key.WithKeys("x"),
+		key.WithHelp("x", "stop workflow"),
+	),
+	New: key.NewBinding(
+		key.WithKeys("n", "N"),
+		key.WithHelp("n", "new workflow"),
+	),
+	Filter: key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", "filter"),
+	),
+	ClearFilter: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "clear filter"),
+	),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "toggle help"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("q"),
+		key.WithHelp("q", "quit"),
+	),
+}
+
 // DiffViewerShortHelp returns keybindings for the short help view (diff viewer).
 func DiffViewerShortHelp() []key.Binding {
 	return []key.Binding{
@@ -508,5 +588,24 @@ func DiffViewerFullHelp() [][]key.Binding {
 		{DiffViewer.NextFile, DiffViewer.PrevFile, DiffViewer.FocusLeft, DiffViewer.FocusRight},
 		{DiffViewer.ScrollUp, DiffViewer.ScrollDown, DiffViewer.NextHunk, DiffViewer.PrevHunk},
 		{DiffViewer.CopyHunk, DiffViewer.ToggleViewMode, DiffViewer.Help, DiffViewer.Close},
+	}
+}
+
+// DashboardShortHelp returns keybindings for the short help view (dashboard mode).
+func DashboardShortHelp() []key.Binding {
+	return []key.Binding{
+		Dashboard.Help,
+		Dashboard.Filter,
+		Dashboard.Quit,
+	}
+}
+
+// DashboardFullHelp returns keybindings for the full help view (dashboard mode).
+func DashboardFullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{Dashboard.Up, Dashboard.Down, Dashboard.GotoTop, Dashboard.GotoBottom},
+		{Dashboard.Enter, Dashboard.Stop},
+		{Dashboard.New, Dashboard.Filter, Dashboard.ClearFilter},
+		{Dashboard.Help, Dashboard.Quit},
 	}
 }

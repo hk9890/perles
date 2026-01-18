@@ -2382,6 +2382,129 @@ func TestSearchSelectField_CollapsedKNavigatesToPrevField(t *testing.T) {
 	require.Equal(t, 0, m.focusedIndex, "k should move to previous field when collapsed")
 }
 
+// --- TextArea Field Tests ---
+
+func TestTextAreaField_Initialization(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:          "description",
+				Type:         FieldTypeTextArea,
+				Label:        "Description",
+				Placeholder:  "Enter description...",
+				InitialValue: "Hello World",
+				MaxHeight:    5,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Should start focused on the textarea
+	require.Equal(t, 0, m.focusedIndex)
+	require.Equal(t, "Hello World", m.fields[0].textArea.Value())
+}
+
+func TestTextAreaField_Typing(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "description",
+				Type:  FieldTypeTextArea,
+				Label: "Description",
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Type some text
+	for _, r := range "Hello" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	require.Equal(t, "Hello", m.fields[0].textArea.Value())
+}
+
+func TestTextAreaField_TabMovesToNextField(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "description", Type: FieldTypeTextArea, Label: "Description"},
+			{Key: "name", Type: FieldTypeText, Label: "Name"},
+		},
+	}
+	m := New(cfg)
+
+	require.Equal(t, 0, m.focusedIndex)
+
+	// Tab should move to next field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex, "Tab should move to next field")
+}
+
+func TestTextAreaField_ShiftTabMovesToPrevField(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "name", Type: FieldTypeText, Label: "Name"},
+			{Key: "description", Type: FieldTypeTextArea, Label: "Description"},
+		},
+	}
+	m := New(cfg)
+
+	// Move to textarea
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex)
+
+	// Shift+Tab should move back
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Equal(t, 0, m.focusedIndex, "Shift+Tab should move to previous field")
+}
+
+func TestTextAreaField_ValueExtraction(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:          "description",
+				Type:         FieldTypeTextArea,
+				Label:        "Description",
+				InitialValue: "Test content",
+			},
+		},
+	}
+	m := New(cfg)
+
+	values := getValues(m)
+	require.Equal(t, "Test content", values["description"])
+}
+
+func TestTextAreaField_SubmitIncludesValue(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:          "description",
+				Type:         FieldTypeTextArea,
+				Label:        "Description",
+				InitialValue: "My description",
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Navigate to submit button and press Enter
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to submit
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd)
+	msg := cmd()
+	submitMsg, ok := msg.(SubmitMsg)
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Equal(t, "My description", submitMsg.Values["description"])
+}
+
 // --- SearchSelect Golden Tests ---
 
 func TestGolden_SearchSelectCollapsed(t *testing.T) {
@@ -3367,4 +3490,297 @@ func TestGolden_TitleContentEmpty(t *testing.T) {
 	m := New(cfg).SetSize(80, 24)
 
 	compareGolden(t, "title_content_empty", m.View())
+}
+
+// --- VisibleWhen Conditional Visibility Tests ---
+
+func TestVisibleWhen_NilCallback_FieldAlwaysVisible(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "name", Type: FieldTypeText, Label: "Name", VisibleWhen: nil},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	view := m.View()
+	require.Contains(t, view, "Name")
+	require.True(t, m.isFieldVisible(0))
+}
+
+func TestVisibleWhen_ReturnsFalse_FieldHidden(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "toggle", Type: FieldTypeToggle, Label: "Enable", Options: []ListOption{
+				{Label: "No", Value: "false", Selected: true},
+				{Label: "Yes", Value: "true"},
+			}},
+			{Key: "details", Type: FieldTypeText, Label: "Details", VisibleWhen: func(values map[string]any) bool {
+				v, _ := values["toggle"].(string)
+				return v == "true"
+			}},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Toggle defaults to "No" (false), so Details should be hidden
+	view := m.View()
+	require.Contains(t, view, "Enable")
+	require.NotContains(t, view, "Details")
+	require.False(t, m.isFieldVisible(1))
+}
+
+func TestVisibleWhen_ReturnsTrue_FieldVisible(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "toggle", Type: FieldTypeToggle, Label: "Enable", InitialToggleIndex: 1, Options: []ListOption{
+				{Label: "No", Value: "false"},
+				{Label: "Yes", Value: "true"},
+			}},
+			{Key: "details", Type: FieldTypeText, Label: "Details", VisibleWhen: func(values map[string]any) bool {
+				v, _ := values["toggle"].(string)
+				return v == "true"
+			}},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Toggle starts as "Yes" (true) via InitialToggleIndex: 1, so Details should be visible
+	view := m.View()
+	require.Contains(t, view, "Enable")
+	require.Contains(t, view, "Details")
+	require.True(t, m.isFieldVisible(1))
+}
+
+func TestVisibleWhen_DynamicVisibility_TogglingShowsField(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "toggle", Type: FieldTypeToggle, Label: "Enable", Options: []ListOption{
+				{Label: "No", Value: "false", Selected: true},
+				{Label: "Yes", Value: "true"},
+			}},
+			{Key: "details", Type: FieldTypeText, Label: "Details", VisibleWhen: func(values map[string]any) bool {
+				v, _ := values["toggle"].(string)
+				return v == "true"
+			}},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Initially hidden
+	require.NotContains(t, m.View(), "Details")
+	require.False(t, m.isFieldVisible(1))
+
+	// Toggle to Yes (right arrow on toggle field)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+
+	// Now visible
+	require.Contains(t, m.View(), "Details")
+	require.True(t, m.isFieldVisible(1))
+}
+
+func TestVisibleWhen_NavigationSkipsHiddenFields(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "first", Type: FieldTypeText, Label: "First"},
+			{Key: "hidden", Type: FieldTypeText, Label: "Hidden", VisibleWhen: func(values map[string]any) bool {
+				return false // always hidden
+			}},
+			{Key: "third", Type: FieldTypeText, Label: "Third"},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Start on first field
+	require.Equal(t, 0, m.focusedIndex)
+
+	// Tab should skip hidden field (index 1) and go to third (index 2)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 2, m.focusedIndex)
+
+	// Shift+Tab should skip hidden field and go back to first
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Equal(t, 0, m.focusedIndex)
+}
+
+func TestVisibleWhen_SubmitExcludesHiddenFieldValues(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "visible", Type: FieldTypeText, Label: "Visible", InitialValue: "shown"},
+			{Key: "hidden", Type: FieldTypeText, Label: "Hidden", InitialValue: "secret", VisibleWhen: func(values map[string]any) bool {
+				return false // always hidden
+			}},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Submit the form
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	require.NotNil(t, cmd)
+	msg := cmd()
+	submitMsg, ok := msg.(SubmitMsg)
+	require.True(t, ok)
+
+	// Visible field should be in values
+	require.Equal(t, "shown", submitMsg.Values["visible"])
+
+	// Hidden field should NOT be in values
+	_, hasHidden := submitMsg.Values["hidden"]
+	require.False(t, hasHidden, "hidden field should not be in submitted values")
+}
+
+func TestVisibleWhen_ValidationOnlyReceivesVisibleFieldValues(t *testing.T) {
+	var receivedValues map[string]any
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "visible", Type: FieldTypeText, Label: "Visible", InitialValue: "test"},
+			{Key: "hidden", Type: FieldTypeText, Label: "Hidden", InitialValue: "secret", VisibleWhen: func(values map[string]any) bool {
+				return false
+			}},
+		},
+		Validate: func(values map[string]any) error {
+			receivedValues = values
+			return nil
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Submit
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+
+	// Validation should only receive visible field values
+	require.Contains(t, receivedValues, "visible")
+	require.NotContains(t, receivedValues, "hidden")
+}
+
+func TestVisibleWhen_FirstVisibleFieldIndex(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "hidden1", Type: FieldTypeText, Label: "Hidden1", VisibleWhen: func(values map[string]any) bool { return false }},
+			{Key: "hidden2", Type: FieldTypeText, Label: "Hidden2", VisibleWhen: func(values map[string]any) bool { return false }},
+			{Key: "visible", Type: FieldTypeText, Label: "Visible"},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	require.Equal(t, 2, m.firstVisibleFieldIndex())
+}
+
+func TestVisibleWhen_LastVisibleFieldIndex(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "visible", Type: FieldTypeText, Label: "Visible"},
+			{Key: "hidden1", Type: FieldTypeText, Label: "Hidden1", VisibleWhen: func(values map[string]any) bool { return false }},
+			{Key: "hidden2", Type: FieldTypeText, Label: "Hidden2", VisibleWhen: func(values map[string]any) bool { return false }},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	require.Equal(t, 0, m.lastVisibleFieldIndex())
+}
+
+func TestVisibleWhen_AllFieldsHidden_ReturnsNegativeOne(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "hidden1", Type: FieldTypeText, Label: "Hidden1", VisibleWhen: func(values map[string]any) bool { return false }},
+			{Key: "hidden2", Type: FieldTypeText, Label: "Hidden2", VisibleWhen: func(values map[string]any) bool { return false }},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	require.Equal(t, -1, m.firstVisibleFieldIndex())
+	require.Equal(t, -1, m.lastVisibleFieldIndex())
+}
+
+func TestVisibleWhen_NavigationFromButtonsToFirstVisible(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "hidden", Type: FieldTypeText, Label: "Hidden", VisibleWhen: func(values map[string]any) bool { return false }},
+			{Key: "visible", Type: FieldTypeText, Label: "Visible"},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Start on first visible field (index 1, not 0)
+	// Navigate to buttons
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to buttons
+	require.Equal(t, -1, m.focusedIndex)
+
+	// Tab through buttons and wrap to first visible field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // submit -> cancel
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // cancel -> first visible field
+
+	require.Equal(t, 1, m.focusedIndex, "should wrap to first visible field (index 1), not hidden field (index 0)")
+}
+
+func TestVisibleWhen_NavigationFromButtonsToLastVisible(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{Key: "visible", Type: FieldTypeText, Label: "Visible"},
+			{Key: "hidden", Type: FieldTypeText, Label: "Hidden", VisibleWhen: func(values map[string]any) bool { return false }},
+		},
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Navigate to buttons (submit)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, -1, m.focusedIndex)
+	require.Equal(t, 0, m.focusedButton)
+
+	// Shift+Tab should go to last visible field (index 0), not hidden field (index 1)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Equal(t, 0, m.focusedIndex, "should go to last visible field (index 0), not hidden field (index 1)")
+}
+
+func TestGolden_VisibleWhen_HiddenField(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Conditional Form",
+		Fields: []FieldConfig{
+			{Key: "toggle", Type: FieldTypeToggle, Label: "Show Details", Options: []ListOption{
+				{Label: "No", Value: "false", Selected: true},
+				{Label: "Yes", Value: "true"},
+			}},
+			{Key: "details", Type: FieldTypeText, Label: "Details", VisibleWhen: func(values map[string]any) bool {
+				v, _ := values["toggle"].(string)
+				return v == "true"
+			}},
+		},
+		SubmitLabel: "Save",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	compareGolden(t, "visible_when_hidden", m.View())
+}
+
+func TestGolden_VisibleWhen_VisibleField(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Conditional Form",
+		Fields: []FieldConfig{
+			{Key: "toggle", Type: FieldTypeToggle, Label: "Show Details", InitialToggleIndex: 1, Options: []ListOption{
+				{Label: "No", Value: "false"},
+				{Label: "Yes", Value: "true"},
+			}},
+			{Key: "details", Type: FieldTypeText, Label: "Details", VisibleWhen: func(values map[string]any) bool {
+				v, _ := values["toggle"].(string)
+				return v == "true"
+			}},
+		},
+		SubmitLabel: "Save",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	compareGolden(t, "visible_when_visible", m.View())
 }

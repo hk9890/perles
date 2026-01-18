@@ -108,6 +108,78 @@ v2/
 - [Process Lifecycle](./process-lifecycle.md) - States, phases, and transitions
 - [Message Flow](./message-flow.md) - End-to-end request processing
 
+## Control Plane Integration
+
+The v2 orchestration package integrates with the **Control Plane** (`internal/orchestration/controlplane/`) to support multi-workflow orchestration. The Control Plane provides:
+
+### Architecture
+
+```mermaid
+flowchart TB
+    subgraph CP["Control Plane"]
+        CtrlPlane["ControlPlane<br/>Main API"]
+        Registry["Registry<br/>Workflow Storage"]
+        Supervisor["Supervisor<br/>Lifecycle Mgmt"]
+        Scheduler["ResourceScheduler<br/>Resource Governance"]
+        Monitor["HealthMonitor<br/>Health Tracking"]
+        EventBus["CrossWorkflowEventBus<br/>Event Aggregation"]
+    end
+
+    subgraph W1["Workflow 1"]
+        V2_1["V2 Infrastructure"]
+        Coord1["Coordinator"]
+        Workers1["Workers"]
+    end
+
+    subgraph W2["Workflow 2"]
+        V2_2["V2 Infrastructure"]
+        Coord2["Coordinator"]
+        Workers2["Workers"]
+    end
+
+    subgraph UI["TUI Layer"]
+        Dashboard["Dashboard Mode<br/>Multi-Workflow View"]
+        OrchMode["Orchestration Mode<br/>Single-Workflow View"]
+    end
+
+    CtrlPlane --> Registry
+    CtrlPlane --> Supervisor
+    CtrlPlane --> Scheduler
+    CtrlPlane --> Monitor
+    CtrlPlane --> EventBus
+
+    Supervisor --> V2_1
+    Supervisor --> V2_2
+    V2_1 --> Coord1
+    V2_1 --> Workers1
+    V2_2 --> Coord2
+    V2_2 --> Workers2
+
+    EventBus --> Dashboard
+    V2_1 --> OrchMode
+```
+
+### Component Responsibilities
+
+| Component | Package | Purpose |
+|-----------|---------|---------|
+| **ControlPlane** | `controlplane/` | Unified API for multi-workflow lifecycle management |
+| **Registry** | `controlplane/` | In-memory storage and querying of workflow instances |
+| **Supervisor** | `controlplane/` | Starts/stops workflows, creates V2 infrastructure |
+| **ResourceScheduler** | `controlplane/` | Manages resource limits (workflows, workers, AI calls, tokens) |
+| **HealthMonitor** | `controlplane/` | Detects stuck workflows, triggers recovery actions |
+| **CrossWorkflowEventBus** | `controlplane/` | Aggregates events from all workflows for unified subscription |
+| **V2 Infrastructure** | `v2/` | Per-workflow command processor, handlers, and repositories |
+
+### Workflow Lifecycle Flow
+
+1. **Create**: `ControlPlane.Create(spec)` → Workflow in `Pending` state, stored in Registry
+2. **Start**: `ControlPlane.Start(id)` → Supervisor creates V2 infrastructure, spawns coordinator
+3. **Execute**: V2 command processor handles MCP tool calls, coordinator delegates to workers
+4. **Monitor**: HealthMonitor tracks heartbeats, detects stuck workflows
+5. **Stop**: `ControlPlane.Stop(id)` → Graceful shutdown with resource cleanup
+6. **Shutdown**: `ControlPlane.Shutdown()` → Stops all workflows, releases all resources
+
 ## Quick Start
 
 ### Initialization Flow

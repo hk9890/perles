@@ -10,6 +10,7 @@ import (
 
 	"github.com/zjrosen/perles/internal/beads"
 	"github.com/zjrosen/perles/internal/config"
+	"github.com/zjrosen/perles/internal/flags"
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/mode/shared"
@@ -698,4 +699,90 @@ func TestPickerOverlay_NotRenderedWhenHidden(t *testing.T) {
 
 	// View should NOT contain session picker content
 	require.NotContains(t, view, "Resume Session", "expected view to NOT contain picker title")
+}
+
+// TestHandleBoardKey_Dashboard_FlagDisabled verifies ctrl+t does nothing when flag is disabled.
+func TestHandleBoardKey_Dashboard_FlagDisabled(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags *flags.Registry
+	}{
+		{
+			name:  "nil flags registry returns nil",
+			flags: nil,
+		},
+		{
+			name:  "flag explicitly false returns nil",
+			flags: flags.New(map[string]bool{flags.FlagControlPlane: false}),
+		},
+		{
+			name:  "unrelated flags only returns nil",
+			flags: flags.New(map[string]bool{"other-flag": true}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Defaults()
+			clipboard := mocks.NewMockClipboard(t)
+			clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+			mockExecutor := mocks.NewMockBQLExecutor(t)
+
+			services := mode.Services{
+				Config:    &cfg,
+				Clipboard: clipboard,
+				Executor:  mockExecutor,
+				Flags:     tt.flags,
+			}
+
+			m := Model{
+				services: services,
+				width:    100,
+				height:   40,
+				view:     ViewBoard,
+			}
+
+			// Simulate ctrl+t key press
+			msg := tea.KeyMsg{Type: tea.KeyCtrlT}
+			_, cmd := m.handleBoardKey(msg)
+
+			// Should return nil (no-op) when flag is disabled
+			require.Nil(t, cmd, "expected nil command when flag disabled")
+		})
+	}
+}
+
+// TestHandleBoardKey_Dashboard_FlagEnabled verifies ctrl+t switches to dashboard when flag is enabled.
+func TestHandleBoardKey_Dashboard_FlagEnabled(t *testing.T) {
+	cfg := config.Defaults()
+	clipboard := mocks.NewMockClipboard(t)
+	clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+	mockExecutor := mocks.NewMockBQLExecutor(t)
+
+	// Enable the control-plane flag
+	flagRegistry := flags.New(map[string]bool{flags.FlagControlPlane: true})
+
+	services := mode.Services{
+		Config:    &cfg,
+		Clipboard: clipboard,
+		Executor:  mockExecutor,
+		Flags:     flagRegistry,
+	}
+
+	m := Model{
+		services: services,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Simulate ctrl+t key press
+	msg := tea.KeyMsg{Type: tea.KeyCtrlT}
+	_, cmd := m.handleBoardKey(msg)
+
+	// With flag enabled, should return SwitchToDashboardMsg
+	require.NotNil(t, cmd, "expected command to be returned")
+	result := cmd()
+	_, ok := result.(SwitchToDashboardMsg)
+	require.True(t, ok, "expected SwitchToDashboardMsg, got %T", result)
 }

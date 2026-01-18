@@ -113,11 +113,11 @@ func TestRegistry_All_ReturnsDefensiveCopy(t *testing.T) {
 	r := New(original)
 
 	// Get a copy via All()
-	copy := r.All()
+	c := r.All()
 
 	// Mutate the copy
-	copy["feature-a"] = false
-	copy["new-flag"] = true
+	c["feature-a"] = false
+	c["new-flag"] = true
 
 	// Verify the registry is unaffected
 	require.True(t, r.Enabled("feature-a"), "registry should not be affected by copy mutation")

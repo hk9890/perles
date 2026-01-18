@@ -89,7 +89,8 @@ perles/
 │   ├── mode/             # Application modes with Controller interface
 │   │   ├── kanban/       # Kanban board mode
 │   │   ├── search/       # Search mode
-│   │   ├── orchestration/# AI orchestration mode (multi-agent TUI)
+│   │   ├── orchestration/# AI orchestration mode (single-workflow TUI)
+│   │   ├── dashboard/    # Dashboard mode (multi-workflow management)
 │   │   ├── playground/   # VimTextarea testing playground
 │   │   └── shared/       # Cross-mode utilities (Clipboard, Clock)
 │   ├── beads/            # Database client and domain models
@@ -106,6 +107,7 @@ perles/
 │   │   ├── claude/       # Claude Code CLI integration
 │   │   ├── codex/        # OpenAI Codex CLI integration
 │   │   ├── v2/           # V2 command processor & handlers
+│   │   ├── controlplane/ # Multi-workflow control plane
 │   │   ├── mcp/          # Model Context Protocol server
 │   │   ├── events/       # Process event types
 │   │   ├── workflow/     # Workflow template registry
@@ -338,6 +340,7 @@ const (
     ModeKanban AppMode = iota
     ModeSearch
     ModeOrchestration
+    ModeDashboard
 )
 ```
 
@@ -384,6 +387,7 @@ Perles includes a sophisticated multi-agent AI orchestration layer for coordinat
 | `orchestration/codex/` | OpenAI Codex CLI integration |
 | `orchestration/opencode/` | OpenCode CLI integration (GLM-4.7, file-based MCP config) |
 | `orchestration/v2/` | Command processor, handlers, adapters, repositories |
+| `orchestration/controlplane/` | Multi-workflow management (registry, supervisor, scheduler, health monitor) |
 | `orchestration/mcp/` | MCP server exposing coordinator/worker tools |
 | `orchestration/events/` | Unified `ProcessEvent` type |
 | `orchestration/workflow/` | Workflow template registry (built-in + user-defined) |
@@ -567,7 +571,7 @@ orchestration:                       # AI orchestration settings
 - **Column management:** `a` (add), `e` (edit), `Ctrl+h/l` (move)
 - **View management:** `Ctrl+n/p` (switch), `Ctrl+v` (menu)
 - **Actions:** `Enter` (open), `s` (status), `p` (priority), `y` (copy ID)
-- **Mode switch:** `Ctrl+Space` (search), `/` (search column)
+- **Mode switch:** `Ctrl+Space` (search), `/` (search column), `Ctrl+O` (orchestration), `Ctrl+T` (dashboard)
 - **General:** `?` (help), `q` (quit), `r` (refresh)
 
 ### Search Mode (Supports regular search and tree sub-mode)
@@ -585,6 +589,14 @@ orchestration:                       # AI orchestration settings
 - **Control:** `Ctrl+z` (pause), `Ctrl+r` (replace coordinator)
 - **Workflows:** `Ctrl+p` (workflow template palette)
 - **General:** `?` (help), `q` (quit with confirmation)
+
+### Dashboard Mode (Multi-Workflow Management)
+
+- **Navigation:** `j/k` or `↓/↑` (move between workflows), `g` (first), `G` (last)
+- **Filter:** `/` (activate filter), `esc` (clear filter)
+- **Actions:** `s` (start), `p` (pause), `x` (stop), `enter` (detail view)
+- **Create:** `n` (new workflow), `N` (new workflow and start)
+- **General:** `?` (help), `q` (quit)
 
 ## Important Gotchas
 

@@ -16,8 +16,8 @@
 │   issuebadge               │  ││                                                                 │
 │   issueeditor              │  │ │  Open a new issue in the tracker                               │
 │   tabpane                  │  ││                                                                 │
-│   Theme Tokens             │  │ │                                                                │
-│                            │  ││                                                                 │
+│   table                    │  │ │                                                                │
+│   Theme Tokens             │  ││                                                                 │
 │                            │  │ │ Search Files                                                   │
 │                            │  ││                                                                 │
 │                            │  │ │  Find files by name or content                                 │

@@ -15,6 +15,9 @@ const (
 
 	// FlagRemoveWorktree controls if existing orchestration mode removes the worktree.
 	FlagRemoveWorktree = "remove-worktree"
+
+	// FlagControlPlane controls whether dashboard mode (ctrl+t) is enabled.
+	FlagControlPlane = "control-plane"
 )
 
 // Registry holds feature flag state loaded from configuration.

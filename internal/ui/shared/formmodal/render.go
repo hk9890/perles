@@ -3,6 +3,8 @@ package formmodal
 import (
 	"strings"
 
+	"github.com/muesli/reflow/wordwrap"
+
 	"github.com/zjrosen/perles/internal/ui/shared/overlay"
 	"github.com/zjrosen/perles/internal/ui/styles"
 
@@ -69,8 +71,11 @@ func (m Model) View() string {
 		content.WriteString("\n\n")
 	}
 
-	// Render each field
+	// Render each visible field
 	for i := range m.fields {
+		if !m.isFieldVisible(i) {
+			continue
+		}
 		fieldView := m.renderField(i, contentWidth)
 		content.WriteString(contentPadding.Render(fieldView))
 		content.WriteString("\n\n")
@@ -145,6 +150,12 @@ func (m Model) renderField(index int, width int) string {
 				checkbox = "[x]"
 			}
 			rows = append(rows, prefix+checkbox+" "+item.label)
+			// Add subtext on a separate line if present
+			if item.subtext != "" {
+				subtextStyle := lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+				indent := "      " // Align with label after "[x] "
+				rows = append(rows, indent+subtextStyle.Render(item.subtext))
+			}
 		}
 		if len(rows) == 0 {
 			rows = []string{" (no items)"}
@@ -179,6 +190,12 @@ func (m Model) renderField(index int, width int) string {
 				label = labelStyle.Render(item.label)
 			}
 			rows = append(rows, prefix+radio+" "+label)
+			// Add subtext on a separate line if present
+			if item.subtext != "" {
+				subtextStyle := lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+				indent := "      " // Align with label after "( ) "
+				rows = append(rows, indent+subtextStyle.Render(item.subtext))
+			}
 		}
 		if len(rows) == 0 {
 			rows = []string{" (no items)"}
@@ -200,6 +217,9 @@ func (m Model) renderField(index int, width int) string {
 
 	case FieldTypeSearchSelect:
 		return m.renderSearchSelectField(fs, width, focused)
+
+	case FieldTypeTextArea:
+		return m.renderTextAreaField(fs, width, focused)
 	}
 
 	return ""
@@ -392,9 +412,11 @@ func (m Model) renderSearchSelectCollapsed(fs *fieldState, width int, focused bo
 
 	// Find selected item
 	selectedLabel := "(none)"
+	selectedSubtext := ""
 	for _, item := range fs.listItems {
 		if item.selected {
 			selectedLabel = item.label
+			selectedSubtext = item.subtext
 			break
 		}
 	}
@@ -409,11 +431,24 @@ func (m Model) renderSearchSelectCollapsed(fs *fieldState, width int, focused bo
 	// Truncate label if needed
 	displayLabel := styles.TruncateString(selectedLabel, availableWidth)
 
-	// Build content row (no indicator when collapsed, just indent)
-	row := " " + displayLabel
+	// Build content rows
+	var rows []string
+	rows = append(rows, " "+displayLabel)
+
+	// Add wrapped subtext if present
+	if selectedSubtext != "" {
+		wrapWidth := innerWidth - 1
+		if wrapWidth > 0 {
+			wrapped := wordwrap.String(selectedSubtext, wrapWidth)
+			subtextStyle := lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+			for line := range strings.SplitSeq(wrapped, "\n") {
+				rows = append(rows, subtextStyle.Render(" "+line))
+			}
+		}
+	}
 
 	return styles.FormSection(styles.FormSectionConfig{
-		Content:            []string{row},
+		Content:            rows,
 		Width:              width,
 		TopLeft:            cfg.Label,
 		TopLeftHint:        cfg.Hint,
@@ -456,27 +491,54 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, width int, focused boo
 			actualIdx := fs.searchFiltered[i]
 			item := fs.listItems[actualIdx]
 
-			// Truncate label to fit within inner width (minus prefix space)
-			displayLabel := styles.TruncateString(item.label, innerWidth-1)
-
-			// Build row content with padding
-			rowContent := " " + displayLabel
-
 			// Highlight the cursor row (what user is about to select)
 			isCursorRow := focused && i == fs.listCursor
-			if isCursorRow {
-				// Pad to full width for consistent highlight
-				rowWidth := lipgloss.Width(rowContent)
-				if rowWidth < innerWidth {
-					rowContent += strings.Repeat(" ", innerWidth-rowWidth)
+
+			// Build all content rows for this item (label + wrapped subtext)
+			var itemRows []string
+
+			// Label row
+			displayLabel := styles.TruncateString(item.label, innerWidth-1)
+			itemRows = append(itemRows, " "+displayLabel)
+
+			// Subtext rows (wrapped)
+			if item.subtext != "" {
+				// Wrap subtext to fit with indent of 3 spaces
+				// innerWidth already accounts for FormSection borders, subtract indent
+				wrapWidth := innerWidth - 4
+				if wrapWidth > 0 {
+					wrapped := wordwrap.String(item.subtext, wrapWidth)
+					for line := range strings.SplitSeq(wrapped, "\n") {
+						itemRows = append(itemRows, "   "+line)
+					}
 				}
-				cursorStyle := lipgloss.NewStyle().
-					Background(styles.SelectionBackgroundColor).
-					Foreground(lipgloss.Color("#FFFFFF"))
-				rowContent = cursorStyle.Render(rowContent)
 			}
 
-			rows = append(rows, rowContent)
+			// Apply styling to all rows
+			for idx, row := range itemRows {
+				rowContent := row
+				isSubtext := idx > 0
+
+				if isCursorRow {
+					// Pad to full width for consistent highlight
+					rowWidth := lipgloss.Width(row)
+					if rowWidth < innerWidth {
+						rowContent = row + strings.Repeat(" ", innerWidth-rowWidth)
+					}
+					// Apply both foreground (for subtext) and background together
+					cursorStyle := lipgloss.NewStyle().
+						Background(styles.SelectionBackgroundColor)
+					if isSubtext {
+						cursorStyle = cursorStyle.Foreground(styles.TextDescriptionColor)
+					}
+					rowContent = cursorStyle.Render(rowContent)
+				} else if isSubtext {
+					// Apply description style to non-highlighted subtext
+					subtextStyle := lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+					rowContent = subtextStyle.Render(row)
+				}
+				rows = append(rows, rowContent)
+			}
 		}
 
 		// "More" indicator if there are items below
@@ -491,6 +553,45 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, width int, focused boo
 		Width:              width,
 		TopLeft:            cfg.Label,
 		TopLeftHint:        cfg.Hint,
+		Focused:            focused,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	})
+}
+
+// renderTextAreaField renders the vimtextarea field.
+func (m Model) renderTextAreaField(fs *fieldState, width int, focused bool) string {
+	cfg := fs.config
+
+	// Set textarea size: width - 2 for FormSection borders
+	// Height defaults to MaxHeight from config, or 3 lines if not specified
+	innerWidth := width - 2
+	height := cfg.MaxHeight
+	if height <= 0 {
+		height = 3
+	}
+	fs.textArea.SetSize(innerWidth, height)
+
+	// Get the textarea view and split into lines for FormSection
+	view := fs.textArea.View()
+	lines := strings.Split(view, "\n")
+
+	// Ensure we have exactly 'height' lines for consistent box sizing
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+
+	// Get vim mode indicator for focused textarea
+	var modeIndicator string
+	if focused {
+		modeIndicator = fs.textArea.ModeIndicator()
+	}
+
+	return styles.FormSection(styles.FormSectionConfig{
+		Content:            lines,
+		Width:              width,
+		TopLeft:            cfg.Label,
+		TopLeftHint:        cfg.Hint,
+		BottomLeft:         modeIndicator,
 		Focused:            focused,
 		FocusedBorderColor: styles.BorderHighlightFocusColor,
 	})
