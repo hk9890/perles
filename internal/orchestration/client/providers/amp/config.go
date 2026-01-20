@@ -9,6 +9,7 @@ import (
 // Config holds configuration for spawning an Amp process.
 type Config struct {
 	WorkDir         string
+	BeadsDir        string // Path to beads database directory for BEADS_DIR env var
 	Prompt          string
 	ThreadID        string // For resume (Amp uses "threads" instead of "sessions")
 	Model           string // "opus" or "sonnet" (default: opus)
@@ -29,6 +30,7 @@ func configFromClient(cfg client.Config) Config {
 
 	return Config{
 		WorkDir:         cfg.WorkDir,
+		BeadsDir:        cfg.BeadsDir,
 		Prompt:          prompt,
 		ThreadID:        cfg.SessionID, // Map session to thread
 		Model:           cfg.AmpModel(),

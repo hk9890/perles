@@ -45,6 +45,9 @@ type InfrastructureConfig struct {
 	AgentProvider client.AgentProvider
 	// WorkDir is the working directory for the orchestration session.
 	WorkDir string
+	// BeadsDir is the path to the beads database directory.
+	// When set, spawned processes receive BEADS_DIR environment variable.
+	BeadsDir string
 	// MessageRepo is the message repository for inter-agent messaging.
 	MessageRepo repository.MessageRepository
 	// SessionID is the session identifier for accountability summary generation.
@@ -192,7 +195,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	turnEnforcer := handler.NewTurnCompletionTracker()
 
 	// Create BDTaskExecutor for syncing v2 state changes to BD tracker
-	beadsExec := beads.NewRealExecutor(cfg.WorkDir)
+	beadsExec := beads.NewRealExecutor(cfg.WorkDir, cfg.BeadsDir)
 
 	// Register all command handlers
 	registerHandlers(
@@ -208,6 +211,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		cfg.Port,
 		eventBus,
 		cfg.WorkDir,
+		cfg.BeadsDir,
 		cfg.Tracer,
 		cfg.SessionRefNotifier,
 		cfg.SoundService,
@@ -320,6 +324,7 @@ func registerHandlers(
 	port int,
 	eventBus *pubsub.Broker[any],
 	workDir string,
+	beadsDir string,
 	tracer trace.Tracer,
 	sessionRefNotifier handler.SessionRefNotifier,
 	soundService sound.SoundService,
@@ -390,11 +395,13 @@ func registerHandlers(
 		Extensions: extensions,
 		Submitter:  cmdSubmitter,
 		EventBus:   eventBus,
+		BeadsDir:   beadsDir,
 	})
 
 	// MessageDeliverer for delivering messages to processes via session resume
 	sessionProvider := handler.NewProcessRegistrySessionProvider(processRegistry, aiClient, workDir, port)
-	messageDeliverer := integration.NewProcessSessionDeliverer(sessionProvider, aiClient, processRegistry, extensions)
+	messageDeliverer := integration.NewProcessSessionDeliverer(sessionProvider, aiClient, processRegistry, extensions,
+		integration.WithBeadsDir(beadsDir))
 
 	cmdProcessor.RegisterHandler(command.CmdSpawnProcess,
 		handler.NewSpawnProcessHandler(processRepo, processRegistry,

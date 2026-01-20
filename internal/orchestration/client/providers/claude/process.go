@@ -25,6 +25,7 @@ var defaultKnownPaths = []string{
 // Config holds configuration for spawning a Claude process.
 type Config struct {
 	WorkDir            string
+	BeadsDir           string // Path to beads database directory for BEADS_DIR env var
 	Prompt             string
 	SessionID          string // For --resume
 	Model              string // sonnet, opus, haiku
@@ -160,6 +161,9 @@ func Spawn(ctx context.Context, cfg Config) (*Process, error) {
 
 	args := buildArgs(cfg)
 
+	// Build environment variables (BEADS_DIR if set)
+	env := client.BuildEnvVars(client.Config{BeadsDir: cfg.BeadsDir})
+
 	// Create Process wrapper FIRST (needed for OnInitEvent hook closure)
 	p := &Process{}
 
@@ -174,6 +178,7 @@ func Spawn(ctx context.Context, cfg Config) (*Process, error) {
 		WithOnInitEvent(p.extractMainModel).
 		WithStderrCapture(true).
 		WithProviderName("claude").
+		WithEnv(env).
 		Build()
 	if err != nil {
 		return nil, fmt.Errorf("claude: %w", err)

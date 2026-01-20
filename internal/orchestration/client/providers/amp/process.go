@@ -42,6 +42,9 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 
 	args := buildArgs(cfg, isResume)
 
+	// Build environment variables (BEADS_DIR if set)
+	env := client.BuildEnvVars(client.Config{BeadsDir: cfg.BeadsDir})
+
 	base, err := client.NewSpawnBuilder(ctx).
 		WithExecutable(execPath, args).
 		WithWorkDir(cfg.WorkDir).
@@ -50,6 +53,7 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 		WithParser(parser).
 		WithStderrCapture(false). // Amp logs but doesn't capture stderr
 		WithProviderName("amp").
+		WithEnv(env).
 		Build()
 	if err != nil {
 		return nil, fmt.Errorf("amp: %w", err)

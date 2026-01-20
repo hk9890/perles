@@ -9,6 +9,7 @@ import (
 // Config holds configuration for spawning an OpenCode process.
 type Config struct {
 	WorkDir         string
+	BeadsDir        string // Path to beads database directory for BEADS_DIR env var
 	Prompt          string // Includes prefixed system prompt
 	Model           string // e.g., "anthropic/claude-opus-4-5"
 	SessionID       string // For --session to continue existing session
@@ -27,6 +28,7 @@ func configFromClient(cfg client.Config) Config {
 
 	return Config{
 		WorkDir:         cfg.WorkDir,
+		BeadsDir:        cfg.BeadsDir,
 		Prompt:          prompt,
 		Model:           cfg.OpenCodeModel(),
 		SessionID:       cfg.SessionID,

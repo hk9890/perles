@@ -46,6 +46,7 @@ type UnifiedProcessSpawnerImpl struct {
 	extensions map[string]any
 	submitter  process.CommandSubmitter
 	eventBus   *pubsub.Broker[any]
+	beadsDir   string
 }
 
 // UnifiedSpawnerConfig holds configuration for creating a UnifiedProcessSpawnerImpl.
@@ -56,6 +57,9 @@ type UnifiedSpawnerConfig struct {
 	Extensions map[string]any
 	Submitter  process.CommandSubmitter
 	EventBus   *pubsub.Broker[any]
+	// BeadsDir is the path to the beads database directory.
+	// When set, spawned processes receive BEADS_DIR environment variable.
+	BeadsDir string
 }
 
 // NewUnifiedProcessSpawner creates a new UnifiedProcessSpawnerImpl.
@@ -67,6 +71,7 @@ func NewUnifiedProcessSpawner(cfg UnifiedSpawnerConfig) *UnifiedProcessSpawnerIm
 		extensions: cfg.Extensions,
 		submitter:  cfg.Submitter,
 		eventBus:   cfg.EventBus,
+		beadsDir:   cfg.BeadsDir,
 	}
 }
 
@@ -111,6 +116,7 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 
 		cfg = client.Config{
 			WorkDir:         s.workDir,
+			BeadsDir:        s.beadsDir,
 			SystemPrompt:    systemPrompt,
 			Prompt:          initialPrompt,
 			MCPConfig:       mcpConfig,
@@ -134,6 +140,7 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 
 		cfg = client.Config{
 			WorkDir:         s.workDir,
+			BeadsDir:        s.beadsDir,
 			Prompt:          initialPrompt,
 			SystemPrompt:    systemPrompt,
 			MCPConfig:       mcpConfig,

@@ -41,9 +41,10 @@ func TestRealExecutor_ImplementsInterface(t *testing.T) {
 
 // TestNewRealExecutor tests the constructor.
 func TestNewRealExecutor(t *testing.T) {
-	executor := NewRealExecutor("/test/dir")
+	executor := NewRealExecutor("/test/dir", "/test/beads")
 	require.NotNil(t, executor)
 	require.Equal(t, "/test/dir", executor.workDir)
+	require.Equal(t, "/test/beads", executor.beadsDir)
 }
 
 // TestRealExecutor_ShowIssue_InvalidIssue tests error handling for nonexistent issues.
@@ -51,7 +52,7 @@ func TestNewRealExecutor(t *testing.T) {
 func TestRealExecutor_ShowIssue_InvalidIssue(t *testing.T) {
 	skipIfBDNotEnabled(t)
 
-	executor := NewRealExecutor("")
+	executor := NewRealExecutor("", "")
 	issue, err := executor.ShowIssue("nonexistent-xyz")
 	require.Error(t, err, "expected error for nonexistent issue")
 	require.Nil(t, issue)
@@ -62,7 +63,7 @@ func TestRealExecutor_ShowIssue_InvalidIssue(t *testing.T) {
 func TestRealExecutor_AddComment_InvalidIssue(t *testing.T) {
 	skipIfBDNotEnabled(t)
 
-	executor := NewRealExecutor("")
+	executor := NewRealExecutor("", "")
 	err := executor.AddComment("nonexistent-xyz", "test-author", "test comment")
 	require.Error(t, err, "expected error for nonexistent issue")
 }
@@ -72,7 +73,7 @@ func TestRealExecutor_AddComment_InvalidIssue(t *testing.T) {
 func TestRealExecutor_DelegationMethods(t *testing.T) {
 	skipIfBDNotEnabled(t)
 
-	executor := NewRealExecutor("")
+	executor := NewRealExecutor("", "")
 
 	t.Run("UpdateStatus", func(t *testing.T) {
 		err := executor.UpdateStatus("nonexistent-xyz", StatusInProgress)
@@ -113,7 +114,7 @@ func TestRealExecutor_DelegationMethods(t *testing.T) {
 
 // TestRealExecutor_DeleteIssues_Empty tests that empty slice returns nil.
 func TestRealExecutor_DeleteIssues_Empty(t *testing.T) {
-	executor := NewRealExecutor("")
+	executor := NewRealExecutor("", "")
 	err := executor.DeleteIssues([]string{})
 	require.NoError(t, err, "empty slice should not error")
 }

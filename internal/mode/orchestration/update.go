@@ -1010,8 +1010,14 @@ func (m Model) handleStartCoordinator() (Model, tea.Cmd) {
 	// The builder centralizes Model→InitializerConfig transformation while
 	// allowing runtime-only fields (Timeouts, GitExecutor, etc.) to be set separately.
 	// Timeouts are loaded from config.yaml and passed through timeoutsConfig.
+	// BeadsDir is extracted from services.Config for propagation to spawned AI processes.
+	var beadsDir string
+	if m.services.Config != nil {
+		beadsDir = m.services.Config.ResolvedBeadsDir
+	}
 	initConfig := NewInitializerConfigFromModel(
 		m.workDir,
+		beadsDir,
 		m.agentProvider,
 		m.worktreeBaseBranch,
 		m.worktreeCustomBranch,

@@ -37,6 +37,9 @@ func buildArgs(cfg Config, isResume bool) []string {
 		if cfg.Prompt != "" {
 			args = append(args, cfg.Prompt)
 		}
+		if cfg.SkipPermissions {
+			args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+		}
 	} else {
 		// New session mode: full options available
 		// Model selection (-m flag)

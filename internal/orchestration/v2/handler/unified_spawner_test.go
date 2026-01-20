@@ -319,3 +319,99 @@ func TestUnifiedProcessSpawner_SpawnCoordinator_UsesDefaultWhenNoOverride(t *tes
 	// Cleanup
 	proc.Stop()
 }
+
+func TestUnifiedProcessSpawner_SpawnCoordinator_PassesBeadsDir(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+		BeadsDir:   "/custom/beads/path",
+	})
+
+	proc, err := spawner.SpawnProcess(context.Background(), repository.CoordinatorID, repository.RoleCoordinator, SpawnOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify BeadsDir was passed to client.Config
+	assert.Equal(t, "/custom/beads/path", capturedConfig.BeadsDir)
+
+	// Cleanup
+	proc.Stop()
+}
+
+func TestUnifiedProcessSpawner_SpawnWorker_PassesBeadsDir(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+		BeadsDir:   "/custom/beads/path",
+	})
+
+	proc, err := spawner.SpawnProcess(context.Background(), "worker-1", repository.RoleWorker, SpawnOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify BeadsDir was passed to client.Config
+	assert.Equal(t, "/custom/beads/path", capturedConfig.BeadsDir)
+
+	// Cleanup
+	proc.Stop()
+}
+
+func TestUnifiedProcessSpawner_SpawnProcess_EmptyBeadsDir(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		Client:     mockClient,
+		WorkDir:    "/test/workdir",
+		Port:       8080,
+		Extensions: nil,
+		Submitter:  submitter,
+		EventBus:   eventBus,
+		// BeadsDir not set - should be empty string
+	})
+
+	proc, err := spawner.SpawnProcess(context.Background(), "worker-1", repository.RoleWorker, SpawnOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify BeadsDir is empty (providers will handle this gracefully)
+	assert.Empty(t, capturedConfig.BeadsDir)
+
+	// Cleanup
+	proc.Stop()
+}

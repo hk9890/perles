@@ -18,6 +18,7 @@ func TestConfigFromClient(t *testing.T) {
 			name: "basic fields pass through",
 			input: client.Config{
 				WorkDir:   "/work/dir",
+				BeadsDir:  "/path/to/beads",
 				Prompt:    "Hello",
 				SessionID: "session-123",
 				Timeout:   5 * time.Minute,
@@ -25,6 +26,7 @@ func TestConfigFromClient(t *testing.T) {
 			},
 			expected: Config{
 				WorkDir:   "/work/dir",
+				BeadsDir:  "/path/to/beads",
 				Prompt:    "Hello",
 				SessionID: "session-123",
 				Model:     "gpt-5.2-codex", // default model

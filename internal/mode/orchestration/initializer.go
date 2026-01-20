@@ -58,6 +58,9 @@ type InitializerEvent struct {
 // InitializerConfig holds configuration for creating an Initializer.
 type InitializerConfig struct {
 	WorkDir string
+	// BeadsDir is the resolved beads directory path for propagation to spawned processes.
+	// When set, spawned AI processes receive BEADS_DIR environment variable.
+	BeadsDir string
 	// AgentProvider creates and configures AI processes.
 	AgentProvider client.AgentProvider
 	Timeouts      config.TimeoutsConfig
@@ -190,6 +193,7 @@ type InitializerConfigBuilder struct {
 //	    Build()
 func NewInitializerConfigFromModel(
 	workDir string,
+	beadsDir string,
 	agentProvider client.AgentProvider,
 	worktreeBaseBranch string,
 	worktreeCustomBranch string,
@@ -199,6 +203,7 @@ func NewInitializerConfigFromModel(
 	return &InitializerConfigBuilder{
 		cfg: InitializerConfig{
 			WorkDir:            workDir,
+			BeadsDir:           beadsDir,
 			AgentProvider:      agentProvider,
 			WorktreeBaseBranch: worktreeBaseBranch,
 			WorktreeBranchName: worktreeCustomBranch,
@@ -790,6 +795,7 @@ type MCPServerConfig struct {
 	V2Adapter     *adapter.V2Adapter                  // V2 adapter for routing
 	TurnEnforcer  mcp.ToolCallRecorder                // Turn completion enforcer for workers
 	WorkDir       string                              // Working directory
+	BeadsDir      string                              // Path to .beads directory for BEADS_DIR env var
 	Tracer        trace.Tracer                        // Tracer for distributed tracing (optional)
 }
 
@@ -817,7 +823,7 @@ func (i *Initializer) createMCPServer(cfg MCPServerConfig) (*MCPServerResult, er
 	// Create coordinator server with the dynamic port and v2 adapter
 	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
 		aiClient, cfg.MsgRepo, cfg.WorkDir, cfg.Port, extensions,
-		beads.NewRealExecutor(cfg.WorkDir), cfg.V2Adapter)
+		beads.NewRealExecutor(cfg.WorkDir, cfg.BeadsDir), cfg.V2Adapter)
 
 	// Set tracer for distributed tracing if provided
 	if cfg.Tracer != nil {
@@ -962,6 +968,7 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 		Port:                    port,
 		AgentProvider:           provider,
 		WorkDir:                 effectiveWorkDir, // Use worktree path when enabled
+		BeadsDir:                i.cfg.BeadsDir,   // Propagated to spawned AI processes as BEADS_DIR env var
 		MessageRepo:             msgRepo,
 		SessionID:               sess.ID,
 		SessionDir:              sessionDir, // Centralized session storage path
@@ -1047,6 +1054,7 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 		V2Adapter:     v2Infra.Core.Adapter,
 		TurnEnforcer:  v2Infra.Internal.TurnEnforcer,
 		WorkDir:       effectiveWorkDir, // Use worktree path when enabled
+		BeadsDir:      i.cfg.BeadsDir,   // Propagate beads directory for BEADS_DIR env var
 		Tracer:        tracer,           // nil when tracing disabled - server handles this gracefully
 	})
 	if err != nil {

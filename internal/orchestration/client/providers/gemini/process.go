@@ -178,6 +178,9 @@ func spawnProcess(ctx context.Context, cfg Config, _ bool) (*Process, error) {
 	args := buildArgs(cfg)
 	parser := NewParser()
 
+	// Build environment variables (BEADS_DIR if set)
+	env := client.BuildEnvVars(client.Config{BeadsDir: cfg.BeadsDir})
+
 	// SpawnBuilder handles spawn mechanics only - all pre-spawn validation
 	// has already completed above
 	base, err := client.NewSpawnBuilder(ctx).
@@ -189,6 +192,7 @@ func spawnProcess(ctx context.Context, cfg Config, _ bool) (*Process, error) {
 		WithSessionExtractor(parser.ExtractSessionRef).
 		WithStderrCapture(true).
 		WithProviderName("gemini").
+		WithEnv(env).
 		Build()
 	if err != nil {
 		return nil, fmt.Errorf("gemini: %w", err)

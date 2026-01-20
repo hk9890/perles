@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,47 +17,148 @@ var _ BeadsExecutor = (*RealExecutor)(nil)
 
 // RealExecutor implements BeadsExecutor by executing actual BD commands.
 type RealExecutor struct {
-	workDir string
+	workDir  string // Working directory for command execution
+	beadsDir string // Path to .beads directory for BEADS_DIR env var
 }
 
 // NewRealExecutor creates a new RealExecutor.
-func NewRealExecutor(workDir string) *RealExecutor {
-	return &RealExecutor{workDir: workDir}
+// workDir is the working directory for command execution.
+// beadsDir is the path to the .beads directory (sets BEADS_DIR env var).
+func NewRealExecutor(workDir, beadsDir string) *RealExecutor {
+	return &RealExecutor{workDir: workDir, beadsDir: beadsDir}
 }
 
-// UpdateStatus delegates to the package-level UpdateStatus function.
+// runBeads executes a bd command and returns stdout and any error.
+func (e *RealExecutor) runBeads(args ...string) (string, error) {
+	//nolint:gosec // G204: args come from controlled sources
+	cmd := exec.Command("bd", args...)
+	if e.workDir != "" {
+		cmd.Dir = e.workDir
+	}
+	if e.beadsDir != "" {
+		cmd.Env = append(os.Environ(), "BEADS_DIR="+e.beadsDir)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return "", fmt.Errorf("bd %s failed: %s", args[0], strings.TrimSpace(stderr.String()))
+		}
+		return "", fmt.Errorf("bd %s failed: %w", args[0], err)
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// UpdateStatus changes an issue's status via bd CLI.
 func (e *RealExecutor) UpdateStatus(issueID string, status Status) error {
-	return UpdateStatus(issueID, status)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdateStatus completed", "issueID", issueID, "status", status, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--status", string(status), "--json"); err != nil {
+		log.Error(log.CatBeads, "UpdateStatus failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// UpdatePriority delegates to the package-level UpdatePriority function.
+// UpdatePriority changes an issue's priority via bd CLI.
 func (e *RealExecutor) UpdatePriority(issueID string, priority Priority) error {
-	return UpdatePriority(issueID, priority)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdatePriority completed", "issueID", issueID, "priority", priority, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--priority", fmt.Sprintf("%d", priority), "--json"); err != nil {
+		log.Error(log.CatBeads, "UpdatePriority failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// UpdateType delegates to the package-level UpdateType function.
+// UpdateType changes an issue's type via bd CLI.
 func (e *RealExecutor) UpdateType(issueID string, issueType IssueType) error {
-	return UpdateType(issueID, issueType)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdateType completed", "issueID", issueID, "type", issueType, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--type", string(issueType), "--json"); err != nil {
+		log.Error(log.CatBeads, "UpdateType failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// CloseIssue delegates to the package-level CloseIssue function.
+// CloseIssue marks an issue as closed with a reason via bd CLI.
 func (e *RealExecutor) CloseIssue(issueID, reason string) error {
-	return CloseIssue(issueID, reason)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "CloseIssue completed", "issueID", issueID, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("close", issueID, "--reason", reason, "--json"); err != nil {
+		log.Error(log.CatBeads, "CloseIssue failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// ReopenIssue delegates to the package-level ReopenIssue function.
+// ReopenIssue reopens a closed issue via bd CLI.
 func (e *RealExecutor) ReopenIssue(issueID string) error {
-	return ReopenIssue(issueID)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "ReopenIssue completed", "issueID", issueID, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--status", string(StatusOpen), "--json"); err != nil {
+		log.Error(log.CatBeads, "ReopenIssue failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// DeleteIssues delegates to the package-level DeleteIssues function.
+// DeleteIssues deletes one or more issues in a single bd CLI call.
 func (e *RealExecutor) DeleteIssues(issueIDs []string) error {
-	return DeleteIssues(issueIDs)
+	if len(issueIDs) == 0 {
+		return nil
+	}
+
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "DeleteIssues completed",
+			"count", len(issueIDs),
+			"duration", time.Since(start))
+	}()
+
+	args := append([]string{"delete"}, issueIDs...)
+	args = append(args, "--force", "--json")
+
+	if _, err := e.runBeads(args...); err != nil {
+		log.Error(log.CatBeads, "DeleteIssues failed", "count", len(issueIDs), "error", err)
+		return err
+	}
+	return nil
 }
 
-// SetLabels delegates to the package-level SetLabels function.
+// SetLabels replaces all labels on an issue via bd CLI.
+// Pass an empty slice to remove all labels.
 func (e *RealExecutor) SetLabels(issueID string, labels []string) error {
-	return SetLabels(issueID, labels)
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "SetLabels completed", "issueID", issueID, "labels", strings.Join(labels, ","), "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--set-labels", strings.Join(labels, ","), "--json"); err != nil {
+		log.Error(log.CatBeads, "SetLabels failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
 }
 
 // ShowIssue executes 'bd show <id> --json' and parses the JSON array output.
@@ -66,30 +168,15 @@ func (e *RealExecutor) ShowIssue(issueID string) (*Issue, error) {
 		log.Debug(log.CatBeads, "ShowIssue completed", "issueID", issueID, "duration", time.Since(start))
 	}()
 
-	//nolint:gosec // G204: issueID comes from bd database, not user input
-	cmd := exec.Command("bd", "show", issueID, "--json")
-	if e.workDir != "" {
-		cmd.Dir = e.workDir
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd show failed: %s", stderr.String())
-			log.Error(log.CatBeads, "ShowIssue failed", "issueID", issueID, "error", err)
-			return nil, err
-		}
-		err = fmt.Errorf("bd show failed: %w", err)
+	output, err := e.runBeads("show", issueID, "--json")
+	if err != nil {
 		log.Error(log.CatBeads, "ShowIssue failed", "issueID", issueID, "error", err)
 		return nil, err
 	}
 
 	// bd show returns a JSON array
 	var issues []Issue
-	if err := json.Unmarshal(stdout.Bytes(), &issues); err != nil {
+	if err := json.Unmarshal([]byte(output), &issues); err != nil {
 		err = fmt.Errorf("failed to parse bd show output: %w", err)
 		log.Error(log.CatBeads, "ShowIssue parse failed", "issueID", issueID, "error", err)
 		return nil, err
@@ -111,220 +198,8 @@ func (e *RealExecutor) AddComment(issueID, author, text string) error {
 		log.Debug(log.CatBeads, "AddComment completed", "issueID", issueID, "author", author, "duration", time.Since(start))
 	}()
 
-	//nolint:gosec // G204: issueID/author/text come from controlled sources
-	cmd := exec.Command("bd", "comment", issueID, "--author", author, "--", text)
-	if e.workDir != "" {
-		cmd.Dir = e.workDir
-	}
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd comment failed: %s", stderr.String())
-			log.Error(log.CatBeads, "AddComment failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd comment failed: %w", err)
+	if _, err := e.runBeads("comment", issueID, "--author", author, "--", text); err != nil {
 		log.Error(log.CatBeads, "AddComment failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// UpdateStatus changes an issue's status via bd CLI.
-func UpdateStatus(issueID string, status Status) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "UpdateStatus completed", "issueID", issueID, "status", status, "duration", time.Since(start))
-	}()
-
-	//nolint:gosec // G204: issueID comes from bd database, not user input
-	cmd := exec.Command("bd", "update", issueID,
-		"--status", string(status), "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd update status failed: %s", stderr.String())
-			log.Error(log.CatBeads, "UpdateStatus failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd update status failed: %w", err)
-		log.Error(log.CatBeads, "UpdateStatus failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// UpdatePriority changes an issue's priority via bd CLI.
-func UpdatePriority(issueID string, priority Priority) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "UpdatePriority completed", "issueID", issueID, "priority", priority, "duration", time.Since(start))
-	}()
-
-	//nolint:gosec // G204: issueID comes from bd database, not user input
-	cmd := exec.Command("bd", "update", issueID,
-		"--priority", fmt.Sprintf("%d", priority), "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd update priority failed: %s", stderr.String())
-			log.Error(log.CatBeads, "UpdatePriority failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd update priority failed: %w", err)
-		log.Error(log.CatBeads, "UpdatePriority failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// UpdateType changes an issue's type via bd CLI.
-func UpdateType(issueID string, issueType IssueType) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "UpdateType completed", "issueID", issueID, "type", issueType, "duration", time.Since(start))
-	}()
-
-	//nolint:gosec // G204: issueID comes from bd database, not user input
-	cmd := exec.Command("bd", "update", issueID,
-		"--type", string(issueType), "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd update type failed: %s", stderr.String())
-			log.Error(log.CatBeads, "UpdateType failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd update type failed: %w", err)
-		log.Error(log.CatBeads, "UpdateType failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// CloseIssue marks an issue as closed with a reason via bd CLI.
-func CloseIssue(issueID, reason string) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "CloseIssue completed", "issueID", issueID, "duration", time.Since(start))
-	}()
-
-	cmd := exec.Command("bd", "close", issueID,
-		"--reason", reason, "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd close failed: %s", stderr.String())
-			log.Error(log.CatBeads, "CloseIssue failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd close failed: %w", err)
-		log.Error(log.CatBeads, "CloseIssue failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// ReopenIssue reopens a closed issue via bd CLI.
-func ReopenIssue(issueID string) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "ReopenIssue completed", "issueID", issueID, "duration", time.Since(start))
-	}()
-
-	//nolint:gosec // G204: issueID comes from bd database, not user input
-	cmd := exec.Command("bd", "update", issueID,
-		"--status", string(StatusOpen), "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd reopen failed: %s", stderr.String())
-			log.Error(log.CatBeads, "ReopenIssue failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd reopen failed: %w", err)
-		log.Error(log.CatBeads, "ReopenIssue failed", "issueID", issueID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// DeleteIssues deletes one or more issues in a single bd CLI call.
-func DeleteIssues(issueIDs []string) error {
-	if len(issueIDs) == 0 {
-		return nil
-	}
-
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "DeleteIssues completed",
-			"count", len(issueIDs),
-			"duration", time.Since(start))
-	}()
-
-	args := append([]string{"delete"}, issueIDs...)
-	args = append(args, "--force", "--json")
-
-	//nolint:gosec // G204: issueIDs come from bd database, not user input
-	cmd := exec.Command("bd", args...)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd delete failed: %s", stderr.String())
-			log.Error(log.CatBeads, "DeleteIssues failed", "count", len(issueIDs), "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd delete failed: %w", err)
-		log.Error(log.CatBeads, "DeleteIssues failed", "count", len(issueIDs), "error", err)
-		return err
-	}
-	return nil
-}
-
-// SetLabels replaces all labels on an issue via bd CLI.
-// Pass an empty slice to remove all labels.
-func SetLabels(issueID string, labels []string) error {
-	start := time.Now()
-	defer func() {
-		log.Debug(log.CatBeads, "SetLabels completed", "issueID", issueID, "labels", strings.Join(labels, ","), "duration", time.Since(start))
-	}()
-
-	//nolint:gosec // G204: issueID and labels come from bd database, not user input
-	cmd := exec.Command("bd", "update", issueID,
-		"--set-labels", strings.Join(labels, ","), "--json")
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			err = fmt.Errorf("bd update set-labels failed: %s", stderr.String())
-			log.Error(log.CatBeads, "SetLabels failed", "issueID", issueID, "error", err)
-			return err
-		}
-		err = fmt.Errorf("bd update set-labels failed: %w", err)
-		log.Error(log.CatBeads, "SetLabels failed", "issueID", issueID, "error", err)
 		return err
 	}
 	return nil

@@ -50,6 +50,7 @@ type ProcessSessionDeliverer struct {
 	resumer         ProcessResumer
 	timeout         time.Duration
 	extensions      map[string]any
+	beadsDir        string
 }
 
 // ProcessSessionDelivererOption configures ProcessSessionDeliverer.
@@ -59,6 +60,13 @@ type ProcessSessionDelivererOption func(*ProcessSessionDeliverer)
 func WithDeliveryTimeout(timeout time.Duration) ProcessSessionDelivererOption {
 	return func(d *ProcessSessionDeliverer) {
 		d.timeout = timeout
+	}
+}
+
+// WithBeadsDir sets the beads database directory for spawned processes.
+func WithBeadsDir(beadsDir string) ProcessSessionDelivererOption {
+	return func(d *ProcessSessionDeliverer) {
+		d.beadsDir = beadsDir
 	}
 }
 
@@ -153,6 +161,7 @@ func (d *ProcessSessionDeliverer) Deliver(ctx context.Context, processID, conten
 	// If we used the parent context, the process would be killed when Deliver() returns.
 	proc, err := d.client.Spawn(context.Background(), client.Config{
 		WorkDir:         d.sessionProvider.GetWorkDir(),
+		BeadsDir:        d.beadsDir,
 		SessionID:       sessionID,
 		Prompt:          content,
 		MCPConfig:       mcpConfig,

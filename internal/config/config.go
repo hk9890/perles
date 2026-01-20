@@ -38,6 +38,11 @@ type Config struct {
 	Orchestration OrchestrationConfig `mapstructure:"orchestration"`
 	Sound         SoundConfig         `mapstructure:"sound"`
 	Flags         map[string]bool     `mapstructure:"flags"`
+
+	// ResolvedBeadsDir is the final resolved beads directory path after applying
+	// resolution priority (flag > env var > config > cwd). Used for propagation to agents.
+	// This field is not serialized to YAML.
+	ResolvedBeadsDir string `mapstructure:"-" yaml:"-"`
 }
 
 // UIConfig holds user interface configuration options.

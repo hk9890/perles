@@ -49,16 +49,17 @@ type Controller interface {
 
 // Services contains shared dependencies injected into mode controllers.
 type Services struct {
-	Client     beads.BeadsClient
-	Executor   bql.BQLExecutor
-	Config     *config.Config
-	ConfigPath string
-	DBPath     string
-	WorkDir    string // Application root directory (where perles was invoked)
-	Clipboard  shared.Clipboard
-	Clock      shared.Clock
-	Flags      *flags.Registry
-	Sounds     sound.SoundService
+	Client        beads.BeadsClient
+	Executor      bql.BQLExecutor
+	BeadsExecutor beads.BeadsExecutor // Executor for BD CLI commands (with proper BEADS_DIR)
+	Config        *config.Config
+	ConfigPath    string
+	DBPath        string
+	WorkDir       string // Application root directory (where perles was invoked)
+	Clipboard     shared.Clipboard
+	Clock         shared.Clock
+	Flags         *flags.Registry
+	Sounds        sound.SoundService
 	// GitExecutorFactory creates git executors for a given path.
 	// Used by orchestration mode to check uncommitted changes in worktrees.
 	GitExecutorFactory func(path string) git.GitExecutor

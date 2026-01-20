@@ -29,6 +29,22 @@ func TestBuildArgs_ResumeWithSessionID(t *testing.T) {
 	assert.Equal(t, []string{"exec", "--json", "resume", "019b6dea-903b-7bd3-aef5-202a16205a9a", "Follow up question"}, args)
 }
 
+func TestBuildArgs_ResumeWithSkipPermissions(t *testing.T) {
+	cfg := Config{
+		SessionID:       "019b6dea-903b-7bd3-aef5-202a16205a9a",
+		SkipPermissions: true,
+		Prompt:          "Follow up question",
+	}
+
+	args := buildArgs(cfg, true)
+
+	assert.Equal(t, []string{
+		"exec", "--json", "resume", "019b6dea-903b-7bd3-aef5-202a16205a9a",
+		"Follow up question",
+		"--dangerously-bypass-approvals-and-sandbox",
+	}, args)
+}
+
 func TestBuildArgs_ResumeWithoutSessionID(t *testing.T) {
 	cfg := Config{
 		SessionID: "",

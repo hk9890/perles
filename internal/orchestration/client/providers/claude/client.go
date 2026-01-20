@@ -40,6 +40,7 @@ func (c *ClaudeClient) Spawn(ctx context.Context, cfg client.Config) (client.Hea
 func configFromClient(cfg client.Config) Config {
 	return Config{
 		WorkDir:            cfg.WorkDir,
+		BeadsDir:           cfg.BeadsDir,
 		Prompt:             cfg.Prompt,
 		SessionID:          cfg.SessionID,
 		Model:              cfg.ClaudeModel(),

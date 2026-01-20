@@ -332,9 +332,10 @@ func (s *defaultSupervisor) Start(ctx context.Context, inst *WorkflowInstance) e
 	extensions := s.agentProvider.Extensions()
 
 	// Create coordinator MCP server with the v2 adapter
+	// Note: BeadsDir is empty here; the v2 infrastructure config handles BEADS_DIR for spawned processes
 	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
 		aiClient, messageRepo, workDir, port, extensions,
-		beads.NewRealExecutor(workDir), infra.Core.Adapter)
+		beads.NewRealExecutor(workDir, ""), infra.Core.Adapter)
 
 	// Create worker server cache for /worker/ routes
 	workerServers := newWorkerServerCache(messageRepo, nil, infra.Core.Adapter, infra.Internal.TurnEnforcer)

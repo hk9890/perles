@@ -9,6 +9,7 @@ import (
 // Config holds configuration for spawning a Codex process.
 type Config struct {
 	WorkDir         string
+	BeadsDir        string // Path to beads database directory for BEADS_DIR env var
 	Prompt          string
 	SessionID       string // For resume (Codex uses "sessions")
 	Model           string // e.g., "gpt-5.2-codex", "o4-mini" (default: gpt-5.2-codex)
@@ -37,6 +38,7 @@ func configFromClient(cfg client.Config) Config {
 
 	return Config{
 		WorkDir:         cfg.WorkDir,
+		BeadsDir:        cfg.BeadsDir,
 		Prompt:          prompt,
 		SessionID:       cfg.SessionID,
 		Model:           cfg.CodexModel(),

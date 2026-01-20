@@ -12,6 +12,7 @@ import (
 	"github.com/zjrosen/perles/internal/cachemanager"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/paths"
 	"github.com/zjrosen/perles/internal/ui/nobeads"
 	"github.com/zjrosen/perles/internal/ui/outdated"
 
@@ -150,13 +151,24 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting current directory: %w", err)
 	}
 
-	// Use provided beads directory or current directory for database
+	// Resolution priority for beads directory:
+	// 1. -b flag (already in cfg.BeadsDir via viper binding)
+	// 2. BEADS_DIR environment variable
+	// 3. beads_dir config file setting (already in cfg.BeadsDir)
+	// 4. Current working directory
 	dbPath := cfg.BeadsDir
+	if dbPath == "" {
+		dbPath = os.Getenv("BEADS_DIR")
+	}
 	if dbPath == "" {
 		dbPath = workDir
 	}
 
-	client, err := beads.NewClient(dbPath)
+	// Resolve full .beads path (handles redirect for worktrees, normalizes input)
+	cfg.ResolvedBeadsDir = paths.ResolveBeadsDir(dbPath)
+	log.Info(log.CatConfig, "resolved beads dir", "path", cfg.ResolvedBeadsDir)
+
+	client, err := beads.NewClient(cfg.ResolvedBeadsDir)
 	if err != nil {
 		// Show friendly TUI empty state instead of CLI error
 		return runNoBeadsMode()

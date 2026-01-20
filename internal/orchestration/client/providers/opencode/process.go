@@ -53,8 +53,10 @@ func spawnProcess(ctx context.Context, cfg Config, isResume bool) (*Process, err
 	// OPENCODE_CONFIG_CONTENT allows per-process MCP config without file conflicts
 	var env []string
 	if cfg.MCPConfig != "" {
-		env = []string{"OPENCODE_CONFIG_CONTENT=" + cfg.MCPConfig}
+		env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg.MCPConfig)
 	}
+	// Append common environment variables (BEADS_DIR if set)
+	env = append(env, client.BuildEnvVars(client.Config{BeadsDir: cfg.BeadsDir})...)
 
 	base, err := client.NewSpawnBuilder(ctx).
 		WithExecutable(execPath, args).

@@ -25,6 +25,9 @@ type SimpleInfrastructureConfig struct {
 	AgentProvider client.AgentProvider
 	// WorkDir is the working directory for the chat session.
 	WorkDir string
+	// BeadsDir is the path to the beads database directory.
+	// When set, spawned processes receive BEADS_DIR environment variable.
+	BeadsDir string
 	// SystemPrompt is the system prompt for the AI assistant.
 	SystemPrompt string
 	// InitialPrompt is the initial user message to start the conversation (optional).
@@ -115,10 +118,10 @@ func NewSimpleInfrastructure(cfg SimpleInfrastructureConfig) (*SimpleInfrastruct
 	cmdSubmitter := handler.NewProcessorSubmitterAdapter(cmdProcessor)
 
 	// Create simple process spawner (no MCP - port=0, empty MCP config)
-	spawner := newSimpleProcessSpawner(cfg.AgentProvider, cfg.WorkDir, cfg.SystemPrompt, cfg.InitialPrompt, cmdSubmitter, eventBus)
+	spawner := newSimpleProcessSpawner(cfg.AgentProvider, cfg.WorkDir, cfg.BeadsDir, cfg.SystemPrompt, cfg.InitialPrompt, cmdSubmitter, eventBus)
 
 	// Create simple message deliverer that spawns session resumes
-	deliverer := newSimpleMessageDeliverer(processRegistry, cfg.AgentProvider, cfg.WorkDir)
+	deliverer := newSimpleMessageDeliverer(processRegistry, cfg.AgentProvider, cfg.WorkDir, cfg.BeadsDir)
 
 	// Register only the 4 core handlers needed for chat:
 	// 1. SpawnProcess - create the AI process
@@ -190,6 +193,7 @@ func (i *SimpleInfrastructure) Shutdown() {
 type simpleProcessSpawner struct {
 	provider      client.AgentProvider
 	workDir       string
+	beadsDir      string
 	systemPrompt  string
 	initialPrompt string
 	submitter     process.CommandSubmitter
@@ -198,13 +202,14 @@ type simpleProcessSpawner struct {
 
 func newSimpleProcessSpawner(
 	provider client.AgentProvider,
-	workDir, systemPrompt, initialPrompt string,
+	workDir, beadsDir, systemPrompt, initialPrompt string,
 	submitter process.CommandSubmitter,
 	eventBus *pubsub.Broker[any],
 ) *simpleProcessSpawner {
 	return &simpleProcessSpawner{
 		provider:      provider,
 		workDir:       workDir,
+		beadsDir:      beadsDir,
 		systemPrompt:  systemPrompt,
 		initialPrompt: initialPrompt,
 		submitter:     submitter,
@@ -223,6 +228,7 @@ func (s *simpleProcessSpawner) SpawnProcess(ctx context.Context, id string, role
 	// Simple config: no MCP, custom system prompt
 	cfg := client.Config{
 		WorkDir:         s.workDir,
+		BeadsDir:        s.beadsDir,
 		SystemPrompt:    s.systemPrompt,
 		Prompt:          s.initialPrompt,
 		MCPConfig:       "", // No MCP tools
@@ -256,17 +262,20 @@ type simpleMessageDeliverer struct {
 	registry *process.ProcessRegistry
 	provider client.AgentProvider
 	workDir  string
+	beadsDir string
 }
 
 func newSimpleMessageDeliverer(
 	registry *process.ProcessRegistry,
 	provider client.AgentProvider,
 	workDir string,
+	beadsDir string,
 ) *simpleMessageDeliverer {
 	return &simpleMessageDeliverer{
 		registry: registry,
 		provider: provider,
 		workDir:  workDir,
+		beadsDir: beadsDir,
 	}
 }
 
@@ -294,6 +303,7 @@ func (d *simpleMessageDeliverer) Deliver(_ context.Context, processID, content s
 	// Use context.Background() because the process lifetime outlives this function
 	cfg := client.Config{
 		WorkDir:         d.workDir,
+		BeadsDir:        d.beadsDir,
 		SessionID:       sessionID,
 		Prompt:          content,
 		MCPConfig:       "", // No MCP tools for simple chat

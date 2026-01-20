@@ -728,9 +728,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case issueeditor.SaveMsg:
 		m.view = ViewSearch
 		return m, tea.Batch(
-			updatePriorityCmd(msg.IssueID, msg.Priority),
-			updateStatusCmd(msg.IssueID, msg.Status),
-			setLabelsCmd(msg.IssueID, msg.Labels),
+			m.updatePriorityCmd(msg.IssueID, msg.Priority),
+			m.updateStatusCmd(msg.IssueID, msg.Status),
+			m.setLabelsCmd(msg.IssueID, msg.Labels),
 		)
 
 	case issueeditor.CancelMsg:
@@ -1989,17 +1989,17 @@ func debounceSearch(version int, delay time.Duration) tea.Cmd {
 }
 
 // updatePriorityCmd creates a command to update an issue's priority.
-func updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
+func (m Model) updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.UpdatePriority(issueID, priority)
+		err := m.services.BeadsExecutor.UpdatePriority(issueID, priority)
 		return priorityChangedMsg{issueID: issueID, priority: priority, err: err}
 	}
 }
 
 // updateStatusCmd creates a command to update an issue's status.
-func updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
+func (m Model) updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.UpdateStatus(issueID, status)
+		err := m.services.BeadsExecutor.UpdateStatus(issueID, status)
 		return statusChangedMsg{issueID: issueID, status: status, err: err}
 	}
 }
@@ -2255,7 +2255,7 @@ func (m Model) handleModalSubmit(_ modal.SubmitMsg) (Model, tea.Cmd) {
 				m.selectedIssue.ID == m.treeRoot.ID
 			m.selectedIssue = nil
 			m.deleteIssueIDs = nil
-			return m, deleteIssueCmd(issueIDs, parentID, wasTreeRoot)
+			return m, m.deleteIssueCmd(issueIDs, parentID, wasTreeRoot)
 		}
 		m.view = ViewSearch
 		m.deleteIssueIDs = nil
@@ -2357,12 +2357,12 @@ type labelsChangedMsg struct {
 
 // Async commands
 
-func deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bool) tea.Cmd {
+func (m Model) deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bool) tea.Cmd {
 	return func() tea.Msg {
 		if len(issueIDs) == 0 {
 			return issueDeletedMsg{parentID: parentID, wasTreeRoot: wasTreeRoot, err: nil}
 		}
-		err := beads.DeleteIssues(issueIDs)
+		err := m.services.BeadsExecutor.DeleteIssues(issueIDs)
 		return issueDeletedMsg{
 			issueID:     issueIDs[0],
 			parentID:    parentID,
@@ -2372,9 +2372,9 @@ func deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bool) tea.Cm
 	}
 }
 
-func setLabelsCmd(issueID string, labels []string) tea.Cmd {
+func (m Model) setLabelsCmd(issueID string, labels []string) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.SetLabels(issueID, labels)
+		err := m.services.BeadsExecutor.SetLabels(issueID, labels)
 		return labelsChangedMsg{issueID: issueID, labels: labels, err: err}
 	}
 }

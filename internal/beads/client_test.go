@@ -2,8 +2,6 @@ package beads
 
 import (
 	"database/sql"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/zjrosen/perles/internal/testutil"
@@ -124,61 +122,4 @@ func TestClient_DB(t *testing.T) {
 	require.Same(t, db, returnedDB, "DB should return the same database instance")
 }
 
-func TestResolveBeadsDir_NoRedirect(t *testing.T) {
-	tmpDir := t.TempDir()
-	beadsDir := filepath.Join(tmpDir, ".beads")
-	require.NoError(t, os.MkdirAll(beadsDir, 0755))
-
-	result := resolveBeadsDir(tmpDir)
-	require.Equal(t, beadsDir, result)
-}
-
-func TestResolveBeadsDir_WithRedirect(t *testing.T) {
-	// Create worktree-like structure:
-	// worktree/.beads/redirect -> ../../main/.beads
-	// main/.beads/beads.db
-	tmpDir := t.TempDir()
-
-	mainBeadsDir := filepath.Join(tmpDir, "main", ".beads")
-	require.NoError(t, os.MkdirAll(mainBeadsDir, 0755))
-
-	worktreeBeadsDir := filepath.Join(tmpDir, "worktree", ".beads")
-	require.NoError(t, os.MkdirAll(worktreeBeadsDir, 0755))
-
-	// Create redirect file pointing to main beads dir
-	redirectPath := filepath.Join(worktreeBeadsDir, "redirect")
-	require.NoError(t, os.WriteFile(redirectPath, []byte("../../main/.beads"), 0644))
-
-	result := resolveBeadsDir(filepath.Join(tmpDir, "worktree"))
-	require.Equal(t, mainBeadsDir, result)
-}
-
-func TestResolveBeadsDir_EmptyRedirect(t *testing.T) {
-	tmpDir := t.TempDir()
-	beadsDir := filepath.Join(tmpDir, ".beads")
-	require.NoError(t, os.MkdirAll(beadsDir, 0755))
-
-	// Create empty redirect file
-	redirectPath := filepath.Join(beadsDir, "redirect")
-	require.NoError(t, os.WriteFile(redirectPath, []byte(""), 0644))
-
-	result := resolveBeadsDir(tmpDir)
-	require.Equal(t, beadsDir, result, "empty redirect should return original beads dir")
-}
-
-func TestResolveBeadsDir_RedirectWithWhitespace(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	mainBeadsDir := filepath.Join(tmpDir, "main", ".beads")
-	require.NoError(t, os.MkdirAll(mainBeadsDir, 0755))
-
-	worktreeBeadsDir := filepath.Join(tmpDir, "worktree", ".beads")
-	require.NoError(t, os.MkdirAll(worktreeBeadsDir, 0755))
-
-	// Create redirect file with trailing newline (common case)
-	redirectPath := filepath.Join(worktreeBeadsDir, "redirect")
-	require.NoError(t, os.WriteFile(redirectPath, []byte("../../main/.beads\n"), 0644))
-
-	result := resolveBeadsDir(filepath.Join(tmpDir, "worktree"))
-	require.Equal(t, mainBeadsDir, result)
-}
+// Note: ResolveBeadsDir tests are in internal/paths/beads_test.go

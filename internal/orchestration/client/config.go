@@ -7,6 +7,10 @@ type Config struct {
 	// WorkDir is the working directory for the process.
 	WorkDir string
 
+	// BeadsDir is the path to the beads database directory.
+	// When set, spawned processes receive BEADS_DIR environment variable.
+	BeadsDir string
+
 	// Prompt is the initial prompt to send to the AI.
 	Prompt string
 

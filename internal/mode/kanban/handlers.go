@@ -733,7 +733,7 @@ func (m Model) handleModalSubmit(msg modal.SubmitMsg) (Model, tea.Cmd) {
 			m.view = ViewBoard
 			m.deleteIssueIDs = nil
 			m.selectedIssue = nil
-			return m, deleteIssueCmd(issueIDs)
+			return m, m.deleteIssueCmd(issueIDs)
 		}
 		m.view = ViewBoard
 		return m, nil
@@ -775,12 +775,12 @@ type issueDeletedMsg struct {
 }
 
 // deleteIssueCmd creates a command that deletes the specified issues.
-func deleteIssueCmd(issueIDs []string) tea.Cmd {
+func (m Model) deleteIssueCmd(issueIDs []string) tea.Cmd {
 	return func() tea.Msg {
 		if len(issueIDs) == 0 {
 			return issueDeletedMsg{err: nil}
 		}
-		err := beads.DeleteIssues(issueIDs)
+		err := m.services.BeadsExecutor.DeleteIssues(issueIDs)
 		return issueDeletedMsg{err: err}
 	}
 }

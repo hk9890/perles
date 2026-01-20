@@ -190,9 +190,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.loading = true
 		m.board = m.board.InvalidateViews()
 		return m, tea.Batch(
-			updatePriorityCmd(msg.IssueID, msg.Priority),
-			updateStatusCmd(msg.IssueID, msg.Status),
-			setLabelsCmd(msg.IssueID, msg.Labels),
+			m.updatePriorityCmd(msg.IssueID, msg.Priority),
+			m.updateStatusCmd(msg.IssueID, msg.Status),
+			m.setLabelsCmd(msg.IssueID, msg.Labels),
 			m.board.LoadAllColumns(),
 		)
 
@@ -703,23 +703,23 @@ type viewMenuRenameMsg struct{}
 
 // Async commands
 
-func updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
+func (m Model) updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.UpdateStatus(issueID, status)
+		err := m.services.BeadsExecutor.UpdateStatus(issueID, status)
 		return statusChangedMsg{issueID, status, err}
 	}
 }
 
-func updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
+func (m Model) updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.UpdatePriority(issueID, priority)
+		err := m.services.BeadsExecutor.UpdatePriority(issueID, priority)
 		return priorityChangedMsg{issueID, priority, err}
 	}
 }
 
-func setLabelsCmd(issueID string, labels []string) tea.Cmd {
+func (m Model) setLabelsCmd(issueID string, labels []string) tea.Cmd {
 	return func() tea.Msg {
-		err := beads.SetLabels(issueID, labels)
+		err := m.services.BeadsExecutor.SetLabels(issueID, labels)
 		return labelsChangedMsg{issueID: issueID, labels: labels, err: err}
 	}
 }

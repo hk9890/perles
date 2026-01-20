@@ -140,16 +140,17 @@ func NewWithConfig(
 
 	// Create shared services
 	services := mode.Services{
-		Client:     client,
-		Config:     &cfg,
-		ConfigPath: configPath,
-		DBPath:     dbPath,
-		WorkDir:    workDir,
-		Executor:   bql.NewExecutor(client.DB(), bqlCache, depGraphCache),
-		Clipboard:  shared.SystemClipboard{},
-		Clock:      shared.RealClock{},
-		Flags:      flagService,
-		Sounds:     sound.NewSystemSoundService(cfg.Sound.Events),
+		Client:        client,
+		Config:        &cfg,
+		ConfigPath:    configPath,
+		DBPath:        dbPath,
+		WorkDir:       workDir,
+		Executor:      bql.NewExecutor(client.DB(), bqlCache, depGraphCache),
+		BeadsExecutor: beads.NewRealExecutor(workDir, cfg.ResolvedBeadsDir),
+		Clipboard:     shared.SystemClipboard{},
+		Clock:         shared.RealClock{},
+		Flags:         flagService,
+		Sounds:        sound.NewSystemSoundService(cfg.Sound.Events),
 		GitExecutorFactory: func(path string) git.GitExecutor {
 			return git.NewRealExecutor(path)
 		},
@@ -947,6 +948,7 @@ func (m Model) handleToggleChatPanel() (tea.Model, tea.Cmd) {
 			infra, err := v2.NewSimpleInfrastructure(v2.SimpleInfrastructureConfig{
 				AgentProvider: provider,
 				WorkDir:       m.chatPanel.Config().WorkDir,
+				BeadsDir:      m.services.Config.ResolvedBeadsDir,
 				SystemPrompt:  chatpanel.BuildAssistantSystemPrompt(),
 				InitialPrompt: chatpanel.BuildAssistantInitialPrompt(),
 			})

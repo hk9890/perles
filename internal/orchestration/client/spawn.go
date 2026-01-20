@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/zjrosen/perles/internal/log"
@@ -247,10 +248,12 @@ func (b *SpawnBuilder) Build() (*BaseProcess, error) {
 		bp.SetSessionRef(b.sessionRef)
 	}
 
-	// Log spawn attempt
+	// Log spawn attempt with full details for debugging
 	log.Debug(log.CatOrch, "Spawning process",
 		"subsystem", b.providerName,
 		"execPath", b.execPath,
+		"args", strings.Join(b.args, " "),
+		"env", strings.Join(b.env, " "),
 		"workDir", b.workDir)
 
 	// Start the process

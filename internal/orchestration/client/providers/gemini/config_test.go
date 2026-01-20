@@ -19,12 +19,14 @@ func TestConfigFromClient(t *testing.T) {
 			name: "basic fields pass through",
 			input: client.Config{
 				WorkDir:   "/work/dir",
+				BeadsDir:  "/path/to/beads",
 				Prompt:    "Hello",
 				Timeout:   5 * time.Minute,
 				MCPConfig: `{"servers":{}}`,
 			},
 			expected: Config{
 				WorkDir:   "/work/dir",
+				BeadsDir:  "/path/to/beads",
 				Prompt:    "Hello",
 				Model:     "gemini-3-pro-preview", // default model
 				Timeout:   5 * time.Minute,

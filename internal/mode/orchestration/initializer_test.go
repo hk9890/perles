@@ -125,6 +125,7 @@ func TestNewInitializerConfigFromModel_AllFields(t *testing.T) {
 
 	builder := NewInitializerConfigFromModel(
 		"/work/dir",
+		"/beads/dir", // beadsDir
 		provider,
 		"main",                              // worktreeBaseBranch
 		"custom-branch",                     // worktreeCustomBranch
@@ -135,6 +136,7 @@ func TestNewInitializerConfigFromModel_AllFields(t *testing.T) {
 	cfg := builder.Build()
 
 	require.Equal(t, "/work/dir", cfg.WorkDir)
+	require.Equal(t, "/beads/dir", cfg.BeadsDir)
 	require.Equal(t, client.ClientClaude, cfg.AgentProvider.Type())
 	require.Equal(t, "opus", cfg.AgentProvider.Extensions()[client.ExtClaudeModel])
 	require.Equal(t, "main", cfg.WorktreeBaseBranch)
@@ -149,6 +151,7 @@ func TestNewInitializerConfigFromModel_EmptyExtensions(t *testing.T) {
 
 	builder := NewInitializerConfigFromModel(
 		"/work/dir",
+		"", // beadsDir - empty
 		provider,
 		"",                            // no worktree
 		"",                            // no custom branch
@@ -168,7 +171,7 @@ func TestNewInitializerConfigFromModel_EmptyExtensions(t *testing.T) {
 func TestInitializerConfigBuilder_WithTimeout(t *testing.T) {
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -182,7 +185,7 @@ func TestWithTimeouts_SetsAllFields(t *testing.T) {
 	// Test that WithTimeouts sets all timeout configuration values
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -206,7 +209,7 @@ func TestWithTimeout_BackwardsCompatible(t *testing.T) {
 	// and maps to Timeouts.CoordinatorStart
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -296,7 +299,7 @@ func TestInitializerConfigBuilder_WithGitExecutor(t *testing.T) {
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -314,7 +317,7 @@ func TestInitializerConfigBuilder_WithRestoredSession(t *testing.T) {
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -328,7 +331,7 @@ func TestInitializerConfigBuilder_WithSoundService(t *testing.T) {
 	provider := client.NewAgentProvider(client.ClientClaude, nil)
 
 	builder := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	)
 
@@ -353,6 +356,7 @@ func TestInitializerConfigBuilder_Chaining(t *testing.T) {
 
 	cfg := NewInitializerConfigFromModel(
 		"/work/dir",
+		"", // beadsDir - empty
 		provider,
 		"develop",
 		"feature-branch",
@@ -389,7 +393,7 @@ func TestInitializerConfigBuilder_RuntimeFieldsDefaultToZero(t *testing.T) {
 	})
 
 	cfg := NewInitializerConfigFromModel(
-		"/work/dir", provider,
+		"/work/dir", "", provider,
 		"", "", config.TracingConfig{}, config.SessionStorageConfig{},
 	).Build()
 
@@ -414,6 +418,7 @@ func TestInitializerConfigBuilder_PartialModelState(t *testing.T) {
 
 	cfg := NewInitializerConfigFromModel(
 		"", // empty workDir
+		"", // empty beadsDir
 		provider,
 		"main", // worktree branch set
 		"",     // no custom branch
@@ -455,6 +460,7 @@ func TestInitializerConfigBuilder_ProducesEquivalentConfig(t *testing.T) {
 	// Build config using builder pattern
 	builderConfig := NewInitializerConfigFromModel(
 		"/work/dir",
+		"", // beadsDir - empty
 		provider,
 		"main",
 		"custom",
