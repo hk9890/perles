@@ -5,9 +5,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/orchestration/metrics"
 )
 
 func TestPhaseShortName(t *testing.T) {
@@ -204,4 +206,136 @@ func TestQueuedCountStyle_OrangeForeground(t *testing.T) {
 	// Dark: "#FFB347" (lighter orange for dark themes)
 	require.Equal(t, "#FFA500", adaptiveColor.Light, "light mode should be orange")
 	require.Equal(t, "#FFB347", adaptiveColor.Dark, "dark mode should be light orange")
+}
+
+// ============================================================================
+// Golden Tests for Worker Pane
+// ============================================================================
+//
+// These tests capture the visual output of the worker pane in various states.
+// They serve as baseline snapshots before refactoring to detect visual regressions.
+//
+// To update golden files: go test -update ./internal/mode/orchestration/...
+//
+// NOTE: StatusIndicator tests are in internal/ui/shared/panes/agentstatus_test.go
+// since the function was extracted to the shared panes package.
+
+// newTestWorkerModel creates a model configured for worker pane golden tests.
+// It sets up the minimal state needed to render the worker pane in isolation.
+func newTestWorkerModel() Model {
+	m := New(Config{})
+	m = m.SetSize(80, 24) // Standard terminal size for consistent output
+
+	// Ensure maps are initialized
+	m.workerPane.viewports = make(map[string]viewport.Model)
+	m.workerPane.contentDirty = make(map[string]bool)
+	m.workerPane.hasNewContent = make(map[string]bool)
+	m.workerPane.workerMessages = make(map[string][]ChatMessage)
+	m.workerPane.workerMetrics = make(map[string]*metrics.TokenMetrics)
+	m.workerPane.workerStatus = make(map[string]events.ProcessStatus)
+	m.workerPane.workerTaskIDs = make(map[string]string)
+	m.workerPane.workerPhases = make(map[string]events.ProcessPhase)
+	m.workerPane.workerQueueCounts = make(map[string]int)
+
+	return m
+}
+
+// addTestWorker adds a worker to the model with the given configuration.
+func addTestWorker(m Model, workerID string, status events.ProcessStatus, taskID string, phase events.ProcessPhase) Model {
+	// Add to workerIDs slice (used by ActiveWorkerIDs)
+	m.workerPane.workerIDs = append(m.workerPane.workerIDs, workerID)
+
+	m.workerPane.workerStatus[workerID] = status
+	m.workerPane.workerTaskIDs[workerID] = taskID
+	m.workerPane.workerPhases[workerID] = phase
+	m.workerPane.contentDirty[workerID] = true
+
+	// Add some sample output for realistic rendering
+	m.workerPane.workerMessages[workerID] = []ChatMessage{
+		{Role: "assistant", Content: "Working on the implementation..."},
+		{Role: "user", Content: "Task assigned: " + taskID},
+	}
+
+	return m
+}
+
+func TestWorkerPane_Golden_ReadyStatus(t *testing.T) {
+	// Ready status shows green empty circle ○
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusReady, "", events.ProcessPhaseIdle)
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_WorkingStatus(t *testing.T) {
+	// Working status shows blue filled circle ● and blue border
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_StoppedStatus(t *testing.T) {
+	// Stopped status shows ⚠ indicator and red border
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusStopped, "perles-xyz.2", events.ProcessPhaseIdle)
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_RetiredStatus(t *testing.T) {
+	// Retired status shows ✗ indicator and red border
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusRetired, "", events.ProcessPhaseIdle)
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_FailedStatus(t *testing.T) {
+	// Failed status shows ✗ indicator and red border (same as Retired)
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusFailed, "perles-err.1", events.ProcessPhaseIdle)
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_MultipleWorkersStacked(t *testing.T) {
+	// Multiple workers stacked vertically
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
+	m = addTestWorker(m, "worker-2", events.ProcessStatusReady, "", events.ProcessPhaseIdle)
+	m = addTestWorker(m, "worker-3", events.ProcessStatusWorking, "perles-xyz.2", events.ProcessPhaseReviewing)
+
+	pane := m.renderWorkerPanes(80, 60)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_WithMetrics(t *testing.T) {
+	// Worker pane with token metrics displayed in title right area
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
+	m.workerPane.workerMetrics["worker-1"] = &metrics.TokenMetrics{
+		TokensUsed:   25000,
+		TotalTokens:  200000,
+		OutputTokens: 800,
+		TotalCostUSD: 0.25,
+	}
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
+}
+
+func TestWorkerPane_Golden_WithQueueCount(t *testing.T) {
+	// Worker pane with queue count displayed in bottom-left
+	m := newTestWorkerModel()
+	m = addTestWorker(m, "worker-1", events.ProcessStatusWorking, "perles-abc.1", events.ProcessPhaseImplementing)
+	m.workerPane.workerQueueCounts["worker-1"] = 4
+
+	pane := m.renderSingleWorkerPane("worker-1", 80, 20)
+	teatest.RequireEqualOutput(t, []byte(pane))
 }

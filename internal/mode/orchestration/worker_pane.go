@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -23,15 +24,8 @@ var (
 	workerStoppedStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.AdaptiveColor{Light: "#F0A500", Dark: "#FFD93D"}) // Yellow/amber - stopped (caution)
 
-	workerRetiredStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"}) // Red - retired
-
 	workerMessageStyle = lipgloss.NewStyle().
 				Foreground(WorkerColor)
-
-	// Border colors for different process statuses
-	workerWorkingBorderColor = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"} // Blue - working
-	workerStoppedBorderColor = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"} // Red - stopped/retired
 )
 
 // maxRetiredWorkerViewports is the maximum number of retired worker viewports to keep.
@@ -66,22 +60,6 @@ func (m Model) cleanupRetiredWorkerViewports() Model {
 	return m
 }
 
-// statusIndicator returns the status indicator character and style for a worker status.
-func statusIndicator(status events.ProcessStatus) (string, lipgloss.Style) {
-	switch status {
-	case events.ProcessStatusReady:
-		return "○", workerReadyStyle // Green circle - ready/available
-	case events.ProcessStatusWorking:
-		return "●", workerWorkingStyle // Blue filled circle - actively working
-	case events.ProcessStatusStopped:
-		return "⚠", workerStoppedStyle // Yellow caution - stopped (can be resumed)
-	case events.ProcessStatusRetired, events.ProcessStatusFailed:
-		return "✗", workerRetiredStyle // Red X - retired
-	default:
-		return "?", workerReadyStyle
-	}
-}
-
 // phaseShortName returns a short display name for a workflow phase.
 // Used in pane titles to keep them compact.
 func phaseShortName(phase events.ProcessPhase) string {
@@ -107,7 +85,7 @@ func phaseShortName(phase events.ProcessPhase) string {
 // Format: "● WORKER-1 perles-abc.1 (impl)" when working with task,
 // or "○ WORKER-1" when idle/ready.
 func formatWorkerTitle(workerID string, status events.ProcessStatus, taskID string, phase events.ProcessPhase) string {
-	indicator, indicatorStyle := statusIndicator(status)
+	indicator, indicatorStyle := chatrender.StatusIndicator(status)
 
 	// Base title: "● WORKER-1"
 	title := fmt.Sprintf("%s %s", indicatorStyle.Render(indicator), strings.ToUpper(workerID))
@@ -209,27 +187,13 @@ func (m Model) renderSingleWorkerPane(workerID string, width, height int) string
 	leftTitle := formatWorkerTitle(workerID, status, taskID, phase)
 
 	// Build metrics display for right title
-	var metricsDisplay string
-	if workerMetrics, ok := m.workerPane.workerMetrics[workerID]; ok && workerMetrics != nil && workerMetrics.TokensUsed > 0 {
-		metricsDisplay = workerMetrics.FormatContextDisplay()
-	}
+	metricsDisplay := chatrender.FormatMetricsDisplay(m.workerPane.workerMetrics[workerID])
 
 	// Build bottom-left queue indicator
-	var bottomLeft string
-	if queueCount := m.workerPane.workerQueueCounts[workerID]; queueCount > 0 {
-		bottomLeft = QueuedCountStyle.Render(fmt.Sprintf("[%d queued]", queueCount))
-	}
+	bottomLeft := chatrender.FormatQueueCount(m.workerPane.workerQueueCounts[workerID])
 
 	// Determine border color based on status
-	var borderColor lipgloss.AdaptiveColor
-	switch status {
-	case events.ProcessStatusWorking:
-		borderColor = workerWorkingBorderColor
-	case events.ProcessStatusStopped, events.ProcessStatusRetired, events.ProcessStatusFailed:
-		borderColor = workerStoppedBorderColor
-	default:
-		borderColor = styles.BorderDefaultColor
-	}
+	borderColor := chatrender.StatusBorderColor(status)
 
 	// Use panes.ScrollablePane helper for viewport setup, padding, and auto-scroll
 	result := panes.ScrollablePane(width, height, panes.ScrollableConfig{

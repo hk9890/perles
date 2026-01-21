@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
+	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/styles"
 )
@@ -29,6 +30,7 @@ func (m Model) renderCoordinatorPane(width, height int, fullscreen bool) string 
 
 	if fullscreen {
 		// Fullscreen: simplified title, no metrics or new content indicator
+		// Uses hardcoded CoordinatorColor for border - intentionally bypasses StatusBorderColor()
 		leftTitle = "● COORDINATOR"
 		metricsDisplay = ""
 		hasNewContent = false
@@ -36,25 +38,14 @@ func (m Model) renderCoordinatorPane(width, height int, fullscreen bool) string 
 	} else {
 		// Normal: dynamic status title with metrics
 		leftTitle = m.buildCoordinatorTitle()
-		if m.coordinatorMetrics != nil && m.coordinatorMetrics.TokensUsed > 0 {
-			metricsDisplay = m.coordinatorMetrics.FormatContextDisplay()
-		}
+		metricsDisplay = chatrender.FormatMetricsDisplay(m.coordinatorMetrics)
 		hasNewContent = m.coordinatorPane.hasNewContent
-		// Determine border color based on status
-		switch m.coordinatorStatus {
-		case events.ProcessStatusWorking:
-			borderColor = workerWorkingBorderColor
-		case events.ProcessStatusStopped, events.ProcessStatusRetired, events.ProcessStatusFailed:
-			borderColor = workerStoppedBorderColor
-		default:
-			borderColor = styles.BorderDefaultColor
-		}
+		// Use shared helper for border color based on status
+		borderColor = chatrender.StatusBorderColor(m.coordinatorStatus)
 	}
 
-	// Add queue count if any messages are queued
-	if m.coordinatorPane.queueCount > 0 {
-		bottomLeft = QueuedCountStyle.Render(fmt.Sprintf("[%d queued]", m.coordinatorPane.queueCount))
-	}
+	// Add queue count if any messages are queued (using shared helper)
+	bottomLeft = chatrender.FormatQueueCount(m.coordinatorPane.queueCount)
 
 	// Use panes.ScrollablePane helper for viewport setup, padding, and auto-scroll
 	result := panes.ScrollablePane(width, height, panes.ScrollableConfig{
@@ -76,6 +67,10 @@ func (m Model) renderCoordinatorPane(width, height int, fullscreen bool) string 
 
 // buildCoordinatorTitle builds the left title with status indicator for the coordinator pane.
 // When port is available (> 0), it appends the port in muted style: "● COORDINATOR (8467)"
+//
+// NOTE: Coordinator does not use panes.StatusIndicator() for title building.
+// The coordinatorWorking flag toggles Ready/Working visuals independently of ProcessStatus.
+// See docs/proposals/agent-pane-extraction-proposal.md for rationale.
 func (m Model) buildCoordinatorTitle() string {
 	var indicator string
 	var indicatorStyle lipgloss.Style
