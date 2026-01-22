@@ -15,6 +15,7 @@ import (
 	appgit "github.com/zjrosen/perles/internal/git/application"
 	domaingit "github.com/zjrosen/perles/internal/git/domain"
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
@@ -68,12 +69,14 @@ func newTestSupervisorConfig(t *testing.T) (SupervisorConfig, *mocks.MockAgentPr
 	mockProvider := mocks.NewMockAgentProvider(t)
 	mockFactory := &mockInfrastructureFactory{}
 	portAllocator := NewPortAllocator(nil)
+	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	return SupervisorConfig{
 		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
 		ListenerFactory:       &mockListenerFactory{},
+		SessionFactory:        sessionFactory,
 	}, mockProvider, mockFactory
 }
 
@@ -161,7 +164,8 @@ func TestNewSupervisor_MissingPortAllocator(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		AgentProvider: mockProvider,
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		// PortAllocator is nil
 	}
 
@@ -174,7 +178,8 @@ func TestNewSupervisor_MissingPortAllocator(t *testing.T) {
 
 func TestNewSupervisor_MissingAgentProvider(t *testing.T) {
 	cfg := SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
+		PortAllocator:  NewPortAllocator(nil),
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		// AgentProvider is nil
 	}
 
@@ -189,8 +194,9 @@ func TestNewSupervisor_DefaultInfrastructureFactory(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		// InfrastructureFactory is nil - should use default
 	}
 
@@ -557,6 +563,7 @@ func TestSupervisor_Config_AcceptsGitExecutorFactory(t *testing.T) {
 	cfg := SupervisorConfig{
 		PortAllocator:      NewPortAllocator(nil),
 		AgentProvider:      mockProvider,
+		SessionFactory:     session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: gitFactory,
 	}
 
@@ -579,8 +586,9 @@ func TestSupervisor_Config_DefaultWorktreeTimeout(t *testing.T) {
 
 	// Create config without specifying WorktreeTimeout
 	cfg := SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	}
 
 	supervisor, err := NewSupervisor(cfg)
@@ -601,6 +609,7 @@ func TestSupervisor_Config_CustomWorktreeTimeout(t *testing.T) {
 	cfg := SupervisorConfig{
 		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		WorktreeTimeout: customTimeout,
 	}
 
@@ -621,9 +630,10 @@ func TestSupervisor_Config_AcceptsFlags(t *testing.T) {
 	})
 
 	cfg := SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
-		Flags:         flagsRegistry,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
+		Flags:          flagsRegistry,
 	}
 
 	supervisor, err := NewSupervisor(cfg)
@@ -668,6 +678,7 @@ func TestSupervisor_Start_CreatesWorktreeWhenEnabled(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -718,6 +729,7 @@ func TestSupervisor_Start_SkipsWorktreeWhenDisabled(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			factoryCalled = true
 			return mocks.NewMockGitExecutor(t)
@@ -761,6 +773,7 @@ func TestSupervisor_Start_UsesCustomBranchNameWhenSet(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -808,6 +821,7 @@ func TestSupervisor_Start_AutoGeneratesBranchNameWhenEmpty(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -857,6 +871,7 @@ func TestSupervisor_Start_SetsInstanceFieldsCorrectly(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -906,6 +921,7 @@ func TestSupervisor_Start_CleansUpWorktreeOnSubsequentFailure(t *testing.T) {
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -950,6 +966,7 @@ func TestSupervisor_Start_HandlesErrBranchAlreadyCheckedOut(t *testing.T) {
 		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -987,6 +1004,7 @@ func TestSupervisor_Start_HandlesTimeoutCorrectly(t *testing.T) {
 		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		WorktreeTimeout: 100 * time.Millisecond, // Short timeout for test
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
@@ -1027,6 +1045,7 @@ func TestSupervisor_Stop_ReturnsErrUncommittedChanges(t *testing.T) {
 		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -1064,6 +1083,7 @@ func TestSupervisor_Stop_BypassesUncommittedCheckWhenForceTrue(t *testing.T) {
 		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -1106,6 +1126,7 @@ func TestSupervisor_Stop_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -1148,6 +1169,7 @@ func TestSupervisor_Stop_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -1191,6 +1213,7 @@ func TestSupervisor_Stop_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			return mockGitExecutor
 		},
@@ -1228,6 +1251,7 @@ func TestSupervisor_Stop_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
+		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
 			factoryCalled = true
 			return mocks.NewMockGitExecutor(t)
@@ -1253,4 +1277,96 @@ func TestSupervisor_Stop_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
 	require.Equal(t, WorkflowStopped, inst.State)
 	// GitExecutorFactory should NOT be called when WorktreePath is empty
 	require.False(t, factoryCalled, "GitExecutorFactory should not be called when WorktreePath is empty")
+}
+
+// === Session Factory Integration Tests ===
+
+func TestSupervisor_Start_CreatesSessionWhenFactoryConfigured(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+
+	// Configure session factory with temp directory
+	sessionBaseDir := t.TempDir()
+	cfg.SessionFactory = session.NewFactory(session.FactoryConfig{
+		BaseDir: sessionBaseDir,
+	})
+
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow-with-session")
+
+	// Setup mock infrastructure
+	infra := createMinimalInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil)
+	setupAgentProviderMock(t, mockProvider)
+
+	// Start the processor for the test
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	// Execute Start
+	err = supervisor.Start(ctx, inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowRunning, inst.State)
+
+	// Verify session was created and attached to instance
+	require.NotNil(t, inst.Session, "Session should be created when factory is configured")
+	require.NotEmpty(t, inst.Session.Dir, "Session directory should be set")
+	require.DirExists(t, inst.Session.Dir, "Session directory should exist on disk")
+
+	// Verify session ID matches workflow ID
+	require.Equal(t, inst.ID.String(), inst.Session.ID, "Session ID should match workflow ID")
+
+	mockFactory.AssertExpectations(t)
+}
+
+func TestSupervisor_Stop_ClosesSession(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+	// SessionFactory already provided by newTestSupervisorConfig
+	sessionBaseDir := t.TempDir()
+	cfg.SessionFactory = session.NewFactory(session.FactoryConfig{
+		BaseDir: sessionBaseDir,
+	})
+
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow-stop-session")
+
+	// Setup mock infrastructure
+	infra := createMinimalInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil)
+	setupAgentProviderMock(t, mockProvider)
+
+	// Start the processor and workflow
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	err = supervisor.Start(ctx, inst)
+	require.NoError(t, err)
+	require.NotNil(t, inst.Session)
+
+	sessionDir := inst.Session.Dir
+
+	// Stop the workflow
+	err = supervisor.Stop(ctx, inst, StopOptions{})
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowStopped, inst.State)
+
+	// Session should be nil (closed)
+	require.Nil(t, inst.Session, "Session should be set to nil after close")
+
+	// Session directory should still exist (data preserved)
+	require.DirExists(t, sessionDir, "Session directory should persist after close")
+
+	// Verify metadata shows completed status
+	meta, err := session.Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, session.StatusCompleted, meta.Status, "Session should be marked completed")
 }

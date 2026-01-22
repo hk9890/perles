@@ -28,6 +28,7 @@ import (
 	"github.com/zjrosen/perles/internal/mode/search"
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/orchestration/controlplane"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
@@ -1187,6 +1188,12 @@ func (m *Model) createControlPlane() controlplane.ControlPlane {
 		EndPort:   19100,
 	})
 
+	// Create session factory for workflow session tracking
+	sessionFactory := session.NewFactory(session.FactoryConfig{
+		BaseDir:     orchConfig.SessionStorage.BaseDir,
+		GitExecutor: m.services.GitExecutorFactory(m.services.WorkDir),
+	})
+
 	// Create supervisor with full configuration
 	supervisor, err := controlplane.NewSupervisor(controlplane.SupervisorConfig{
 		PortAllocator:      portAllocator,
@@ -1194,6 +1201,7 @@ func (m *Model) createControlPlane() controlplane.ControlPlane {
 		WorkflowRegistry:   m.workflowRegistry,
 		GitExecutorFactory: m.services.GitExecutorFactory,
 		Flags:              m.services.Flags,
+		SessionFactory:     sessionFactory,
 	})
 	if err != nil {
 		log.Error(log.CatMode, "Failed to create Supervisor", "error", err)

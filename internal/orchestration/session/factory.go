@@ -1,0 +1,130 @@
+package session
+
+import (
+	"fmt"
+	"time"
+)
+
+// Factory creates Session instances with consistent path building and configuration.
+// It is shared between mode/orchestration.Initializer and controlplane.Supervisor
+// to ensure sessions are created with the same directory structure and options.
+type Factory struct {
+	baseDir     string
+	gitExecutor GitRemoteGetter
+}
+
+// FactoryConfig holds configuration for creating a Factory.
+type FactoryConfig struct {
+	// BaseDir is the root directory for session storage.
+	// If empty, DefaultBaseDir() (~/.perles/sessions) is used.
+	BaseDir string
+
+	// GitExecutor is used to derive the application name from git remote.
+	// If nil, the application name falls back to the work directory basename.
+	GitExecutor GitRemoteGetter
+}
+
+// NewFactory creates a new session Factory with the given configuration.
+func NewFactory(cfg FactoryConfig) *Factory {
+	baseDir := cfg.BaseDir
+	if baseDir == "" {
+		baseDir = DefaultBaseDir()
+	}
+	return &Factory{
+		baseDir:     baseDir,
+		gitExecutor: cfg.GitExecutor,
+	}
+}
+
+// CreateOptions holds options for creating a new session.
+type CreateOptions struct {
+	// SessionID is the unique identifier for the session (typically a UUID).
+	SessionID string
+
+	// WorkDir is the project working directory.
+	// Used for deriving application name if not explicitly set.
+	WorkDir string
+
+	// ApplicationName overrides the derived application name.
+	// If empty, it's derived from git remote or WorkDir basename.
+	ApplicationName string
+}
+
+// Create creates a new session with the given options.
+// It derives the application name, builds the session path, creates the directory
+// structure, and returns an initialized Session ready for writing.
+func (f *Factory) Create(opts CreateOptions) (*Session, error) {
+	if opts.SessionID == "" {
+		return nil, fmt.Errorf("SessionID is required")
+	}
+	if opts.WorkDir == "" {
+		return nil, fmt.Errorf("WorkDir is required")
+	}
+
+	// Derive application name
+	appName := opts.ApplicationName
+	if appName == "" {
+		appName = DeriveApplicationName(opts.WorkDir, f.gitExecutor)
+	}
+
+	// Build session path
+	pathBuilder := NewSessionPathBuilder(f.baseDir, appName)
+	now := time.Now()
+	sessionDir := pathBuilder.SessionDir(opts.SessionID, now)
+	datePartition := now.Format("2006-01-02")
+
+	// Create session with all options
+	sess, err := New(opts.SessionID, sessionDir,
+		WithWorkDir(opts.WorkDir),
+		WithApplicationName(appName),
+		WithDatePartition(datePartition),
+		WithPathBuilder(pathBuilder),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating session: %w", err)
+	}
+
+	return sess, nil
+}
+
+// Reopen reopens an existing session for continued writing (session resumption).
+// This is used when restoring from a previous session.
+func (f *Factory) Reopen(opts CreateOptions, existingDir string) (*Session, error) {
+	if opts.SessionID == "" {
+		return nil, fmt.Errorf("SessionID is required")
+	}
+	if existingDir == "" {
+		return nil, fmt.Errorf("existingDir is required")
+	}
+
+	// Derive application name
+	appName := opts.ApplicationName
+	if appName == "" {
+		appName = DeriveApplicationName(opts.WorkDir, f.gitExecutor)
+	}
+
+	// Build path builder for consistency (needed for index updates)
+	pathBuilder := NewSessionPathBuilder(f.baseDir, appName)
+
+	// Extract date partition from existing directory if possible
+	// Format: {base}/{app}/{date}/{id} - we need the date component
+	datePartition := time.Now().Format("2006-01-02") // fallback
+
+	// Reopen existing session in append mode
+	sess, err := Reopen(opts.SessionID, existingDir,
+		WithWorkDir(opts.WorkDir),
+		WithApplicationName(appName),
+		WithDatePartition(datePartition),
+		WithPathBuilder(pathBuilder),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("reopening session: %w", err)
+	}
+
+	return sess, nil
+}
+
+// BaseDir returns the configured base directory.
+func (f *Factory) BaseDir() string {
+	return f.baseDir
+}

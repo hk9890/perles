@@ -121,6 +121,14 @@ type SupervisorConfig struct {
 	// Used to check FlagRemoveWorktree when stopping workflows.
 	// If nil, worktree cleanup is skipped.
 	Flags *flags.Registry
+
+	// SessionFactory creates session instances for workflow tracking.
+	// Required - sessions persist workflow logs to ~/.perles/sessions/.
+	SessionFactory *session.Factory
+
+	// SoundService provides audio feedback for orchestration events.
+	// Optional - if nil, uses NoopSoundService (no audio).
+	SoundService sound.SoundService
 }
 
 // defaultSupervisor is the default implementation of Supervisor.
@@ -133,6 +141,8 @@ type defaultSupervisor struct {
 	gitExecutorFactory    func(workDir string) appgit.GitExecutor
 	worktreeTimeout       time.Duration
 	flags                 *flags.Registry
+	sessionFactory        *session.Factory
+	soundService          sound.SoundService
 }
 
 // NewSupervisor creates a new Supervisor with the given configuration.
@@ -142,6 +152,9 @@ func NewSupervisor(cfg SupervisorConfig) (Supervisor, error) {
 	}
 	if cfg.AgentProvider == nil {
 		return nil, fmt.Errorf("AgentProvider is required")
+	}
+	if cfg.SessionFactory == nil {
+		return nil, fmt.Errorf("SessionFactory is required")
 	}
 
 	infraFactory := cfg.InfrastructureFactory
@@ -169,6 +182,7 @@ func NewSupervisor(cfg SupervisorConfig) (Supervisor, error) {
 		gitExecutorFactory:    cfg.GitExecutorFactory,
 		worktreeTimeout:       worktreeTimeout,
 		flags:                 cfg.Flags,
+		sessionFactory:        cfg.SessionFactory,
 	}, nil
 }
 
@@ -299,15 +313,29 @@ func (s *defaultSupervisor) Start(ctx context.Context, inst *WorkflowInstance) e
 	// Step 3: Create message repository for this workflow
 	messageRepo := repository.NewMemoryMessageRepository()
 
-	// Step 4: Create InfrastructureConfig
+	// Step 3.5: Create session for this workflow
 	workDir := getWorkDir(inst)
+	sess, err := s.sessionFactory.Create(session.CreateOptions{
+		SessionID: inst.ID.String(),
+		WorkDir:   workDir,
+	})
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("creating session: %w", err)
+	}
+	log.Debug(log.CatOrch, "Session created for workflow", "subsystem", "supervisor",
+		"workflowID", inst.ID, "sessionDir", sess.Dir)
+
+	// Step 4: Create InfrastructureConfig
 	infraCfg := v2.InfrastructureConfig{
-		Port:          port,
-		AgentProvider: s.agentProvider,
-		WorkDir:       workDir,
-		MessageRepo:   messageRepo,
-		SessionID:     inst.ID.String(),
-		// SessionDir will be set when session tracking is integrated
+		Port:                    port,
+		AgentProvider:           s.agentProvider,
+		WorkDir:                 workDir,
+		MessageRepo:             messageRepo,
+		SessionID:               inst.ID.String(),
+		SessionDir:              sess.Dir,
+		SessionRefNotifier:      sess,
+		SessionMetadataProvider: sess,
 	}
 
 	// Step 5: Create Infrastructure
@@ -316,6 +344,10 @@ func (s *defaultSupervisor) Start(ctx context.Context, inst *WorkflowInstance) e
 		cleanup()
 		return fmt.Errorf("creating infrastructure: %w", err)
 	}
+
+	// Step 5.5: Attach session to event brokers for logging
+	sess.AttachToBrokers(workflowCtx, nil, messageRepo.Broker(), nil)
+	sess.AttachV2EventBus(workflowCtx, infra.Core.EventBus)
 
 	// Step 6: Start infrastructure (command processor)
 	if err := infra.Start(workflowCtx); err != nil {
@@ -337,6 +369,9 @@ func (s *defaultSupervisor) Start(ctx context.Context, inst *WorkflowInstance) e
 	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
 		aiClient, messageRepo, workDir, port, extensions,
 		infrabeads.NewBDExecutor(workDir, ""), infra.Core.Adapter)
+
+	// Attach MCP broker to session for mcp_requests.jsonl logging
+	sess.AttachMCPBroker(workflowCtx, mcpCoordServer.Broker())
 
 	// Create worker server cache for /worker/ routes
 	workerServers := newWorkerServerCache(messageRepo, nil, infra.Core.Adapter, infra.Internal.TurnEnforcer)
@@ -410,6 +445,7 @@ func (s *defaultSupervisor) Start(ctx context.Context, inst *WorkflowInstance) e
 	inst.HTTPServer = httpServer
 	inst.MCPCoordServer = mcpCoordServer
 	inst.MessageRepo = messageRepo
+	inst.Session = sess // May be nil if session factory not configured
 
 	return nil
 }

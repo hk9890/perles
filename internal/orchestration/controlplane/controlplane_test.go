@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
@@ -50,12 +51,14 @@ func newTestControlPlane(t *testing.T) (ControlPlane, *mockInfrastructureFactory
 	mockFactory := &mockInfrastructureFactory{}
 	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
+	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
 		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
 		ListenerFactory:       &testListenerFactory{},
+		SessionFactory:        sessionFactory,
 	})
 	require.NoError(t, err)
 
@@ -142,8 +145,9 @@ func TestNewControlPlane_ValidConfig(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	registry := NewInMemoryRegistry()
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
 	require.NoError(t, err)
 
@@ -159,8 +163,9 @@ func TestNewControlPlane_ValidConfig(t *testing.T) {
 func TestNewControlPlane_MissingRegistry(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
 	require.NoError(t, err)
 
@@ -595,10 +600,12 @@ func newTestControlPlaneWithEventBus(t *testing.T) (ControlPlane, *CrossWorkflow
 	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
 	eventBus := NewCrossWorkflowEventBus()
+	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator: portAllocator,
-		AgentProvider: mockProvider,
+		PortAllocator:  portAllocator,
+		AgentProvider:  mockProvider,
+		SessionFactory: sessionFactory,
 	})
 	require.NoError(t, err)
 
@@ -944,8 +951,9 @@ func TestControlPlane_NewControlPlaneCreatesDefaultEventBus(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	registry := NewInMemoryRegistry()
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator: NewPortAllocator(nil),
-		AgentProvider: mockProvider,
+		PortAllocator:  NewPortAllocator(nil),
+		AgentProvider:  mockProvider,
+		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
 	require.NoError(t, err)
 
@@ -1149,11 +1157,13 @@ func TestControlPlane_Shutdown_WithHealthMonitor(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
+	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
 		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
+		SessionFactory:        sessionFactory,
 	})
 	require.NoError(t, err)
 
