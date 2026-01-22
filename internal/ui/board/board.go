@@ -2,6 +2,11 @@
 package board
 
 import (
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
+
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/config"
@@ -9,11 +14,14 @@ import (
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/shared/panes"
 	"github.com/zjrosen/perles/internal/ui/styles"
-
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
+
+// IssueClickedMsg is emitted when a user clicks on an issue in the board.
+// The kanban mode handler should convert this to a SwitchToSearchMsg with SubModeTree
+// to match the Enter key behavior.
+type IssueClickedMsg struct {
+	IssueID string
+}
 
 // ColumnIndex identifies kanban columns (backward compatibility).
 // Deprecated: Use int directly with NewFromConfig for custom columns.
@@ -435,6 +443,42 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		return m, nil
 
+	case tea.MouseMsg:
+		// Only handle left-click release events
+		if msg.Button != tea.MouseButtonLeft || msg.Action != tea.MouseActionRelease {
+			return m, nil
+		}
+
+		// Check if click is within any registered issue zone
+		// Iterate through all columns and their items to find the clicked zone
+		for colIdx, col := range m.columns {
+			// Handle BQL columns (Column type)
+			if c, ok := col.(Column); ok {
+				for _, issue := range c.Items() {
+					zoneID := makeZoneID(colIdx, issue.ID)
+					if z := zone.Get(zoneID); z != nil && z.InBounds(msg) {
+						// Select the issue and emit click message
+						m, _ = m.SelectByID(issue.ID)
+						return m, func() tea.Msg { return IssueClickedMsg{IssueID: issue.ID} }
+					}
+				}
+				continue
+			}
+
+			// Handle TreeColumn
+			if tc, ok := col.(TreeColumn); ok {
+				for _, issueID := range tc.VisibleIssueIDs() {
+					zoneID := makeZoneID(colIdx, issueID)
+					if z := zone.Get(zoneID); z != nil && z.InBounds(msg) {
+						// Select the issue and emit click message
+						m, _ = m.SelectByID(issueID)
+						return m, func() tea.Msg { return IssueClickedMsg{IssueID: issueID} }
+					}
+				}
+			}
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Common.Left):
@@ -499,7 +543,8 @@ func (m Model) View() string {
 		cols = append(cols, rendered)
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	// Scan for zone markers and register positions for mouse click detection
+	return zone.Scan(lipgloss.JoinHorizontal(lipgloss.Top, cols...))
 }
 
 // renderEmptyState renders a centered message when no columns are configured.

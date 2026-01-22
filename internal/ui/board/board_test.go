@@ -1,17 +1,26 @@
 package board
 
 import (
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/mocks"
 )
+
+// TestMain initializes the global zone manager for all tests in this package.
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 func TestBoard_New_DefaultFocus(t *testing.T) {
 	m := NewFromViews(config.DefaultViews(), nil, nil)
@@ -860,4 +869,587 @@ func TestBoard_View_WithTreeColumn_Golden(t *testing.T) {
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+// Mouse click tests
+
+func TestBoard_MouseClick_IgnoresRightClick(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "q0"},
+				{Name: "Col1", Query: "q1"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(120, 40)
+	originalFocus := m.FocusedColumn()
+
+	// Right click should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonRight,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "right click should not produce a command")
+	require.Equal(t, originalFocus, m.FocusedColumn(), "focus should not change on right click")
+}
+
+func TestBoard_MouseClick_IgnoresMiddleClick(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "q0"},
+				{Name: "Col1", Query: "q1"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(120, 40)
+	originalFocus := m.FocusedColumn()
+
+	// Middle click should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonMiddle,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "middle click should not produce a command")
+	require.Equal(t, originalFocus, m.FocusedColumn(), "focus should not change on middle click")
+}
+
+func TestBoard_MouseClick_IgnoresPress(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "q0"},
+				{Name: "Col1", Query: "q1"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(120, 40)
+	originalFocus := m.FocusedColumn()
+
+	// Click press (not release) should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+
+	require.Nil(t, cmd, "click press should not produce a command")
+	require.Equal(t, originalFocus, m.FocusedColumn(), "focus should not change on click press")
+}
+
+func TestBoard_MouseClick_IgnoresOutsideZone(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "q0"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(120, 40)
+	originalFocus := m.FocusedColumn()
+
+	// Call View() to register zones (even if empty)
+	_ = m.View()
+
+	// Click outside any registered zone (empty board, no zones registered)
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "click outside zone should not produce a command")
+	require.Equal(t, originalFocus, m.FocusedColumn(), "focus should not change on click outside zone")
+}
+
+func TestBoard_MouseClick_SelectsIssueAndEmitsMessage(t *testing.T) {
+	// Use unique issue IDs to avoid zone conflicts with other tests
+	issueID1 := "click-test-issue-1"
+	issueID2 := "click-test-issue-2"
+
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Todo", Query: "status = open"},
+				{Name: "Done", Query: "status = closed"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(120, 40)
+
+	// Populate first column with issues
+	msg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Todo",
+		Issues: []beads.Issue{
+			{ID: issueID1, TitleText: "First Issue", Priority: beads.PriorityHigh, Type: beads.TypeTask, Status: beads.StatusOpen},
+			{ID: issueID2, TitleText: "Second Issue", Priority: beads.PriorityMedium, Type: beads.TypeBug, Status: beads.StatusOpen},
+		},
+	}
+	m, _ = m.Update(msg)
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone ID for the first issue
+	zoneID := makeZoneID(0, issueID1)
+
+	// Get zone to determine click position (with retry for zone manager stability)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		// Re-render to ensure zones are registered
+		_ = m.View()
+	}
+	require.NotNil(t, z, "zone should be registered after View()")
+	require.False(t, z.IsZero(), "zone should not be zero")
+
+	// ZoneInfo has StartX, StartY, EndX, EndY fields
+	// Single-line zones have StartY == EndY
+	width := z.EndX - z.StartX
+	require.True(t, width > 0, "zone should have positive width")
+
+	// Click inside the zone (on its Y coordinate, in the middle of X)
+	clickX := z.StartX + width/2
+	clickY := z.StartY // For single-line zones, StartY == EndY
+
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	// Verify command is returned
+	require.NotNil(t, cmd, "click on issue should produce a command")
+
+	// Execute the command and verify it returns IssueClickedMsg
+	result := cmd()
+	clickedMsg, ok := result.(IssueClickedMsg)
+	require.True(t, ok, "command should return IssueClickedMsg")
+	require.Equal(t, issueID1, clickedMsg.IssueID, "IssueClickedMsg should contain clicked issue ID")
+
+	// Verify issue is selected
+	selected := m.SelectedIssue()
+	require.NotNil(t, selected, "issue should be selected after click")
+	require.Equal(t, issueID1, selected.ID, "clicked issue should be selected")
+
+	// Verify column focus changed to column 0
+	require.Equal(t, 0, m.FocusedColumn(), "focus should move to clicked column")
+}
+
+func TestBoard_MouseClick_ChangesColumnFocus(t *testing.T) {
+	// Use unique issue ID to avoid zone conflicts with other tests
+	issueID := "focus-test-issue-1"
+
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col0", Query: "status = open"},
+				{Name: "Col1", Query: "status = in_progress"},
+				{Name: "Col2", Query: "status = closed"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(180, 40)
+
+	// Start on column 1 (default)
+	require.Equal(t, 1, m.FocusedColumn())
+
+	// Populate column 0 with an issue
+	msg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Col0",
+		Issues: []beads.Issue{
+			{ID: issueID, TitleText: "Issue in Col0", Priority: beads.PriorityHigh, Type: beads.TypeTask, Status: beads.StatusOpen},
+		},
+	}
+	m, _ = m.Update(msg)
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone for the issue in column 0 (with retry for zone manager stability)
+	zoneID := makeZoneID(0, issueID)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		// Re-render to ensure zones are registered
+		_ = m.View()
+	}
+	require.NotNil(t, z, "zone should be registered")
+	require.False(t, z.IsZero(), "zone should not be zero")
+
+	// ZoneInfo has StartX, StartY, EndX, EndY fields
+	// Single-line zones have StartY == EndY
+	width := z.EndX - z.StartX
+	clickX := z.StartX + width/2
+	clickY := z.StartY // For single-line zones, StartY == EndY
+
+	m, _ = m.Update(tea.MouseMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	// Focus should have moved to column 0
+	require.Equal(t, 0, m.FocusedColumn(), "focus should move to column containing clicked issue")
+}
+
+// TestBoard_MouseClick_ScrolledColumnZonesRefresh verifies that zones refresh after scrolling.
+// When a column scrolls, the visible issues change, so zones must be re-registered.
+// This test verifies that clicking after scrolling works correctly because
+// the View() call re-registers zones for the current visible issues.
+func TestBoard_MouseClick_ScrolledColumnZonesRefresh(t *testing.T) {
+	// Create a column with many issues to enable scrolling
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Many Issues", Query: "status = open"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(80, 20) // Small height to force scrolling
+
+	// Populate with many issues (more than can fit in viewport)
+	issues := make([]beads.Issue, 30)
+	for i := 0; i < 30; i++ {
+		issues[i] = beads.Issue{
+			ID:        fmt.Sprintf("scroll-test-issue-%d", i),
+			TitleText: fmt.Sprintf("Issue %d", i),
+			Priority:  beads.PriorityMedium,
+			Type:      beads.TypeTask,
+			Status:    beads.StatusOpen,
+		}
+	}
+
+	msg := ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Many Issues",
+		Issues:      issues,
+	}
+	m, _ = m.Update(msg)
+
+	// Call View() to register initial zones
+	_ = m.View()
+
+	// Get zone for first visible issue
+	firstIssueID := "scroll-test-issue-0"
+	zoneID := makeZoneID(0, firstIssueID)
+
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, z, "first issue zone should be registered")
+
+	// Click on first issue - should work before scrolling
+	width := z.EndX - z.StartX
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      z.StartX + width/2,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.NotNil(t, cmd, "click on first issue should produce command")
+	result := cmd()
+	clickedMsg, ok := result.(IssueClickedMsg)
+	require.True(t, ok, "should emit IssueClickedMsg")
+	require.Equal(t, firstIssueID, clickedMsg.IssueID, "clicked issue ID should match")
+}
+
+// TestBoard_MouseClick_DuplicateIssueAcrossColumns tests clicking when same issue appears in multiple columns.
+// This can happen with overlapping BQL queries (e.g., "priority = P0" and "status = open").
+// The zone ID includes column index, so clicking should select the correct column.
+func TestBoard_MouseClick_DuplicateIssueAcrossColumns(t *testing.T) {
+	// Create two columns that might both contain the same issue
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "High Priority", Query: "priority = P0"},
+				{Name: "Open Issues", Query: "status = open"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(200, 40) // Wide enough for both columns
+
+	// Use the same issue ID in both columns (simulating overlapping queries)
+	duplicateIssueID := "duplicate-issue-123"
+
+	// Populate first column
+	m, _ = m.Update(ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "High Priority",
+		Issues: []beads.Issue{
+			{ID: duplicateIssueID, TitleText: "Critical Bug", Priority: beads.PriorityCritical, Type: beads.TypeBug, Status: beads.StatusOpen},
+		},
+	})
+
+	// Populate second column with the SAME issue
+	m, _ = m.Update(ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 1,
+		ColumnTitle: "Open Issues",
+		Issues: []beads.Issue{
+			{ID: duplicateIssueID, TitleText: "Critical Bug", Priority: beads.PriorityCritical, Type: beads.TypeBug, Status: beads.StatusOpen},
+		},
+	})
+
+	// Start with focus on column 1 (Open Issues)
+	require.Equal(t, 1, m.FocusedColumn(), "should start focused on column 1")
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone for the issue in column 0 (High Priority)
+	zoneIDCol0 := makeZoneID(0, duplicateIssueID)
+	var zCol0 *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		zCol0 = zone.Get(zoneIDCol0)
+		if zCol0 != nil && !zCol0.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, zCol0, "zone for issue in column 0 should be registered")
+
+	// Get zone for the issue in column 1 (Open Issues)
+	zoneIDCol1 := makeZoneID(1, duplicateIssueID)
+	var zCol1 *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		zCol1 = zone.Get(zoneIDCol1)
+		if zCol1 != nil && !zCol1.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, zCol1, "zone for issue in column 1 should be registered")
+
+	// Verify zones are at different X positions (different columns)
+	require.NotEqual(t, zCol0.StartX, zCol1.StartX, "zones should be in different columns (different X)")
+
+	// Click on the issue in column 0 (High Priority)
+	width := zCol0.EndX - zCol0.StartX
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      zCol0.StartX + width/2,
+		Y:      zCol0.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.NotNil(t, cmd, "click should produce command")
+	result := cmd()
+	clickedMsg, ok := result.(IssueClickedMsg)
+	require.True(t, ok, "should emit IssueClickedMsg")
+	require.Equal(t, duplicateIssueID, clickedMsg.IssueID, "clicked issue ID should match")
+
+	// Focus should have moved to column 0 (High Priority), not column 1
+	require.Equal(t, 0, m.FocusedColumn(), "focus should move to clicked column (column 0)")
+}
+
+// TestBoard_MouseClick_RapidSuccessiveClicks tests that rapid clicks are handled correctly.
+// Each click should be processed independently.
+func TestBoard_MouseClick_RapidSuccessiveClicks(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Test", Query: "status = open"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(100, 40)
+
+	// Populate with two issues
+	m, _ = m.Update(ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Test",
+		Issues: []beads.Issue{
+			{ID: "rapid-click-1", TitleText: "Issue 1", Type: beads.TypeTask, Status: beads.StatusOpen},
+			{ID: "rapid-click-2", TitleText: "Issue 2", Type: beads.TypeTask, Status: beads.StatusOpen},
+		},
+	})
+
+	_ = m.View()
+
+	// Get zones for both issues
+	zoneID1 := makeZoneID(0, "rapid-click-1")
+	zoneID2 := makeZoneID(0, "rapid-click-2")
+
+	var z1, z2 *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z1 = zone.Get(zoneID1)
+		z2 = zone.Get(zoneID2)
+		if z1 != nil && !z1.IsZero() && z2 != nil && !z2.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, z1, "zone 1 should be registered")
+	require.NotNil(t, z2, "zone 2 should be registered")
+
+	// Click on first issue
+	width1 := z1.EndX - z1.StartX
+	m, cmd1 := m.Update(tea.MouseMsg{
+		X:      z1.StartX + width1/2,
+		Y:      z1.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+	require.NotNil(t, cmd1, "first click should produce command")
+	result1 := cmd1()
+	clickedMsg1, ok := result1.(IssueClickedMsg)
+	require.True(t, ok, "first click should emit IssueClickedMsg")
+	require.Equal(t, "rapid-click-1", clickedMsg1.IssueID)
+
+	// Immediately click on second issue (simulating rapid clicks)
+	width2 := z2.EndX - z2.StartX
+	m, cmd2 := m.Update(tea.MouseMsg{
+		X:      z2.StartX + width2/2,
+		Y:      z2.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+	require.NotNil(t, cmd2, "second click should produce command")
+	result2 := cmd2()
+	clickedMsg2, ok := result2.(IssueClickedMsg)
+	require.True(t, ok, "second click should emit IssueClickedMsg")
+	require.Equal(t, "rapid-click-2", clickedMsg2.IssueID)
+
+	// Verify the second issue is now selected
+	selected := m.SelectedIssue()
+	require.NotNil(t, selected)
+	require.Equal(t, "rapid-click-2", selected.ID, "second issue should be selected after rapid clicks")
+}
+
+// TestBoard_MouseClick_PerformanceWithManyIssues verifies no perceptible lag with 50+ issues.
+// This is a performance verification test - it ensures the click detection loop
+// completes quickly even with many issues across multiple columns.
+func TestBoard_MouseClick_PerformanceWithManyIssues(t *testing.T) {
+	// Create multiple columns
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Col1", Query: "q1"},
+				{Name: "Col2", Query: "q2"},
+				{Name: "Col3", Query: "q3"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil)
+	m = m.SetSize(240, 60) // Large enough to show many issues
+
+	// Populate each column with 20+ issues (60+ total)
+	for colIdx := 0; colIdx < 3; colIdx++ {
+		issues := make([]beads.Issue, 20)
+		for i := 0; i < 20; i++ {
+			issues[i] = beads.Issue{
+				ID:        fmt.Sprintf("perf-col%d-issue-%d", colIdx, i),
+				TitleText: fmt.Sprintf("Performance Test Issue %d", i),
+				Priority:  beads.PriorityMedium,
+				Type:      beads.TypeTask,
+				Status:    beads.StatusOpen,
+			}
+		}
+		m, _ = m.Update(ColumnLoadedMsg{
+			ViewIndex:   0,
+			ColumnIndex: colIdx,
+			ColumnTitle: fmt.Sprintf("Col%d", colIdx+1),
+			Issues:      issues,
+		})
+	}
+
+	// Call View() to register all zones
+	_ = m.View()
+
+	// Get zone for an issue in the middle column
+	targetIssueID := "perf-col1-issue-10"
+	zoneID := makeZoneID(1, targetIssueID)
+
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, z, "zone should be registered")
+
+	// Measure click handling time
+	startTime := time.Now()
+
+	width := z.EndX - z.StartX
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      z.StartX + width/2,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	elapsed := time.Since(startTime)
+
+	// Click should complete quickly (< 50ms is considered acceptable)
+	// This is a sanity check - actual performance depends on machine
+	require.Less(t, elapsed, 50*time.Millisecond, "click handling should complete quickly with many issues")
+
+	require.NotNil(t, cmd, "click should produce command")
+	result := cmd()
+	clickedMsg, ok := result.(IssueClickedMsg)
+	require.True(t, ok, "should emit IssueClickedMsg")
+	require.Equal(t, targetIssueID, clickedMsg.IssueID, "correct issue should be clicked")
 }

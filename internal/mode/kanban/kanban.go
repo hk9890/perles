@@ -167,6 +167,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.loading = false
 		return m, nil
 
+	case tea.MouseMsg:
+		// Route mouse events to the board for click handling
+		if m.view == ViewBoard {
+			var cmd tea.Cmd
+			m.board, cmd = m.board.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case board.IssueClickedMsg:
+		// Convert click to SwitchToSearchMsg with SubModeTree (same as Enter key)
+		return m, func() tea.Msg {
+			return SwitchToSearchMsg{
+				SubMode: mode.SubModeTree,
+				IssueID: msg.IssueID,
+			}
+		}
+
 	case statusChangedMsg:
 		return m.handleStatusChanged(msg)
 

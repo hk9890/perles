@@ -1,8 +1,11 @@
 package app
 
 import (
+	"os"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -16,9 +19,13 @@ import (
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
 	"github.com/zjrosen/perles/internal/ui/shared/chatpanel"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
+
+// TestMain initializes the global zone manager for all tests in this package.
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 // newTestChatInfrastructure creates a v2.SimpleInfrastructure with mock provider for testing.
 func newTestChatInfrastructure(t *testing.T) *v2.SimpleInfrastructure {

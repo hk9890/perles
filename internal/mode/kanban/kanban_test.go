@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 )
+
+// Note: TestMain is defined in golden_test.go and initializes zone.NewGlobal()
 
 // createTestModel creates a minimal Model for testing state transitions.
 // It does not require a database connection.
@@ -785,4 +788,258 @@ func TestHandleBoardKey_Dashboard_FlagEnabled(t *testing.T) {
 	result := cmd()
 	_, ok := result.(SwitchToDashboardMsg)
 	require.True(t, ok, "expected SwitchToDashboardMsg, got %T", result)
+}
+
+// =============================================================================
+// Mouse Click Integration Tests
+// =============================================================================
+
+// TestKanban_ClickOpensTreeView tests the full click → focus → select → tree view flow.
+// This is an integration test verifying that clicking an issue in the kanban board
+// correctly emits a SwitchToSearchMsg with SubModeTree, identical to pressing Enter.
+func TestKanban_ClickOpensTreeView(t *testing.T) {
+	issueID := "click-integration-test-1"
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	// Create board with a column containing one issue
+	boardConfigs := []config.ColumnConfig{
+		{Name: "Test", Query: "status = open", Color: "#888888"},
+	}
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
+
+	// Populate with issue
+	brd, _ = brd.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Test",
+		Issues: []beads.Issue{
+			{ID: issueID, TitleText: "Test Issue for Click", Type: beads.TypeTask, Status: beads.StatusOpen},
+		},
+	})
+
+	m := Model{
+		services: services,
+		board:    brd,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Call View() to register zones (required for click detection)
+	_ = m.View()
+
+	// Get zone to determine click position (with retry for zone manager stability)
+	zoneID := board.MakeZoneID(0, issueID)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = m.View()
+	}
+	require.NotNil(t, z, "zone should be registered after View()")
+	require.False(t, z.IsZero(), "zone should not be zero")
+
+	// Click inside the zone
+	width := z.EndX - z.StartX
+	clickX := z.StartX + width/2
+	clickY := z.StartY
+
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	// Verify click produces a command
+	require.NotNil(t, cmd, "click on issue should produce a command")
+
+	// Execute the command to get IssueClickedMsg
+	result := cmd()
+	clickedMsg, ok := result.(board.IssueClickedMsg)
+	require.True(t, ok, "expected IssueClickedMsg, got %T", result)
+	require.Equal(t, issueID, clickedMsg.IssueID, "IssueClickedMsg should contain clicked issue ID")
+
+	// Process the IssueClickedMsg through kanban's Update to get SwitchToSearchMsg
+	m, cmd = m.Update(clickedMsg)
+	require.NotNil(t, cmd, "IssueClickedMsg should produce a command")
+
+	result = cmd()
+	switchMsg, ok := result.(SwitchToSearchMsg)
+	require.True(t, ok, "expected SwitchToSearchMsg, got %T", result)
+	require.Equal(t, mode.SubModeTree, switchMsg.SubMode, "expected SubModeTree")
+	require.Equal(t, issueID, switchMsg.IssueID, "expected IssueID to match clicked issue")
+}
+
+// TestKanban_ClickBehaviorMatchesEnterKey verifies that click produces the same result as Enter key.
+func TestKanban_ClickBehaviorMatchesEnterKey(t *testing.T) {
+	issueID := "click-vs-enter-test-1"
+
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	// Create two identical models for comparison
+	boardConfigs := []config.ColumnConfig{
+		{Name: "Test", Query: "status = open", Color: "#888888"},
+	}
+
+	// Model for click test
+	brd1 := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
+	brd1, _ = brd1.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Test",
+		Issues: []beads.Issue{
+			{ID: issueID, TitleText: "Test Issue", Type: beads.TypeTask, Status: beads.StatusOpen},
+		},
+	})
+
+	mClick := Model{
+		services: services,
+		board:    brd1,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Model for Enter key test
+	brd2 := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(100, 40)
+	brd2, _ = brd2.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnTitle: "Test",
+		Issues: []beads.Issue{
+			{ID: issueID, TitleText: "Test Issue", Type: beads.TypeTask, Status: beads.StatusOpen},
+		},
+	})
+
+	mEnter := Model{
+		services: services,
+		board:    brd2,
+		width:    100,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// Test Enter key behavior
+	_, enterCmd := mEnter.handleBoardKey(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, enterCmd, "Enter key should produce a command")
+	enterResult := enterCmd()
+	enterSwitchMsg, ok := enterResult.(SwitchToSearchMsg)
+	require.True(t, ok, "Enter key should produce SwitchToSearchMsg")
+
+	// Test click behavior
+	_ = mClick.View() // Register zones
+
+	zoneID := board.MakeZoneID(0, issueID)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 3; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = mClick.View()
+	}
+	require.NotNil(t, z, "zone should be registered")
+
+	width := z.EndX - z.StartX
+	mClick, clickCmd := mClick.Update(tea.MouseMsg{
+		X:      z.StartX + width/2,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+	require.NotNil(t, clickCmd, "click should produce a command")
+
+	clickResult := clickCmd()
+	clickedMsg, ok := clickResult.(board.IssueClickedMsg)
+	require.True(t, ok, "click should produce IssueClickedMsg")
+
+	// Process IssueClickedMsg
+	_, finalCmd := mClick.Update(clickedMsg)
+	require.NotNil(t, finalCmd, "IssueClickedMsg should produce a command")
+
+	finalResult := finalCmd()
+	clickSwitchMsg, ok := finalResult.(SwitchToSearchMsg)
+	require.True(t, ok, "click flow should produce SwitchToSearchMsg")
+
+	// Verify both produce equivalent SwitchToSearchMsg
+	require.Equal(t, enterSwitchMsg.SubMode, clickSwitchMsg.SubMode, "SubMode should match between Enter and Click")
+	require.Equal(t, enterSwitchMsg.IssueID, clickSwitchMsg.IssueID, "IssueID should match between Enter and Click")
+}
+
+// TestKanban_KeyboardNavigationUnchanged verifies keyboard navigation still works after mouse support.
+func TestKanban_KeyboardNavigationUnchanged(t *testing.T) {
+	cfg := config.Defaults()
+	services := mode.Services{
+		Config: &cfg,
+	}
+
+	// Use 3 columns - default focus will be on middle column (column 1)
+	boardConfigs := []config.ColumnConfig{
+		{Name: "Col1", Query: "status = open", Color: "#888888"},
+		{Name: "Col2", Query: "status = in_progress", Color: "#999999"},
+		{Name: "Col3", Query: "status = closed", Color: "#aaaaaa"},
+	}
+	brd := board.NewFromViews([]config.ViewConfig{{Name: "Test", Columns: boardConfigs}}, nil, nil).SetSize(150, 40)
+
+	// Populate all columns
+	brd, _ = brd.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Col1",
+		Issues: []beads.Issue{
+			{ID: "issue-1", TitleText: "Issue 1", Type: beads.TypeTask},
+		},
+	})
+	brd, _ = brd.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 1,
+		ColumnTitle: "Col2",
+		Issues: []beads.Issue{
+			{ID: "issue-2", TitleText: "Issue 2", Type: beads.TypeTask},
+		},
+	})
+	brd, _ = brd.Update(board.ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 2,
+		ColumnTitle: "Col3",
+		Issues: []beads.Issue{
+			{ID: "issue-3", TitleText: "Issue 3", Type: beads.TypeTask},
+		},
+	})
+
+	m := Model{
+		services: services,
+		board:    brd,
+		width:    150,
+		height:   40,
+		view:     ViewBoard,
+	}
+
+	// With 3 columns, default focus is on middle column (column 1)
+	initialFocus := m.board.FocusedColumn()
+	require.Equal(t, 1, initialFocus, "default focus should be middle column")
+
+	// Test right navigation (l key)
+	m, _ = m.handleBoardKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	require.Equal(t, 2, m.board.FocusedColumn(), "l key should move focus right to column 2")
+
+	// Test left navigation (h key)
+	m, _ = m.handleBoardKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	require.Equal(t, 1, m.board.FocusedColumn(), "h key should move focus left to column 1")
+
+	// Continue moving left
+	m, _ = m.handleBoardKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	require.Equal(t, 0, m.board.FocusedColumn(), "h key should move focus left to column 0")
+
+	// Test up/down navigation (j/k)
+	m.board, _ = m.board.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m.board, _ = m.board.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	// Just verify no panic - selection state is internal to column
 }

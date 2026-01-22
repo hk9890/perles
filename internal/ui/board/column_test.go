@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
@@ -223,7 +224,7 @@ func TestColumn_Items(t *testing.T) {
 // Run with -update flag to update golden files: go test -update ./internal/ui/board/...
 func TestColumn_View_Golden(t *testing.T) {
 	c := NewColumn("Ready").SetSize(30, 15).(Column)
-	view := c.View()
+	view := zone.Scan(c.View()) // Scan to strip zone markers (matches production behavior)
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
@@ -236,7 +237,7 @@ func TestColumn_View_WithIssues_Golden(t *testing.T) {
 		{ID: "bd-3", TitleText: "Third Issue", Priority: beads.PriorityLow, Type: beads.TypeFeature},
 	}
 	c = c.SetItems(issues)
-	view := c.View()
+	view := zone.Scan(c.View()) // Scan to strip zone markers (matches production behavior)
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 

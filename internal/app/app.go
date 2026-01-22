@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
@@ -114,6 +115,9 @@ func NewWithConfig(
 	debugMode bool,
 	registryService *appreg.RegistryService,
 ) Model {
+	// Initialize global zone manager for mouse click detection (bubblezone)
+	zone.NewGlobal()
+
 	// Initialize file watcher if auto-refresh is enabled
 	var (
 		watcherHandle   *watcher.Watcher

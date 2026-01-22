@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 
+	zone "github.com/lrstanley/bubblezone"
+
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/bql"
 	"github.com/zjrosen/perles/internal/mode/shared"
@@ -64,13 +66,15 @@ type BoardColumn interface {
 
 // issueDelegate is a custom delegate for rendering issues with priority colors and type indicators.
 type issueDelegate struct {
-	focused *bool // pointer to column's focused state
+	focused     *bool // pointer to column's focused state
+	columnIndex *int  // pointer to column index for zone ID construction (survives value copies)
 }
 
 // newIssueDelegate creates a new issue delegate.
-func newIssueDelegate(focused *bool) issueDelegate {
+func newIssueDelegate(focused *bool, columnIndex *int) issueDelegate {
 	return issueDelegate{
-		focused: focused,
+		focused:     focused,
+		columnIndex: columnIndex,
 	}
 }
 
@@ -124,20 +128,27 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 		line = lipgloss.NewStyle().Width(m.Width()).Render(line)
 	}
 
-	_, _ = fmt.Fprint(w, line)
+	// Wrap with zone mark for mouse click detection
+	colIdx := 0
+	if d.columnIndex != nil {
+		colIdx = *d.columnIndex
+	}
+	zoneID := makeZoneID(colIdx, issue.ID)
+	_, _ = fmt.Fprint(w, zone.Mark(zoneID, line))
 }
 
 // Column represents a single kanban column.
 type Column struct {
-	title       string
-	columnIndex int                    // position within the view for message routing
-	color       lipgloss.TerminalColor // custom color for column border/title
-	list        list.Model
-	items       []beads.Issue
-	width       int
-	height      int
-	focused     *bool // pointer so it survives value copies
-	showCounts  *bool // pointer so it survives value copies (nil = default true)
+	title          string
+	columnIndex    int                    // position within the view for message routing
+	columnIndexPtr *int                   // pointer for delegate (survives value copies)
+	color          lipgloss.TerminalColor // custom color for column border/title
+	list           list.Model
+	items          []beads.Issue
+	width          int
+	height         int
+	focused        *bool // pointer so it survives value copies
+	showCounts     *bool // pointer so it survives value copies (nil = default true)
 
 	// BQL self-loading fields
 	executor  bql.BQLExecutor // BQL executor for loading issues
@@ -147,11 +158,12 @@ type Column struct {
 
 // NewColumn creates a new column.
 func NewColumn(title string) Column {
-	// Allocate focused state on heap so pointer survives copies
+	// Allocate state on heap so pointers survive value copies
 	focused := new(bool)
+	columnIndexPtr := new(int)
 
-	// Create delegate with pointer to focused state
-	delegate := newIssueDelegate(focused)
+	// Create delegate with pointers to column state
+	delegate := newIssueDelegate(focused, columnIndexPtr)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.SetShowTitle(false)
@@ -161,9 +173,10 @@ func NewColumn(title string) Column {
 	l.SetShowPagination(false)
 
 	return Column{
-		title:   title,
-		list:    l,
-		focused: focused,
+		title:          title,
+		list:           l,
+		focused:        focused,
+		columnIndexPtr: columnIndexPtr,
 	}
 }
 
@@ -257,6 +270,9 @@ func (c Column) HandleLoaded(msg tea.Msg) BoardColumn {
 // SetColumnIndex sets the column's index for message routing.
 func (c Column) SetColumnIndex(index int) Column {
 	c.columnIndex = index
+	if c.columnIndexPtr != nil {
+		*c.columnIndexPtr = index
+	}
 	return c
 }
 

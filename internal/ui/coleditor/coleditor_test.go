@@ -3,6 +3,8 @@ package coleditor
 import (
 	"testing"
 
+	zone "github.com/lrstanley/bubblezone"
+
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/config"
 	"github.com/zjrosen/perles/internal/mocks"
@@ -510,6 +512,7 @@ func TestHorizontalNavigation(t *testing.T) {
 // TestColEditor_View_Golden uses teatest golden file comparison
 // Run with -update flag to update golden files: go test -update ./internal/ui/coleditor/...
 func TestColEditor_View_Golden(t *testing.T) {
+	zone.NewGlobal() // Initialize zone manager for zone.Mark() calls in Column.Render()
 	columns := []config.ColumnConfig{
 		{Name: "Ready", Query: "status = open and ready = true", Color: "#73F59F"},
 	}
@@ -521,12 +524,13 @@ func TestColEditor_View_Golden(t *testing.T) {
 	ed := New(0, columns, executor, false, nil)
 	ed = ed.SetSize(130, 30)
 
-	view := ed.View()
+	view := zone.Scan(ed.View()) // Scan to strip zone markers
 
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
 func TestColEditor_View_Golden_Tall(t *testing.T) {
+	zone.NewGlobal() // Initialize zone manager for zone.Mark() calls in Column.Render()
 	columns := []config.ColumnConfig{
 		{Name: "Ready", Query: "status = open and ready = true", Color: "#73F59F"},
 	}
@@ -538,12 +542,13 @@ func TestColEditor_View_Golden_Tall(t *testing.T) {
 	ed := New(0, columns, executor, false, nil)
 	ed = ed.SetSize(130, 51)
 
-	view := ed.View()
+	view := zone.Scan(ed.View()) // Scan to strip zone markers
 
 	teatest.RequireEqualOutput(t, []byte(view))
 }
 
 func TestColEditor_View_Golden_TreePreview(t *testing.T) {
+	zone.NewGlobal() // Initialize zone manager for zone.Mark() calls in Column.Render()
 	// Tree column with tree data loaded
 	columns := []config.ColumnConfig{
 		{Name: "Dependencies", Type: "tree", IssueID: "epic-1", Color: "#54A0FF"},
@@ -581,7 +586,7 @@ func TestColEditor_View_Golden_TreePreview(t *testing.T) {
 	ed := New(0, columns, executor, false, nil)
 	ed = ed.SetSize(130, 40)
 
-	view := ed.View()
+	view := zone.Scan(ed.View()) // Scan to strip zone markers
 
 	teatest.RequireEqualOutput(t, []byte(view))
 }

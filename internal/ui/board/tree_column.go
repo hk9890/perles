@@ -239,6 +239,9 @@ func (c TreeColumn) HandleLoaded(msg tea.Msg) BoardColumn {
 	// Initialize tree model with down direction and current mode
 	c.tree = tree.New(loadedMsg.RootID, loadedMsg.IssueMap, tree.DirectionDown, c.mode, c.clock)
 
+	// Set column index for zone ID construction (enables mouse click zones)
+	c.tree.SetColumnIndex(c.columnIndex)
+
 	// Apply current size to tree
 	if c.width > 0 && c.height > 0 {
 		treeWidth := max(c.width-2, 1)
@@ -339,4 +342,13 @@ func (c TreeColumn) Mode() string {
 		return "child"
 	}
 	return "deps"
+}
+
+// VisibleIssueIDs returns the issue IDs of all visible nodes in the tree.
+// This is used by the board's click handler to check zone bounds.
+func (c TreeColumn) VisibleIssueIDs() []string {
+	if c.tree == nil {
+		return nil
+	}
+	return c.tree.VisibleIssueIDs()
 }

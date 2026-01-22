@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	zone "github.com/lrstanley/bubblezone"
+
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode/shared"
@@ -15,29 +17,31 @@ import (
 
 // Model holds the tree view state.
 type Model struct {
-	root       *TreeNode               // Current root of the tree
-	nodes      []*TreeNode             // Flattened visible nodes for navigation
-	cursor     int                     // Index into nodes slice
-	direction  Direction               // "down" or "up"
-	mode       TreeMode                // "deps" or "children"
-	rootStack  []string                // Stack of previous root IDs for back navigation
-	originalID string                  // Original root issue ID (for 'U' to return)
-	issueMap   map[string]*beads.Issue // Cached issues for tree building
-	clock      shared.Clock            // Clock for formatting relative timestamps
-	width      int
-	height     int
-	scrollTop  int // First visible line index (for viewport scrolling)
+	root        *TreeNode               // Current root of the tree
+	nodes       []*TreeNode             // Flattened visible nodes for navigation
+	cursor      int                     // Index into nodes slice
+	direction   Direction               // "down" or "up"
+	mode        TreeMode                // "deps" or "children"
+	rootStack   []string                // Stack of previous root IDs for back navigation
+	originalID  string                  // Original root issue ID (for 'U' to return)
+	issueMap    map[string]*beads.Issue // Cached issues for tree building
+	clock       shared.Clock            // Clock for formatting relative timestamps
+	width       int
+	height      int
+	scrollTop   int // First visible line index (for viewport scrolling)
+	columnIndex int // Column index for zone ID construction in tree columns (-1 = standalone)
 }
 
 // New creates a new tree model with default mode (deps).
 func New(rootID string, issueMap map[string]*beads.Issue, dir Direction, mode TreeMode, clock shared.Clock) *Model {
 	m := &Model{
-		direction:  dir,
-		mode:       mode,
-		originalID: rootID,
-		issueMap:   issueMap,
-		clock:      clock,
-		cursor:     0,
+		direction:   dir,
+		mode:        mode,
+		originalID:  rootID,
+		issueMap:    issueMap,
+		clock:       clock,
+		cursor:      0,
+		columnIndex: -1, // -1 indicates standalone mode (no zone marking)
 	}
 
 	// Build the tree
@@ -56,6 +60,13 @@ func New(rootID string, issueMap map[string]*beads.Issue, dir Direction, mode Tr
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+}
+
+// SetColumnIndex sets the column index for zone ID construction.
+// Use this when the tree is embedded in a board column to enable mouse click zones.
+// A value of -1 (the default) disables zone marking for standalone tree usage.
+func (m *Model) SetColumnIndex(idx int) {
+	m.columnIndex = idx
 }
 
 // MoveCursor moves the cursor by delta, respecting bounds.
@@ -140,6 +151,23 @@ func (m *Model) SelectByIssueID(issueID string) bool {
 // Root returns the tree root.
 func (m *Model) Root() *TreeNode {
 	return m.root
+}
+
+// VisibleIssueIDs returns the issue IDs of all visible nodes in the current viewport.
+// This is used by the board's click handler to check zone bounds.
+func (m *Model) VisibleIssueIDs() []string {
+	if m.root == nil || len(m.nodes) == 0 {
+		return nil
+	}
+
+	viewportHeight := m.viewportHeight()
+	endIdx := min(m.scrollTop+viewportHeight, len(m.nodes))
+
+	ids := make([]string, 0, endIdx-m.scrollTop)
+	for i := m.scrollTop; i < endIdx; i++ {
+		ids = append(ids, m.nodes[i].Issue.ID)
+	}
+	return ids
 }
 
 // Direction returns the current traversal direction.
@@ -418,7 +446,15 @@ func (m *Model) renderNode(node *TreeNode, isLast bool, isSelected bool) string 
 		sb.WriteString(rightRendered)
 	}
 
-	return sb.String()
+	line := sb.String()
+
+	// Wrap with zone mark for mouse click detection when in column context
+	if m.columnIndex >= 0 {
+		zoneID := makeZoneID(m.columnIndex, node.Issue.ID)
+		return zone.Mark(zoneID, line)
+	}
+
+	return line
 }
 
 // buildPrefix builds the tree branch prefix for a node.
@@ -500,4 +536,10 @@ func (m *Model) renderStatus(status beads.Status) string {
 		style := lipgloss.NewStyle().Foreground(styles.StatusOpenColor)
 		return style.Render("○")
 	}
+}
+
+// makeZoneID creates a zone ID for an issue in a specific column.
+// Uses same format as board/zone.go for consistency: col:{colIdx}:issue:{issueID}
+func makeZoneID(colIdx int, issueID string) string {
+	return fmt.Sprintf("col:%d:issue:%s", colIdx, issueID)
 }

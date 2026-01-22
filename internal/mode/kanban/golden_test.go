@@ -1,10 +1,12 @@
 package kanban
 
 import (
+	"os"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/exp/teatest"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/mock"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
@@ -14,6 +16,12 @@ import (
 	"github.com/zjrosen/perles/internal/mode/shared"
 	"github.com/zjrosen/perles/internal/ui/board"
 )
+
+// TestMain initializes the global zone manager for all tests in this package.
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 // testNow is a fixed reference time for golden tests to ensure reproducible timestamps.
 var testNow = time.Date(2025, 12, 13, 12, 0, 0, 0, time.UTC)
