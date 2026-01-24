@@ -197,6 +197,37 @@ func TestView_Placeholder_HiddenWhenFocused(t *testing.T) {
 	require.Contains(t, view, cursorOn)
 }
 
+func TestView_Placeholder_WrapsLongText(t *testing.T) {
+	m := New(Config{
+		VimEnabled:  false,
+		Placeholder: "This is a very long placeholder text that should wrap to multiple lines",
+	})
+	m.SetSize(30, 5) // Width of 30 should cause wrapping
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+
+	// Should wrap to multiple lines
+	require.Greater(t, len(lines), 1, "Long placeholder should wrap to multiple lines")
+
+	// Each line should be at most 30 characters (accounting for ANSI codes)
+	// Just verify we got multiple lines - the wrapping is happening
+}
+
+func TestView_Placeholder_RespectsHeight(t *testing.T) {
+	m := New(Config{
+		VimEnabled:  false,
+		Placeholder: "Line 1 of placeholder text that is very long and will wrap to many lines when displayed",
+	})
+	m.SetSize(20, 2) // Small width and height
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+
+	// Should be limited to height (2 lines)
+	require.LessOrEqual(t, len(lines), 2, "Placeholder should respect height limit")
+}
+
 // ============================================================================
 // Unit Tests: Scrolling for multi-line content
 // ============================================================================

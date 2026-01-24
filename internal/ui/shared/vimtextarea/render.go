@@ -324,10 +324,36 @@ func (m Model) renderEmpty() string {
 
 	// Show placeholder if set
 	if m.config.Placeholder != "" {
-		return placeholderStyle.Render(m.config.Placeholder)
+		return m.renderPlaceholder()
 	}
 
 	return ""
+}
+
+// renderPlaceholder renders the placeholder text with proper wrapping.
+func (m Model) renderPlaceholder() string {
+	if m.width <= 0 {
+		return placeholderStyle.Render(m.config.Placeholder)
+	}
+
+	// Wrap placeholder text to fit within width
+	wrappedLines, _ := m.wrapLineWithInfo(m.config.Placeholder)
+
+	// Limit to visible height if set
+	maxLines := len(wrappedLines)
+	if m.height > 0 && maxLines > m.height {
+		maxLines = m.height
+	}
+
+	var result strings.Builder
+	for i := 0; i < maxLines; i++ {
+		if i > 0 {
+			result.WriteString("\n")
+		}
+		result.WriteString(placeholderStyle.Render(wrappedLines[i]))
+	}
+
+	return result.String()
 }
 
 // renderLineWithCursor renders a single line with the cursor at the specified column.
