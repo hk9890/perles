@@ -24,21 +24,10 @@ notify_user(
 ```
 
 After calling `notify_user`:
-1. Wait for the user to respond
+1. You must summarize where we are at within the workflow
+2. Wait for the user to respond
 2. Address any feedback or corrections they provide
 3. Only proceed to the next phase when the user confirms
-
-## Proposal Location
-
-```
-docs/proposals/{{ .Date }}--{{ .Name }}/research-proposal.md
-```
-
-## When This Checkpoint Is Used
-
-- After research documentation (check for conflicting findings)
-- After proposal synthesis (verify implementation plan makes sense)
-- After final reviews (confirm all concerns addressed)
 
 ## User Actions
 
