@@ -149,7 +149,7 @@ type Model struct {
 	originalStartTime  time.Time                 // Original session start time (from loaded session)
 
 	// AI client configuration
-	agentProvider client.AgentProvider // Creates and configures AI processes
+	agentProviders client.AgentProviders // Maps roles to their AI client providers
 
 	// Pub/sub subscriptions (initialized when coordinator starts)
 	// Note: Worker events flow through v2EventBus, not a separate workerListener
@@ -237,9 +237,9 @@ type WorkerPane struct {
 
 // Config holds configuration for creating an orchestration Model.
 type Config struct {
-	Services      mode.Services
-	WorkDir       string
-	AgentProvider client.AgentProvider // Creates and configures AI processes
+	Services       mode.Services
+	WorkDir        string
+	AgentProviders client.AgentProviders // Maps roles to their AI client providers
 	// Workflow templates
 	WorkflowRegistry *workflow.Registry // Pre-loaded workflow registry (optional)
 	// UI settings
@@ -291,7 +291,7 @@ func New(cfg Config) Model {
 		disableWorktrees:      cfg.DisableWorktrees,
 		messageTarget:         "COORDINATOR", // Default to coordinator
 		fullscreenWorkerIndex: -1,            // No fullscreen by default
-		agentProvider:         cfg.AgentProvider,
+		agentProviders:        cfg.AgentProviders,
 		workflowRegistry:      cfg.WorkflowRegistry,
 		activeWorkflowRef:     &activeWorkflowHolder{},
 		tracingConfig:         cfg.TracingConfig,

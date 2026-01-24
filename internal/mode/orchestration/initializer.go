@@ -61,9 +61,9 @@ type InitializerConfig struct {
 	// BeadsDir is the resolved beads directory path for propagation to spawned processes.
 	// When set, spawned AI processes receive BEADS_DIR environment variable.
 	BeadsDir string
-	// AgentProvider creates and configures AI processes.
-	AgentProvider client.AgentProvider
-	Timeouts      config.TimeoutsConfig
+	// AgentProviders maps roles to their AI client providers.
+	AgentProviders client.AgentProviders
+	Timeouts       config.TimeoutsConfig
 	// Worktree configuration
 	WorktreeBaseBranch string             // Branch to base worktree on. Empty = skip worktree creation
 	WorktreeBranchName string             // Optional custom branch name (empty = auto-generate)
@@ -78,13 +78,16 @@ type InitializerConfig struct {
 	SoundService sound.SoundService
 }
 
-// getAgentProvider returns the AgentProvider.
-// Panics if AgentProvider is nil (it is a required field).
-func (c *InitializerConfig) getAgentProvider() client.AgentProvider {
-	if c.AgentProvider == nil {
-		panic("InitializerConfig.AgentProvider is required")
+// getAgentProviders returns the AgentProviders map.
+// Panics if AgentProviders is nil or missing RoleCoordinator.
+func (c *InitializerConfig) getAgentProviders() client.AgentProviders {
+	if c.AgentProviders == nil {
+		panic("InitializerConfig.AgentProviders is required")
 	}
-	return c.AgentProvider
+	if _, ok := c.AgentProviders[client.RoleCoordinator]; !ok {
+		panic("InitializerConfig.AgentProviders must contain RoleCoordinator")
+	}
+	return c.AgentProviders
 }
 
 // InitializerResources holds the resources created during initialization.
@@ -194,7 +197,7 @@ type InitializerConfigBuilder struct {
 func NewInitializerConfigFromModel(
 	workDir string,
 	beadsDir string,
-	agentProvider client.AgentProvider,
+	agentProviders client.AgentProviders,
 	worktreeBaseBranch string,
 	worktreeCustomBranch string,
 	tracingConfig config.TracingConfig,
@@ -204,7 +207,7 @@ func NewInitializerConfigFromModel(
 		cfg: InitializerConfig{
 			WorkDir:            workDir,
 			BeadsDir:           beadsDir,
-			AgentProvider:      agentProvider,
+			AgentProviders:     agentProviders,
 			WorktreeBaseBranch: worktreeBaseBranch,
 			WorktreeBranchName: worktreeCustomBranch,
 			TracingConfig:      tracingConfig,
@@ -787,16 +790,15 @@ func (i *Initializer) createMCPListener() (*MCPListenerResult, error) {
 
 // MCPServerConfig holds the configuration for createMCPServer().
 type MCPServerConfig struct {
-	Listener      net.Listener                        // Pre-created TCP listener
-	Port          int                                 // Port the listener is bound to
-	AgentProvider client.AgentProvider                // Agent provider for coordinator server
-	MsgRepo       *repository.MemoryMessageRepository // Message repository for coordinator server
-	Session       *session.Session                    // Session for reflection writing
-	V2Adapter     *adapter.V2Adapter                  // V2 adapter for routing
-	TurnEnforcer  mcp.ToolCallRecorder                // Turn completion enforcer for workers
-	WorkDir       string                              // Working directory
-	BeadsDir      string                              // Path to .beads directory for BEADS_DIR env var
-	Tracer        trace.Tracer                        // Tracer for distributed tracing (optional)
+	Listener     net.Listener                        // Pre-created TCP listener
+	Port         int                                 // Port the listener is bound to
+	MsgRepo      *repository.MemoryMessageRepository // Message repository for coordinator server
+	Session      *session.Session                    // Session for reflection writing
+	V2Adapter    *adapter.V2Adapter                  // V2 adapter for routing
+	TurnEnforcer mcp.ToolCallRecorder                // Turn completion enforcer for workers
+	WorkDir      string                              // Working directory
+	BeadsDir     string                              // Path to .beads directory for BEADS_DIR env var
+	Tracer       trace.Tracer                        // Tracer for distributed tracing (optional)
 }
 
 // createMCPServer creates the MCP server with HTTP routes for coordinator and worker endpoints.
@@ -806,24 +808,18 @@ func (i *Initializer) createMCPServer(cfg MCPServerConfig) (*MCPServerResult, er
 	if cfg.Listener == nil {
 		return nil, fmt.Errorf("listener is required")
 	}
-	if cfg.AgentProvider == nil {
-		return nil, fmt.Errorf("AgentProvider is required")
-	}
 	if cfg.MsgRepo == nil {
 		return nil, fmt.Errorf("message repository is required")
 	}
 
-	// Get client and extensions from provider
-	aiClient, err := cfg.AgentProvider.Client()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get AI client: %w", err)
-	}
-	extensions := cfg.AgentProvider.Extensions()
-
 	// Create coordinator server with the dynamic port and v2 adapter
 	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
-		aiClient, cfg.MsgRepo, cfg.WorkDir, cfg.Port, extensions,
-		infrabeads.NewBDExecutor(cfg.WorkDir, cfg.BeadsDir), cfg.V2Adapter)
+		cfg.MsgRepo,
+		cfg.WorkDir,
+		cfg.Port,
+		infrabeads.NewBDExecutor(cfg.WorkDir, cfg.BeadsDir),
+		cfg.V2Adapter,
+	)
 
 	// Set tracer for distributed tracing if provided
 	if cfg.Tracer != nil {
@@ -923,9 +919,9 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 	}
 
 	// ============================================================
-	// Step 1: Get AgentProvider from config
+	// Step 1: Get providers from config
 	// ============================================================
-	provider := i.cfg.getAgentProvider()
+	agentProviders := i.cfg.getAgentProviders()
 
 	// ============================================================
 	// Step 2: Create message repository for inter-agent messaging
@@ -966,7 +962,7 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 
 	v2Infra, err := v2.NewInfrastructure(v2.InfrastructureConfig{
 		Port:                    port,
-		AgentProvider:           provider,
+		AgentProviders:          agentProviders,
 		WorkDir:                 effectiveWorkDir, // Use worktree path when enabled
 		BeadsDir:                i.cfg.BeadsDir,   // Propagated to spawned AI processes as BEADS_DIR env var
 		MessageRepo:             msgRepo,
@@ -1046,16 +1042,15 @@ func (i *Initializer) createWorkspaceWithContext(ctx context.Context) error {
 	// Step 6: Create MCP server with HTTP routes
 	// ============================================================
 	mcpResult, err := i.createMCPServer(MCPServerConfig{
-		Listener:      listenerResult.Listener,
-		Port:          port,
-		AgentProvider: provider,
-		MsgRepo:       msgRepo,
-		Session:       sess,
-		V2Adapter:     v2Infra.Core.Adapter,
-		TurnEnforcer:  v2Infra.Internal.TurnEnforcer,
-		WorkDir:       effectiveWorkDir, // Use worktree path when enabled
-		BeadsDir:      i.cfg.BeadsDir,   // Propagate beads directory for BEADS_DIR env var
-		Tracer:        tracer,           // nil when tracing disabled - server handles this gracefully
+		Listener:     listenerResult.Listener,
+		Port:         port,
+		MsgRepo:      msgRepo,
+		Session:      sess,
+		V2Adapter:    v2Infra.Core.Adapter,
+		TurnEnforcer: v2Infra.Internal.TurnEnforcer,
+		WorkDir:      effectiveWorkDir, // Use worktree path when enabled
+		BeadsDir:     i.cfg.BeadsDir,   // Propagate beads directory for BEADS_DIR env var
+		Tracer:       tracer,           // nil when tracing disabled - server handles this gracefully
 	})
 	if err != nil {
 		_ = listenerResult.Listener.Close()

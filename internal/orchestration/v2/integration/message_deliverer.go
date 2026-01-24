@@ -8,8 +8,10 @@ import (
 	"maps"
 	"time"
 
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 )
 
 // Compile-time check that ProcessSessionDeliverer implements MessageDeliverer.
@@ -45,12 +47,14 @@ type ProcessResumer interface {
 // by resuming process sessions with the message content.
 // Works for both coordinator and worker processes.
 type ProcessSessionDeliverer struct {
-	sessionProvider SessionProvider
-	client          client.HeadlessClient
-	resumer         ProcessResumer
-	timeout         time.Duration
-	extensions      map[string]any
-	beadsDir        string
+	sessionProvider       SessionProvider
+	coordinatorClient     client.HeadlessClient
+	workerClient          client.HeadlessClient
+	resumer               ProcessResumer
+	timeout               time.Duration
+	coordinatorExtensions map[string]any
+	workerExtensions      map[string]any
+	beadsDir              string
 }
 
 // ProcessSessionDelivererOption configures ProcessSessionDeliverer.
@@ -74,27 +78,35 @@ func WithBeadsDir(beadsDir string) ProcessSessionDelivererOption {
 //
 // Parameters:
 //   - sessionProvider: provides session IDs and MCP config for processes
-//   - aiClient: HeadlessClient for spawning/resuming sessions
+//   - coordinatorClient: HeadlessClient for spawning/resuming coordinator sessions
+//   - workerClient: HeadlessClient for spawning/resuming worker sessions
 //   - resumer: ProcessResumer for resuming processes (typically ProcessRegistry)
-//   - extensions: provider-specific configuration (e.g., model settings)
+//   - coordinatorExtensions: provider-specific configuration for coordinator
+//   - workerExtensions: provider-specific configuration for workers
 //   - opts: optional configuration
 func NewProcessSessionDeliverer(
 	sessionProvider SessionProvider,
-	aiClient client.HeadlessClient,
+	coordinatorClient client.HeadlessClient,
+	workerClient client.HeadlessClient,
 	resumer ProcessResumer,
-	extensions map[string]any,
+	coordinatorExtensions map[string]any,
+	workerExtensions map[string]any,
 	opts ...ProcessSessionDelivererOption,
 ) *ProcessSessionDeliverer {
-	// Defensive shallow copy to prevent accidental mutation races
-	extCopy := make(map[string]any, len(extensions))
-	maps.Copy(extCopy, extensions)
+	// Defensive shallow copies to prevent accidental mutation races
+	coordExtCopy := make(map[string]any, len(coordinatorExtensions))
+	maps.Copy(coordExtCopy, coordinatorExtensions)
+	workerExtCopy := make(map[string]any, len(workerExtensions))
+	maps.Copy(workerExtCopy, workerExtensions)
 
 	d := &ProcessSessionDeliverer{
-		sessionProvider: sessionProvider,
-		client:          aiClient,
-		resumer:         resumer,
-		timeout:         DefaultDeliveryTimeout,
-		extensions:      extCopy,
+		sessionProvider:       sessionProvider,
+		coordinatorClient:     coordinatorClient,
+		workerClient:          workerClient,
+		resumer:               resumer,
+		timeout:               DefaultDeliveryTimeout,
+		coordinatorExtensions: coordExtCopy,
+		workerExtensions:      workerExtCopy,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -155,11 +167,25 @@ func (d *ProcessSessionDeliverer) Deliver(ctx context.Context, processID, conten
 	default:
 	}
 
-	// 3. Spawn/resume the session with the message as prompt
+	// 3. Select client and extensions based on process role
+	var aiClient client.HeadlessClient
+	var extensions map[string]any
+
+	if processID == repository.CoordinatorID {
+		log.Error(log.CatOrch, "is coordinator process", "processId", processID, "isCoord", true)
+		aiClient = d.coordinatorClient
+		extensions = d.coordinatorExtensions
+	} else {
+		log.Error(log.CatOrch, "is coordinator process", "processId", processID, "isCoord", false)
+		aiClient = d.workerClient
+		extensions = d.workerExtensions
+	}
+
+	// 4. Spawn/resume the session with the message as prompt
 	// IMPORTANT: Use context.Background() here because the claude process lifetime
 	// is managed by the Process struct, not by this function's context.
 	// If we used the parent context, the process would be killed when Deliver() returns.
-	proc, err := d.client.Spawn(context.Background(), client.Config{
+	proc, err := aiClient.Spawn(context.Background(), client.Config{
 		WorkDir:         d.sessionProvider.GetWorkDir(),
 		BeadsDir:        d.beadsDir,
 		SessionID:       sessionID,
@@ -167,13 +193,13 @@ func (d *ProcessSessionDeliverer) Deliver(ctx context.Context, processID, conten
 		MCPConfig:       mcpConfig,
 		SkipPermissions: true,
 		DisallowedTools: []string{"AskUserQuestion"},
-		Extensions:      d.extensions,
+		Extensions:      extensions,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to resume session for process %s: %w", processID, err)
 	}
 
-	// 4. Resume the process to handle events
+	// 5. Resume the process to handle events
 	if err := d.resumer.ResumeProcess(processID, proc); err != nil {
 		// Try to cancel the process we spawned
 		_ = proc.Cancel()

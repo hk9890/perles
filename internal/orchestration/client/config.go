@@ -1,6 +1,9 @@
 package client
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Config holds provider-agnostic configuration for spawning a process.
 type Config struct {
@@ -49,6 +52,9 @@ type Config struct {
 const (
 	// ExtClaudeModel specifies the Claude model (string: "sonnet", "opus", "haiku").
 	ExtClaudeModel = "claude.model"
+	// ExtClaudeEnv specifies custom environment variables for Claude (map[string]string).
+	// Values support ${VAR} expansion from the current environment.
+	ExtClaudeEnv = "claude.env"
 
 	// ExtAmpModel specifies the Amp model selection (string).
 	ExtAmpModel = "amp.model"
@@ -74,6 +80,37 @@ func (c *Config) ClaudeModel() string {
 		return v
 	}
 	return "opus"
+}
+
+// ClaudeEnv returns custom environment variables for Claude from Extensions.
+// Returns nil if not set.
+// Note: Keys are uppercased because Viper lowercases YAML map keys,
+// but env vars are case-sensitive on Linux.
+func (c *Config) ClaudeEnv() map[string]string {
+	if c.Extensions == nil {
+		return nil
+	}
+	// Direct type assertion for map[string]string
+	if env, ok := c.Extensions[ExtClaudeEnv].(map[string]string); ok {
+		// Uppercase keys to fix Viper's lowercasing
+		result := make(map[string]string, len(env))
+		for k, v := range env {
+			result[strings.ToUpper(k)] = v
+		}
+		return result
+	}
+	// Handle map[string]any from YAML unmarshaling
+	if env, ok := c.Extensions[ExtClaudeEnv].(map[string]any); ok {
+		result := make(map[string]string)
+		for k, v := range env {
+			if s, ok := v.(string); ok {
+				// Uppercase keys to fix Viper's lowercasing
+				result[strings.ToUpper(k)] = s
+			}
+		}
+		return result
+	}
+	return nil
 }
 
 // CodexModel returns the Codex model from Extensions, or "gpt-5.2-codex" as default.
@@ -151,61 +188,4 @@ func (c *Config) GetExtensionString(key string) string {
 		return v
 	}
 	return ""
-}
-
-// ClientConfigs groups all client-specific configuration structs.
-// This is used by NewFromClientConfigs to consolidate extensions building logic.
-type ClientConfigs struct {
-	ClaudeModel   string // Claude model (sonnet, opus, haiku)
-	CodexModel    string // Codex model (gpt-5.2-codex, o4-mini)
-	AmpModel      string // Amp model (opus, sonnet)
-	AmpMode       string // Amp mode (free, rush, smart)
-	GeminiModel   string // Gemini model (gemini-3-pro-preview, gemini-2.5-flash)
-	OpenCodeModel string // OpenCode model (anthropic/claude-opus-4-5)
-}
-
-// NewFromClientConfigs builds a provider-specific Extensions map based on the client type.
-//
-// The function takes the client type and a ClientConfigs struct containing all possible
-// client-specific settings, and returns an Extensions map with only the relevant settings
-// for the specified client type.
-//
-// Example:
-//
-//	extensions := client.NewFromClientConfigs(client.ClientClaude, client.ClientConfigs{
-//	    ClaudeModel: "opus",
-//	})
-//	// Result: map[string]any{"claude.model": "opus"}
-func NewFromClientConfigs(clientType ClientType, configs ClientConfigs) map[string]any {
-	extensions := make(map[string]any)
-
-	switch clientType {
-	case ClientClaude:
-		if configs.ClaudeModel != "" {
-			extensions[ExtClaudeModel] = configs.ClaudeModel
-		}
-	case ClientCodex:
-		if configs.CodexModel != "" {
-			extensions[ExtCodexModel] = configs.CodexModel
-		}
-	case ClientAmp:
-		if configs.AmpModel != "" {
-			extensions[ExtAmpModel] = configs.AmpModel
-		}
-		if configs.AmpMode != "" {
-			// Note: Amp mode key is defined in amp package, but we use the literal here
-			// to avoid import cycle. The value is "amp.mode".
-			extensions["amp.mode"] = configs.AmpMode
-		}
-	case ClientGemini:
-		if configs.GeminiModel != "" {
-			extensions[ExtGeminiModel] = configs.GeminiModel
-		}
-	case ClientOpenCode:
-		if configs.OpenCodeModel != "" {
-			extensions[ExtOpenCodeModel] = configs.OpenCodeModel
-		}
-	}
-
-	return extensions
 }

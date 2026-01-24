@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -153,23 +154,27 @@ func DefaultTimeoutsConfig() TimeoutsConfig {
 
 // OrchestrationConfig holds orchestration mode configuration.
 type OrchestrationConfig struct {
-	Client           string               `mapstructure:"client"`            // "claude" (default), "amp", "codex", or "gemini"
-	DisableWorktrees bool                 `mapstructure:"disable_worktrees"` // Skip worktree prompt (default: false)
-	APIPort          int                  `mapstructure:"api_port"`          // HTTP API port (0 = auto-assign, default: 0)
-	Claude           ClaudeClientConfig   `mapstructure:"claude"`
-	Codex            CodexClientConfig    `mapstructure:"codex"`
-	Amp              AmpClientConfig      `mapstructure:"amp"`
-	Gemini           GeminiClientConfig   `mapstructure:"gemini"`
-	OpenCode         OpenCodeClientConfig `mapstructure:"opencode"`
-	Workflows        []WorkflowConfig     `mapstructure:"workflows"`       // Workflow template configurations
-	Tracing          TracingConfig        `mapstructure:"tracing"`         // Distributed tracing configuration
-	SessionStorage   SessionStorageConfig `mapstructure:"session_storage"` // Session storage location configuration
-	Timeouts         TimeoutsConfig       `mapstructure:"timeouts"`        // Initialization phase timeout configuration
+	Client            string               `mapstructure:"client"`             // "claude" (default), "amp", "codex", or "gemini" - backward compat
+	CoordinatorClient string               `mapstructure:"coordinator_client"` // Client for coordinator (overrides Client)
+	WorkerClient      string               `mapstructure:"worker_client"`      // Client for workers (overrides Client)
+	DisableWorktrees  bool                 `mapstructure:"disable_worktrees"`  // Skip worktree prompt (default: false)
+	APIPort           int                  `mapstructure:"api_port"`           // HTTP API port (0 = auto-assign, default: 0)
+	Claude            ClaudeClientConfig   `mapstructure:"claude"`
+	ClaudeWorker      ClaudeClientConfig   `mapstructure:"claude_worker"` // Worker-specific Claude config (uses claude config if empty)
+	Codex             CodexClientConfig    `mapstructure:"codex"`
+	Amp               AmpClientConfig      `mapstructure:"amp"`
+	Gemini            GeminiClientConfig   `mapstructure:"gemini"`
+	OpenCode          OpenCodeClientConfig `mapstructure:"opencode"`
+	Workflows         []WorkflowConfig     `mapstructure:"workflows"`       // Workflow template configurations
+	Tracing           TracingConfig        `mapstructure:"tracing"`         // Distributed tracing configuration
+	SessionStorage    SessionStorageConfig `mapstructure:"session_storage"` // Session storage location configuration
+	Timeouts          TimeoutsConfig       `mapstructure:"timeouts"`        // Initialization phase timeout configuration
 }
 
 // ClaudeClientConfig holds Claude-specific settings.
 type ClaudeClientConfig struct {
-	Model string `mapstructure:"model"` // sonnet (default), opus, haiku
+	Model string            `mapstructure:"model"` // sonnet (default), opus, haiku
+	Env   map[string]string `mapstructure:"env"`   // Custom environment variables (supports ${VAR} expansion)
 }
 
 // CodexClientConfig holds Claude-specific settings.
@@ -193,22 +198,88 @@ type OpenCodeClientConfig struct {
 	Model string `mapstructure:"model"` // anthropic/claude-opus-4-5 (default)
 }
 
-// AgentProvider returns an AgentProvider configured from user settings.
-// This is the preferred way to get an AI client for orchestration or chat.
-func (o OrchestrationConfig) AgentProvider() client.AgentProvider {
-	clientType := client.ClientType(o.Client)
-	if clientType == "" {
-		clientType = client.ClientClaude
+// CoordinatorClientType returns the client type for the coordinator.
+// Resolution priority: coordinator_client > client > "claude"
+func (o OrchestrationConfig) CoordinatorClientType() client.ClientType {
+	if o.CoordinatorClient != "" {
+		return client.ClientType(o.CoordinatorClient)
 	}
-	extensions := client.NewFromClientConfigs(clientType, client.ClientConfigs{
-		ClaudeModel:   o.Claude.Model,
-		CodexModel:    o.Codex.Model,
-		AmpModel:      o.Amp.Model,
-		AmpMode:       o.Amp.Mode,
-		GeminiModel:   o.Gemini.Model,
-		OpenCodeModel: o.OpenCode.Model,
-	})
-	return client.NewAgentProvider(clientType, extensions)
+	if o.Client != "" {
+		return client.ClientType(o.Client)
+	}
+	return client.ClientClaude
+}
+
+// WorkerClientType returns the client type for workers.
+// Resolution priority: worker_client > client > "claude"
+func (o OrchestrationConfig) WorkerClientType() client.ClientType {
+	if o.WorkerClient != "" {
+		return client.ClientType(o.WorkerClient)
+	}
+	if o.Client != "" {
+		return client.ClientType(o.Client)
+	}
+	return client.ClientClaude
+}
+
+// AgentProviders returns the AgentProviders map for coordinator and worker roles.
+// This is the preferred way to get AI clients for orchestration.
+func (o OrchestrationConfig) AgentProviders() client.AgentProviders {
+	coordType := o.CoordinatorClientType()
+	workerType := o.WorkerClientType()
+
+	return client.AgentProviders{
+		client.RoleCoordinator: client.NewAgentProvider(coordType, o.extensionsForClient(coordType, false)),
+		client.RoleWorker:      client.NewAgentProvider(workerType, o.extensionsForClient(workerType, true)),
+	}
+}
+
+// extensionsForClient builds extensions for the given client type.
+// If isWorker and client is claude, uses claude_worker config when env is set.
+func (o OrchestrationConfig) extensionsForClient(clientType client.ClientType, isWorker bool) map[string]any {
+	extensions := make(map[string]any)
+
+	switch clientType {
+	case client.ClientClaude:
+		cfg := o.Claude
+		// For workers, use claude_worker config if it has env vars configured
+		if isWorker && len(o.ClaudeWorker.Env) > 0 {
+			cfg = o.ClaudeWorker
+			// If worker model is empty, inherit from main claude config
+			if cfg.Model == "" {
+				cfg.Model = o.Claude.Model
+			}
+		}
+		if cfg.Model != "" {
+			extensions[client.ExtClaudeModel] = cfg.Model
+		}
+		if len(cfg.Env) > 0 {
+			extensions[client.ExtClaudeEnv] = cfg.Env
+		}
+	case client.ClientCodex:
+		if o.Codex.Model != "" {
+			extensions[client.ExtCodexModel] = o.Codex.Model
+		}
+	case client.ClientAmp:
+		if o.Amp.Model != "" {
+			extensions[client.ExtAmpModel] = o.Amp.Model
+		}
+		if o.Amp.Mode != "" {
+			// Note: Amp mode key is defined in amp package, but we use the literal here
+			// to avoid import cycle. The value is "amp.mode".
+			extensions["amp.mode"] = o.Amp.Mode
+		}
+	case client.ClientGemini:
+		if o.Gemini.Model != "" {
+			extensions[client.ExtGeminiModel] = o.Gemini.Model
+		}
+	case client.ClientOpenCode:
+		if o.OpenCode.Model != "" {
+			extensions[client.ExtOpenCodeModel] = o.OpenCode.Model
+		}
+	}
+
+	return extensions
 }
 
 // WorkflowConfig defines configuration for a workflow template.
@@ -376,10 +447,28 @@ func ValidateViews(views []ViewConfig) error {
 
 // ValidateOrchestration checks orchestration configuration for errors.
 // Returns nil if the configuration is valid (empty values use defaults).
+// allowedClients is the list of valid AI client types for orchestration.
+var allowedClients = []string{"claude", "amp", "codex", "gemini", "opencode"}
+
+// isAllowedClient checks if the given client type is in the allowed list.
+func isAllowedClient(c string) bool {
+	return slices.Contains(allowedClients, c)
+}
+
 func ValidateOrchestration(orch OrchestrationConfig) error {
-	// Validate client type
-	if orch.Client != "" && orch.Client != "claude" && orch.Client != "amp" && orch.Client != "codex" && orch.Client != "gemini" && orch.Client != "opencode" {
-		return fmt.Errorf("orchestration.client must be \"claude\", \"amp\", \"codex\", \"gemini\", or \"opencode\", got %q", orch.Client)
+	// Validate client type (legacy field)
+	if orch.Client != "" && !isAllowedClient(orch.Client) {
+		return fmt.Errorf("orchestration.client must be one of %v, got %q", allowedClients, orch.Client)
+	}
+
+	// Validate coordinator_client
+	if orch.CoordinatorClient != "" && !isAllowedClient(orch.CoordinatorClient) {
+		return fmt.Errorf("orchestration.coordinator_client must be one of %v, got %q", allowedClients, orch.CoordinatorClient)
+	}
+
+	// Validate worker_client
+	if orch.WorkerClient != "" && !isAllowedClient(orch.WorkerClient) {
+		return fmt.Errorf("orchestration.worker_client must be one of %v, got %q", allowedClients, orch.WorkerClient)
 	}
 
 	// Validate Amp mode
@@ -619,7 +708,8 @@ func Defaults() Config {
 		},
 		Views: DefaultViews(),
 		Orchestration: OrchestrationConfig{
-			Client: "claude",
+			CoordinatorClient: "claude",
+			WorkerClient:      "claude",
 			Claude: ClaudeClientConfig{
 				Model: "claude-opus-4-5",
 			},
@@ -749,8 +839,11 @@ views:
 # Orchestration mode settings
 # Configure which AI client to use when entering orchestration mode
 orchestration:
-  # AI client provider: "claude" (default), "amp", "codex", "gemini", or "opencode"
-  client: claude
+  # AI client provider for the coordinator: "claude" (default), "amp", "codex", "opencode", or "opencode"
+  coordinator_client: claude
+
+  # AI client provider for the workers: "claude" (default), "amp", "codex", "opencode", or "opencode"
+  worker_client: claude
 
   # Skip worktree prompt and always run in current directory (default: false)
   # disable_worktrees: true
