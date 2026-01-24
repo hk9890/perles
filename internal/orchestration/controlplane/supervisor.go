@@ -102,8 +102,6 @@ const (
 
 // SupervisorConfig configures the Supervisor.
 type SupervisorConfig struct {
-	// PortAllocator provides port allocation for MCP servers.
-	PortAllocator PortAllocator
 	// AgentProvider creates AI clients for workflow processes.
 	AgentProvider client.AgentProvider
 	// InfrastructureFactory creates v2 infrastructure instances.
@@ -145,7 +143,6 @@ type SupervisorConfig struct {
 
 // defaultSupervisor is the default implementation of Supervisor.
 type defaultSupervisor struct {
-	portAllocator         PortAllocator
 	agentProvider         client.AgentProvider
 	infrastructureFactory InfrastructureFactory
 	listenerFactory       ListenerFactory
@@ -160,9 +157,6 @@ type defaultSupervisor struct {
 
 // NewSupervisor creates a new Supervisor with the given configuration.
 func NewSupervisor(cfg SupervisorConfig) (Supervisor, error) {
-	if cfg.PortAllocator == nil {
-		return nil, fmt.Errorf("PortAllocator is required")
-	}
 	if cfg.AgentProvider == nil {
 		return nil, fmt.Errorf("AgentProvider is required")
 	}
@@ -187,7 +181,6 @@ func NewSupervisor(cfg SupervisorConfig) (Supervisor, error) {
 	}
 
 	return &defaultSupervisor{
-		portAllocator:         cfg.PortAllocator,
 		agentProvider:         cfg.AgentProvider,
 		infrastructureFactory: infraFactory,
 		listenerFactory:       listenerFactory,
@@ -220,8 +213,6 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 
 	// Track resources for cleanup on error
 	var (
-		port         int
-		releasePort  func()
 		infra        *v2.Infrastructure
 		httpServer   *http.Server
 		listener     net.Listener
@@ -240,9 +231,6 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 		}
 		if infra != nil {
 			infra.Shutdown()
-		}
-		if releasePort != nil {
-			releasePort()
 		}
 		// Close session to release file handles
 		if sess != nil {
@@ -319,21 +307,16 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 			"workflowID", inst.ID, "path", path, "branch", branchName)
 	}
 
-	// Step 1: Acquire port from PortAllocator
+	// Step 1: Create TCP listener for MCP HTTP server (OS assigns available port)
 	var err error
-	port, releasePort, err = s.portAllocator.Reserve(ctx, inst.ID)
+	listener, err = s.listenerFactory.Create("127.0.0.1:0")
 	if err != nil {
 		cancel()
-		return fmt.Errorf("acquiring port: %w", err)
+		return fmt.Errorf("creating MCP listener: %w", err)
 	}
 
-	// Step 2: Create TCP listener for MCP HTTP server
-	listener, err = s.listenerFactory.Create(fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		releasePort()
-		cancel()
-		return fmt.Errorf("creating MCP listener on port %d: %w", port, err)
-	}
+	// Get the actual port assigned by the OS
+	port := listener.Addr().(*net.TCPAddr).Port
 	log.Debug(log.CatOrch, "MCP listener created", "subsystem", "supervisor", "port", port, "workflowID", inst.ID)
 
 	// Step 3: Create message repository for this workflow
@@ -542,12 +525,7 @@ func (s *defaultSupervisor) Stop(ctx context.Context, inst *WorkflowInstance, op
 		inst.Cancel()
 	}
 
-	// Step 5: Release port
-	if inst.MCPPort > 0 {
-		s.portAllocator.ReleaseAll(inst.ID)
-	}
-
-	// Step 6: Remove worktree if present and FlagRemoveWorktree is enabled
+	// Step 5: Remove worktree if present and FlagRemoveWorktree is enabled
 	// Pre-conditions: inst.WorktreePath != "" and FlagRemoveWorktree is enabled
 	if inst.WorktreePath != "" && s.gitExecutorFactory != nil && s.flags != nil && s.flags.Enabled(flags.FlagRemoveWorktree) {
 		gitExec := s.gitExecutorFactory(inst.WorktreePath)
@@ -561,7 +539,7 @@ func (s *defaultSupervisor) Stop(ctx context.Context, inst *WorkflowInstance, op
 		}
 	}
 
-	// Step 7: Transition to Stopped state
+	// Step 6: Transition to Stopped state
 	if err := inst.TransitionTo(WorkflowStopped); err != nil {
 		return fmt.Errorf("transitioning to Stopped: %w", err)
 	}

@@ -1238,12 +1238,6 @@ func (m *Model) createControlPlane() controlplane.ControlPlane {
 	orchConfig := m.services.Config.Orchestration
 	agentProvider := orchConfig.AgentProvider()
 
-	// Create port allocator for MCP servers
-	portAllocator := controlplane.NewPortAllocator(&controlplane.PortAllocatorConfig{
-		StartPort: 19000,
-		EndPort:   19100,
-	})
-
 	// Create session factory for workflow session tracking
 	sessionFactory := session.NewFactory(session.FactoryConfig{
 		BaseDir:     orchConfig.SessionStorage.BaseDir,
@@ -1252,7 +1246,6 @@ func (m *Model) createControlPlane() controlplane.ControlPlane {
 
 	// Create supervisor with full configuration
 	supervisor, err := controlplane.NewSupervisor(controlplane.SupervisorConfig{
-		PortAllocator:      portAllocator,
 		AgentProvider:      agentProvider,
 		WorkflowRegistry:   m.workflowRegistry,
 		GitExecutorFactory: m.services.GitExecutorFactory,

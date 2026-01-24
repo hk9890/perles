@@ -49,12 +49,10 @@ func newTestControlPlane(t *testing.T) (ControlPlane, *mockInfrastructureFactory
 
 	mockProvider := mocks.NewMockAgentProvider(t)
 	mockFactory := &mockInfrastructureFactory{}
-	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
 	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
 		ListenerFactory:       &testListenerFactory{},
@@ -157,7 +155,6 @@ func TestNewControlPlane_ValidConfig(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	registry := NewInMemoryRegistry()
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
@@ -175,7 +172,6 @@ func TestNewControlPlane_ValidConfig(t *testing.T) {
 func TestNewControlPlane_MissingRegistry(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
@@ -611,13 +607,11 @@ func newTestControlPlaneWithEventBus(t *testing.T) (ControlPlane, *CrossWorkflow
 	t.Helper()
 
 	mockProvider := mocks.NewMockAgentProvider(t)
-	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
 	eventBus := NewCrossWorkflowEventBus()
 	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:  portAllocator,
 		AgentProvider:  mockProvider,
 		SessionFactory: sessionFactory,
 	})
@@ -965,7 +959,6 @@ func TestControlPlane_NewControlPlaneCreatesDefaultEventBus(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 	registry := NewInMemoryRegistry()
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	})
@@ -1169,12 +1162,10 @@ func TestControlPlane_Shutdown_WithHealthMonitor(t *testing.T) {
 	// Create control plane with health monitor
 	mockProvider := mocks.NewMockAgentProvider(t)
 	mockFactory := &mockInfrastructureFactory{}
-	portAllocator := NewPortAllocator(nil)
 	registry := NewInMemoryRegistry()
 	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	supervisor, err := NewSupervisor(SupervisorConfig{
-		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
 		SessionFactory:        sessionFactory,

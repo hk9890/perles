@@ -206,11 +206,6 @@ func createDaemonControlPlane(cfg *config.Config, _ string) (controlplane.Contro
 
 	agentProvider := orchConfig.AgentProvider()
 
-	portAllocator := controlplane.NewPortAllocator(&controlplane.PortAllocatorConfig{
-		StartPort: 19000,
-		EndPort:   19100,
-	})
-
 	sessionFactory := session.NewFactory(session.FactoryConfig{
 		BaseDir: orchConfig.SessionStorage.BaseDir,
 		// Note: GitExecutor not available in daemon mode without git context
@@ -219,7 +214,6 @@ func createDaemonControlPlane(cfg *config.Config, _ string) (controlplane.Contro
 	soundService := sound.NewSystemSoundService(cfg.Sound.Events)
 
 	supervisor, err := controlplane.NewSupervisor(controlplane.SupervisorConfig{
-		PortAllocator:    portAllocator,
 		AgentProvider:    agentProvider,
 		WorkflowRegistry: workflowRegistry,
 		SessionFactory:   sessionFactory,

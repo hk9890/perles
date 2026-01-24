@@ -68,11 +68,9 @@ func newTestSupervisorConfig(t *testing.T) (SupervisorConfig, *mocks.MockAgentPr
 
 	mockProvider := mocks.NewMockAgentProvider(t)
 	mockFactory := &mockInfrastructureFactory{}
-	portAllocator := NewPortAllocator(nil)
 	sessionFactory := session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()})
 
 	return SupervisorConfig{
-		PortAllocator:         portAllocator,
 		AgentProvider:         mockProvider,
 		InfrastructureFactory: mockFactory,
 		ListenerFactory:       &mockListenerFactory{},
@@ -181,25 +179,8 @@ func TestNewSupervisor_ValidConfig(t *testing.T) {
 	require.NotNil(t, supervisor)
 }
 
-func TestNewSupervisor_MissingPortAllocator(t *testing.T) {
-	mockProvider := mocks.NewMockAgentProvider(t)
-
-	cfg := SupervisorConfig{
-		AgentProvider:  mockProvider,
-		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
-		// PortAllocator is nil
-	}
-
-	supervisor, err := NewSupervisor(cfg)
-
-	require.Error(t, err)
-	require.Nil(t, supervisor)
-	require.Contains(t, err.Error(), "PortAllocator is required")
-}
-
 func TestNewSupervisor_MissingAgentProvider(t *testing.T) {
 	cfg := SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		// AgentProvider is nil
 	}
@@ -215,7 +196,6 @@ func TestNewSupervisor_DefaultInfrastructureFactory(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		// InfrastructureFactory is nil - should use default
@@ -349,9 +329,8 @@ func TestSupervisor_AllocateResources_AcquiresPort(t *testing.T) {
 	err = startWorkflow(ctx, supervisor, inst)
 
 	require.NoError(t, err)
-	// Port should be in the default range (9000-9100)
-	require.GreaterOrEqual(t, inst.MCPPort, DefaultPortRangeStart)
-	require.LessOrEqual(t, inst.MCPPort, DefaultPortRangeEnd)
+	// Port should be assigned by the OS (any valid port > 0)
+	require.Greater(t, inst.MCPPort, 0)
 }
 
 func TestSupervisor_AllocateResources_CleansUpOnInfrastructureError(t *testing.T) {
@@ -373,11 +352,6 @@ func TestSupervisor_AllocateResources_CleansUpOnInfrastructureError(t *testing.T
 	require.Contains(t, err.Error(), "creating infrastructure")
 	// Workflow should remain in Pending state
 	require.Equal(t, WorkflowPending, inst.State)
-	// Port should have been released (check by trying to allocate again)
-	port, release, allocErr := cfg.PortAllocator.Reserve(context.Background(), inst.ID)
-	require.NoError(t, allocErr)
-	require.Greater(t, port, 0)
-	release()
 
 	mockFactory.AssertExpectations(t)
 }
@@ -428,35 +402,6 @@ func TestSupervisor_Stop_TransitionsPausedToStopped(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, WorkflowStopped, inst.State)
-}
-
-func TestSupervisor_Stop_ReleasesPort(t *testing.T) {
-	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	// Create and start a workflow
-	inst := newTestInstance(t, "test-workflow")
-	infra := createMinimalInfrastructure(t)
-	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil)
-	setupAgentProviderMock(t, mockProvider)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go infra.Core.Processor.Run(ctx)
-	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
-
-	require.NoError(t, startWorkflow(ctx, supervisor, inst))
-	allocatedPort := inst.MCPPort
-
-	// Verify port is allocated
-	require.False(t, cfg.PortAllocator.IsPortAvailable(allocatedPort))
-
-	// Stop the workflow
-	require.NoError(t, supervisor.Stop(ctx, inst, StopOptions{}))
-
-	// Verify port is released
-	require.True(t, cfg.PortAllocator.IsPortAvailable(allocatedPort))
 }
 
 func TestSupervisor_Stop_WithForce_SkipsGracefulShutdown(t *testing.T) {
@@ -585,7 +530,6 @@ func TestSupervisor_Config_AcceptsGitExecutorFactory(t *testing.T) {
 	}
 
 	cfg := SupervisorConfig{
-		PortAllocator:      NewPortAllocator(nil),
 		AgentProvider:      mockProvider,
 		SessionFactory:     session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		GitExecutorFactory: gitFactory,
@@ -610,7 +554,6 @@ func TestSupervisor_Config_DefaultWorktreeTimeout(t *testing.T) {
 
 	// Create config without specifying WorktreeTimeout
 	cfg := SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 	}
@@ -631,7 +574,6 @@ func TestSupervisor_Config_CustomWorktreeTimeout(t *testing.T) {
 
 	customTimeout := 60 * time.Second
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		WorktreeTimeout: customTimeout,
@@ -654,7 +596,6 @@ func TestSupervisor_Config_AcceptsFlags(t *testing.T) {
 	})
 
 	cfg := SupervisorConfig{
-		PortAllocator:  NewPortAllocator(nil),
 		AgentProvider:  mockProvider,
 		SessionFactory: session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
 		Flags:          flagsRegistry,
@@ -698,7 +639,6 @@ func TestSupervisor_Start_CreatesWorktreeWhenEnabled(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -750,7 +690,6 @@ func TestSupervisor_Start_SkipsWorktreeWhenDisabled(t *testing.T) {
 
 	factoryCalled := false
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -795,7 +734,6 @@ func TestSupervisor_Start_UsesCustomBranchNameWhenSet(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -844,7 +782,6 @@ func TestSupervisor_Start_AutoGeneratesBranchNameWhenEmpty(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -895,7 +832,6 @@ func TestSupervisor_Start_SetsInstanceFieldsCorrectly(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -946,7 +882,6 @@ func TestSupervisor_Start_CleansUpWorktreeOnSubsequentFailure(t *testing.T) {
 	mockFactory := &mockInfrastructureFactory{}
 
 	cfg := SupervisorConfig{
-		PortAllocator:         NewPortAllocator(nil),
 		AgentProvider:         mockProvider,
 		ListenerFactory:       &mockListenerFactory{},
 		InfrastructureFactory: mockFactory,
@@ -993,7 +928,6 @@ func TestSupervisor_Start_HandlesErrBranchAlreadyCheckedOut(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
@@ -1031,7 +965,6 @@ func TestSupervisor_Start_HandlesTimeoutCorrectly(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
@@ -1072,7 +1005,6 @@ func TestSupervisor_Stop_ReturnsErrUncommittedChanges(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
@@ -1110,7 +1042,6 @@ func TestSupervisor_Stop_BypassesUncommittedCheckWhenForceTrue(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
@@ -1152,7 +1083,6 @@ func TestSupervisor_Stop_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
 	})
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
@@ -1195,7 +1125,6 @@ func TestSupervisor_Stop_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
 	})
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
@@ -1239,7 +1168,6 @@ func TestSupervisor_Stop_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
 	})
 
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flagsRegistry,
@@ -1277,7 +1205,6 @@ func TestSupervisor_Stop_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
 
 	factoryCalled := false
 	cfg := SupervisorConfig{
-		PortAllocator:   NewPortAllocator(nil),
 		AgentProvider:   mockProvider,
 		ListenerFactory: &mockListenerFactory{},
 		Flags:           flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
