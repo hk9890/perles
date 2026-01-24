@@ -1,12 +1,20 @@
 package modal
 
 import (
+	"os"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 func TestNew_InputMode(t *testing.T) {
 	cfg := Config{
@@ -547,4 +555,164 @@ func TestUpdate_YKeyOnButtons(t *testing.T) {
 	submitMsg, ok := msg.(SubmitMsg)
 	require.True(t, ok, "expected SubmitMsg from 'y' key on buttons, got %T", msg)
 	require.Equal(t, "test", submitMsg.Values["name"])
+}
+
+// --- Mouse Click Tests ---
+
+// waitForZone waits for a zone to be registered with retry logic.
+// Zone registration in bubblezone is asynchronous via a channel worker.
+func waitForZone(t *testing.T, m *Model, zoneID string, bg string) *zone.ZoneInfo {
+	t.Helper()
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		// Re-render to ensure zones are registered
+		_ = m.Overlay(bg)
+		// Zone registration is asynchronous via a channel worker in bubblezone.
+		// A small delay allows the worker goroutine to process the channel.
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, z, "zone %s should be registered after Overlay()", zoneID)
+	require.False(t, z.IsZero(), "zone %s should not be zero", zoneID)
+	return z
+}
+
+func TestUpdate_MouseClickSubmit(t *testing.T) {
+	m := New(Config{
+		Title: "Confirm",
+		Inputs: []InputConfig{
+			{Key: "name", Label: "Name", Placeholder: "Enter...", Value: "clicked"},
+		},
+	})
+	m.SetSize(80, 24)
+
+	bg := createBackground(80, 24)
+	z := waitForZone(t, &m, zoneModalSubmit, bg)
+
+	mouseMsg := tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	}
+
+	_, cmd := m.Update(mouseMsg)
+	require.NotNil(t, cmd, "expected command from mouse click on submit")
+
+	msg := cmd()
+	submitMsg, ok := msg.(SubmitMsg)
+	require.True(t, ok, "expected SubmitMsg, got %T", msg)
+	require.Equal(t, "clicked", submitMsg.Values["name"])
+}
+
+func TestUpdate_MouseClickCancel(t *testing.T) {
+	m := New(Config{
+		Title:   "Confirm",
+		Message: "Are you sure?",
+	})
+	m.SetSize(80, 24)
+
+	bg := createBackground(80, 24)
+	z := waitForZone(t, &m, zoneModalCancel, bg)
+
+	mouseMsg := tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	}
+
+	_, cmd := m.Update(mouseMsg)
+	require.NotNil(t, cmd, "expected command from mouse click on cancel")
+
+	msg := cmd()
+	_, ok := msg.(CancelMsg)
+	require.True(t, ok, "expected CancelMsg, got %T", msg)
+}
+
+func TestUpdate_MouseClickOutside(t *testing.T) {
+	m := New(Config{
+		Title:   "Confirm",
+		Message: "Are you sure?",
+	})
+	m.SetSize(80, 24)
+
+	bg := createBackground(80, 24)
+	// Ensure zones are registered first
+	_ = waitForZone(t, &m, zoneModalSubmit, bg)
+
+	// Click at position 0,0 which is definitely outside any button
+	mouseMsg := tea.MouseMsg{
+		X:      0,
+		Y:      0,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	}
+
+	_, cmd := m.Update(mouseMsg)
+	require.Nil(t, cmd, "expected no command from mouse click outside buttons")
+}
+
+func TestUpdate_MouseClickRightButton(t *testing.T) {
+	m := New(Config{
+		Title:   "Confirm",
+		Message: "Are you sure?",
+	})
+	m.SetSize(80, 24)
+
+	bg := createBackground(80, 24)
+	z := waitForZone(t, &m, zoneModalSubmit, bg)
+
+	// Right-click should be ignored
+	mouseMsg := tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonRight,
+		Action: tea.MouseActionRelease,
+	}
+
+	_, cmd := m.Update(mouseMsg)
+	require.Nil(t, cmd, "expected no command from right-click")
+}
+
+func TestUpdate_MouseClickIgnoredWhenRequired(t *testing.T) {
+	// Configure modal with empty input (submit is blocked when input required but empty)
+	m := New(Config{
+		Title: "Required Input",
+		Inputs: []InputConfig{
+			{Key: "name", Label: "Name", Placeholder: "Enter...", Value: ""}, // Empty
+		},
+	})
+	m.SetSize(80, 24)
+
+	bg := createBackground(80, 24)
+	z := waitForZone(t, &m, zoneModalSubmit, bg)
+
+	mouseMsg := tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	}
+
+	_, cmd := m.Update(mouseMsg)
+	// Should return nil because input is empty (same as keyboard behavior)
+	require.Nil(t, cmd, "expected no command when clicking submit with empty required input")
+}
+
+// createBackground creates a simple background string of the given dimensions.
+func createBackground(width, height int) string {
+	var bg string
+	for i := 0; i < height; i++ {
+		for j := 0; j < width; j++ {
+			bg += "."
+		}
+		if i < height-1 {
+			bg += "\n"
+		}
+	}
+	return bg
 }

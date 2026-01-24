@@ -17,7 +17,7 @@
 │                                     │ Cancel to return and commit your         │                                      
 │                                     │ changes.                                 │                                      
 │                                     │                                          │                                      
-│User                                 │   Confirm      Cancel                    │                                      
+│User                                 │ [1001z  Confirm  [1001z  [1002z  Cancel  [1002z                  │                                      
 │Start working on the auth epic       │                                          │                                      
 │                                     ╰──────────────────────────────────────────╯                                      
 │Coordinator                             ││                                    │                                        

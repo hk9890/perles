@@ -13,6 +13,13 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
+)
+
+// Zone ID constants for mouse click detection.
+const (
+	zoneModalSubmit = "modal-submit"
+	zoneModalCancel = "modal-cancel"
 )
 
 // ButtonVariant controls the styling of the confirm/save button.
@@ -125,6 +132,11 @@ func (m Model) Init() tea.Cmd {
 // Update handles messages for the modal.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		if cmd := m.handleMouseMsg(msg); cmd != nil {
+			return m, cmd
+		}
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Component.Tab), key.Matches(msg, keys.Common.Down), key.Matches(msg, keys.Component.Next):
@@ -392,7 +404,7 @@ func (m Model) renderButtons() string {
 	} else {
 		saveLabel = "Confirm"
 	}
-	saveBtn := saveStyle.Render(saveLabel)
+	saveBtn := zone.Mark(zoneModalSubmit, saveStyle.Render(saveLabel))
 
 	// Cancel button - dark grey, lighter when focused
 	cancelStyle := styles.SecondaryButtonStyle
@@ -403,7 +415,7 @@ func (m Model) renderButtons() string {
 	if m.config.CancelText != "" {
 		cancelLabel = m.config.CancelText
 	}
-	cancelBtn := cancelStyle.Render(cancelLabel)
+	cancelBtn := zone.Mark(zoneModalCancel, cancelStyle.Render(cancelLabel))
 
 	return saveBtn + "  " + cancelBtn
 }
@@ -411,17 +423,57 @@ func (m Model) renderButtons() string {
 // Overlay renders the modal centered on the given background.
 func (m Model) Overlay(bg string) string {
 	fg := m.View()
-	return overlay.Place(overlay.Config{
+	result := overlay.Place(overlay.Config{
 		Width:    m.width,
 		Height:   m.height,
 		Position: overlay.Center,
 	}, fg, bg)
+	// Scan for zone markers to enable mouse click detection
+	return zone.Scan(result)
 }
 
 // SetSize updates the modal's knowledge of viewport size for overlay centering.
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+}
+
+// handleMouseMsg handles mouse click events on modal buttons.
+// Returns a tea.Cmd if a button was clicked, nil otherwise.
+func (m Model) handleMouseMsg(msg tea.MouseMsg) tea.Cmd {
+	// Only respond to left-click release
+	if msg.Button != tea.MouseButtonLeft || msg.Action != tea.MouseActionRelease {
+		return nil
+	}
+
+	// Check submit button
+	if z := zone.Get(zoneModalSubmit); z != nil && z.InBounds(msg) {
+		// Same behavior as keyboard Enter on Save button
+		if m.hasInputs {
+			for _, input := range m.inputs {
+				if input.Value() == "" {
+					return nil // Don't submit if any input empty
+				}
+			}
+		}
+		values := make(map[string]string)
+		for i, input := range m.inputs {
+			values[m.inputKeys[i]] = input.Value()
+		}
+		return func() tea.Msg { return SubmitMsg{Values: values} }
+	}
+
+	// Check cancel button
+	if z := zone.Get(zoneModalCancel); z != nil && z.InBounds(msg) {
+		// Same behavior as keyboard Escape (if not required)
+		if !m.config.Required {
+			return func() tea.Msg { return CancelMsg{} }
+		}
+		// If Required, cancel button is always clickable (unlike Esc key)
+		return func() tea.Msg { return CancelMsg{} }
+	}
+
+	return nil
 }
 
 // FocusedInput returns the currently focused input index (-1 if on buttons).

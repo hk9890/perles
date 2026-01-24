@@ -1,13 +1,20 @@
 package quitmodal
 
 import (
+	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
+
+func TestMain(m *testing.M) {
+	zone.NewGlobal()
+	os.Exit(m.Run())
+}
 
 func TestNew_CreatesModalWithCorrectConfig(t *testing.T) {
 	cfg := Config{
