@@ -333,6 +333,11 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 			}
 		}
 
+		// If no workflows, automatically open the new workflow modal
+		if len(m.workflows) == 0 && m.newWorkflowModal == nil {
+			return m.openNewWorkflowModal()
+		}
+
 		// Load cached state for initial selection if needed
 		if len(m.workflows) > 0 {
 			m.loadSelectedWorkflowState()
@@ -628,13 +633,13 @@ func (m Model) handleTableKeys(msg tea.KeyMsg) (mode.Controller, tea.Cmd) {
 		m.filter = m.filter.Activate()
 		return m, m.filter.Init()
 
-	case "esc": // Clear filter (when not in filter input mode)
+	case "esc": // Clear filter, or quit if no filter
 		if m.filter.HasFilter() {
 			m.filter = m.filter.Clear()
 			m.selectedIndex = 0
 			return m, nil
 		}
-		return m, nil
+		return m, func() tea.Msg { return QuitMsg{} }
 
 	// Help
 	case "?": // Toggle help
@@ -715,7 +720,7 @@ func (m Model) handleEpicTreeKeys(msg tea.KeyMsg) (mode.Controller, tea.Cmd) {
 	case "ctrl+w": // Toggle coordinator chat panel
 		return m.toggleCoordinatorPanel()
 
-	case "q", "ctrl+c":
+	case "q", "ctrl+c", "esc":
 		return m, func() tea.Msg { return QuitMsg{} }
 	}
 
@@ -759,7 +764,7 @@ func (m Model) handleCoordinatorKeys(msg tea.KeyMsg) (mode.Controller, tea.Cmd) 
 		}
 		return m, nil
 
-	case "q", "ctrl+c":
+	case "q", "ctrl+c", "esc":
 		return m, func() tea.Msg { return QuitMsg{} }
 	}
 

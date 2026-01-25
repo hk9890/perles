@@ -38,7 +38,7 @@ const (
 )
 
 // CoordinatorPanelWidth is the fixed width for the coordinator chat panel.
-const CoordinatorPanelWidth = 60
+const CoordinatorPanelWidth = 70
 
 // createWorkflowTableConfig creates the table configuration for the workflow list.
 // The render callbacks close over the model to access controlPlane and services.Clock.
