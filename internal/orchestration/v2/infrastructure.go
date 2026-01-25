@@ -451,6 +451,11 @@ func registerHandlers(
 		handler.NewReplaceProcessHandler(processRepo, processRegistry,
 			handler.WithReplaceSpawner(processSpawner),
 			handler.WithWorkflowStateProvider(workflowStateProvider)))
+	cmdProcessor.RegisterHandler(command.CmdPauseProcess,
+		handler.NewPauseProcessHandler(processRepo,
+			handler.WithPauseRegistry(processRegistry)))
+	cmdProcessor.RegisterHandler(command.CmdResumeProcess,
+		handler.NewResumeProcessHandler(processRepo, queueRepo))
 
 	// ============================================================
 	// Aggregation handlers (1)

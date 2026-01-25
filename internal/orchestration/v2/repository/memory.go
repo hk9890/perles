@@ -174,6 +174,15 @@ func (r *MemoryQueueRepository) Size(workerID string) int {
 	return queue.Size()
 }
 
+// ClearAll removes all message queues from the repository.
+// Used when pausing workflows to discard all pending messages.
+func (r *MemoryQueueRepository) ClearAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.queues = make(map[string]*MessageQueue)
+}
+
 // Reset clears all state from the repository. Useful for test setup/teardown.
 func (r *MemoryQueueRepository) Reset() {
 	r.mu.Lock()
@@ -305,14 +314,28 @@ func (r *MemoryProcessRepository) ReadyWorkers() []*Process {
 	return result
 }
 
-// RetiredWorkers returns workers in terminal state (Retired or Failed).
+// RetiredWorkers returns workers that were gracefully retired.
 func (r *MemoryProcessRepository) RetiredWorkers() []*Process {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]*Process, 0)
 	for _, process := range r.processes {
-		if process.Role == RoleWorker && (process.Status == StatusRetired || process.Status == StatusFailed) {
+		if process.Role == RoleWorker && process.Status == StatusRetired {
+			result = append(result, process)
+		}
+	}
+	return result
+}
+
+// FailedWorkers returns workers that failed (session expired, crashed, etc.).
+func (r *MemoryProcessRepository) FailedWorkers() []*Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]*Process, 0)
+	for _, process := range r.processes {
+		if process.Role == RoleWorker && process.Status == StatusFailed {
 			result = append(result, process)
 		}
 	}

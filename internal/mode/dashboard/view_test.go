@@ -25,7 +25,6 @@ func TestGetStatusTextAndColor(t *testing.T) {
 		{"paused", controlplane.WorkflowPaused, "PAUSED"},
 		{"completed", controlplane.WorkflowCompleted, "COMPLETED"},
 		{"failed", controlplane.WorkflowFailed, "FAILED"},
-		{"stopped", controlplane.WorkflowStopped, "STOPPED"},
 		{"unknown", controlplane.WorkflowState("unknown"), "PENDING"},
 	}
 

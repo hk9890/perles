@@ -628,11 +628,18 @@ func (m Model) handleTableKeys(msg tea.KeyMsg) (mode.Controller, tea.Cmd) {
 		return m, nil
 
 	// Quick actions
-	case "s": // Start workflow
+	case "s": // Start or Resume workflow
+		workflow := m.SelectedWorkflow()
+		if workflow == nil {
+			return m, nil
+		}
+		if workflow.State == controlplane.WorkflowPaused {
+			return m.resumeSelectedWorkflow()
+		}
 		return m.startSelectedWorkflow()
 
-	case "x": // Stop workflow
-		return m.stopSelectedWorkflow()
+	case "x": // Pause workflow
+		return m.pauseSelectedWorkflow()
 
 	case "n", "N": // New workflow (always starts immediately)
 		return m.openNewWorkflowModal()
@@ -901,8 +908,8 @@ func (m Model) getFilteredWorkflows() []*controlplane.WorkflowInstance {
 // It updates the cached WorkflowUIState for any workflow that sends events,
 // regardless of whether that workflow is currently selected.
 func (m Model) handleControlPlaneEvent(event controlplane.ControlPlaneEvent) (mode.Controller, tea.Cmd) {
-	// Handle EventWorkflowStopped: proactively clean up state for stopped workflows
-	if event.Type == controlplane.EventWorkflowStopped && event.WorkflowID != "" {
+	// Handle EventWorkflowFailed: proactively clean up state for failed workflows
+	if event.Type == controlplane.EventWorkflowFailed && event.WorkflowID != "" {
 		delete(m.workflowUIState, event.WorkflowID)
 	}
 
@@ -1183,30 +1190,48 @@ func (m Model) startSelectedWorkflow() (mode.Controller, tea.Cmd) {
 	if wf == nil {
 		return m, nil
 	}
-	if wf.State != controlplane.WorkflowPending && wf.State != controlplane.WorkflowPaused {
-		return m, nil // Can only start pending or paused workflows
+	if wf.State != controlplane.WorkflowPending {
+		return m, nil // Can only start pending workflows
 	}
 
 	return m, m.startWorkflow(wf.ID)
 }
 
-// stopSelectedWorkflow stops the currently selected workflow.
-func (m Model) stopSelectedWorkflow() (mode.Controller, tea.Cmd) {
+// resumeSelectedWorkflow resumes a paused workflow.
+func (m Model) resumeSelectedWorkflow() (mode.Controller, tea.Cmd) {
 	workflow := m.SelectedWorkflow()
 	if workflow == nil {
 		return m, nil
 	}
-	if workflow.IsTerminal() {
-		return m, nil // Can't stop terminal workflows
+	if workflow.State != controlplane.WorkflowPaused {
+		return m, nil // Can only resume paused workflows
 	}
 
 	return m, func() tea.Msg {
 		if m.controlPlane == nil {
 			return nil
 		}
-		_ = m.controlPlane.Stop(context.Background(), workflow.ID, controlplane.StopOptions{
-			Reason: "stopped from dashboard",
-		})
+		_ = m.controlPlane.Resume(context.Background(), workflow.ID)
+		// Workflow state change will be received via event subscription
+		return nil
+	}
+}
+
+// pauseSelectedWorkflow pauses the currently selected workflow.
+func (m Model) pauseSelectedWorkflow() (mode.Controller, tea.Cmd) {
+	workflow := m.SelectedWorkflow()
+	if workflow == nil {
+		return m, nil
+	}
+	if !workflow.IsRunning() {
+		return m, nil // Can only pause running workflows
+	}
+
+	return m, func() tea.Msg {
+		if m.controlPlane == nil {
+			return nil
+		}
+		_ = m.controlPlane.Pause(context.Background(), workflow.ID)
 		// Workflow state change will be received via event subscription
 		return nil
 	}

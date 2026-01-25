@@ -367,7 +367,6 @@ func TestRegistry_Count_ReturnsCorrectCounts(t *testing.T) {
 	require.Equal(t, 1, counts[WorkflowPaused])
 	require.Equal(t, 1, counts[WorkflowCompleted])
 	require.Equal(t, 0, counts[WorkflowFailed])
-	require.Equal(t, 0, counts[WorkflowStopped])
 }
 
 func TestRegistry_Count_EmptyRegistry(t *testing.T) {

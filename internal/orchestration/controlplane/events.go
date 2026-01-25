@@ -19,7 +19,6 @@ const (
 	EventWorkflowResumed   EventType = "workflow.resumed"
 	EventWorkflowCompleted EventType = "workflow.completed"
 	EventWorkflowFailed    EventType = "workflow.failed"
-	EventWorkflowStopped   EventType = "workflow.stopped"
 
 	// Coordinator events
 	EventCoordinatorSpawned  EventType = "coordinator.spawned"
@@ -191,8 +190,7 @@ func (t EventType) IsLifecycleEvent() bool {
 		EventWorkflowPaused,
 		EventWorkflowResumed,
 		EventWorkflowCompleted,
-		EventWorkflowFailed,
-		EventWorkflowStopped:
+		EventWorkflowFailed:
 		return true
 	default:
 		return false

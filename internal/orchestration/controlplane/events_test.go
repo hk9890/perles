@@ -23,7 +23,6 @@ func TestEventTypeConstants(t *testing.T) {
 		{"WorkflowResumed", EventWorkflowResumed, "workflow.resumed"},
 		{"WorkflowCompleted", EventWorkflowCompleted, "workflow.completed"},
 		{"WorkflowFailed", EventWorkflowFailed, "workflow.failed"},
-		{"WorkflowStopped", EventWorkflowStopped, "workflow.stopped"},
 		// Coordinator events
 		{"CoordinatorSpawned", EventCoordinatorSpawned, "coordinator.spawned"},
 		{"CoordinatorReplaced", EventCoordinatorReplaced, "coordinator.replaced"},
@@ -362,7 +361,6 @@ func TestIsLifecycleEvent(t *testing.T) {
 		EventWorkflowResumed,
 		EventWorkflowCompleted,
 		EventWorkflowFailed,
-		EventWorkflowStopped,
 	}
 
 	for _, e := range lifecycleEvents {

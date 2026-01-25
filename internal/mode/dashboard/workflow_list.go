@@ -143,10 +143,8 @@ func stateOrder(state controlplane.WorkflowState) int {
 		return 3
 	case controlplane.WorkflowFailed:
 		return 4
-	case controlplane.WorkflowStopped:
-		return 5
 	default:
-		return 6
+		return 5
 	}
 }
 

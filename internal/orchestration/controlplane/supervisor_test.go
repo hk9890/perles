@@ -22,6 +22,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
+	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
@@ -133,6 +134,10 @@ func createMinimalInfrastructure(t *testing.T) *v2.Infrastructure {
 	// Create turn enforcer for worker server cache
 	turnEnforcer := handler.NewTurnCompletionTracker()
 
+	// Create repositories for pause/resume tests
+	processRepo := repository.NewMemoryProcessRepository()
+	queueRepo := repository.NewMemoryQueueRepository(10)
+
 	return &v2.Infrastructure{
 		Core: v2.CoreComponents{
 			Processor: cmdProcessor,
@@ -141,6 +146,10 @@ func createMinimalInfrastructure(t *testing.T) *v2.Infrastructure {
 		},
 		Internal: v2.InternalComponents{
 			TurnEnforcer: turnEnforcer,
+		},
+		Repositories: v2.RepositoryComponents{
+			ProcessRepo: processRepo,
+			QueueRepo:   queueRepo,
 		},
 	}
 }
@@ -267,20 +276,6 @@ func TestSupervisor_AllocateResources_RejectsNonPendingWorkflow(t *testing.T) {
 	require.Contains(t, err.Error(), "pending")
 }
 
-func TestSupervisor_AllocateResources_RejectsStopped(t *testing.T) {
-	cfg, _, _ := newTestSupervisorConfig(t)
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	inst := newTestInstance(t, "test-workflow")
-	inst.State = WorkflowStopped
-
-	err = supervisor.AllocateResources(context.Background(), inst)
-
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrInvalidState)
-}
-
 func TestSupervisor_AllocateResources_RejectsCompleted(t *testing.T) {
 	cfg, _, _ := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
@@ -363,7 +358,7 @@ func TestSupervisor_AllocateResources_CleansUpOnInfrastructureError(t *testing.T
 
 // === Unit Tests: Stop ===
 
-func TestSupervisor_Stop_TransitionsRunningToStopped(t *testing.T) {
+func TestSupervisor_Shutdown_TransitionsRunningToFailed(t *testing.T) {
 	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -383,17 +378,17 @@ func TestSupervisor_Stop_TransitionsRunningToStopped(t *testing.T) {
 	require.Equal(t, WorkflowRunning, inst.State)
 
 	// Now stop it
-	err = supervisor.Stop(ctx, inst, StopOptions{Reason: "test"})
+	err = supervisor.Shutdown(ctx, inst, StopOptions{Reason: "test"})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 	require.Nil(t, inst.Infrastructure)
 	require.Equal(t, 0, inst.MCPPort)
 	require.Nil(t, inst.Ctx)
 	require.Nil(t, inst.Cancel)
 }
 
-func TestSupervisor_Stop_TransitionsPausedToStopped(t *testing.T) {
+func TestSupervisor_Shutdown_TransitionsPausedToFailed(t *testing.T) {
 	cfg, _, _ := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -403,13 +398,13 @@ func TestSupervisor_Stop_TransitionsPausedToStopped(t *testing.T) {
 	// Manually set to Paused (bypassing normal transition)
 	inst.State = WorkflowPaused
 
-	err = supervisor.Stop(context.Background(), inst, StopOptions{Reason: "test"})
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{Reason: "test"})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
-func TestSupervisor_Stop_WithForce_SkipsGracefulShutdown(t *testing.T) {
+func TestSupervisor_Shutdown_WithForce_SkipsGracefulShutdown(t *testing.T) {
 	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -428,13 +423,13 @@ func TestSupervisor_Stop_WithForce_SkipsGracefulShutdown(t *testing.T) {
 	require.NoError(t, startWorkflow(ctx, supervisor, inst))
 
 	// Stop with Force=true
-	err = supervisor.Stop(ctx, inst, StopOptions{Force: true})
+	err = supervisor.Shutdown(ctx, inst, StopOptions{Force: true})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
-func TestSupervisor_Stop_RejectsTerminalState(t *testing.T) {
+func TestSupervisor_Shutdown_RejectsTerminalState(t *testing.T) {
 	cfg, _, _ := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -443,7 +438,6 @@ func TestSupervisor_Stop_RejectsTerminalState(t *testing.T) {
 		name  string
 		state WorkflowState
 	}{
-		{"Stopped", WorkflowStopped},
 		{"Completed", WorkflowCompleted},
 		{"Failed", WorkflowFailed},
 	}
@@ -453,7 +447,7 @@ func TestSupervisor_Stop_RejectsTerminalState(t *testing.T) {
 			inst := newTestInstance(t, "test-workflow")
 			inst.State = tc.state
 
-			err := supervisor.Stop(context.Background(), inst, StopOptions{})
+			err := supervisor.Shutdown(context.Background(), inst, StopOptions{})
 
 			require.Error(t, err)
 			require.ErrorIs(t, err, ErrInvalidState)
@@ -461,7 +455,7 @@ func TestSupervisor_Stop_RejectsTerminalState(t *testing.T) {
 	}
 }
 
-func TestSupervisor_Stop_AllowsFromPendingState(t *testing.T) {
+func TestSupervisor_Shutdown_AllowsFromPendingState(t *testing.T) {
 	cfg, _, _ := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -470,17 +464,17 @@ func TestSupervisor_Stop_AllowsFromPendingState(t *testing.T) {
 	// Instance is in Pending state by default
 	require.Equal(t, WorkflowPending, inst.State)
 
-	// According to the state machine, Pending -> Stopped is a valid transition
+	// According to the state machine, Pending -> Failed is a valid transition
 	// This allows cancelling a workflow before it starts
-	err = supervisor.Stop(context.Background(), inst, StopOptions{Reason: "cancelled before start"})
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{Reason: "cancelled before start"})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
 // === Integration-style Test ===
 
-func TestSupervisor_StartStop_FullLifecycle(t *testing.T) {
+func TestSupervisor_StartShutdown_FullLifecycle(t *testing.T) {
 	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
 	supervisor, err := NewSupervisor(cfg)
 	require.NoError(t, err)
@@ -511,15 +505,365 @@ func TestSupervisor_StartStop_FullLifecycle(t *testing.T) {
 	require.NotNil(t, inst.Infrastructure)
 
 	// Stop the workflow
-	err = supervisor.Stop(ctx, inst, StopOptions{Reason: "test complete"})
+	err = supervisor.Shutdown(ctx, inst, StopOptions{Reason: "test complete"})
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 
 	// Verify resources are released
 	require.Equal(t, 0, inst.MCPPort)
 	require.Nil(t, inst.Infrastructure)
 
 	mockFactory.AssertExpectations(t)
+}
+
+// === Unit Tests: Pause ===
+
+func TestSupervisor_Pause_ReturnsErrInvalidStateIfNotRunning(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name  string
+		state WorkflowState
+	}{
+		{"Pending", WorkflowPending},
+		{"Paused", WorkflowPaused},
+		{"Completed", WorkflowCompleted},
+		{"Failed", WorkflowFailed},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := newTestInstance(t, "test-workflow")
+			inst.State = tc.state
+
+			err := supervisor.Pause(context.Background(), inst)
+
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrInvalidState)
+			require.Contains(t, err.Error(), tc.state.String())
+		})
+	}
+}
+
+func TestSupervisor_Pause_TransitionsRunningToPaused(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowRunning
+
+	err = supervisor.Pause(context.Background(), inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowPaused, inst.State)
+}
+
+func TestSupervisor_Pause_WithInfrastructure_DoesNotPanic(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowRunning
+
+	// Create real infrastructure - verifies that Pause doesn't panic when infrastructure exists
+	inst.Infrastructure = createMinimalInfrastructure(t)
+
+	err = supervisor.Pause(context.Background(), inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowPaused, inst.State)
+}
+
+func TestSupervisor_Pause_WithNilInfrastructure_DoesNotPanic(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowRunning
+	inst.Infrastructure = nil // explicitly nil
+
+	err = supervisor.Pause(context.Background(), inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowPaused, inst.State)
+}
+
+func TestSupervisor_Pause_SetsPausedAtTimestamp(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowRunning
+	require.True(t, inst.PausedAt.IsZero(), "PausedAt should be zero before pause")
+
+	beforePause := time.Now()
+	err = supervisor.Pause(context.Background(), inst)
+	afterPause := time.Now()
+
+	require.NoError(t, err)
+	require.False(t, inst.PausedAt.IsZero(), "PausedAt should be set after pause")
+	require.True(t, inst.PausedAt.After(beforePause) || inst.PausedAt.Equal(beforePause),
+		"PausedAt should be at or after beforePause")
+	require.True(t, inst.PausedAt.Before(afterPause) || inst.PausedAt.Equal(afterPause),
+		"PausedAt should be at or before afterPause")
+}
+
+// === Unit Tests: Resume ===
+
+func TestSupervisor_Resume_ReturnsErrInvalidStateIfNotPaused(t *testing.T) {
+	cfg, _, _ := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name  string
+		state WorkflowState
+	}{
+		{"Pending", WorkflowPending},
+		{"Running", WorkflowRunning},
+		{"Completed", WorkflowCompleted},
+		{"Failed", WorkflowFailed},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			inst := newTestInstance(t, "test-workflow")
+			inst.State = tc.state
+
+			err := supervisor.Resume(context.Background(), inst)
+
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrInvalidState)
+			require.Contains(t, err.Error(), tc.state.String())
+		})
+	}
+}
+
+func TestSupervisor_Resume_TransitionsPausedToRunning(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowPaused
+	inst.PausedAt = time.Now().Add(-5 * time.Minute)
+
+	// Setup infrastructure for resume command
+	infra := createMinimalInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil).Maybe()
+	setupAgentProviderMock(t, mockProvider)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	inst.Infrastructure = infra
+	inst.Ctx = ctx
+
+	// Add coordinator to process repository so resume can find it
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	require.NoError(t, infra.Repositories.ProcessRepo.Save(coord))
+
+	// Register handlers needed for resume
+	infra.Core.Processor.RegisterHandler(command.CmdResumeProcess, &handlerTracker{})
+
+	err = supervisor.Resume(ctx, inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowRunning, inst.State)
+}
+
+func TestSupervisor_Resume_CallsResumeProcess(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowPaused
+	inst.PausedAt = time.Now().Add(-5 * time.Minute)
+
+	// Setup infrastructure
+	infra := createMinimalInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil).Maybe()
+	setupAgentProviderMock(t, mockProvider)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	inst.Infrastructure = infra
+	inst.Ctx = ctx
+
+	// Add coordinator to process repository so resume can find it
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	require.NoError(t, infra.Repositories.ProcessRepo.Save(coord))
+
+	// Track if resume and send handlers were called
+	resumeCalled := false
+	sendCalled := false
+	infra.Core.Processor.RegisterHandler(command.CmdResumeProcess, &handlerTracker{onHandle: func() { resumeCalled = true }})
+	infra.Core.Processor.RegisterHandler(command.CmdSendToProcess, &handlerTracker{onHandle: func() { sendCalled = true }})
+
+	err = supervisor.Resume(ctx, inst)
+
+	require.NoError(t, err)
+	require.True(t, resumeCalled, "ResumeProcess command should be submitted")
+	require.True(t, sendCalled, "SendToProcess command should be submitted for resume message")
+}
+
+func TestSupervisor_Resume_RollsBackOnResumeFailure(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowPaused
+	inst.PausedAt = time.Now().Add(-5 * time.Minute)
+
+	// Setup infrastructure with failing resume handler
+	infra := createMinimalInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil).Maybe()
+	setupAgentProviderMock(t, mockProvider)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	inst.Infrastructure = infra
+	inst.Ctx = ctx
+
+	// Add coordinator to process repository
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	require.NoError(t, infra.Repositories.ProcessRepo.Save(coord))
+
+	// Register failing resume handler
+	failingErr := errors.New("resume failed")
+	infra.Core.Processor.RegisterHandler(command.CmdResumeProcess, &failingHandler{err: failingErr})
+
+	err = supervisor.Resume(ctx, inst)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "resuming coordinator")
+	// State should rollback to Paused
+	require.Equal(t, WorkflowPaused, inst.State)
+}
+
+func TestSupervisor_Resume_WithNilNudger_DoesNotPanic(t *testing.T) {
+	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
+	supervisor, err := NewSupervisor(cfg)
+	require.NoError(t, err)
+
+	inst := newTestInstance(t, "test-workflow")
+	inst.State = WorkflowPaused
+	inst.PausedAt = time.Now().Add(-5 * time.Minute)
+
+	// Setup infrastructure without nudger
+	infra := createMinimalInfrastructure(t)
+	infra.Internal.CoordinatorNudger = nil // explicitly nil
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil).Maybe()
+	setupAgentProviderMock(t, mockProvider)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	inst.Infrastructure = infra
+	inst.Ctx = ctx
+
+	// Add coordinator to process repository so resume can find it
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusPaused,
+	}
+	require.NoError(t, infra.Repositories.ProcessRepo.Save(coord))
+
+	// Register handlers needed for resume
+	infra.Core.Processor.RegisterHandler(command.CmdResumeProcess, &handlerTracker{})
+	infra.Core.Processor.RegisterHandler(command.CmdSendToProcess, &handlerTracker{})
+
+	err = supervisor.Resume(ctx, inst)
+
+	require.NoError(t, err)
+	require.Equal(t, WorkflowRunning, inst.State)
+}
+
+// === Test Helpers for Pause/Resume ===
+
+// handlerTracker is a generic handler that tracks when commands are received.
+type handlerTracker struct {
+	onHandle func()
+}
+
+func (h *handlerTracker) Handle(_ context.Context, _ command.Command) (*command.CommandResult, error) {
+	if h.onHandle != nil {
+		h.onHandle()
+	}
+	return &command.CommandResult{
+		Success: true,
+		Data:    nil,
+	}, nil
+}
+
+// spawnTracker is a handler that tracks spawn commands.
+type spawnTracker struct {
+	onHandle func()
+}
+
+func (h *spawnTracker) Handle(_ context.Context, _ command.Command) (*command.CommandResult, error) {
+	if h.onHandle != nil {
+		h.onHandle()
+	}
+	return &command.CommandResult{
+		Success: true,
+		Data:    &mockSpawnResult{processID: "coordinator"},
+	}, nil
+}
+
+// failingHandler is a generic handler that returns an error.
+type failingHandler struct {
+	err error
+}
+
+func (h *failingHandler) Handle(_ context.Context, _ command.Command) (*command.CommandResult, error) {
+	return &command.CommandResult{
+		Success: false,
+		Error:   h.err,
+	}, nil
+}
+
+// failingSpawnHandler is a handler that returns an error.
+type failingSpawnHandler struct {
+	err error
+}
+
+func (h *failingSpawnHandler) Handle(_ context.Context, _ command.Command) (*command.CommandResult, error) {
+	return &command.CommandResult{
+		Success: false,
+		Error:   h.err,
+	}, nil
 }
 
 // === Unit Tests: SupervisorConfig worktree fields ===
@@ -1029,7 +1373,7 @@ func TestSupervisor_Start_HandlesTimeoutCorrectly(t *testing.T) {
 
 // === Unit Tests: Stop() with Worktree Cleanup ===
 
-func TestSupervisor_Stop_ReturnsErrUncommittedChanges(t *testing.T) {
+func TestSupervisor_Shutdown_ReturnsErrUncommittedChanges(t *testing.T) {
 	mockGitExecutor := mocks.NewMockGitExecutor(t)
 	mockProvider := mocks.NewMockAgentProvider(t)
 
@@ -1057,7 +1401,7 @@ func TestSupervisor_Stop_ReturnsErrUncommittedChanges(t *testing.T) {
 	mockGitExecutor.EXPECT().HasUncommittedChanges().Return(true, nil)
 
 	// Execute Stop without Force
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "test stop",
 		Force:  false,
 	})
@@ -1068,7 +1412,7 @@ func TestSupervisor_Stop_ReturnsErrUncommittedChanges(t *testing.T) {
 	require.Equal(t, WorkflowRunning, inst.State) // Should NOT transition
 }
 
-func TestSupervisor_Stop_BypassesUncommittedCheckWhenForceTrue(t *testing.T) {
+func TestSupervisor_Shutdown_BypassesUncommittedCheckWhenForceTrue(t *testing.T) {
 	mockGitExecutor := mocks.NewMockGitExecutor(t)
 	mockProvider := mocks.NewMockAgentProvider(t)
 
@@ -1096,18 +1440,18 @@ func TestSupervisor_Stop_BypassesUncommittedCheckWhenForceTrue(t *testing.T) {
 	// No mock setup for HasUncommittedChanges - it should not be called
 
 	// Execute Stop with Force=true
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "force stop test",
 		Force:  true,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 	// Verify HasUncommittedChanges was never called
 	mockGitExecutor.AssertNotCalled(t, "HasUncommittedChanges")
 }
 
-func TestSupervisor_Stop_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
+func TestSupervisor_Shutdown_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
 	mockGitExecutor := mocks.NewMockGitExecutor(t)
 	mockProvider := mocks.NewMockAgentProvider(t)
 
@@ -1141,16 +1485,16 @@ func TestSupervisor_Stop_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
 	mockGitExecutor.EXPECT().RemoveWorktree("/tmp/worktree-remove").Return(nil)
 
 	// Execute Stop
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "test stop",
 		Force:  false,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
-func TestSupervisor_Stop_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
+func TestSupervisor_Shutdown_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
 	mockGitExecutor := mocks.NewMockGitExecutor(t)
 	mockProvider := mocks.NewMockAgentProvider(t)
 
@@ -1185,18 +1529,18 @@ func TestSupervisor_Stop_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
 	// RemoveWorktree should NOT be called - no mock setup for it
 
 	// Execute Stop
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "test stop",
 		Force:  false,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 	// Verify RemoveWorktree was never called
 	mockGitExecutor.AssertNotCalled(t, "RemoveWorktree", mock.Anything)
 }
 
-func TestSupervisor_Stop_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
+func TestSupervisor_Shutdown_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
 	mockGitExecutor := mocks.NewMockGitExecutor(t)
 	mockProvider := mocks.NewMockAgentProvider(t)
 
@@ -1230,16 +1574,16 @@ func TestSupervisor_Stop_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
 	mockGitExecutor.EXPECT().RemoveWorktree("/tmp/worktree-error").Return(errors.New("worktree removal failed"))
 
 	// Execute Stop - should succeed despite RemoveWorktree error
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "test stop",
 		Force:  false,
 	})
 
 	require.NoError(t, err) // Stop should succeed even with RemoveWorktree error
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
-func TestSupervisor_Stop_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
+func TestSupervisor_Shutdown_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	factoryCalled := false
@@ -1266,13 +1610,13 @@ func TestSupervisor_Stop_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
 	inst.WorktreeBranch = ""
 
 	// Execute Stop
-	err = supervisor.Stop(context.Background(), inst, StopOptions{
+	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
 		Reason: "test stop",
 		Force:  false,
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 	// GitExecutorFactory should NOT be called when WorktreePath is empty
 	require.False(t, factoryCalled, "GitExecutorFactory should not be called when WorktreePath is empty")
 }
@@ -1322,7 +1666,7 @@ func TestSupervisor_Start_CreatesSessionWhenFactoryConfigured(t *testing.T) {
 	mockFactory.AssertExpectations(t)
 }
 
-func TestSupervisor_Stop_ClosesSession(t *testing.T) {
+func TestSupervisor_Shutdown_ClosesSession(t *testing.T) {
 	cfg, mockProvider, mockFactory := newTestSupervisorConfig(t)
 	// SessionFactory already provided by newTestSupervisorConfig
 	sessionBaseDir := t.TempDir()
@@ -1353,10 +1697,10 @@ func TestSupervisor_Stop_ClosesSession(t *testing.T) {
 	sessionDir := inst.Session.Dir
 
 	// Stop the workflow
-	err = supervisor.Stop(ctx, inst, StopOptions{})
+	err = supervisor.Shutdown(ctx, inst, StopOptions{})
 
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 
 	// Session should be nil (closed)
 	require.Nil(t, inst.Session, "Session should be set to nil after close")

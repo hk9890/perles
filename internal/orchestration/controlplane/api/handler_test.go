@@ -136,24 +136,141 @@ func TestHandler_Start(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
 
-func TestHandler_Stop(t *testing.T) {
+func TestHandler_Pause(t *testing.T) {
 	mockCP := mocks.NewMockControlPlane(t)
 	mockCP.EXPECT().
-		Stop(mock.Anything, controlplane.WorkflowID("wf-123"), mock.MatchedBy(func(opts controlplane.StopOptions) bool {
-			return opts.Reason == "user requested" && opts.Force == true
-		})).
+		Pause(mock.Anything, controlplane.WorkflowID("wf-123")).
 		Return(nil).
 		Once()
 
 	h := NewHandler(mockCP)
 
-	body := `{"reason": "user requested", "force": true}`
-	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/stop", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/pause", nil)
 	w := httptest.NewRecorder()
 
 	h.Routes().ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandler_Pause_NotFound(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().
+		Pause(mock.Anything, controlplane.WorkflowID("unknown")).
+		Return(controlplane.ErrWorkflowNotFound).
+		Once()
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/unknown/pause", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestHandler_Pause_InvalidState(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().
+		Pause(mock.Anything, controlplane.WorkflowID("wf-123")).
+		Return(controlplane.ErrInvalidState).
+		Once()
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/pause", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_state", resp.Code)
+}
+
+func TestHandler_Resume(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().
+		Resume(mock.Anything, controlplane.WorkflowID("wf-123")).
+		Return(nil).
+		Once()
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/resume", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestHandler_Resume_NotFound(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().
+		Resume(mock.Anything, controlplane.WorkflowID("unknown")).
+		Return(controlplane.ErrWorkflowNotFound).
+		Once()
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/unknown/resume", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestHandler_Resume_InvalidState(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().
+		Resume(mock.Anything, controlplane.WorkflowID("wf-123")).
+		Return(controlplane.ErrInvalidState).
+		Once()
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/resume", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp ErrorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_state", resp.Code)
+}
+
+func TestHandler_Stop_EndpointRemoved(t *testing.T) {
+	// The /stop endpoint should return 404 (not found) since it's been removed
+	mockCP := mocks.NewMockControlPlane(t)
+
+	h := NewHandler(mockCP)
+
+	req := httptest.NewRequest(http.MethodPost, "/workflows/wf-123/stop", nil)
+	w := httptest.NewRecorder()
+
+	h.Routes().ServeHTTP(w, req)
+
+	// http.ServeMux returns 404 for unregistered routes
+	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestHandler_List(t *testing.T) {

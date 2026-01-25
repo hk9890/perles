@@ -291,6 +291,10 @@ type QueueRepository interface {
 	// Size returns the number of messages in a worker's queue.
 	// Returns 0 if the worker has no queue.
 	Size(workerID string) int
+
+	// ClearAll removes all message queues from the repository.
+	// Used when pausing workflows to discard all pending messages.
+	ClearAll()
 }
 
 // ProcessRepository provides aggregate access for Process entities.
@@ -320,8 +324,11 @@ type ProcessRepository interface {
 	// ReadyWorkers returns workers available for assignment (Ready status, Idle phase).
 	ReadyWorkers() []*Process
 
-	// RetiredWorkers returns workers in terminal state (Retired or Failed).
+	// RetiredWorkers returns workers that were gracefully retired.
 	RetiredWorkers() []*Process
+
+	// FailedWorkers returns workers that failed (session expired, crashed, etc.).
+	FailedWorkers() []*Process
 }
 
 // ===========================================================================

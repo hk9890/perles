@@ -347,9 +347,9 @@ func TestControlPlane_Start_ReturnsErrorForNonExistentWorkflow(t *testing.T) {
 	require.ErrorIs(t, err, ErrWorkflowNotFound)
 }
 
-// === Unit Tests: Stop ===
+// === Unit Tests: Pause ===
 
-func TestControlPlane_Stop_DelegatesToSupervisor(t *testing.T) {
+func TestControlPlane_Pause_DelegatesToSupervisor(t *testing.T) {
 	cp, mockFactory, mockProvider := newTestControlPlane(t)
 
 	// Create and start workflow first
@@ -359,6 +359,7 @@ func TestControlPlane_Stop_DelegatesToSupervisor(t *testing.T) {
 	}
 	id, err := cp.Create(context.Background(), spec)
 	require.NoError(t, err)
+	cleanupWorkflowSessionOnTestEnd(t, cp, id)
 
 	// Setup mock infrastructure
 	infra := createTestInfrastructure(t)
@@ -373,25 +374,228 @@ func TestControlPlane_Stop_DelegatesToSupervisor(t *testing.T) {
 
 	require.NoError(t, cp.Start(ctx, id))
 
-	// Stop the workflow
-	err = cp.Stop(ctx, id, StopOptions{Reason: "test"})
+	// Pause the workflow
+	err = cp.Pause(ctx, id)
 
 	require.NoError(t, err)
 
-	// Verify workflow is now Stopped
+	// Verify workflow is now Paused
 	inst, err := cp.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowPaused, inst.State)
 }
 
-func TestControlPlane_Stop_ReturnsErrorForNonExistentWorkflow(t *testing.T) {
+func TestControlPlane_Pause_ReturnsErrorForNonExistentWorkflow(t *testing.T) {
 	cp, _, _ := newTestControlPlane(t)
 
 	nonExistentID := NewWorkflowID()
-	err := cp.Stop(context.Background(), nonExistentID, StopOptions{})
+	err := cp.Pause(context.Background(), nonExistentID)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrWorkflowNotFound)
+}
+
+func TestControlPlane_Pause_EmitsEventOnSuccess(t *testing.T) {
+	cp, eventBus := newTestControlPlaneWithEventBus(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a workflow and manually set it up for pause
+	spec := WorkflowSpec{
+		TemplateID:    "test-template",
+		InitialPrompt: "Build a feature",
+		Name:          "Test Workflow",
+	}
+	id, err := cp.Create(ctx, spec)
+	require.NoError(t, err)
+
+	// Manually get and transition the instance to Running state
+	// (simulating what Start would do, but without infrastructure)
+	dcp := cp.(*defaultControlPlane)
+	inst, _ := dcp.registry.Get(id)
+	require.NoError(t, inst.TransitionTo(WorkflowRunning))
+
+	// Subscribe to events
+	eventCh, unsubscribe := cp.Subscribe(ctx)
+	defer unsubscribe()
+
+	// Pause the workflow
+	err = cp.Pause(ctx, id)
+	require.NoError(t, err)
+
+	// Should receive EventWorkflowPaused
+	select {
+	case received := <-eventCh:
+		require.Equal(t, EventWorkflowPaused, received.Type)
+		require.Equal(t, id, received.WorkflowID)
+		require.Equal(t, "Test Workflow", received.WorkflowName)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for EventWorkflowPaused event")
+	}
+
+	_ = eventBus // Keep reference to avoid unused warning
+}
+
+func TestControlPlane_Pause_DoesNotEmitEventOnSupervisorError(t *testing.T) {
+	cp, _ := newTestControlPlaneWithEventBus(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a workflow in Pending state (can't be paused)
+	spec := WorkflowSpec{
+		TemplateID:    "test-template",
+		InitialPrompt: "Build a feature",
+	}
+	id, err := cp.Create(ctx, spec)
+	require.NoError(t, err)
+
+	// Subscribe to events
+	eventCh, unsubscribe := cp.Subscribe(ctx)
+	defer unsubscribe()
+
+	// Pause should fail (workflow not in Running state)
+	err = cp.Pause(ctx, id)
+	require.Error(t, err)
+
+	// Should NOT receive any event
+	select {
+	case received := <-eventCh:
+		t.Fatalf("unexpected event received: %+v", received)
+	case <-time.After(50 * time.Millisecond):
+		// Expected - no event emitted on error
+	}
+}
+
+// === Unit Tests: Resume ===
+
+func TestControlPlane_Resume_DelegatesToSupervisor(t *testing.T) {
+	cp, mockFactory, mockProvider := newTestControlPlane(t)
+
+	// Create and start workflow first
+	spec := WorkflowSpec{
+		TemplateID:    "test-template",
+		InitialPrompt: "Build a feature",
+	}
+	id, err := cp.Create(context.Background(), spec)
+	require.NoError(t, err)
+	cleanupWorkflowSessionOnTestEnd(t, cp, id)
+
+	// Setup mock infrastructure
+	infra := createTestInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil)
+	setupTestAgentProviderMock(t, mockProvider)
+
+	// Start the processor
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	require.NoError(t, cp.Start(ctx, id))
+
+	// Pause the workflow first
+	require.NoError(t, cp.Pause(ctx, id))
+
+	// Resume the workflow
+	err = cp.Resume(ctx, id)
+
+	require.NoError(t, err)
+
+	// Verify workflow is now Running again
+	inst, err := cp.Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, WorkflowRunning, inst.State)
+}
+
+func TestControlPlane_Resume_ReturnsErrorForNonExistentWorkflow(t *testing.T) {
+	cp, _, _ := newTestControlPlane(t)
+
+	nonExistentID := NewWorkflowID()
+	err := cp.Resume(context.Background(), nonExistentID)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrWorkflowNotFound)
+}
+
+func TestControlPlane_Resume_EmitsEventOnSuccess(t *testing.T) {
+	cp, mockFactory, mockProvider := newTestControlPlane(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a workflow
+	spec := WorkflowSpec{
+		TemplateID:    "test-template",
+		InitialPrompt: "Build a feature",
+		Name:          "Test Workflow",
+	}
+	id, err := cp.Create(ctx, spec)
+	require.NoError(t, err)
+	cleanupWorkflowSessionOnTestEnd(t, cp, id)
+
+	// Setup mock infrastructure
+	infra := createTestInfrastructure(t)
+	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil)
+	setupTestAgentProviderMock(t, mockProvider)
+
+	// Start the processor
+	go infra.Core.Processor.Run(ctx)
+	require.NoError(t, infra.Core.Processor.WaitForReady(ctx))
+
+	// Start and then pause the workflow
+	require.NoError(t, cp.Start(ctx, id))
+	require.NoError(t, cp.Pause(ctx, id))
+
+	// Subscribe to events
+	eventCh, unsubscribe := cp.Subscribe(ctx)
+	defer unsubscribe()
+
+	// Resume the workflow
+	err = cp.Resume(ctx, id)
+	require.NoError(t, err)
+
+	// Should receive EventWorkflowResumed
+	select {
+	case received := <-eventCh:
+		require.Equal(t, EventWorkflowResumed, received.Type)
+		require.Equal(t, id, received.WorkflowID)
+		require.Equal(t, "Test Workflow", received.WorkflowName)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timeout waiting for EventWorkflowResumed event")
+	}
+}
+
+func TestControlPlane_Resume_DoesNotEmitEventOnSupervisorError(t *testing.T) {
+	cp, _ := newTestControlPlaneWithEventBus(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a workflow in Pending state (can't be resumed)
+	spec := WorkflowSpec{
+		TemplateID:    "test-template",
+		InitialPrompt: "Build a feature",
+	}
+	id, err := cp.Create(ctx, spec)
+	require.NoError(t, err)
+
+	// Subscribe to events
+	eventCh, unsubscribe := cp.Subscribe(ctx)
+	defer unsubscribe()
+
+	// Resume should fail (workflow not in Paused state)
+	err = cp.Resume(ctx, id)
+	require.Error(t, err)
+
+	// Should NOT receive any event
+	select {
+	case received := <-eventCh:
+		t.Fatalf("unexpected event received: %+v", received)
+	case <-time.After(50 * time.Millisecond):
+		// Expected - no event emitted on error
+	}
 }
 
 // === Unit Tests: Get ===
@@ -537,21 +741,40 @@ func TestControlPlane_FullLifecycle_CreateStartStop(t *testing.T) {
 	require.Len(t, running, 1)
 	require.Equal(t, id, running[0].ID)
 
-	// Step 3: Stop workflow
-	err = cp.Stop(ctx, id, StopOptions{Reason: "integration test complete"})
+	// Step 3: Pause workflow
+	err = cp.Pause(ctx, id)
 	require.NoError(t, err)
 
-	// Verify stopped state
+	// Verify paused state
 	inst, err = cp.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowPaused, inst.State)
+	require.NotNil(t, inst.Infrastructure) // Infrastructure preserved during pause
+
+	// Step 4: Resume workflow
+	err = cp.Resume(ctx, id)
+	require.NoError(t, err)
+
+	// Verify running state after resume
+	inst, err = cp.Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, WorkflowRunning, inst.State)
+
+	// Step 5: Shutdown control plane (stops all workflows)
+	err = cp.Shutdown(ctx)
+	require.NoError(t, err)
+
+	// Verify failed state (Shutdown transitions to Failed)
+	inst, err = cp.Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, WorkflowFailed, inst.State)
 	require.Nil(t, inst.Infrastructure)
 	require.Equal(t, 0, inst.MCPPort)
 
-	// List should show stopped workflow
-	stopped, err := cp.List(ctx, ListQuery{States: []WorkflowState{WorkflowStopped}})
+	// List should show failed workflow
+	failed, err := cp.List(ctx, ListQuery{States: []WorkflowState{WorkflowFailed}})
 	require.NoError(t, err)
-	require.Len(t, stopped, 1)
+	require.Len(t, failed, 1)
 
 	mockFactory.AssertExpectations(t)
 }
@@ -1051,11 +1274,11 @@ func TestControlPlane_Shutdown_StopsAllRunningWorkflows(t *testing.T) {
 	err := cp.Shutdown(ctx)
 	require.NoError(t, err)
 
-	// Verify all are stopped
+	// Verify all are failed (Stop transitions to Failed)
 	for _, id := range ids {
 		inst, err := cp.Get(ctx, id)
 		require.NoError(t, err)
-		require.Equal(t, WorkflowStopped, inst.State)
+		require.Equal(t, WorkflowFailed, inst.State)
 	}
 
 	mockFactory.AssertExpectations(t)
@@ -1086,14 +1309,14 @@ func TestControlPlane_Shutdown_WithPendingWorkflows(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, WorkflowPending, inst.State)
 
-	// Shutdown should stop pending workflows too
+	// Shutdown should fail pending workflows
 	err = cp.Shutdown(ctx)
 	require.NoError(t, err)
 
-	// Verify it's stopped
+	// Verify it's failed (Stop transitions to Failed)
 	inst, err = cp.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
 func TestControlPlane_Shutdown_RespectsGracePeriod(t *testing.T) {
@@ -1126,10 +1349,10 @@ func TestControlPlane_Shutdown_RespectsGracePeriod(t *testing.T) {
 	err = cp.Shutdown(shutdownCtx)
 	require.NoError(t, err)
 
-	// Workflow should be stopped
+	// Workflow should be failed (Stop transitions to Failed)
 	inst, err := cp.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
 func TestControlPlane_Shutdown_ForceStopsOnContextCancel(t *testing.T) {
@@ -1163,10 +1386,10 @@ func TestControlPlane_Shutdown_ForceStopsOnContextCancel(t *testing.T) {
 	err = cp.Shutdown(cancelledCtx)
 	require.NoError(t, err)
 
-	// Workflow should be stopped
+	// Workflow should be failed (Stop transitions to Failed)
 	inst, err := cp.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, WorkflowStopped, inst.State)
+	require.Equal(t, WorkflowFailed, inst.State)
 }
 
 func TestControlPlane_Shutdown_WithHealthMonitor(t *testing.T) {
@@ -1250,11 +1473,11 @@ func TestControlPlane_Shutdown_PartialFailureCleanup(t *testing.T) {
 	err := cp.Shutdown(ctx)
 	require.NoError(t, err)
 
-	// All workflows should be stopped
+	// All workflows should be failed (Stop transitions to Failed)
 	for _, id := range ids {
 		inst, err := cp.Get(ctx, id)
 		require.NoError(t, err)
-		require.Equal(t, WorkflowStopped, inst.State)
+		require.Equal(t, WorkflowFailed, inst.State)
 	}
 }
 

@@ -253,6 +253,100 @@ func (_c *MockControlPlane_List_Call) RunAndReturn(run func(context.Context, con
 	return _c
 }
 
+// Pause provides a mock function with given fields: ctx, id
+func (_m *MockControlPlane) Pause(ctx context.Context, id controlplane.WorkflowID) error {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Pause")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, controlplane.WorkflowID) error); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockControlPlane_Pause_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Pause'
+type MockControlPlane_Pause_Call struct {
+	*mock.Call
+}
+
+// Pause is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id controlplane.WorkflowID
+func (_e *MockControlPlane_Expecter) Pause(ctx interface{}, id interface{}) *MockControlPlane_Pause_Call {
+	return &MockControlPlane_Pause_Call{Call: _e.mock.On("Pause", ctx, id)}
+}
+
+func (_c *MockControlPlane_Pause_Call) Run(run func(ctx context.Context, id controlplane.WorkflowID)) *MockControlPlane_Pause_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(controlplane.WorkflowID))
+	})
+	return _c
+}
+
+func (_c *MockControlPlane_Pause_Call) Return(_a0 error) *MockControlPlane_Pause_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockControlPlane_Pause_Call) RunAndReturn(run func(context.Context, controlplane.WorkflowID) error) *MockControlPlane_Pause_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Resume provides a mock function with given fields: ctx, id
+func (_m *MockControlPlane) Resume(ctx context.Context, id controlplane.WorkflowID) error {
+	ret := _m.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Resume")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, controlplane.WorkflowID) error); ok {
+		r0 = rf(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockControlPlane_Resume_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Resume'
+type MockControlPlane_Resume_Call struct {
+	*mock.Call
+}
+
+// Resume is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id controlplane.WorkflowID
+func (_e *MockControlPlane_Expecter) Resume(ctx interface{}, id interface{}) *MockControlPlane_Resume_Call {
+	return &MockControlPlane_Resume_Call{Call: _e.mock.On("Resume", ctx, id)}
+}
+
+func (_c *MockControlPlane_Resume_Call) Run(run func(ctx context.Context, id controlplane.WorkflowID)) *MockControlPlane_Resume_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(controlplane.WorkflowID))
+	})
+	return _c
+}
+
+func (_c *MockControlPlane_Resume_Call) Return(_a0 error) *MockControlPlane_Resume_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockControlPlane_Resume_Call) RunAndReturn(run func(context.Context, controlplane.WorkflowID) error) *MockControlPlane_Resume_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Shutdown provides a mock function with given fields: ctx
 func (_m *MockControlPlane) Shutdown(ctx context.Context) error {
 	ret := _m.Called(ctx)
@@ -342,54 +436,6 @@ func (_c *MockControlPlane_Start_Call) Return(_a0 error) *MockControlPlane_Start
 }
 
 func (_c *MockControlPlane_Start_Call) RunAndReturn(run func(context.Context, controlplane.WorkflowID) error) *MockControlPlane_Start_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Stop provides a mock function with given fields: ctx, id, opts
-func (_m *MockControlPlane) Stop(ctx context.Context, id controlplane.WorkflowID, opts controlplane.StopOptions) error {
-	ret := _m.Called(ctx, id, opts)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Stop")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, controlplane.WorkflowID, controlplane.StopOptions) error); ok {
-		r0 = rf(ctx, id, opts)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockControlPlane_Stop_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Stop'
-type MockControlPlane_Stop_Call struct {
-	*mock.Call
-}
-
-// Stop is a helper method to define mock.On call
-//   - ctx context.Context
-//   - id controlplane.WorkflowID
-//   - opts controlplane.StopOptions
-func (_e *MockControlPlane_Expecter) Stop(ctx interface{}, id interface{}, opts interface{}) *MockControlPlane_Stop_Call {
-	return &MockControlPlane_Stop_Call{Call: _e.mock.On("Stop", ctx, id, opts)}
-}
-
-func (_c *MockControlPlane_Stop_Call) Run(run func(ctx context.Context, id controlplane.WorkflowID, opts controlplane.StopOptions)) *MockControlPlane_Stop_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(controlplane.WorkflowID), args[2].(controlplane.StopOptions))
-	})
-	return _c
-}
-
-func (_c *MockControlPlane_Stop_Call) Return(_a0 error) *MockControlPlane_Stop_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockControlPlane_Stop_Call) RunAndReturn(run func(context.Context, controlplane.WorkflowID, controlplane.StopOptions) error) *MockControlPlane_Stop_Call {
 	_c.Call.Return(run)
 	return _c
 }

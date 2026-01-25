@@ -270,6 +270,45 @@ func (cs *CoordinatorServer) registerTools() {
 			},
 			Required: []string{},
 		},
+		OutputSchema: &OutputSchema{
+			Type: "object",
+			Properties: map[string]*PropertySchema{
+				"workers": {
+					Type:        "array",
+					Description: "Active workers with current state",
+					Items: &PropertySchema{
+						Type: "object",
+						Properties: map[string]*PropertySchema{
+							"id":      {Type: "string", Description: "Worker ID (e.g., worker-1)"},
+							"status":  {Type: "string", Description: "Current status (Pending, Ready, Working, Paused)"},
+							"phase":   {Type: "string", Description: "Current phase (Idle, Implementing, Reviewing, etc.)"},
+							"task_id": {Type: "string", Description: "Assigned task ID if any"},
+						},
+						Required: []string{"id", "status"},
+					},
+				},
+				"ready_workers": {
+					Type:        "array",
+					Description: "Worker IDs available for task assignment (Ready status, Idle phase)",
+					Items:       &PropertySchema{Type: "string"},
+				},
+				"retired_workers": {
+					Type:        "array",
+					Description: "Worker IDs that were gracefully retired",
+					Items:       &PropertySchema{Type: "string"},
+				},
+				"failed_workers": {
+					Type:        "array",
+					Description: "Worker IDs that failed (session expired, crashed, etc.) - may need replacement",
+					Items:       &PropertySchema{Type: "string"},
+				},
+				"tasks": {
+					Type:        "object",
+					Description: "Map of task ID to assignment info",
+				},
+			},
+			Required: []string{"workers", "ready_workers", "retired_workers", "failed_workers", "tasks"},
+		},
 	}, cs.handleQueryWorkerState)
 
 	cs.RegisterTool(Tool{

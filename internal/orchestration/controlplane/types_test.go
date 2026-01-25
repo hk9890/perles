@@ -54,7 +54,6 @@ func TestWorkflowState_String(t *testing.T) {
 		{WorkflowPaused, "paused"},
 		{WorkflowCompleted, "completed"},
 		{WorkflowFailed, "failed"},
-		{WorkflowStopped, "stopped"},
 	}
 
 	for _, tt := range tests {
@@ -74,7 +73,6 @@ func TestWorkflowState_IsValid(t *testing.T) {
 		{WorkflowPaused, true},
 		{WorkflowCompleted, true},
 		{WorkflowFailed, true},
-		{WorkflowStopped, true},
 		{WorkflowState("invalid"), false},
 		{WorkflowState(""), false},
 	}
@@ -96,7 +94,6 @@ func TestWorkflowState_IsTerminal(t *testing.T) {
 		{WorkflowPaused, false},
 		{WorkflowCompleted, true},
 		{WorkflowFailed, true},
-		{WorkflowStopped, true},
 	}
 
 	for _, tt := range tests {
@@ -115,15 +112,14 @@ func TestWorkflowState_CanTransitionTo_ValidTransitions(t *testing.T) {
 	}{
 		// From Pending
 		{WorkflowPending, WorkflowRunning},
-		{WorkflowPending, WorkflowStopped},
+		{WorkflowPending, WorkflowFailed},
 		// From Running
 		{WorkflowRunning, WorkflowPaused},
 		{WorkflowRunning, WorkflowCompleted},
 		{WorkflowRunning, WorkflowFailed},
-		{WorkflowRunning, WorkflowStopped},
 		// From Paused
 		{WorkflowPaused, WorkflowRunning},
-		{WorkflowPaused, WorkflowStopped},
+		{WorkflowPaused, WorkflowFailed},
 	}
 
 	for _, tt := range tests {
@@ -145,12 +141,9 @@ func TestWorkflowState_CanTransitionTo_InvalidTransitions(t *testing.T) {
 		{WorkflowCompleted, WorkflowPending},
 		{WorkflowFailed, WorkflowRunning},
 		{WorkflowFailed, WorkflowPending},
-		{WorkflowStopped, WorkflowRunning},
-		{WorkflowStopped, WorkflowPending},
 		// Cannot skip states
 		{WorkflowPending, WorkflowPaused},
 		{WorkflowPending, WorkflowCompleted},
-		{WorkflowPending, WorkflowFailed},
 		// Cannot go backwards
 		{WorkflowRunning, WorkflowPending},
 		{WorkflowPaused, WorkflowPending},
@@ -171,12 +164,11 @@ func TestWorkflowState_ValidTargets(t *testing.T) {
 		state    WorkflowState
 		expected []WorkflowState
 	}{
-		{WorkflowPending, []WorkflowState{WorkflowRunning, WorkflowStopped}},
-		{WorkflowRunning, []WorkflowState{WorkflowPaused, WorkflowCompleted, WorkflowFailed, WorkflowStopped}},
-		{WorkflowPaused, []WorkflowState{WorkflowRunning, WorkflowStopped, WorkflowFailed}},
+		{WorkflowPending, []WorkflowState{WorkflowRunning, WorkflowFailed}},
+		{WorkflowRunning, []WorkflowState{WorkflowPaused, WorkflowCompleted, WorkflowFailed}},
+		{WorkflowPaused, []WorkflowState{WorkflowRunning, WorkflowFailed}},
 		{WorkflowCompleted, []WorkflowState{}},
 		{WorkflowFailed, []WorkflowState{}},
-		{WorkflowStopped, []WorkflowState{}},
 		{WorkflowState("invalid"), nil},
 	}
 

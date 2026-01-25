@@ -551,11 +551,11 @@ var Dashboard = struct {
 	),
 	Start: key.NewBinding(
 		key.WithKeys("s"),
-		key.WithHelp("s", "start workflow"),
+		key.WithHelp("s", "start/resume workflow"),
 	),
 	Stop: key.NewBinding(
 		key.WithKeys("x"),
-		key.WithHelp("x", "stop workflow"),
+		key.WithHelp("x", "pause workflow"),
 	),
 	New: key.NewBinding(
 		key.WithKeys("n", "N"),

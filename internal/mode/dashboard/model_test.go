@@ -191,14 +191,14 @@ func TestModel_Navigation_DoesNotGoBelowZero(t *testing.T) {
 
 // === Unit Tests: Quick Actions ===
 
-func TestModel_StopAction_CallsControlPlaneStop(t *testing.T) {
+func TestModel_PauseAction_CallsControlPlanePause(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-running", "Running Workflow", controlplane.WorkflowRunning),
 	}
 
 	mockCP := newMockControlPlane()
 	mockCP.On("List", mock.Anything, mock.Anything).Return(workflows, nil).Maybe()
-	mockCP.On("Stop", mock.Anything, controlplane.WorkflowID("wf-running"), mock.Anything).Return(nil).Once()
+	mockCP.On("Pause", mock.Anything, controlplane.WorkflowID("wf-running")).Return(nil).Once()
 
 	eventCh := make(chan controlplane.ControlPlaneEvent)
 	close(eventCh)
@@ -213,17 +213,17 @@ func TestModel_StopAction_CallsControlPlaneStop(t *testing.T) {
 	m.workflows = workflows
 	m.selectedIndex = 0
 
-	// Press x to stop
+	// Press x to pause
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	require.NotNil(t, cmd)
 
-	// Execute the command to trigger the Stop call
+	// Execute the command to trigger the Pause call
 	cmd()
 
 	mockCP.AssertExpectations(t)
 }
 
-func TestModel_StopAction_DoesNotStopTerminalWorkflows(t *testing.T) {
+func TestModel_PauseAction_DoesNotPauseNonRunningWorkflows(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-completed", "Completed Workflow", controlplane.WorkflowCompleted),
 	}
@@ -233,7 +233,52 @@ func TestModel_StopAction_DoesNotStopTerminalWorkflows(t *testing.T) {
 	// Press x on a completed workflow - should do nothing
 	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = result.(Model)
-	require.Nil(t, cmd) // No command since workflow is terminal
+	require.Nil(t, cmd) // No command since workflow is not running
+}
+
+func TestModel_ResumeAction_CallsControlPlaneResume(t *testing.T) {
+	workflows := []*controlplane.WorkflowInstance{
+		createTestWorkflow("wf-paused", "Paused Workflow", controlplane.WorkflowPaused),
+	}
+
+	mockCP := newMockControlPlane()
+	mockCP.On("List", mock.Anything, mock.Anything).Return(workflows, nil).Maybe()
+	mockCP.On("Resume", mock.Anything, controlplane.WorkflowID("wf-paused")).Return(nil).Once()
+
+	eventCh := make(chan controlplane.ControlPlaneEvent)
+	close(eventCh)
+	mockCP.On("Subscribe", mock.Anything).Return((<-chan controlplane.ControlPlaneEvent)(eventCh), func() {}).Maybe()
+
+	cfg := Config{
+		ControlPlane: mockCP,
+		Services:     mode.Services{},
+	}
+
+	m := New(cfg)
+	m.workflows = workflows
+	m.selectedIndex = 0
+
+	// Press s on a paused workflow - should call Resume
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	require.NotNil(t, cmd)
+
+	// Execute the command to trigger the Resume call
+	cmd()
+
+	mockCP.AssertExpectations(t)
+}
+
+func TestModel_StartAction_DoesNotResumeNonPausedWorkflows(t *testing.T) {
+	workflows := []*controlplane.WorkflowInstance{
+		createTestWorkflow("wf-running", "Running Workflow", controlplane.WorkflowRunning),
+	}
+
+	m, _ := createTestModel(t, workflows)
+
+	// Press s on a running workflow - should do nothing
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = result.(Model)
+	require.Nil(t, cmd) // No command since workflow is already running
 }
 
 // === Unit Tests: Event Handling ===
@@ -1336,9 +1381,9 @@ func TestModel_isWorkflowRunning_ReturnsFalseForUnknownID(t *testing.T) {
 	require.False(t, m.isWorkflowRunning("wf-unknown"))
 }
 
-// === Unit Tests: EventWorkflowStopped Cache Cleanup ===
+// === Unit Tests: EventWorkflowFailed Cache Cleanup ===
 
-func TestModel_EventWorkflowStopped_RemovesFromCache(t *testing.T) {
+func TestModel_EventWorkflowFailed_RemovesFromCache(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-1", "Workflow 1", controlplane.WorkflowRunning),
 	}
@@ -1350,9 +1395,9 @@ func TestModel_EventWorkflowStopped_RemovesFromCache(t *testing.T) {
 	m.workflowUIState["wf-1"].CoordinatorQueueCount = 42 // Add some data
 	require.Contains(t, m.workflowUIState, controlplane.WorkflowID("wf-1"))
 
-	// Simulate EventWorkflowStopped
+	// Simulate EventWorkflowFailed
 	event := controlplane.ControlPlaneEvent{
-		Type:       controlplane.EventWorkflowStopped,
+		Type:       controlplane.EventWorkflowFailed,
 		WorkflowID: "wf-1",
 	}
 
@@ -1360,10 +1405,10 @@ func TestModel_EventWorkflowStopped_RemovesFromCache(t *testing.T) {
 	m = result.(Model)
 
 	// Verify cache entry was removed
-	require.NotContains(t, m.workflowUIState, controlplane.WorkflowID("wf-1"), "stopped workflow should be removed from cache")
+	require.NotContains(t, m.workflowUIState, controlplane.WorkflowID("wf-1"), "failed workflow should be removed from cache")
 }
 
-func TestModel_EventWorkflowStopped_OnlyRemovesMatchingWorkflow(t *testing.T) {
+func TestModel_EventWorkflowFailed_OnlyRemovesMatchingWorkflow(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-1", "Workflow 1", controlplane.WorkflowRunning),
 		createTestWorkflow("wf-2", "Workflow 2", controlplane.WorkflowRunning),
@@ -1375,9 +1420,9 @@ func TestModel_EventWorkflowStopped_OnlyRemovesMatchingWorkflow(t *testing.T) {
 	m.workflowUIState["wf-1"] = NewWorkflowUIState()
 	m.workflowUIState["wf-2"] = NewWorkflowUIState()
 
-	// Simulate EventWorkflowStopped for wf-1
+	// Simulate EventWorkflowFailed for wf-1
 	event := controlplane.ControlPlaneEvent{
-		Type:       controlplane.EventWorkflowStopped,
+		Type:       controlplane.EventWorkflowFailed,
 		WorkflowID: "wf-1",
 	}
 
@@ -1389,7 +1434,7 @@ func TestModel_EventWorkflowStopped_OnlyRemovesMatchingWorkflow(t *testing.T) {
 	require.Contains(t, m.workflowUIState, controlplane.WorkflowID("wf-2"), "wf-2 should remain in cache")
 }
 
-func TestModel_EventWorkflowStopped_NoopForNonexistentCache(t *testing.T) {
+func TestModel_EventWorkflowFailed_NoopForNonexistentCache(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-1", "Workflow 1", controlplane.WorkflowRunning),
 	}
@@ -1398,9 +1443,9 @@ func TestModel_EventWorkflowStopped_NoopForNonexistentCache(t *testing.T) {
 
 	// Don't pre-populate cache - wf-1 has no cache entry
 
-	// Simulate EventWorkflowStopped
+	// Simulate EventWorkflowFailed
 	event := controlplane.ControlPlaneEvent{
-		Type:       controlplane.EventWorkflowStopped,
+		Type:       controlplane.EventWorkflowFailed,
 		WorkflowID: "wf-1",
 	}
 
@@ -1410,7 +1455,7 @@ func TestModel_EventWorkflowStopped_NoopForNonexistentCache(t *testing.T) {
 	})
 }
 
-func TestModel_EventWorkflowStopped_EmptyWorkflowID_NoEffect(t *testing.T) {
+func TestModel_EventWorkflowFailed_EmptyWorkflowID_NoEffect(t *testing.T) {
 	workflows := []*controlplane.WorkflowInstance{
 		createTestWorkflow("wf-1", "Workflow 1", controlplane.WorkflowRunning),
 	}
@@ -1420,9 +1465,9 @@ func TestModel_EventWorkflowStopped_EmptyWorkflowID_NoEffect(t *testing.T) {
 	// Pre-populate cache
 	m.workflowUIState["wf-1"] = NewWorkflowUIState()
 
-	// Simulate EventWorkflowStopped with empty workflow ID
+	// Simulate EventWorkflowFailed with empty workflow ID
 	event := controlplane.ControlPlaneEvent{
-		Type:       controlplane.EventWorkflowStopped,
+		Type:       controlplane.EventWorkflowFailed,
 		WorkflowID: "",
 	}
 

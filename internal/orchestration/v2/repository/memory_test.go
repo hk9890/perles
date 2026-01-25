@@ -326,6 +326,112 @@ func TestMemoryQueueRepository_UnlimitedCapacity(t *testing.T) {
 	assert.Equal(t, 100, queue.Size())
 }
 
+func TestMemoryQueueRepository_ClearAll_EmptyRepository(t *testing.T) {
+	repo := NewMemoryQueueRepository(100)
+
+	// ClearAll on empty repo should not panic
+	repo.ClearAll()
+
+	// Verify repo is still usable
+	queue := repo.GetOrCreate("worker-1")
+	assert.NotNil(t, queue)
+	assert.Equal(t, 0, queue.Size())
+}
+
+func TestMemoryQueueRepository_ClearAll_SingleQueue(t *testing.T) {
+	repo := NewMemoryQueueRepository(100)
+
+	// Create a queue with messages
+	queue := repo.GetOrCreate("worker-1")
+	require.NoError(t, queue.Enqueue("msg1", SenderUser))
+	require.NoError(t, queue.Enqueue("msg2", SenderCoordinator))
+	assert.Equal(t, 2, repo.Size("worker-1"))
+
+	// Clear all
+	repo.ClearAll()
+
+	// Queue should be gone (Size returns 0 for non-existent queue)
+	assert.Equal(t, 0, repo.Size("worker-1"))
+}
+
+func TestMemoryQueueRepository_ClearAll_MultipleQueues(t *testing.T) {
+	repo := NewMemoryQueueRepository(100)
+
+	// Create multiple queues with messages
+	for i := 0; i < 5; i++ {
+		queue := repo.GetOrCreate(workerID(i))
+		for j := 0; j < 3; j++ {
+			require.NoError(t, queue.Enqueue("message", SenderUser))
+		}
+		assert.Equal(t, 3, repo.Size(workerID(i)))
+	}
+
+	// Clear all
+	repo.ClearAll()
+
+	// All queues should be gone
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, 0, repo.Size(workerID(i)))
+	}
+}
+
+func TestMemoryQueueRepository_ClearAll_GetOrCreateReturnsFreshQueue(t *testing.T) {
+	repo := NewMemoryQueueRepository(100)
+
+	// Create a queue with messages
+	queue := repo.GetOrCreate("worker-1")
+	require.NoError(t, queue.Enqueue("old message", SenderUser))
+	assert.Equal(t, 1, queue.Size())
+
+	// Clear all
+	repo.ClearAll()
+
+	// GetOrCreate should return a fresh empty queue
+	newQueue := repo.GetOrCreate("worker-1")
+	assert.NotNil(t, newQueue)
+	assert.Equal(t, 0, newQueue.Size())
+	assert.Equal(t, "worker-1", newQueue.WorkerID)
+	assert.Equal(t, 100, newQueue.MaxSize())
+}
+
+func TestMemoryQueueRepository_ClearAll_ThreadSafety(t *testing.T) {
+	repo := NewMemoryQueueRepository(1000)
+	var wg sync.WaitGroup
+	numGoroutines := 50
+
+	// Pre-populate with queues
+	for i := 0; i < 20; i++ {
+		queue := repo.GetOrCreate(workerID(i))
+		queue.Enqueue("message", SenderUser)
+	}
+
+	// Concurrent ClearAll, GetOrCreate, and Size operations
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(3)
+
+		// ClearAll
+		go func() {
+			defer wg.Done()
+			repo.ClearAll()
+		}()
+
+		// GetOrCreate
+		go func(id int) {
+			defer wg.Done()
+			repo.GetOrCreate(workerID(id))
+		}(i)
+
+		// Size
+		go func(id int) {
+			defer wg.Done()
+			repo.Size(workerID(id % 20))
+		}(i)
+	}
+
+	wg.Wait()
+	// Test passes if no panics or races occurred
+}
+
 // ===========================================================================
 // Thread Safety Tests
 // ===========================================================================

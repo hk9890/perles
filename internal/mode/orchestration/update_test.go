@@ -182,7 +182,19 @@ func (r *mockProcessRepository) RetiredWorkers() []*repository.Process {
 	defer r.mu.RUnlock()
 	var result []*repository.Process
 	for _, p := range r.processes {
-		if p.Role == repository.RoleWorker && (p.Status == repository.StatusRetired || p.Status == repository.StatusFailed) {
+		if p.Role == repository.RoleWorker && p.Status == repository.StatusRetired {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func (r *mockProcessRepository) FailedWorkers() []*repository.Process {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*repository.Process
+	for _, p := range r.processes {
+		if p.Role == repository.RoleWorker && p.Status == repository.StatusFailed {
 			result = append(result, p)
 		}
 	}

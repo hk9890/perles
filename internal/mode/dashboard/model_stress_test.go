@@ -424,9 +424,9 @@ func TestModel_WorkflowSelectionStressConsistency(t *testing.T) {
 	})
 }
 
-// TestModel_EventWorkflowStoppedCleansCache verifies that EventWorkflowStopped
+// TestModel_EventWorkflowFailedCleansCache verifies that EventWorkflowFailed
 // properly cleans up the cache under stress.
-func TestModel_EventWorkflowStoppedCleansCache(t *testing.T) {
+func TestModel_EventWorkflowFailedCleansCache(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		numWorkflows := rapid.IntRange(5, 15).Draw(rt, "numWorkflows")
 		m := createStressTestModel(t, numWorkflows)
@@ -449,40 +449,40 @@ func TestModel_EventWorkflowStoppedCleansCache(t *testing.T) {
 			}
 		}
 
-		// Send EventWorkflowStopped for random workflows
-		numToStop := rapid.IntRange(1, numWorkflows/2).Draw(rt, "numToStop")
-		stoppedIDs := make(map[controlplane.WorkflowID]bool)
+		// Send EventWorkflowFailed for random workflows
+		numToFail := rapid.IntRange(1, numWorkflows/2).Draw(rt, "numToFail")
+		failedIDs := make(map[controlplane.WorkflowID]bool)
 
-		for i := 0; i < numToStop; i++ {
-			idx := rapid.IntRange(0, numWorkflows-1).Draw(rt, "stopIdx")
+		for i := 0; i < numToFail; i++ {
+			idx := rapid.IntRange(0, numWorkflows-1).Draw(rt, "failIdx")
 			wfID := m.workflows[idx].ID
 
-			if stoppedIDs[wfID] {
-				continue // Already stopped
+			if failedIDs[wfID] {
+				continue // Already failed
 			}
 
 			event := controlplane.ControlPlaneEvent{
-				Type:       controlplane.EventWorkflowStopped,
+				Type:       controlplane.EventWorkflowFailed,
 				WorkflowID: wfID,
 			}
 			result, _ := m.Update(event)
 			m = result.(Model)
-			stoppedIDs[wfID] = true
+			failedIDs[wfID] = true
 		}
 
-		// Verify stopped workflows are removed from cache
-		for stoppedID := range stoppedIDs {
-			if _, exists := m.workflowUIState[stoppedID]; exists {
-				rt.Fatalf("stopped workflow %s still in cache", stoppedID)
+		// Verify failed workflows are removed from cache
+		for failedID := range failedIDs {
+			if _, exists := m.workflowUIState[failedID]; exists {
+				rt.Fatalf("failed workflow %s still in cache", failedID)
 			}
 		}
 
 		// Verify cache size decreased appropriately
 		finalCacheSize := len(m.workflowUIState)
-		if finalCacheSize > initialCacheSize-len(stoppedIDs)+2 {
+		if finalCacheSize > initialCacheSize-len(failedIDs)+2 {
 			// Allow some margin due to LRU and protected workflows
 			// But cache should generally be smaller
-			t.Logf("cache size: initial=%d, final=%d, stopped=%d", initialCacheSize, finalCacheSize, len(stoppedIDs))
+			t.Logf("cache size: initial=%d, final=%d, failed=%d", initialCacheSize, finalCacheSize, len(failedIDs))
 		}
 	})
 }

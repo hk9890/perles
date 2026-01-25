@@ -104,6 +104,9 @@ func InfrastructureCommandSubmitter(inst *WorkflowInstance) CommandSubmitter {
 type RecoveryExecutorConfig struct {
 	// WorkflowProvider provides access to workflow instances.
 	WorkflowProvider WorkflowProvider
+	// Supervisor provides workflow lifecycle operations (pause, resume, shutdown).
+	// Required for executing pause recovery actions.
+	Supervisor Supervisor
 	// OnHealthEvent is called when recovery events are emitted.
 	// Can be nil if event emission is not needed.
 	OnHealthEvent HealthEventCallback
@@ -118,6 +121,7 @@ type RecoveryExecutorConfig struct {
 // defaultRecoveryExecutor is the default implementation of RecoveryExecutor.
 type defaultRecoveryExecutor struct {
 	workflowProvider        WorkflowProvider
+	supervisor              Supervisor
 	onHealthEvent           HealthEventCallback
 	commandSubmitterFactory CommandSubmitterFactory
 	clock                   Clock
@@ -141,6 +145,7 @@ func NewRecoveryExecutor(cfg RecoveryExecutorConfig) (RecoveryExecutor, error) {
 
 	return &defaultRecoveryExecutor{
 		workflowProvider:        cfg.WorkflowProvider,
+		supervisor:              cfg.Supervisor,
 		onHealthEvent:           cfg.OnHealthEvent,
 		commandSubmitterFactory: cmdSubmitterFactory,
 		clock:                   clock,
@@ -269,32 +274,30 @@ func (e *defaultRecoveryExecutor) executeReplace(ctx context.Context, inst *Work
 	return nil
 }
 
-// executePause suspends the workflow by transitioning it to Paused state.
-func (e *defaultRecoveryExecutor) executePause(_ context.Context, inst *WorkflowInstance) error {
-	// Workflow must be running to pause
-	if inst.State != WorkflowRunning {
-		return fmt.Errorf("cannot pause workflow in state %s", inst.State)
-	}
-
-	// Transition to paused state
-	if err := inst.TransitionTo(WorkflowPaused); err != nil {
-		return fmt.Errorf("transitioning to paused: %w", err)
-	}
-
-	// Stop the infrastructure to suspend processing
-	// Note: We don't fully shutdown - we want to preserve state for resume
-	if inst.Infrastructure != nil {
-		// Stop the nudger to prevent further nudges
-		if inst.Infrastructure.Internal.CoordinatorNudger != nil {
-			inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+// executePause suspends the workflow by delegating to Supervisor.Pause().
+func (e *defaultRecoveryExecutor) executePause(ctx context.Context, inst *WorkflowInstance) error {
+	// If no supervisor is configured, fall back to legacy behavior
+	if e.supervisor == nil {
+		// Legacy behavior for backward compatibility
+		if inst.State != WorkflowRunning {
+			return fmt.Errorf("cannot pause workflow in state %s", inst.State)
 		}
-		// Stop all processes via the process registry
-		if inst.Infrastructure.Internal.ProcessRegistry != nil {
-			inst.Infrastructure.Internal.ProcessRegistry.StopAll()
+		if err := inst.TransitionTo(WorkflowPaused); err != nil {
+			return fmt.Errorf("transitioning to paused: %w", err)
 		}
+		if inst.Infrastructure != nil {
+			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
+				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+			}
+			if inst.Infrastructure.Internal.ProcessRegistry != nil {
+				inst.Infrastructure.Internal.ProcessRegistry.StopAll()
+			}
+		}
+		return nil
 	}
 
-	return nil
+	// Delegate to Supervisor.Pause() for unified pause behavior
+	return e.supervisor.Pause(ctx, inst)
 }
 
 // executeFail terminates the workflow with Failed state.

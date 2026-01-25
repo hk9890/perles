@@ -25,8 +25,15 @@ type ControlPlane interface {
 	// Allocates resources, creates infrastructure, and spawns the coordinator.
 	Start(ctx context.Context, id WorkflowID) error
 
-	// Stop terminates a workflow and releases all resources.
-	Stop(ctx context.Context, id WorkflowID, opts StopOptions) error
+	// Pause suspends a running workflow, stopping all processes and clearing queues.
+	// The infrastructure remains allocated for potential resumption.
+	// Returns ErrWorkflowNotFound if the workflow does not exist.
+	Pause(ctx context.Context, id WorkflowID) error
+
+	// Resume restarts a paused workflow by respawning the coordinator.
+	// Sends a system message to the coordinator with pause context.
+	// Returns ErrWorkflowNotFound if the workflow does not exist.
+	Resume(ctx context.Context, id WorkflowID) error
 
 	// Get retrieves a workflow by ID.
 	// Returns ErrWorkflowNotFound if the workflow does not exist.
@@ -186,8 +193,63 @@ func (cp *defaultControlPlane) Start(ctx context.Context, id WorkflowID) error {
 	return nil
 }
 
-// Stop terminates a workflow and releases all resources.
-func (cp *defaultControlPlane) Stop(ctx context.Context, id WorkflowID, opts StopOptions) error {
+// Pause suspends a running workflow, stopping all processes and clearing queues.
+// The infrastructure remains allocated for potential resumption.
+func (cp *defaultControlPlane) Pause(ctx context.Context, id WorkflowID) error {
+	// Get workflow from registry
+	inst, ok := cp.registry.Get(id)
+	if !ok {
+		return ErrWorkflowNotFound
+	}
+
+	// Delegate to supervisor
+	if err := cp.supervisor.Pause(ctx, inst); err != nil {
+		return err
+	}
+
+	// Emit workflow paused event
+	cp.eventBus.Publish(ControlPlaneEvent{
+		Type:         EventWorkflowPaused,
+		WorkflowID:   inst.ID,
+		WorkflowName: inst.Name,
+		TemplateID:   inst.TemplateID,
+		State:        inst.State,
+		Timestamp:    inst.PausedAt,
+	})
+
+	return nil
+}
+
+// Resume restarts a paused workflow by respawning the coordinator.
+// Sends a system message to the coordinator with pause context.
+func (cp *defaultControlPlane) Resume(ctx context.Context, id WorkflowID) error {
+	// Get workflow from registry
+	inst, ok := cp.registry.Get(id)
+	if !ok {
+		return ErrWorkflowNotFound
+	}
+
+	// Delegate to supervisor
+	if err := cp.supervisor.Resume(ctx, inst); err != nil {
+		return err
+	}
+
+	// Emit workflow resumed event
+	cp.eventBus.Publish(ControlPlaneEvent{
+		Type:         EventWorkflowResumed,
+		WorkflowID:   inst.ID,
+		WorkflowName: inst.Name,
+		TemplateID:   inst.TemplateID,
+		State:        inst.State,
+		Timestamp:    inst.UpdatedAt,
+	})
+
+	return nil
+}
+
+// stopWorkflow terminates a workflow and releases all resources.
+// This is an internal method used by Shutdown.
+func (cp *defaultControlPlane) stopWorkflow(ctx context.Context, id WorkflowID, opts StopOptions) error {
 	// Get workflow from registry
 	inst, ok := cp.registry.Get(id)
 	if !ok {
@@ -199,7 +261,7 @@ func (cp *defaultControlPlane) Stop(ctx context.Context, id WorkflowID, opts Sto
 	cp.eventBus.DetachWorkflow(id)
 
 	// Delegate to supervisor
-	if err := cp.supervisor.Stop(ctx, inst, opts); err != nil {
+	if err := cp.supervisor.Shutdown(ctx, inst, opts); err != nil {
 		return fmt.Errorf("stopping workflow: %w", err)
 	}
 
@@ -373,7 +435,7 @@ func (cp *defaultControlPlane) Shutdown(ctx context.Context) error {
 	for _, inst := range activeWorkflows {
 		// Always force stop during shutdown - we're terminating everything anyway.
 		// This avoids waiting for graceful process draining which can be slow.
-		stopErr := cp.Stop(ctx, inst.ID, StopOptions{
+		stopErr := cp.stopWorkflow(ctx, inst.ID, StopOptions{
 			Reason: "ControlPlane shutdown",
 			Force:  true,
 		})
@@ -387,7 +449,7 @@ func (cp *defaultControlPlane) Shutdown(ctx context.Context) error {
 		cp.eventBus.Close()
 	}
 
-	// Note: Individual workflow resources are released in Stop() via ReleaseAll().
+	// Note: Individual workflow resources are released in stopWorkflow() via Supervisor.Shutdown().
 	// Scheduler doesn't have a global Close() method - no cleanup needed here.
 
 	// Return aggregated errors if any

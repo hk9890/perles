@@ -368,6 +368,7 @@ type workerStateResponse struct {
 	Workers        []workerStateInfo             `json:"workers"`
 	ReadyWorkers   []string                      `json:"ready_workers"`
 	RetiredWorkers []string                      `json:"retired_workers"`
+	FailedWorkers  []string                      `json:"failed_workers"`
 	Tasks          map[string]taskAssignmentInfo `json:"tasks"`
 }
 
@@ -402,13 +403,20 @@ func (a *V2Adapter) HandleQueryWorkerState(_ context.Context, args json.RawMessa
 		Workers:        make([]workerStateInfo, 0),
 		ReadyWorkers:   make([]string, 0),
 		RetiredWorkers: make([]string, 0),
+		FailedWorkers:  make([]string, 0),
 		Tasks:          make(map[string]taskAssignmentInfo),
 	}
 
-	// Populate retired workers
+	// Populate retired workers (gracefully retired)
 	retiredWorkers := a.processRepo.RetiredWorkers()
 	for _, p := range retiredWorkers {
 		response.RetiredWorkers = append(response.RetiredWorkers, p.ID)
+	}
+
+	// Populate failed workers (session expired, crashed, etc.)
+	failedWorkers := a.processRepo.FailedWorkers()
+	for _, p := range failedWorkers {
+		response.FailedWorkers = append(response.FailedWorkers, p.ID)
 	}
 
 	// Populate all tasks

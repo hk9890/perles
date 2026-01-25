@@ -57,10 +57,20 @@ type Supervisor interface {
 	// Returns an error if resources have not been allocated (inst.Infrastructure is nil).
 	SpawnCoordinator(ctx context.Context, inst *WorkflowInstance) error
 
-	// Stop terminates a workflow and releases all resources.
+	// Pause suspends a running workflow, stopping all processes and clearing queues.
+	// The infrastructure remains allocated for potential resumption.
+	// Returns ErrInvalidState if the workflow is not in Running state.
+	Pause(ctx context.Context, inst *WorkflowInstance) error
+
+	// Resume restarts a paused workflow by respawning the coordinator.
+	// Sends a system message to the coordinator with pause context.
+	// Returns ErrInvalidState if the workflow is not in Paused state.
+	Resume(ctx context.Context, inst *WorkflowInstance) error
+
+	// Shutdown terminates a workflow and releases all resources.
 	// Drains the command processor, finalizes the session, and releases leases.
-	// Can be called on any active workflow (Running, Paused).
-	Stop(ctx context.Context, inst *WorkflowInstance, opts StopOptions) error
+	// Can be called on any active workflow (Running, Paused, Pending).
+	Shutdown(ctx context.Context, inst *WorkflowInstance, opts StopOptions) error
 }
 
 // InfrastructureFactory creates v2.Infrastructure instances.
@@ -457,10 +467,178 @@ func (s *defaultSupervisor) SpawnCoordinator(ctx context.Context, inst *Workflow
 	return nil
 }
 
-// Stop terminates a workflow and releases all resources.
-func (s *defaultSupervisor) Stop(ctx context.Context, inst *WorkflowInstance, opts StopOptions) error {
-	// Validate workflow can be stopped (Running or Paused)
-	if !inst.State.CanTransitionTo(WorkflowStopped) {
+// Pause suspends a running workflow, stopping all processes and clearing queues.
+// The infrastructure remains allocated for potential resumption.
+func (s *defaultSupervisor) Pause(ctx context.Context, inst *WorkflowInstance) error {
+	// Validate workflow is in Running state
+	if inst.State != WorkflowRunning {
+		return fmt.Errorf("%w: cannot pause workflow in state %s", ErrInvalidState, inst.State)
+	}
+
+	// Transition to Paused state
+	if err := inst.TransitionTo(WorkflowPaused); err != nil {
+		return fmt.Errorf("transitioning to paused: %w", err)
+	}
+
+	// Stop infrastructure components but preserve the infrastructure for resume
+	if inst.Infrastructure != nil {
+		// Stop the nudger to prevent further nudges
+		if inst.Infrastructure.Internal.CoordinatorNudger != nil {
+			inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+		}
+
+		// Clear all message queues to provide a clean slate for resume
+		if inst.Infrastructure.Repositories.QueueRepo != nil {
+			inst.Infrastructure.Repositories.QueueRepo.ClearAll()
+		}
+
+		// Pause all processes via commands (transitions status and stops AI subprocesses)
+		// This ensures proper status transitions and event emissions
+		if inst.Infrastructure.Repositories.ProcessRepo != nil {
+			processes := inst.Infrastructure.Repositories.ProcessRepo.List()
+			for _, proc := range processes {
+				// Skip already paused or terminal processes
+				if proc.Status == repository.StatusPaused || proc.Status.IsTerminal() {
+					continue
+				}
+
+				pauseCmd := command.NewPauseProcessCommand(command.SourceInternal, proc.ID, "workflow paused")
+				_, _ = inst.Infrastructure.Core.Processor.SubmitAndWait(inst.Ctx, pauseCmd)
+				// Continue pausing other processes even if one fails
+			}
+		}
+	}
+
+	// Record when the workflow was paused
+	inst.PausedAt = time.Now()
+
+	return nil
+}
+
+// Resume restarts a paused workflow by sending a resume message to the coordinator.
+// The coordinator process is already in Ready state (preserved during pause),
+// so sending a message triggers the delivery flow which spawns a new AI session.
+func (s *defaultSupervisor) Resume(ctx context.Context, inst *WorkflowInstance) error {
+	// Validate workflow is in Paused state
+	if inst.State != WorkflowPaused {
+		return fmt.Errorf("%w: cannot resume workflow in state %s", ErrInvalidState, inst.State)
+	}
+
+	// Transition to Running state first
+	if err := inst.TransitionTo(WorkflowRunning); err != nil {
+		return fmt.Errorf("transitioning to running: %w", err)
+	}
+
+	// Restart the coordinator nudger (it was stopped during pause)
+	if inst.Infrastructure != nil && inst.Infrastructure.Internal.CoordinatorNudger != nil {
+		inst.Infrastructure.Internal.CoordinatorNudger.Start()
+	}
+
+	// Resume all processes via commands (transitions Paused -> Ready)
+	// Resume workers first, then coordinator, so coordinator can see worker availability
+	if inst.Infrastructure != nil && inst.Infrastructure.Repositories.ProcessRepo != nil {
+		processes := inst.Infrastructure.Repositories.ProcessRepo.List()
+
+		// Resume workers first (non-coordinator)
+		for _, proc := range processes {
+			if proc.ID == repository.CoordinatorID {
+				continue // Resume coordinator last
+			}
+			// Only resume paused processes
+			if proc.Status != repository.StatusPaused {
+				continue
+			}
+
+			resumeCmd := command.NewResumeProcessCommand(command.SourceInternal, proc.ID)
+			_, _ = inst.Infrastructure.Core.Processor.SubmitAndWait(inst.Ctx, resumeCmd)
+			// Continue resuming other processes even if one fails
+		}
+
+		// Resume coordinator last
+		resumeCmd := command.NewResumeProcessCommand(command.SourceInternal, repository.CoordinatorID)
+		if result, err := inst.Infrastructure.Core.Processor.SubmitAndWait(inst.Ctx, resumeCmd); err != nil {
+			// Rollback: stop nudger and transition back to Paused state on failure
+			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
+				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+			}
+			_ = inst.TransitionTo(WorkflowPaused)
+			return fmt.Errorf("resuming coordinator: %w", err)
+		} else if !result.Success {
+			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
+				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+			}
+			_ = inst.TransitionTo(WorkflowPaused)
+			return fmt.Errorf("resuming coordinator: %w", result.Error)
+		}
+	}
+
+	// Send system message with pause context - this triggers the delivery flow
+	// which spawns a new AI session and attaches it to the existing coordinator process
+	if err := s.sendResumeContextMessage(inst); err != nil {
+		// Rollback: stop nudger and transition back to Paused state on failure
+		if inst.Infrastructure != nil && inst.Infrastructure.Internal.CoordinatorNudger != nil {
+			inst.Infrastructure.Internal.CoordinatorNudger.Stop()
+		}
+		_ = inst.TransitionTo(WorkflowPaused)
+		return fmt.Errorf("sending resume message: %w", err)
+	}
+
+	return nil
+}
+
+// sendResumeContextMessage sends a system message to the coordinator explaining the pause context.
+// This triggers the delivery flow which spawns a new AI session and attaches it to the coordinator.
+func (s *defaultSupervisor) sendResumeContextMessage(inst *WorkflowInstance) error {
+	if inst.Infrastructure == nil {
+		return fmt.Errorf("infrastructure not available")
+	}
+
+	now := time.Now()
+	pauseDuration := now.Sub(inst.PausedAt)
+
+	message := fmt.Sprintf(`[SYSTEM] The workflow was paused by the user at %s and has now been resumed.
+Current time: %s
+Pause duration: %s
+
+Please continue from where you left off. Use your MCP tools to query current state:
+- query_worker_state: Check worker availability
+- get_task_status: Check task progress in BD
+
+If workers were previously working on tasks and their tasks are in progress but the workers status is ready then
+you have to send them a message to continue working on their task since they were paused and they have to now continue.
+Use the send_to_worker(worker_id, message) tool to send a message to the worker.
+
+If we are waiting for user input then use the notify_user tool that will notify the user they need to respond.
+
+You may ask the user for clarification if you are not sure how to continue.`,
+		inst.PausedAt.Format(time.RFC3339),
+		now.Format(time.RFC3339),
+		pauseDuration.Round(time.Second))
+
+	// Submit send-to-process command for the coordinator
+	sendCmd := command.NewSendToProcessCommand(
+		command.SourceInternal,
+		repository.CoordinatorID,
+		message,
+	)
+
+	// Wait for the command to complete - this ensures the message is queued
+	// and the delivery flow is triggered
+	result, err := inst.Infrastructure.Core.Processor.SubmitAndWait(inst.Ctx, sendCmd)
+	if err != nil {
+		return fmt.Errorf("submitting send command: %w", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("send command failed: %w", result.Error)
+	}
+
+	return nil
+}
+
+// Shutdown terminates a workflow and releases all resources.
+func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance, opts StopOptions) error {
+	// Validate workflow can be stopped (Running or Paused can transition to Failed)
+	if !inst.State.CanTransitionTo(WorkflowFailed) {
 		return fmt.Errorf("%w: cannot stop workflow in state %s", ErrInvalidState, inst.State)
 	}
 
@@ -539,9 +717,9 @@ func (s *defaultSupervisor) Stop(ctx context.Context, inst *WorkflowInstance, op
 		}
 	}
 
-	// Step 6: Transition to Stopped state
-	if err := inst.TransitionTo(WorkflowStopped); err != nil {
-		return fmt.Errorf("transitioning to Stopped: %w", err)
+	// Step 6: Transition to Failed state (user-initiated stop is treated as failure)
+	if err := inst.TransitionTo(WorkflowFailed); err != nil {
+		return fmt.Errorf("transitioning to Failed: %w", err)
 	}
 
 	// Clear resources

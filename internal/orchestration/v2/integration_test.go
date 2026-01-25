@@ -605,6 +605,7 @@ func TestV2Integration_ReadOnlyRepoAccess(t *testing.T) {
 		Workers        []map[string]interface{}          `json:"workers"`
 		ReadyWorkers   []string                          `json:"ready_workers"`
 		RetiredWorkers []string                          `json:"retired_workers"`
+		FailedWorkers  []string                          `json:"failed_workers"`
 		Tasks          map[string]map[string]interface{} `json:"tasks"`
 	}
 	err = json.Unmarshal([]byte(result.Content[0].Text), &stateResp)

@@ -46,12 +46,11 @@ func (id WorkflowID) IsValid() bool {
 // WorkflowState represents the lifecycle state of a workflow instance.
 // Valid transitions:
 //
-//	Pending   -> Running, Stopped
-//	Running   -> Paused, Completed, Failed, Stopped
-//	Paused    -> Running, Stopped
+//	Pending   -> Running, Failed
+//	Running   -> Paused, Completed, Failed
+//	Paused    -> Running, Failed
 //	Completed -> (terminal)
 //	Failed    -> (terminal)
-//	Stopped   -> (terminal)
 type WorkflowState string
 
 const (
@@ -65,8 +64,6 @@ const (
 	WorkflowCompleted WorkflowState = "completed"
 	// WorkflowFailed indicates the workflow terminated due to an error.
 	WorkflowFailed WorkflowState = "failed"
-	// WorkflowStopped indicates the workflow was manually stopped by the user.
-	WorkflowStopped WorkflowState = "stopped"
 )
 
 // validTransitions defines the allowed state transitions for workflows.
@@ -74,23 +71,20 @@ const (
 var validTransitions = map[WorkflowState]map[WorkflowState]bool{
 	WorkflowPending: {
 		WorkflowRunning: true,
-		WorkflowStopped: true,
+		WorkflowFailed:  true, // Allow failure from pending state (shutdown, cancel)
 	},
 	WorkflowRunning: {
 		WorkflowPaused:    true,
 		WorkflowCompleted: true,
 		WorkflowFailed:    true,
-		WorkflowStopped:   true,
 	},
 	WorkflowPaused: {
 		WorkflowRunning: true,
-		WorkflowStopped: true,
 		WorkflowFailed:  true, // Allow failure from paused state (recovery exhaustion)
 	},
 	// Terminal states have no valid transitions
 	WorkflowCompleted: {},
 	WorkflowFailed:    {},
-	WorkflowStopped:   {},
 }
 
 // String returns the string representation of the WorkflowState.
@@ -105,10 +99,10 @@ func (s WorkflowState) IsValid() bool {
 }
 
 // IsTerminal returns true if this state is a terminal state
-// (Completed, Failed, or Stopped). Terminal states cannot transition
+// (Completed or Failed). Terminal states cannot transition
 // to any other state.
 func (s WorkflowState) IsTerminal() bool {
-	return s == WorkflowCompleted || s == WorkflowFailed || s == WorkflowStopped
+	return s == WorkflowCompleted || s == WorkflowFailed
 }
 
 // CanTransitionTo returns true if transitioning from the current state
@@ -216,6 +210,7 @@ type WorkflowInstance struct {
 	// Timestamps
 	CreatedAt time.Time
 	StartedAt *time.Time
+	PausedAt  time.Time // When workflow was paused (zero if never paused)
 	UpdatedAt time.Time
 
 	// Runtime (owned by this instance, set when workflow is started)

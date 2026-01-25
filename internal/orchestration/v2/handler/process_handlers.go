@@ -1529,16 +1529,32 @@ type ReplaceProcessResult struct {
 
 // PauseProcessHandler handles CmdPauseProcess commands.
 // It transitions a process from Ready/Working → Paused.
+// Also stops the live process in the registry to kill the AI subprocess.
 // Same logic for both coordinator and workers.
 type PauseProcessHandler struct {
 	processRepo repository.ProcessRepository
+	registry    *process.ProcessRegistry
+}
+
+// PauseProcessHandlerOption configures PauseProcessHandler.
+type PauseProcessHandlerOption func(*PauseProcessHandler)
+
+// WithPauseRegistry sets the process registry for stopping live processes.
+func WithPauseRegistry(registry *process.ProcessRegistry) PauseProcessHandlerOption {
+	return func(h *PauseProcessHandler) {
+		h.registry = registry
+	}
 }
 
 // NewPauseProcessHandler creates a new PauseProcessHandler.
-func NewPauseProcessHandler(processRepo repository.ProcessRepository) *PauseProcessHandler {
-	return &PauseProcessHandler{
+func NewPauseProcessHandler(processRepo repository.ProcessRepository, opts ...PauseProcessHandlerOption) *PauseProcessHandler {
+	h := &PauseProcessHandler{
 		processRepo: processRepo,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Handle processes a PauseProcessCommand.
@@ -1577,6 +1593,14 @@ func (h *PauseProcessHandler) Handle(ctx context.Context, cmd command.Command) (
 	proc.Status = repository.StatusPaused
 	if err := h.processRepo.Save(proc); err != nil {
 		return nil, fmt.Errorf("failed to save process: %w", err)
+	}
+
+	// Stop the live process in registry to kill the AI subprocess
+	if h.registry != nil {
+		liveProcess := h.registry.Get(pauseCmd.ProcessID)
+		if liveProcess != nil {
+			liveProcess.Stop()
+		}
 	}
 
 	// Emit ProcessStatusChange event

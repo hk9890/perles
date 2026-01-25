@@ -33,8 +33,13 @@ func (m *mockControlPlane) Start(ctx context.Context, id controlplane.WorkflowID
 	return args.Error(0)
 }
 
-func (m *mockControlPlane) Stop(ctx context.Context, id controlplane.WorkflowID, opts controlplane.StopOptions) error {
-	args := m.Called(ctx, id, opts)
+func (m *mockControlPlane) Pause(ctx context.Context, id controlplane.WorkflowID) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *mockControlPlane) Resume(ctx context.Context, id controlplane.WorkflowID) error {
+	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 

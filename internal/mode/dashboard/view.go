@@ -24,7 +24,6 @@ var (
 	colorPaused    = lipgloss.Color("#FFFF00") // Yellow (per spec)
 	colorCompleted = lipgloss.Color("#00FF00") // Green (per spec)
 	colorFailed    = lipgloss.Color("#FF0000") // Red
-	colorStopped   = lipgloss.Color("#808080") // Gray
 	colorDimmed    = lipgloss.Color("#666666") // Dimmed text
 	colorHeader    = lipgloss.Color("#FFFFFF") // White for headers
 )
@@ -36,7 +35,6 @@ const (
 	statusPaused    = "PAUSED"
 	statusCompleted = "COMPLETED"
 	statusFailed    = "FAILED"
-	statusStopped   = "STOPPED"
 )
 
 // CoordinatorPanelWidth is the fixed width for the coordinator chat panel.
@@ -380,8 +378,6 @@ func getStatusTextAndColor(state controlplane.WorkflowState) (string, lipgloss.T
 		return statusCompleted, colorCompleted
 	case controlplane.WorkflowFailed:
 		return statusFailed, colorFailed
-	case controlplane.WorkflowStopped:
-		return statusStopped, colorStopped
 	default:
 		return statusPending, colorDimmed
 	}

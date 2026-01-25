@@ -62,7 +62,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /workflows", h.List)
 	mux.HandleFunc("GET /workflows/{id}", h.Get)
 	mux.HandleFunc("POST /workflows/{id}/start", h.Start)
-	mux.HandleFunc("POST /workflows/{id}/stop", h.Stop)
+	mux.HandleFunc("POST /workflows/{id}/pause", h.Pause)
+	mux.HandleFunc("POST /workflows/{id}/resume", h.Resume)
 
 	// Event streaming
 	mux.HandleFunc("GET /workflows/{id}/events", h.StreamWorkflowEvents)
@@ -126,12 +127,6 @@ type WorkflowResponse struct {
 type ListWorkflowsResponse struct {
 	Workflows []WorkflowResponse `json:"workflows"`
 	Total     int                `json:"total"`
-}
-
-// StopWorkflowRequest is the request body for stopping a workflow.
-type StopWorkflowRequest struct {
-	Reason string `json:"reason,omitempty"`
-	Force  bool   `json:"force,omitempty"`
 }
 
 // ErrorResponse is the response body for errors.
@@ -415,30 +410,42 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Stop terminates a workflow.
-// POST /workflows/{id}/stop
-func (h *Handler) Stop(w http.ResponseWriter, r *http.Request) {
+// Pause suspends a running workflow.
+// POST /workflows/{id}/pause
+func (h *Handler) Pause(w http.ResponseWriter, r *http.Request) {
 	id := controlplane.WorkflowID(r.PathValue("id"))
 
-	var req StopWorkflowRequest
-	if r.Body != nil && r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			h.writeError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON body", err.Error())
-			return
-		}
-	}
-
-	opts := controlplane.StopOptions{
-		Reason: req.Reason,
-		Force:  req.Force,
-	}
-
-	if err := h.cp.Stop(r.Context(), id, opts); err != nil {
+	if err := h.cp.Pause(r.Context(), id); err != nil {
 		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
 			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", "")
 			return
 		}
-		h.writeError(w, http.StatusBadRequest, "stop_failed", "Failed to stop workflow", err.Error())
+		if errors.Is(err, controlplane.ErrInvalidState) {
+			h.writeError(w, http.StatusBadRequest, "invalid_state", "Cannot pause workflow in current state", err.Error())
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "pause_failed", "Failed to pause workflow", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Resume restarts a paused workflow.
+// POST /workflows/{id}/resume
+func (h *Handler) Resume(w http.ResponseWriter, r *http.Request) {
+	id := controlplane.WorkflowID(r.PathValue("id"))
+
+	if err := h.cp.Resume(r.Context(), id); err != nil {
+		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
+			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", "")
+			return
+		}
+		if errors.Is(err, controlplane.ErrInvalidState) {
+			h.writeError(w, http.StatusBadRequest, "invalid_state", "Cannot resume workflow in current state", err.Error())
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "resume_failed", "Failed to resume workflow", err.Error())
 		return
 	}
 

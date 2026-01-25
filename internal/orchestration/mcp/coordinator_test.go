@@ -61,8 +61,10 @@ type workerStateInfo struct {
 
 // workerStateResponse is used for test JSON unmarshaling of query_worker_state responses.
 type workerStateResponse struct {
-	Workers      []workerStateInfo `json:"workers"`
-	ReadyWorkers []string          `json:"ready_workers"`
+	Workers        []workerStateInfo `json:"workers"`
+	ReadyWorkers   []string          `json:"ready_workers"`
+	RetiredWorkers []string          `json:"retired_workers"`
+	FailedWorkers  []string          `json:"failed_workers"`
 }
 
 // TestNewCoordinatorServer_ProvidedBeadsExecutorIsUsed verifies mock injection works.
