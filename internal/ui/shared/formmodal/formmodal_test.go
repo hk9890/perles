@@ -3547,7 +3547,7 @@ func TestHeaderContent_ReceivesCorrectContentWidth(t *testing.T) {
 		Fields: []FieldConfig{
 			{Key: "name", Type: FieldTypeText, Label: "Name"},
 		},
-		MinWidth: 50, // contentWidth = 50 - 2 = 48, headerWidth = 48 - 2 = 46
+		MinWidth: 50, // contentWidth = 50, headerWidth = 50 - 2 = 48
 		HeaderContent: func(width int) string {
 			receivedWidth = width
 			return "Header"
@@ -3557,8 +3557,8 @@ func TestHeaderContent_ReceivesCorrectContentWidth(t *testing.T) {
 
 	_ = m.View()
 
-	// headerWidth = MinWidth - 2 (modal border) - 2 (content padding)
-	expectedWidth := 50 - 2 - 2
+	// headerWidth = MinWidth - 2 (content padding on each side)
+	expectedWidth := 50 - 2
 	require.Equal(t, expectedWidth, receivedWidth, "HeaderContent should receive inner content width")
 }
 
@@ -3731,14 +3731,14 @@ func TestTitleContent_EmptyStringReturn_NoTitleContent(t *testing.T) {
 }
 
 func TestTitleContent_ReceivesCorrectContentWidth(t *testing.T) {
-	// Test that TitleContent callback receives correct contentWidth (minWidth - 2)
+	// Test that TitleContent callback receives correct contentWidth (equals MinWidth)
 	var receivedWidth int
 	cfg := FormConfig{
 		Title: "Test Form",
 		Fields: []FieldConfig{
 			{Key: "name", Type: FieldTypeText, Label: "Name"},
 		},
-		MinWidth: 50, // contentWidth should be 50 - 2 = 48
+		MinWidth: 50, // contentWidth = 50 (lipgloss Width sets content area; borders are outside)
 		TitleContent: func(width int) string {
 			receivedWidth = width
 			return "[F][P1]"
@@ -3748,9 +3748,9 @@ func TestTitleContent_ReceivesCorrectContentWidth(t *testing.T) {
 
 	_ = m.View()
 
-	// contentWidth = MinWidth - 2 (for modal border)
-	expectedWidth := 50 - 2
-	require.Equal(t, expectedWidth, receivedWidth, "TitleContent should receive contentWidth (MinWidth - 2)")
+	// contentWidth = MinWidth (lipgloss adds borders outside the Width)
+	expectedWidth := 50
+	require.Equal(t, expectedWidth, receivedWidth, "TitleContent should receive contentWidth (MinWidth)")
 }
 
 func TestGolden_WithTitleContent(t *testing.T) {

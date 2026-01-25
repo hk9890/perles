@@ -51,7 +51,7 @@ func (m *Model) View() string {
 	if width == 0 {
 		width = 50
 	}
-	contentWidth := width - 2 // Account for modal border
+	contentWidth := width // lipgloss Width sets content area; borders are added outside
 
 	// Title with bottom border
 	titleStyle := lipgloss.NewStyle().
@@ -140,8 +140,8 @@ func (m *Model) View() string {
 // renderScrollableBody renders the fields with scrolling applied via viewport.
 func (m *Model) renderScrollableBody(contentWidth int, contentPadding lipgloss.Style) string {
 	// Render all visible fields
-	// Account for left padding (1 char) so fields don't overflow
-	fieldWidth := contentWidth - 1
+	// Account for left padding (1 char) and right padding (1 char) for symmetry
+	fieldWidth := contentWidth - 2
 	var body strings.Builder
 	for i := range m.fields {
 		if !m.isFieldVisible(i) {
@@ -630,11 +630,13 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, fieldIndex int, width 
 
 			// Subtext rows (wrapped) - each gets its own unique zone ID
 			if item.subtext != "" {
-				wrapWidth := innerWidth - 4
+				// 2 spaces prefix + 1 right padding = 3 chars reserved
+				// Use wrapWidth-1 for safety to prevent border overflow
+				wrapWidth := innerWidth - 3
 				if wrapWidth > 0 {
-					wrapped := wordwrap.String(item.subtext, wrapWidth)
+					wrapped := wordwrap.String(item.subtext, wrapWidth-1)
 					for line := range strings.SplitSeq(wrapped, "\n") {
-						subtextRow := "   " + line
+						subtextRow := "  " + line
 						// Pad to full width for clicking
 						if lipgloss.Width(subtextRow) < innerWidth {
 							subtextRow = subtextRow + strings.Repeat(" ", innerWidth-lipgloss.Width(subtextRow))
