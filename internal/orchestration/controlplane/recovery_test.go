@@ -590,7 +590,7 @@ func TestHealthMonitor_RecoveryCountIncrementsAfterEachAttempt(t *testing.T) {
 
 	// Advance past progress timeout to trigger stuck
 	clock.Advance(150 * time.Millisecond)
-	time.Sleep(30 * time.Millisecond) // Wait for check loop
+	time.Sleep(100 * time.Millisecond) // Wait for check loop (longer for Windows CI)
 
 	// First check - recovery count should be 1
 	status, _ := monitor.GetStatus("wf-1")
@@ -598,7 +598,7 @@ func TestHealthMonitor_RecoveryCountIncrementsAfterEachAttempt(t *testing.T) {
 
 	// Advance past backoff and trigger another check
 	clock.Advance(50 * time.Millisecond)
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Second check - recovery count should be 2
 	status, _ = monitor.GetStatus("wf-1")
