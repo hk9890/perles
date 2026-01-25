@@ -307,10 +307,7 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, keys.Kanban.Dashboard):
-		// Open multi-workflow dashboard (requires flag)
-		if !m.services.Flags.Enabled(flags.FlagControlPlane) {
-			return m, nil
-		}
+		// Open multi-workflow dashboard
 		return m, func() tea.Msg {
 			return SwitchToDashboardMsg{}
 		}
