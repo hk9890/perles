@@ -41,6 +41,7 @@ var (
 	cfgFile         string
 	cfg             config.Config
 	debugFlag       bool
+	apiPortFlag     int
 	registryService *appreg.RegistryService
 )
 
@@ -63,6 +64,8 @@ func init() {
 		"markdown rendering style: \"dark\" (default) or \"light\"")
 	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false,
 		"enable debug mode with logging (also: PERLES_DEBUG=1)")
+	rootCmd.Flags().IntVarP(&apiPortFlag, "port", "p", 0,
+		"API server port (0 = auto-assign, overrides config)")
 
 	_ = viper.BindPFlag("beads_dir", rootCmd.Flags().Lookup("beads-dir"))
 	_ = viper.BindPFlag("ui.markdown_style", rootCmd.Flags().Lookup("markdown-style"))
@@ -172,6 +175,11 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	if err := config.ValidateSound(cfg.Sound); err != nil {
 		return fmt.Errorf("invalid sound configuration: %w", err)
+	}
+
+	// Apply --port flag override (takes precedence over config)
+	if apiPortFlag != 0 {
+		cfg.Orchestration.APIPort = apiPortFlag
 	}
 
 	// Validate keybindings before applying

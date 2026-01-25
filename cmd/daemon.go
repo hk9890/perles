@@ -42,25 +42,24 @@ var daemonCmd = &cobra.Command{
 	Long: `Run the control plane as a background daemon that exposes an HTTP API
 for workflow management. Other tools can connect to manage workflows.
 
-The daemon listens on the specified address (default: localhost:19999) and
-provides REST endpoints for creating, starting, stopping, and monitoring
-workflows.
+The daemon listens on localhost with the specified port and provides REST
+endpoints for creating, starting, stopping, and monitoring workflows.
 
 Example:
-  perles daemon                    # Start on default port
-  perles daemon --addr :8080       # Start on port 8080
-  perles daemon --addr /tmp/perles.sock  # Unix socket (future)`,
+  perles daemon                # Start on auto-assigned port
+  perles daemon --port 8080    # Start on port 8080
+  perles daemon -p 19999       # Start on port 19999`,
 	RunE: runDaemon,
 }
 
 var (
-	daemonAddr string
+	daemonPort int
 )
 
 func init() {
 	rootCmd.AddCommand(daemonCmd)
 
-	daemonCmd.Flags().StringVar(&daemonAddr, "addr", "", "Address to listen on (overrides config)")
+	daemonCmd.Flags().IntVarP(&daemonPort, "port", "p", 0, "API server port (0 = auto-assign, overrides config)")
 }
 
 func runDaemon(_ *cobra.Command, _ []string) error {
@@ -132,12 +131,12 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 	}
 
 	// Determine API server address
-	// Priority: --addr flag > config api_port > auto-assign (port 0)
-	addr := daemonAddr
-	if addr == "" {
-		port := cfg.Orchestration.APIPort
-		addr = fmt.Sprintf("localhost:%d", port)
+	// Priority: --port flag > config api_port > auto-assign (port 0)
+	port := daemonPort
+	if port == 0 {
+		port = cfg.Orchestration.APIPort
 	}
+	addr := fmt.Sprintf("localhost:%d", port)
 
 	// Create API server
 	server, err := api.NewServer(api.ServerConfig{
