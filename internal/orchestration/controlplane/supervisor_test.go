@@ -947,7 +947,7 @@ func TestSupervisor_Config_AcceptsFlags(t *testing.T) {
 	mockProvider := mocks.NewMockAgentProvider(t)
 
 	flagsRegistry := flags.New(map[string]bool{
-		flags.FlagRemoveWorktree: true,
+		flags.FlagSessionResume: true,
 	})
 
 	cfg := SupervisorConfig{
@@ -965,7 +965,7 @@ func TestSupervisor_Config_AcceptsFlags(t *testing.T) {
 
 	ds := supervisor.(*defaultSupervisor)
 	require.NotNil(t, ds.flags)
-	require.True(t, ds.flags.Enabled(flags.FlagRemoveWorktree))
+	require.True(t, ds.flags.Enabled(flags.FlagSessionResume))
 }
 
 // === Unit Tests: Start() with Worktree ===
@@ -1289,7 +1289,6 @@ func TestSupervisor_Start_CleansUpWorktreeOnSubsequentFailure(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "creating infrastructure")
 	require.Equal(t, WorkflowPending, inst.State) // Should stay in Pending state
-	// RemoveWorktree should have been called (verified by mock expectations)
 }
 
 func TestSupervisor_Start_HandlesErrBranchAlreadyCheckedOut(t *testing.T) {
@@ -1449,176 +1448,6 @@ func TestSupervisor_Shutdown_BypassesUncommittedCheckWhenForceTrue(t *testing.T)
 	require.Equal(t, WorkflowFailed, inst.State)
 	// Verify HasUncommittedChanges was never called
 	mockGitExecutor.AssertNotCalled(t, "HasUncommittedChanges")
-}
-
-func TestSupervisor_Shutdown_RemovesWorktreeWhenFlagEnabled(t *testing.T) {
-	mockGitExecutor := mocks.NewMockGitExecutor(t)
-	mockProvider := mocks.NewMockAgentProvider(t)
-
-	flagsRegistry := flags.New(map[string]bool{
-		flags.FlagRemoveWorktree: true,
-	})
-
-	cfg := SupervisorConfig{
-		AgentProviders: client.AgentProviders{
-			client.RoleCoordinator: mockProvider,
-		},
-		ListenerFactory: &mockListenerFactory{},
-		Flags:           flagsRegistry,
-		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
-		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
-			return mockGitExecutor
-		},
-	}
-
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	// Create a workflow in Running state with a worktree
-	inst := newTestInstance(t, "remove-worktree-test")
-	inst.State = WorkflowRunning
-	inst.WorktreePath = "/tmp/worktree-remove"
-	inst.WorktreeBranch = "test-branch"
-
-	// Setup mock expectations
-	mockGitExecutor.EXPECT().HasUncommittedChanges().Return(false, nil)
-	mockGitExecutor.EXPECT().RemoveWorktree("/tmp/worktree-remove").Return(nil)
-
-	// Execute Stop
-	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
-		Reason: "test stop",
-		Force:  false,
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, WorkflowFailed, inst.State)
-}
-
-func TestSupervisor_Shutdown_PreservesWorktreeWhenFlagDisabled(t *testing.T) {
-	mockGitExecutor := mocks.NewMockGitExecutor(t)
-	mockProvider := mocks.NewMockAgentProvider(t)
-
-	// FlagRemoveWorktree is disabled (false)
-	flagsRegistry := flags.New(map[string]bool{
-		flags.FlagRemoveWorktree: false,
-	})
-
-	cfg := SupervisorConfig{
-		AgentProviders: client.AgentProviders{
-			client.RoleCoordinator: mockProvider,
-		},
-		ListenerFactory: &mockListenerFactory{},
-		Flags:           flagsRegistry,
-		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
-		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
-			return mockGitExecutor
-		},
-	}
-
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	// Create a workflow in Running state with a worktree
-	inst := newTestInstance(t, "preserve-worktree-test")
-	inst.State = WorkflowRunning
-	inst.WorktreePath = "/tmp/worktree-preserve"
-	inst.WorktreeBranch = "test-branch"
-
-	// Setup mock - only HasUncommittedChanges should be called, NOT RemoveWorktree
-	mockGitExecutor.EXPECT().HasUncommittedChanges().Return(false, nil)
-	// RemoveWorktree should NOT be called - no mock setup for it
-
-	// Execute Stop
-	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
-		Reason: "test stop",
-		Force:  false,
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, WorkflowFailed, inst.State)
-	// Verify RemoveWorktree was never called
-	mockGitExecutor.AssertNotCalled(t, "RemoveWorktree", mock.Anything)
-}
-
-func TestSupervisor_Shutdown_HandlesRemoveWorktreeErrorsGracefully(t *testing.T) {
-	mockGitExecutor := mocks.NewMockGitExecutor(t)
-	mockProvider := mocks.NewMockAgentProvider(t)
-
-	flagsRegistry := flags.New(map[string]bool{
-		flags.FlagRemoveWorktree: true,
-	})
-
-	cfg := SupervisorConfig{
-		AgentProviders: client.AgentProviders{
-			client.RoleCoordinator: mockProvider,
-		},
-		ListenerFactory: &mockListenerFactory{},
-		Flags:           flagsRegistry,
-		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
-		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
-			return mockGitExecutor
-		},
-	}
-
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	// Create a workflow in Running state with a worktree
-	inst := newTestInstance(t, "worktree-error-test")
-	inst.State = WorkflowRunning
-	inst.WorktreePath = "/tmp/worktree-error"
-	inst.WorktreeBranch = "test-branch"
-
-	// Setup mock - RemoveWorktree returns an error
-	mockGitExecutor.EXPECT().HasUncommittedChanges().Return(false, nil)
-	mockGitExecutor.EXPECT().RemoveWorktree("/tmp/worktree-error").Return(errors.New("worktree removal failed"))
-
-	// Execute Stop - should succeed despite RemoveWorktree error
-	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
-		Reason: "test stop",
-		Force:  false,
-	})
-
-	require.NoError(t, err) // Stop should succeed even with RemoveWorktree error
-	require.Equal(t, WorkflowFailed, inst.State)
-}
-
-func TestSupervisor_Shutdown_WorksNormallyWhenWorktreePathEmpty(t *testing.T) {
-	mockProvider := mocks.NewMockAgentProvider(t)
-
-	factoryCalled := false
-	cfg := SupervisorConfig{
-		AgentProviders: client.AgentProviders{
-			client.RoleCoordinator: mockProvider,
-		},
-		ListenerFactory: &mockListenerFactory{},
-		Flags:           flags.New(map[string]bool{flags.FlagRemoveWorktree: true}),
-		SessionFactory:  session.NewFactory(session.FactoryConfig{BaseDir: t.TempDir()}),
-		GitExecutorFactory: func(workDir string) appgit.GitExecutor {
-			factoryCalled = true
-			return mocks.NewMockGitExecutor(t)
-		},
-	}
-
-	supervisor, err := NewSupervisor(cfg)
-	require.NoError(t, err)
-
-	// Create a workflow in Running state WITHOUT a worktree
-	inst := newTestInstance(t, "no-worktree-test")
-	inst.State = WorkflowRunning
-	inst.WorktreePath = "" // No worktree
-	inst.WorktreeBranch = ""
-
-	// Execute Stop
-	err = supervisor.Shutdown(context.Background(), inst, StopOptions{
-		Reason: "test stop",
-		Force:  false,
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, WorkflowFailed, inst.State)
-	// GitExecutorFactory should NOT be called when WorktreePath is empty
-	require.False(t, factoryCalled, "GitExecutorFactory should not be called when WorktreePath is empty")
 }
 
 // === Session Factory Integration Tests ===

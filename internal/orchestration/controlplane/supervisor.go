@@ -136,9 +136,8 @@ type SupervisorConfig struct {
 	// If zero, defaults to DefaultWorktreeTimeout (30s).
 	WorktreeTimeout time.Duration
 
-	// Flags provides access to feature flags for worktree cleanup behavior.
-	// Used to check FlagRemoveWorktree when stopping workflows.
-	// If nil, worktree cleanup is skipped.
+	// Flags provides access to feature flags.
+	// If nil, flag-dependent behavior uses safe defaults.
 	Flags *flags.Registry
 
 	// SessionFactory creates session instances for workflow tracking.
@@ -828,21 +827,7 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 		inst.Cancel()
 	}
 
-	// Step 5: Remove worktree if present and FlagRemoveWorktree is enabled
-	// Pre-conditions: inst.WorktreePath != "" and FlagRemoveWorktree is enabled
-	if inst.WorktreePath != "" && s.gitExecutorFactory != nil && s.flags != nil && s.flags.Enabled(flags.FlagRemoveWorktree) {
-		gitExec := s.gitExecutorFactory(inst.WorktreePath)
-		if err := gitExec.RemoveWorktree(inst.WorktreePath); err != nil {
-			// Log warning but don't fail - worktree cleanup is best-effort
-			log.Debug(log.CatOrch, "Failed to remove worktree", "subsystem", "supervisor",
-				"workflowID", inst.ID, "path", inst.WorktreePath, "error", err)
-		} else {
-			log.Debug(log.CatOrch, "Worktree cleaned up. Work preserved on branch", "subsystem", "supervisor",
-				"workflowID", inst.ID, "branch", inst.WorktreeBranch)
-		}
-	}
-
-	// Step 6: Transition to Failed state (user-initiated stop is treated as failure)
+	// Step 5: Transition to Failed state (user-initiated stop is treated as failure)
 	if err := inst.TransitionTo(WorkflowFailed); err != nil {
 		return fmt.Errorf("transitioning to Failed: %w", err)
 	}

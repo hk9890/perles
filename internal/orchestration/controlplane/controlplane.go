@@ -602,9 +602,6 @@ func (cp *defaultControlPlane) GetHealthStatus(id WorkflowID) (HealthStatus, boo
 // 2. Stop all active workflows via stopWorkflow (handles pause + resource cleanup)
 // 3. Close the CrossWorkflowEventBus
 // 4. Release all scheduler resources (if configured)
-//
-// If the context is canceled or times out during graceful shutdown,
-// remaining workflows are force-stopped.
 func (cp *defaultControlPlane) Shutdown(ctx context.Context) error {
 	var errs []error
 

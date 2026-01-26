@@ -13,9 +13,6 @@ const (
 	// FlagSessionResume controls whether session resumption (ctrl+r) is enabled.
 	FlagSessionResume = "session-resume"
 
-	// FlagRemoveWorktree controls if existing orchestration mode removes the worktree.
-	FlagRemoveWorktree = "remove-worktree"
-
 	// FlagSessionPersistence controls whether workflow sessions are persisted to SQLite.
 	// When disabled, falls back to in-memory registry (no persistence across restarts).
 	FlagSessionPersistence = "session-persistence"
