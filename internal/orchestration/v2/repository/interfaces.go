@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // ===========================================================================
@@ -152,6 +150,9 @@ type TaskAssignment struct {
 	StartedAt time.Time
 	// ReviewStartedAt is when review began (zero if not yet in review).
 	ReviewStartedAt time.Time
+	// ThreadID is the Fabric thread ID for this task's conversation.
+	// All task-related messages should reply to this thread.
+	ThreadID string
 }
 
 // SenderType identifies who sent a message.
@@ -329,56 +330,4 @@ type ProcessRepository interface {
 
 	// FailedWorkers returns workers that failed (session expired, crashed, etc.).
 	FailedWorkers() []*Process
-}
-
-// ===========================================================================
-// Message Domain Entity
-// ===========================================================================
-
-// Message is a type alias for message.Entry, representing a single message
-// in the inter-agent communication log. Using a type alias avoids conversion
-// overhead while achieving repository-pattern ownership of the domain entity.
-type Message = message.Entry
-
-// ===========================================================================
-// MessageRepository Interface
-// ===========================================================================
-
-// MessageRepository provides aggregate access for inter-agent messages.
-// This is a log-style repository (append-only, ordered by timestamp).
-// Implementations must be thread-safe using sync.RWMutex or equivalent.
-type MessageRepository interface {
-	// Append adds a new message to the log.
-	// Returns the created message with generated UUID and timestamp.
-	// Automatically marks the sender as having read the message.
-	// Publishes an event to the broker for real-time TUI updates.
-	Append(from, to, content string, msgType message.MessageType) (*Message, error)
-
-	// Entries returns a copy of all messages in the log, ordered by timestamp.
-	// The returned slice is safe to modify without affecting the repository.
-	Entries() []Message
-
-	// ReadAndMark atomically reads unread messages and marks them as read.
-	// Returns all messages that the given agent hasn't read yet.
-	// Note: All agents see all messages regardless of the To field (broadcast semantics).
-	ReadAndMark(agentID string) []Message
-
-	// Count returns the total number of messages in the log.
-	Count() int
-
-	// Broker returns the pub/sub broker for subscribing to message events.
-	// The broker emits message.Event payloads when messages are appended.
-	// Returns nil if pub/sub is not supported by this implementation.
-	Broker() *pubsub.Broker[message.Event]
-
-	// AppendRestored adds a message with existing ID and timestamp (for session restoration).
-	// Unlike Append(), this preserves the entry's existing fields and does NOT generate
-	// new IDs or timestamps.
-	//
-	// CRITICAL: This method does NOT publish to the broker. When restoring sessions,
-	// the TUI state is populated directly from loaded data - publishing would cause
-	// duplicate display since messagePane.entries is already set.
-	//
-	// Use this method only for session restoration; use Append() for normal operation.
-	AppendRestored(entry Message) (*Message, error)
 }

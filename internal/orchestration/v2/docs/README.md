@@ -24,7 +24,10 @@ flowchart TB
         PR["ProcessRepository"]
         TR["TaskRepository"]
         QR["QueueRepository"]
-        MR["MessageRepository"]
+    end
+    
+    subgraph Fabric["Fabric Messaging"]
+        FS["FabricService<br/>Channels & Threads"]
     end
     
     subgraph Events["Event Layer"]
@@ -46,7 +49,7 @@ flowchart TB
     HR --> PR
     HR --> TR
     HR --> QR
-    HR --> MR
+    HR --> FS
     HR -->|Events| EB
     EB --> TUI
     PR --> COORD

@@ -14,7 +14,6 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 	"github.com/zjrosen/perles/internal/ui/tree"
 )
@@ -444,37 +443,6 @@ func TestWorkflowUIState_ScrollPositions_PreservedOnCopy(t *testing.T) {
 
 func TestMaxCachedWorkflows_HasExpectedValue(t *testing.T) {
 	require.Equal(t, 10, maxCachedWorkflows)
-}
-
-// === Unit Tests: Message History Loading from MessageRepo ===
-
-// mockMessageRepository is a test mock for repository.MessageRepository.
-type mockMessageRepository struct {
-	entries []message.Entry
-}
-
-func (m *mockMessageRepository) Append(from, to, content string, msgType message.MessageType) (*message.Entry, error) {
-	return nil, nil
-}
-
-func (m *mockMessageRepository) Entries() []message.Entry {
-	return m.entries
-}
-
-func (m *mockMessageRepository) ReadAndMark(agentID string) []message.Entry {
-	return nil
-}
-
-func (m *mockMessageRepository) Count() int {
-	return len(m.entries)
-}
-
-func (m *mockMessageRepository) Broker() *pubsub.Broker[message.Event] {
-	return nil
-}
-
-func (m *mockMessageRepository) AppendRestored(entry message.Entry) (*message.Entry, error) {
-	return nil, nil
 }
 
 // === Unit Tests: Global Event Caching ===

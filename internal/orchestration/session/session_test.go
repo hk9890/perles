@@ -16,6 +16,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
@@ -1614,6 +1615,76 @@ func TestSession_WriteMCPEvent(t *testing.T) {
 	err = json.Unmarshal([]byte(lines[1]), &parsed2)
 	require.NoError(t, err)
 	require.Equal(t, events.MCPToolResult, parsed2.Type)
+}
+
+func TestSession_WriteCommandEvent(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-command-event"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	session, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
+
+	// Write command events
+	timestamp := time.Date(2025, 1, 15, 10, 30, 45, 0, time.UTC)
+	event1 := processor.CommandEvent{
+		CommandID:   "cmd-1",
+		CommandType: "spawn_process",
+		Source:      "mcp_tool",
+		Success:     true,
+		Error:       "",
+		DurationMs:  50,
+		Timestamp:   timestamp,
+		TraceID:     "trace-123",
+	}
+	err = session.WriteCommandEvent(event1)
+	require.NoError(t, err)
+
+	event2 := processor.CommandEvent{
+		CommandID:   "cmd-2",
+		CommandType: "assign_task",
+		Source:      "internal",
+		Success:     false,
+		Error:       "task not found",
+		DurationMs:  25,
+		Timestamp:   timestamp.Add(100 * time.Millisecond),
+		TraceID:     "",
+	}
+	err = session.WriteCommandEvent(event2)
+	require.NoError(t, err)
+
+	err = session.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify JSONL format
+	commandsPath := filepath.Join(sessionDir, "commands.jsonl")
+	data, err := os.ReadFile(commandsPath)
+	require.NoError(t, err)
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	require.Len(t, lines, 2)
+
+	// Parse and verify first event
+	var parsed1 processor.CommandEvent
+	err = json.Unmarshal([]byte(lines[0]), &parsed1)
+	require.NoError(t, err)
+	require.Equal(t, "cmd-1", parsed1.CommandID)
+	require.Equal(t, "spawn_process", parsed1.CommandType)
+	require.Equal(t, "mcp_tool", parsed1.Source)
+	require.True(t, parsed1.Success)
+	require.Empty(t, parsed1.Error)
+	require.Equal(t, int64(50), parsed1.DurationMs)
+	require.Equal(t, "trace-123", parsed1.TraceID)
+
+	// Parse and verify second event
+	var parsed2 processor.CommandEvent
+	err = json.Unmarshal([]byte(lines[1]), &parsed2)
+	require.NoError(t, err)
+	require.Equal(t, "cmd-2", parsed2.CommandID)
+	require.Equal(t, "assign_task", parsed2.CommandType)
+	require.False(t, parsed2.Success)
+	require.Equal(t, "task not found", parsed2.Error)
 }
 
 // Tests for Close

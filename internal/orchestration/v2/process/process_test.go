@@ -1230,7 +1230,7 @@ func TestEventLoop_HandlesToolUseWithArguments(t *testing.T) {
 		Type: client.EventToolUse,
 		Tool: &client.ToolContent{
 			ID:    "item_2",
-			Name:  "post_message",
+			Name:  "fabric_send",
 			Input: []byte(`{"to":"COORDINATOR","content":"Task completed"}`),
 		},
 		Message: &client.MessageContent{
@@ -1240,7 +1240,7 @@ func TestEventLoop_HandlesToolUseWithArguments(t *testing.T) {
 				{
 					Type:  "tool_use",
 					ID:    "item_2",
-					Name:  "post_message",
+					Name:  "fabric_send",
 					Input: []byte(`{"to":"COORDINATOR","content":"Task completed"}`),
 				},
 			},
@@ -1251,7 +1251,7 @@ func TestEventLoop_HandlesToolUseWithArguments(t *testing.T) {
 
 	lines := p.Output().Lines()
 	require.Len(t, lines, 1)
-	assert.Contains(t, lines[0], "post_message")
+	assert.Contains(t, lines[0], "fabric_send")
 
 	proc.Complete()
 	<-p.eventDone

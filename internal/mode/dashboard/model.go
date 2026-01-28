@@ -1898,18 +1898,8 @@ func (m *Model) loadSelectedWorkflowState() {
 		return
 	}
 
-	// Load cached state (or initialize from MessageRepo if empty)
-	uiState := m.getOrCreateUIState(workflow.ID)
-
-	// If cached message entries are empty and workflow has a MessageRepo,
-	// load history from the repository to populate the cache
-	if len(uiState.MessageEntries) == 0 && workflow.MessageRepo != nil {
-		entries := workflow.MessageRepo.Entries()
-		uiState.MessageEntries = entries
-		if m.services.Clock != nil {
-			uiState.LastUpdated = m.services.Clock.Now()
-		}
-	}
+	// Load cached state
+	_ = m.getOrCreateUIState(workflow.ID)
 }
 
 // handleWorkflowSelectionChange handles workflow selection changes during navigation.

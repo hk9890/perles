@@ -430,9 +430,9 @@ type DeduplicationMiddleware struct {
 }
 ```
 
-## Message Repository Integration
+## Fabric Messaging Integration
 
-The MessageRepository provides an inter-agent communication log:
+Inter-agent communication uses the Fabric messaging layer, which provides Slack-like channels and threads:
 
 ```mermaid
 flowchart TB
@@ -442,38 +442,25 @@ flowchart TB
         W2["Worker 2"]
     end
     
-    subgraph MR["MessageRepository"]
-        Log["Message Log<br/>(append-only)"]
-        ReadTrack["Read Tracking<br/>(per agent)"]
-        Broker["Pub/Sub Broker"]
+    subgraph Fabric["FabricService"]
+        Channels["Channels<br/>(system, tasks, planning, general)"]
+        Threads["Thread Repository"]
+        Subs["Subscription Repository"]
+        Broker["FabricBroker<br/>(@mention notifications)"]
     end
     
-    subgraph Broadcast["Broadcast Semantics"]
-        Note["All agents see all messages<br/>To field is metadata only"]
-    end
+    Coord -->|fabric_send| Channels
+    W1 -->|fabric_send| Channels
+    W2 -->|fabric_send| Channels
     
-    Coord -->|Append| Log
-    W1 -->|Append| Log
-    W2 -->|Append| Log
+    Channels -->|fabric_inbox| Coord
+    Channels -->|fabric_inbox| W1
+    Channels -->|fabric_inbox| W2
     
-    Log -->|Entries| Coord
-    Log -->|Entries| W1
-    Log -->|Entries| W2
-    
-    Log -->|Publish| Broker
-    Broker -->|Subscribe| TUI
+    Broker -->|Notify| Agents
 ```
 
-### Message Entry
-
-```go
-type Message struct {
-    ID        string
-    Timestamp time.Time
-    From      string      // COORDINATOR, WORKER.1, USER
-    To        string      // ALL, COORDINATOR, WORKER.2
-    Content   string
-    Type      MessageType // info, request, response, completion, error
-    ReadBy    []string    // Track which agents have read
-}
-```
+Fabric tools available to agents:
+- `fabric_send` - Post messages to channels with optional @mentions
+- `fabric_inbox` - Read unread messages for the agent
+- `fabric_history` - View channel/thread history

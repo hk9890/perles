@@ -9,22 +9,30 @@ func WorkerMCPInstructions(workerID string) string {
 
 Available tools:
 - signal_ready: Signal readiness for task assignment (call once on startup)
-- check_messages: Check for new messages from coordinator
-- post_message: Send message to coordinator (for non-bd tasks or help requests)
+- fabric_inbox: Check for unread messages addressed to you
+- fabric_send: Start NEW conversation in a channel (#general, #planning, #tasks, #system)
+- fabric_reply: Reply to an EXISTING message thread (use the message_id from the message you're responding to)
 - report_implementation_complete: Report bd task completion with summary
 - report_review_verdict: Report code review verdict (APPROVED/DENIED)
 - post_accountability_summary: Save accountability summary for session tracking
 
-Workers receive tasks via messages and must report completion using post_message or report_implementation_complete.`, workerID)
+**IMPORTANT: fabric_send vs fabric_reply:**
+- When someone @mentions you in a message: use fabric_reply with that message's ID to continue the thread
+- When starting a new topic or reporting completion: use fabric_send to create a new message
+- Thread replies keep conversations organized and notify all thread participants
+
+Workers receive tasks via messages and must report completion using fabric_send or report_implementation_complete.`, workerID)
 }
 
 // TaskAssignmentPrompt generates the prompt sent to a worker when assigning a task.
 // The summary parameter is optional and provides additional instructions/context from the coordinator.
-func TaskAssignmentPrompt(taskID, title, summary string) string {
+// The threadID parameter is the Fabric thread ID for task updates - workers should use fabric_reply to this thread.
+func TaskAssignmentPrompt(taskID, title, summary, threadID string) string {
 	prompt := fmt.Sprintf(`[TASK ASSIGNMENT]
 
 **Task ID:** %s
 **Title:** %s
+**Fabric Thread ID:** %s
 
 ## Implementation Workflow
 
@@ -183,7 +191,7 @@ report_implementation_complete(
 report_implementation_complete(
     summary="Added ShardKey parameter to Transaction interface and updated 15 call sites. Tests: 47 passing. Acceptance: 6/6 criteria met. Files: repo/interface.go, repo/impl.go, 13 test files updated."
 )
-`+"```"+``, taskID, title, taskID)
+`+"```"+``, taskID, title, threadID, taskID)
 
 	if summary != "" {
 		prompt += fmt.Sprintf(`
@@ -471,7 +479,7 @@ Your implementation of task **%s** was **DENIED** during code review.
 
 Please address the feedback above and make the necessary changes.
 
-When you have addressed all feedback, report via post_message to COORDINATOR that you are ready for re-review.`, taskID, feedback)
+When you have addressed all feedback, report via fabric_send(channel="general", content="Ready for re-review on task %s").`, taskID, feedback, taskID)
 }
 
 // CommitApprovalPrompt generates the prompt sent to an implementer when their code is approved.
@@ -518,7 +526,7 @@ post_accountability_summary(
     }
 )
 
-Then report via post_message to COORDINATOR with the commit hash.`, taskID)
+Then report via fabric_send(channel="general", content="Committed: [hash]").`, taskID)
 
 	return prompt
 }
@@ -576,5 +584,5 @@ You are assigned to aggregate accountability summaries from all workers into a u
 4. Preserve all verification points
 5. Write the aggregated summary in markdown format
 
-When complete, report via post_message to COORDINATOR that aggregation is done.`, sessionDir, sessionDir)
+When complete, report via fabric_send(channel="general", content="Aggregation complete").`, sessionDir, sessionDir)
 }

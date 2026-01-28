@@ -778,9 +778,8 @@ func TestSupervisor_Resume_WithNilNudger_DoesNotPanic(t *testing.T) {
 	inst.State = WorkflowPaused
 	inst.PausedAt = time.Now().Add(-5 * time.Minute)
 
-	// Setup infrastructure without nudger
+	// Setup infrastructure
 	infra := createMinimalInfrastructure(t)
-	infra.Internal.CoordinatorNudger = nil // explicitly nil
 	mockFactory.On("Create", mock.AnythingOfType("v2.InfrastructureConfig")).Return(infra, nil).Maybe()
 	setupAgentProviderMock(t, mockProvider)
 

@@ -56,8 +56,8 @@ func TestGenericSystemPrompt_ContainsMCPTools(t *testing.T) {
 
 	requiredTools := []string{
 		"signal_ready",
-		"check_messages",
-		"post_message",
+		"fabric_inbox",
+		"fabric_send",
 		"report_implementation_complete",
 		"report_review_verdict",
 	}

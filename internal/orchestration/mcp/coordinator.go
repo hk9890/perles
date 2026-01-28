@@ -10,17 +10,17 @@ import (
 	appbeads "github.com/zjrosen/perles/internal/beads/application"
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricmcp "github.com/zjrosen/perles/internal/orchestration/fabric/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/validation"
 )
 
 // CoordinatorServer is an MCP server that exposes orchestration tools to the coordinator agent.
-// It provides tools for spawning workers, managing tasks, and communicating via message issues.
+// It provides tools for spawning workers, managing tasks, and communicating via Fabric channels.
 type CoordinatorServer struct {
 	*Server
-	msgRepo       repository.MessageRepository // Message repository for read/write operations
 	workDir       string
 	port          int                    // HTTP server port for MCP config generation
 	beadsExecutor appbeads.IssueExecutor // BD command executor
@@ -31,27 +31,25 @@ type CoordinatorServer struct {
 	// V2 adapter for command-based processing
 	// See docs/proposals/orchestration-v2-architecture.md for architecture details
 	v2Adapter *adapter.V2Adapter
+
+	// fabricService provides graph-based messaging for task assignments
+	fabricService *fabric.Service
 }
 
 // NewCoordinatorServer creates a new coordinator MCP server.
 // The port is the HTTP server port used for MCP config generation.
 // The beadsExec parameter is required and must not be nil.
-// The msgRepo parameter accepts any implementation of repository.MessageRepository interface
-// (e.g., *repository.MemoryMessageRepository).
 func NewCoordinatorServer(
-	msgRepo repository.MessageRepository,
 	workDir string,
 	port int,
 	beadsExec appbeads.IssueExecutor,
 ) *CoordinatorServer {
-	return NewCoordinatorServerWithV2Adapter(msgRepo, workDir, port, beadsExec, nil)
+	return NewCoordinatorServerWithV2Adapter(workDir, port, beadsExec, nil)
 }
 
 // NewCoordinatorServerWithV2Adapter creates a new coordinator MCP server with a v2 adapter.
 // The v2 adapter handles command-based processing for all orchestration operations.
-// The msgRepo parameter accepts any implementation of repository.MessageRepository interface.
 func NewCoordinatorServerWithV2Adapter(
-	msgRepo repository.MessageRepository,
 	workDir string,
 	port int,
 	beadsExec appbeads.IssueExecutor,
@@ -59,7 +57,6 @@ func NewCoordinatorServerWithV2Adapter(
 ) *CoordinatorServer {
 	cs := &CoordinatorServer{
 		Server:        NewServer("perles-orchestrator", "1.0.0", WithInstructions(coordinatorInstructions)),
-		msgRepo:       msgRepo,
 		workDir:       workDir,
 		port:          port,
 		beadsExecutor: beadsExec,
@@ -85,6 +82,109 @@ func (cs *CoordinatorServer) SetV2Adapter(adapter *adapter.V2Adapter) {
 // This delegates to the embedded Server's tracer field.
 func (cs *CoordinatorServer) SetTracer(tracer trace.Tracer) {
 	cs.tracer = tracer
+}
+
+// SetFabricService registers Fabric messaging tools with the coordinator MCP server.
+// This enables the coordinator to use fabric_inbox, fabric_send, fabric_reply, etc.
+// The agentID is set to "coordinator" for proper message tracking.
+// Also stores the service reference for assign_task to post to #tasks.
+func (cs *CoordinatorServer) SetFabricService(svc *fabric.Service) {
+	cs.fabricService = svc
+	handlers := fabricmcp.NewHandlers(svc, repository.CoordinatorID)
+	registerFabricTools(cs.Server, handlers)
+}
+
+// registerFabricTools registers all Fabric MCP tools with an MCP server.
+// This bridges the fabric/mcp types to orchestration/mcp types.
+func registerFabricTools(server *Server, h *fabricmcp.Handlers) {
+	for _, tool := range fabricmcp.FabricTools() {
+		// Convert fabric/mcp.Tool to mcp.Tool
+		mcpTool := Tool{
+			Name:        tool.Name,
+			Description: tool.Description,
+		}
+		if tool.InputSchema != nil {
+			mcpTool.InputSchema = convertInputSchema(tool.InputSchema)
+		}
+		if tool.OutputSchema != nil {
+			mcpTool.OutputSchema = convertOutputSchema(tool.OutputSchema)
+		}
+
+		// Get the handler for this tool
+		var handler ToolHandler
+		switch tool.Name {
+		case "fabric_inbox":
+			handler = h.HandleInbox
+		case "fabric_send":
+			handler = h.HandleSend
+		case "fabric_reply":
+			handler = h.HandleReply
+		case "fabric_ack":
+			handler = h.HandleAck
+		case "fabric_subscribe":
+			handler = h.HandleSubscribe
+		case "fabric_unsubscribe":
+			handler = h.HandleUnsubscribe
+		case "fabric_attach":
+			handler = h.HandleAttach
+		case "fabric_history":
+			handler = h.HandleHistory
+		case "fabric_read_thread":
+			handler = h.HandleReadThread
+		}
+
+		if handler != nil {
+			server.RegisterTool(mcpTool, handler)
+		}
+	}
+}
+
+func convertInputSchema(in *fabricmcp.InputSchema) *InputSchema {
+	if in == nil {
+		return nil
+	}
+	return &InputSchema{
+		Type:       in.Type,
+		Properties: convertProperties(in.Properties),
+		Required:   in.Required,
+	}
+}
+
+func convertOutputSchema(out *fabricmcp.OutputSchema) *OutputSchema {
+	if out == nil {
+		return nil
+	}
+	return &OutputSchema{
+		Type:       out.Type,
+		Properties: convertProperties(out.Properties),
+		Required:   out.Required,
+		Items:      convertPropertySchema(out.Items),
+	}
+}
+
+func convertProperties(props map[string]*fabricmcp.PropertySchema) map[string]*PropertySchema {
+	if props == nil {
+		return nil
+	}
+	result := make(map[string]*PropertySchema, len(props))
+	for k, v := range props {
+		result[k] = convertPropertySchema(v)
+	}
+	return result
+}
+
+func convertPropertySchema(p *fabricmcp.PropertySchema) *PropertySchema {
+	if p == nil {
+		return nil
+	}
+	return &PropertySchema{
+		Type:        p.Type,
+		Description: p.Description,
+		Properties:  convertProperties(p.Properties),
+		Items:       convertPropertySchema(p.Items),
+		Required:    p.Required,
+		Enum:        p.Enum,
+	}
 }
 
 // registerTools registers all coordinator tools with the MCP server.
@@ -160,19 +260,6 @@ func (cs *CoordinatorServer) registerTools() {
 	}, cs.handleSendToWorker)
 
 	cs.RegisterTool(Tool{
-		Name:        "post_message",
-		Description: "Post a message to the shared message log. Use 'ALL' to broadcast or a specific worker ID.",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"to":      {Type: "string", Description: "Recipient: 'ALL' or a specific agent ID (e.g., 'WORKER.1')"},
-				"content": {Type: "string", Description: "Message content"},
-			},
-			Required: []string{"to", "content"},
-		},
-	}, cs.handlePostMessage)
-
-	cs.RegisterTool(Tool{
 		Name:        "get_task_status",
 		Description: "Get the current status of a task from the bd tracker.",
 		InputSchema: &InputSchema{
@@ -208,56 +295,6 @@ func (cs *CoordinatorServer) registerTools() {
 			Required: []string{"task_id", "reason"},
 		},
 	}, cs.handleMarkTaskFailed)
-
-	cs.RegisterTool(Tool{
-		Name:        "read_message_log",
-		Description: "Read messages from the shared message log. By default returns only unread messages. Use read_all=true to get all messages.",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"limit":    {Type: "number", Description: "Maximum number of messages to return (default: 20)"},
-				"read_all": {Type: "boolean", Description: "Return all messages instead of just unread (default: false)"},
-			},
-			Required: []string{},
-		},
-		OutputSchema: &OutputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"total_count":    {Type: "number", Description: "Total number of messages in the log"},
-				"returned_count": {Type: "number", Description: "Number of messages returned in this response"},
-				"messages": {
-					Type:        "array",
-					Description: "List of messages in chronological order",
-					Items: &PropertySchema{
-						Type: "object",
-						Properties: map[string]*PropertySchema{
-							"timestamp": {Type: "string", Description: "Message timestamp (HH:MM:SS format)"},
-							"from":      {Type: "string", Description: "Sender ID (COORDINATOR, WORKER.N, etc.)"},
-							"to":        {Type: "string", Description: "Recipient ID (ALL, COORDINATOR, WORKER.N, etc.)"},
-							"content":   {Type: "string", Description: "Message content"},
-						},
-						Required: []string{"timestamp", "from", "to", "content"},
-					},
-				},
-			},
-			Required: []string{"total_count", "returned_count", "messages"},
-		},
-	}, cs.handleReadMessageLog)
-
-	cs.RegisterTool(Tool{
-		Name:        "prepare_handoff",
-		Description: "Post a handoff message before coordinator context refresh. Call this when the user initiates a refresh (Ctrl+R). Include a summary of current work state, in-progress tasks, and any important context for the incoming coordinator.",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"summary": {
-					Type:        "string",
-					Description: "Summary of current state: what work is in progress, decisions made, any blockers or issues, and recommendations for the incoming coordinator",
-				},
-			},
-			Required: []string{"summary"},
-		},
-	}, cs.handlePrepareHandoff)
 
 	cs.RegisterTool(Tool{
 		Name:        "query_worker_state",
@@ -438,14 +475,16 @@ type taskIDArgs struct {
 	TaskID string `json:"task_id"`
 }
 
-type prepareHandoffArgs struct {
-	Summary string `json:"summary"`
-}
-
 type stopWorkerArgs struct {
 	WorkerID string `json:"worker_id"`
 	Force    bool   `json:"force"`
 	Reason   string `json:"reason,omitempty"`
+}
+
+type assignTaskArgs struct {
+	WorkerID string `json:"worker_id"`
+	TaskID   string `json:"task_id"`
+	Summary  string `json:"summary,omitempty"`
 }
 
 // SpawnIdleWorker spawns a new idle worker via v2Adapter.
@@ -491,8 +530,59 @@ func (cs *CoordinatorServer) handleSpawnWorker(ctx context.Context, args json.Ra
 }
 
 // handleAssignTask assigns a task to a ready worker.
+// Posts task assignment to #tasks channel first (no @mention) to create the task thread,
+// then passes the thread ID through to the v2Adapter so the worker knows where to reply.
 func (cs *CoordinatorServer) handleAssignTask(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	return cs.v2Adapter.HandleAssignTask(ctx, rawArgs)
+	// Parse args to get task details for Fabric message
+	var args assignTaskArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	// Post to Fabric first to create the task thread (no @mention - avoids double notification)
+	var threadID string
+	if cs.fabricService != nil {
+		summary := args.Summary
+		if summary == "" {
+			summary = "Task assignment"
+		}
+		content := fmt.Sprintf("Task: %s [%s] assigned to %s", summary, args.TaskID, args.WorkerID)
+
+		thread, postErr := cs.fabricService.SendMessage(fabric.SendMessageInput{
+			ChannelSlug: "tasks",
+			Content:     content,
+			CreatedBy:   repository.CoordinatorID,
+			// No mentions - worker gets notified via the v2 delivery mechanism
+		})
+		if postErr != nil {
+			// Log but continue - we can still assign the task without the Fabric thread
+			log.Debug(log.CatMCP, "Failed to post task assignment to #tasks",
+				"error", postErr, "taskID", args.TaskID, "workerID", args.WorkerID)
+		} else {
+			threadID = thread.ID
+		}
+	}
+
+	// Inject threadID into the args for the v2Adapter
+	// Re-marshal with the threadID included
+	enrichedArgs := struct {
+		WorkerID string `json:"worker_id"`
+		TaskID   string `json:"task_id"`
+		Summary  string `json:"summary,omitempty"`
+		ThreadID string `json:"thread_id,omitempty"`
+	}{
+		WorkerID: args.WorkerID,
+		TaskID:   args.TaskID,
+		Summary:  args.Summary,
+		ThreadID: threadID,
+	}
+	enrichedRawArgs, err := json.Marshal(enrichedArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal enriched args: %w", err)
+	}
+
+	// Submit command via v2Adapter with threadID included
+	return cs.v2Adapter.HandleAssignTask(ctx, enrichedRawArgs)
 }
 
 // handleReplaceWorker retires a worker and spawns a fresh replacement.
@@ -508,11 +598,6 @@ func (cs *CoordinatorServer) handleRetireWorker(ctx context.Context, rawArgs jso
 // handleSendToWorker sends a message to a worker by resuming its session.
 func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
 	return cs.v2Adapter.HandleSendToWorker(ctx, rawArgs)
-}
-
-// handlePostMessage posts a message to the message log.
-func (cs *CoordinatorServer) handlePostMessage(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	return cs.v2Adapter.HandlePostMessage(ctx, rawArgs, message.ActorCoordinator)
 }
 
 // handleGetTaskStatus gets task status from bd.
@@ -600,50 +685,10 @@ func (cs *CoordinatorServer) handleStopProcess(_ context.Context, rawArgs json.R
 	return SuccessResult("Worker stop command submitted"), nil
 }
 
-// handlePrepareHandoff posts a handoff message before coordinator context refresh.
-func (cs *CoordinatorServer) handlePrepareHandoff(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	var args prepareHandoffArgs
-	if err := json.Unmarshal(rawArgs, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.Summary == "" {
-		return nil, fmt.Errorf("summary is required")
-	}
-
-	if cs.msgRepo == nil {
-		return nil, fmt.Errorf("message repository not available")
-	}
-
-	// Build handoff content with marker
-	content := fmt.Sprintf("[HANDOFF]\n%s", args.Summary)
-
-	_, err := cs.msgRepo.Append(
-		message.ActorCoordinator,
-		message.ActorAll,
-		content,
-		message.MessageHandoff,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to post handoff: %w", err)
-	}
-
-	log.Debug(log.CatMCP, "Posted handoff message")
-	return SuccessResult("Handoff message posted. Refresh will proceed."), nil
-}
-
 // isValidTaskID validates that a task ID matches the expected format.
 // Valid formats: "prefix-xxxx" or "prefix-xxxx.N" (for subtasks)
 func isValidTaskID(taskID string) bool {
 	return validation.IsValidTaskID(taskID)
-}
-
-// handleReadMessageLog reads recent messages from the message log.
-func (cs *CoordinatorServer) handleReadMessageLog(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	if cs.v2Adapter == nil {
-		return nil, fmt.Errorf("v2Adapter required for read_message_log")
-	}
-	return cs.v2Adapter.HandleReadMessageLog(ctx, rawArgs, message.ActorCoordinator)
 }
 
 // handleGenerateAccountabilitySummary assigns an aggregation task to a worker to merge accountability summaries.

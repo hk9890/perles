@@ -147,7 +147,7 @@ func TestAssignTaskCommand_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmd := NewAssignTaskCommand(SourceMCPTool, tt.workerID, tt.taskID, tt.summary)
+			cmd := NewAssignTaskCommand(SourceMCPTool, tt.workerID, tt.taskID, tt.summary, "")
 			err := cmd.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
@@ -162,7 +162,7 @@ func TestAssignTaskCommand_Validate(t *testing.T) {
 }
 
 func TestAssignTaskCommand_Type(t *testing.T) {
-	cmd := NewAssignTaskCommand(SourceMCPTool, "worker-1", "perles-abc1", "")
+	cmd := NewAssignTaskCommand(SourceMCPTool, "worker-1", "perles-abc1", "", "")
 	require.Equal(t, CmdAssignTask, cmd.Type())
 }
 
@@ -919,8 +919,8 @@ func TestEmptyStringValidation(t *testing.T) {
 	}{
 		{"RetireProcess empty ProcessID", NewRetireProcessCommand(SourceMCPTool, "", "reason"), true},
 		{"ReplaceProcess empty ProcessID", NewReplaceProcessCommand(SourceMCPTool, "", "reason"), true},
-		{"AssignTask empty WorkerID", NewAssignTaskCommand(SourceMCPTool, "", "task-1", ""), true},
-		{"AssignTask empty TaskID", NewAssignTaskCommand(SourceMCPTool, "worker-1", "", ""), true},
+		{"AssignTask empty WorkerID", NewAssignTaskCommand(SourceMCPTool, "", "task-1", "", ""), true},
+		{"AssignTask empty TaskID", NewAssignTaskCommand(SourceMCPTool, "worker-1", "", "", ""), true},
 		{"AssignReview empty ReviewerID", NewAssignReviewCommand(SourceMCPTool, "", "task-1", "worker-1", ReviewTypeComplex), true},
 		{"AssignReview empty TaskID", NewAssignReviewCommand(SourceMCPTool, "worker-2", "", "worker-1", ReviewTypeComplex), true},
 		{"AssignReview empty ImplementerID", NewAssignReviewCommand(SourceMCPTool, "worker-2", "task-1", "", ReviewTypeComplex), true},

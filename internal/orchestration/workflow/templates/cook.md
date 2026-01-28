@@ -279,7 +279,7 @@ This ensures:
 After calling `replace_worker` for both workers, new workers will spawn and send "ready" messages. The human will nudge you with "[worker-X, worker-Y sent a message]".
 
 When this happens:
-1. Call `read_message_log()` to confirm the new workers are ready
+1. Call `fabric_history(channel="system")` to confirm the new workers are ready
 2. Note their readiness: "worker-9 and worker-10 are now ready"
 3. **Do NOT assign them work yet** - they're backups for future tasks
 4. Continue with the next task using workers that haven't been used yet
@@ -412,7 +412,7 @@ worker-2: reviewing → approved (PROCESSED)
 
 **When human nudges you that a worker sent a message:**
 
-1. Call `read_message_log()` to see new messages
+1. Call `fabric_inbox` to see unread messages
 2. Identify the worker and the state transition (e.g., "worker-3 completed implementation")
 3. **Check if you've already processed this exact state transition:**
    - If YES: Respond "Already processed: worker-3 completion. No action needed."
@@ -685,7 +685,7 @@ Coordinator: signal_workflow_complete(
 |------|------------|---------|
 | `query_worker_state` | `worker_id` (optional), `task_id` (optional) | Get all workers, tasks, retired workers, and ready workers |
 | `replace_worker` | `worker_id`, `reason` | Cycle out worker and spawn replacement |
-| `read_message_log` | `limit` (optional) | Monitor worker messages |
+| `fabric_history` | `channel` (optional), `limit` (optional) | Monitor worker messages |
 
 #### Supplementary Communication
 
@@ -700,8 +700,8 @@ Coordinator: signal_workflow_complete(
 | `report_implementation_complete` | `summary` | Signal implementation done, transition to `AwaitingReview` |
 | `report_review_verdict` | `verdict` (APPROVED/DENIED), `comments` | Report review result, transition to `Idle` |
 | `signal_ready` | none | Signal ready for task assignment (on startup) |
-| `post_message` | `to`, `content` | Send message to coordinator or workers |
-| `check_messages` | none | Check for new messages |
+| `fabric_send` | `channel`, `content` | Send message to coordinator or workers |
+| `fabric_inbox` | none | Check for new messages |
 
 ### BD Commands
 

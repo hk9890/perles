@@ -13,11 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricpersist "github.com/zjrosen/perles/internal/orchestration/fabric/persistence"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 )
 
 // WorkflowID uniquely identifies a workflow instance.
@@ -224,7 +225,10 @@ type WorkflowInstance struct {
 	Session        *session.Session
 	HTTPServer     *http.Server           // MCP HTTP server for this workflow
 	MCPCoordServer *mcp.CoordinatorServer // MCP coordinator server
-	MessageRepo    repository.MessageRepository
+
+	// Fabric messaging layer (set when workflow is started)
+	FabricBroker *fabric.Broker             // Batches @mention notifications
+	FabricLogger *fabricpersist.EventLogger // Persists events to JSONL
 
 	// Resource tracking
 	MCPPort       int

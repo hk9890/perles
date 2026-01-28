@@ -13,12 +13,13 @@ import (
 	appbeads "github.com/zjrosen/perles/internal/beads/application"
 	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
 	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricrepo "github.com/zjrosen/perles/internal/orchestration/fabric/repository"
 	"github.com/zjrosen/perles/internal/orchestration/tracing"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
 	"github.com/zjrosen/perles/internal/orchestration/v2/integration"
-	"github.com/zjrosen/perles/internal/orchestration/v2/nudger"
 	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
@@ -50,8 +51,6 @@ type InfrastructureConfig struct {
 	// BeadsDir is the path to the beads database directory.
 	// When set, spawned processes receive BEADS_DIR environment variable.
 	BeadsDir string
-	// MessageRepo is the message repository for inter-agent messaging.
-	MessageRepo repository.MessageRepository
 	// SessionID is the session identifier for accountability summary generation.
 	SessionID string
 	// SessionDir is the directory where session files are stored.
@@ -73,9 +72,9 @@ type InfrastructureConfig struct {
 	// WorkflowStateProvider provides workflow state for coordinator replacement.
 	// Optional - if nil, auto-refresh uses standard replace prompt instead of workflow continuation.
 	WorkflowStateProvider handler.WorkflowStateProvider
-	// NudgeDebounce is the debounce duration for coordinator nudges.
-	// Defaults to nudger.DefaultDebounce (1 second) if zero.
-	NudgeDebounce time.Duration
+	// CommandPersistenceProvider returns the current CommandWriter for persisting commands.
+	// Optional - if nil, commands are not persisted to commands.jsonl.
+	CommandPersistenceProvider func() processor.CommandWriter
 }
 
 // Validate checks that all required configuration is provided.
@@ -88,9 +87,6 @@ func (c *InfrastructureConfig) Validate() error {
 	}
 	if _, ok := c.AgentProviders[client.RoleCoordinator]; !ok {
 		return fmt.Errorf("AgentProviders must contain RoleCoordinator")
-	}
-	if c.MessageRepo == nil {
-		return fmt.Errorf("message repository is required")
 	}
 	if c.WorkDir == "" {
 		return fmt.Errorf("work directory is required")
@@ -123,6 +119,9 @@ type CoreComponents struct {
 	EventBus *pubsub.Broker[any]
 	// CmdSubmitter submits commands to the processor (fire-and-forget).
 	CmdSubmitter process.CommandSubmitter
+	// FabricService provides the Fabric messaging layer for inter-agent communication.
+	// Used by MCP servers to expose fabric_* tools to coordinator and workers.
+	FabricService *fabric.Service
 }
 
 // RepositoryComponents holds all repository instances.
@@ -141,8 +140,6 @@ type InternalComponents struct {
 	ProcessRegistry *process.ProcessRegistry
 	// TurnEnforcer tracks MCP tool calls during worker turns for enforcement.
 	TurnEnforcer handler.TurnCompletionEnforcer
-	// CoordinatorNudger batches worker messages and sends consolidated nudges.
-	CoordinatorNudger *nudger.CoordinatorNudger
 }
 
 // NewInfrastructure creates all v2 orchestration infrastructure components.
@@ -176,6 +173,14 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	queueRepo := repository.NewMemoryQueueRepository(repository.DefaultQueueMaxSize)
 	processRepo := repository.NewMemoryProcessRepository()
 
+	// Create Fabric messaging layer repositories and service
+	// Fabric provides graph-based messaging ("Slack for Agents") with channels, threads, and artifacts.
+	fabricThreads := fabricrepo.NewMemoryThreadRepository()
+	fabricDeps := fabricrepo.NewMemoryDependencyRepository()
+	fabricSubs := fabricrepo.NewMemorySubscriptionRepository()
+	fabricAcks := fabricrepo.NewMemoryAckRepository(fabricDeps, fabricThreads, fabricSubs)
+	fabricService := fabric.NewService(fabricThreads, fabricDeps, fabricSubs, fabricAcks)
+
 	// Create event bus for v2 command events (TUI subscribes via GetV2EventBus())
 	eventBus := pubsub.NewBroker[any]()
 
@@ -183,6 +188,9 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	loggingMiddleware := processor.NewLoggingMiddleware(processor.LoggingMiddlewareConfig{})
 	commandLogMiddleware := processor.NewCommandLogMiddleware(processor.CommandLogMiddlewareConfig{
 		EventBus: &eventBusAdapter{broker: eventBus},
+	})
+	commandPersistenceMiddleware := processor.NewCommandPersistenceMiddleware(processor.CommandPersistenceMiddlewareConfig{
+		WriterProvider: cfg.CommandPersistenceProvider,
 	})
 	timeoutMiddleware := processor.NewTimeoutMiddleware(processor.TimeoutMiddlewareConfig{
 		WarningThreshold: 500 * time.Millisecond,
@@ -197,7 +205,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		processor.WithTaskRepository(taskRepo),
 		processor.WithQueueRepository(queueRepo),
 		processor.WithEventBus(eventBus),
-		processor.WithMiddleware(tracingMiddleware, loggingMiddleware, commandLogMiddleware, timeoutMiddleware),
+		processor.WithMiddleware(tracingMiddleware, loggingMiddleware, commandLogMiddleware, commandPersistenceMiddleware, timeoutMiddleware),
 	)
 
 	// Create unified ProcessRegistry for coordinator and workers
@@ -241,23 +249,18 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		adapter.WithProcessRepository(processRepo),
 		adapter.WithTaskRepository(taskRepo),
 		adapter.WithQueueRepository(queueRepo),
-		adapter.WithMessageRepository(cfg.MessageRepo),
 		adapter.WithSessionID(cfg.SessionID, cfg.WorkDir, cfg.SessionDir),
 	)
 
-	// Create CoordinatorNudger for batching worker messages
-	coordNudger := nudger.New(nudger.Config{
-		Debounce:     cfg.NudgeDebounce, // Uses nudger.DefaultDebounce if zero
-		MsgBroker:    cfg.MessageRepo.Broker(),
-		CmdSubmitter: cmdSubmitter,
-	})
+	// NOTE: CoordinatorNudger removed - FabricBroker handles @mention notifications
 
 	return &Infrastructure{
 		Core: CoreComponents{
-			Processor:    cmdProcessor,
-			Adapter:      v2Adapter,
-			EventBus:     eventBus,
-			CmdSubmitter: cmdSubmitter,
+			Processor:     cmdProcessor,
+			Adapter:       v2Adapter,
+			EventBus:      eventBus,
+			CmdSubmitter:  cmdSubmitter,
+			FabricService: fabricService,
 		},
 		Repositories: RepositoryComponents{
 			ProcessRepo: processRepo,
@@ -265,9 +268,8 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 			QueueRepo:   queueRepo,
 		},
 		Internal: InternalComponents{
-			ProcessRegistry:   processRegistry,
-			TurnEnforcer:      turnEnforcer,
-			CoordinatorNudger: coordNudger,
+			ProcessRegistry: processRegistry,
+			TurnEnforcer:    turnEnforcer,
 		},
 		config: cfg,
 	}, nil
@@ -284,11 +286,16 @@ func (i *Infrastructure) Start(ctx context.Context) error {
 		return fmt.Errorf("waiting for command processor: %w", err)
 	}
 
-	// Start coordinator nudger after processor is ready
-	// (nudger submits commands, so processor must be running first)
-	if i.Internal.CoordinatorNudger != nil {
-		i.Internal.CoordinatorNudger.Start()
+	// Initialize Fabric session with fixed channels (system, tasks, planning, general)
+	// The coordinator will be the creator of the channel structure.
+	// Use lowercase CoordinatorID to match process IDs for subscription matching.
+	if i.Core.FabricService != nil {
+		if err := i.Core.FabricService.InitSession(repository.CoordinatorID); err != nil {
+			return fmt.Errorf("initializing fabric session: %w", err)
+		}
 	}
+
+	// NOTE: CoordinatorNudger.Start() removed - FabricBroker.Start() is called by Supervisor
 
 	return nil
 }
@@ -303,11 +310,8 @@ func (i *Infrastructure) Drain() {
 
 // Shutdown stops all processes and drains the command processor.
 // This is the recommended way to cleanly shut down the infrastructure.
+// NOTE: FabricBroker.Stop() is called by Supervisor before this.
 func (i *Infrastructure) Shutdown() {
-	// Stop nudger first (it may submit final commands that need processing)
-	if i.Internal.CoordinatorNudger != nil {
-		i.Internal.CoordinatorNudger.Stop()
-	}
 	// Stop all processes (coordinator and workers)
 	if i.Internal.ProcessRegistry != nil {
 		i.Internal.ProcessRegistry.StopAll()

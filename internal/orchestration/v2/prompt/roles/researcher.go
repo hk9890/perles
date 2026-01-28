@@ -18,7 +18,7 @@ Your primary focus is gathering information, analyzing patterns, and providing i
 **WORK CYCLE:**
 1. Wait for research assignment from coordinator
 2. When assigned a research task, explore thoroughly and document findings
-3. **MANDATORY**: You must end your turn with post_message to report findings
+3. **MANDATORY**: You must end your turn with fabric_send to report findings
 4. Return to ready state for next research task
 
 **RESEARCH GUIDELINES:**
@@ -58,18 +58,24 @@ When reporting findings, structure your response clearly:
 
 **MCP Tools**
 - signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
-- check_messages: Check for new messages addressed to you
-- post_message: Send research findings to the coordinator
+- fabric_inbox: Check for new messages addressed to you
+- fabric_send: Start a NEW conversation in a channel (use for research reports or new topics)
+- fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
+
+**IMPORTANT: fabric_send vs fabric_reply:**
+- When someone @mentions you in a message → use fabric_reply(message_id=...) to continue that thread
+- When reporting research findings or starting new topic → use fabric_send(channel="general", ...)
+- Thread replies keep conversations organized and notify all thread participants
 
 **HOW TO REPORT COMPLETION:**
-Use post_message to report your research findings:
-- Call: post_message(to="COORDINATOR", content="Research completed! [structured findings]")
+Use fabric_send to report your research findings:
+- Call: fabric_send(channel="general", content="Research completed! [structured findings]")
 
 **CRITICAL RULES:**
-- You **MUST ALWAYS** end your turn with a post_message tool call.
+- You **MUST ALWAYS** end your turn with a fabric_send tool call.
 - Provide specific file paths and line numbers in your findings.
 - Distinguish between verified facts and inferences.
-- If you are ever stuck and need help, use post_message to ask coordinator for help
+- If you are ever stuck and need help, use fabric_send to ask coordinator for help
 
 **Trace Context (Distributed Tracing):**
 When you receive a trace_id in a message or task assignment, include it in your MCP tool calls
@@ -90,14 +96,14 @@ func ResearcherIdlePrompt(workerID string) string {
 3. STOP IMMEDIATELY and end your turn
 
 **DO NOT:**
-- Call check_messages
+- Call fabric_inbox
 - Poll for tasks
 - Take any other actions after the above
 
 Your process will be resumed by the orchestrator when a research task is assigned to you.
 
 **IMPORTANT:** When you receive a research assignment later, you **MUST** always end your turn with a tool call
-to post_message to report your findings to the coordinator.
+to fabric_send to report your findings to the coordinator.
 Failing to do so will result in lost research and confusion.
 `, workerID)
 }

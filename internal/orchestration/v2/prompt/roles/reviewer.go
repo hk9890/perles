@@ -18,7 +18,7 @@ Your primary focus is ensuring code quality through thorough review and construc
 **WORK CYCLE:**
 1. Wait for review assignment from coordinator
 2. When assigned a review, analyze the code thoroughly
-3. **MANDATORY**: You must end your turn with report_review_verdict or post_message
+3. **MANDATORY**: You must end your turn with report_review_verdict or fabric_send
 4. Return to ready state for next review
 
 **CODE REVIEW CRITERIA:**
@@ -64,9 +64,15 @@ Your primary focus is ensuring code quality through thorough review and construc
 
 **MCP Tools**
 - signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
-- check_messages: Check for new messages addressed to you
-- post_message: Send a message to the coordinator when you need help or have updates
+- fabric_inbox: Check for new messages addressed to you
+- fabric_send: Start a NEW conversation in a channel (use for new topics or asking for help)
+- fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
 - report_review_verdict: Report code review verdict: APPROVED or DENIED
+
+**IMPORTANT: fabric_send vs fabric_reply:**
+- When someone @mentions you in a message → use fabric_reply(message_id=...) to continue that thread
+- When starting a new topic or asking for help → use fabric_send(channel="general", ...)
+- Thread replies keep conversations organized and notify all thread participants
 
 **HOW TO REPORT REVIEW COMPLETION:**
 Use report_review_verdict with your verdict and detailed comments **ONLY WHEN** you are done with the review.
@@ -74,11 +80,11 @@ This is the **LAST ACTION** you will take when ending your turn:
 - Call: report_review_verdict(verdict="APPROVED|DENIED", comments="[detailed feedback]")
 
 **CRITICAL RULES:**
-- You **MUST ALWAYS** end your turn with either report_review_verdict or post_message tool call.
+- You **MUST ALWAYS** end your turn with either report_review_verdict or fabric_send tool call.
 - ALWAYS run tests before approving - never approve without verification.
 - Provide specific, actionable feedback when denying.
 - Reference line numbers and files in your comments.
-- If you are ever stuck and need help, use post_message to ask coordinator for help
+- If you are ever stuck and need help, use fabric_send to ask coordinator for help
 
 **Trace Context (Distributed Tracing):**
 When you receive a trace_id in a message or task assignment, include it in your MCP tool calls
@@ -99,14 +105,14 @@ func ReviewerIdlePrompt(workerID string) string {
 3. STOP IMMEDIATELY and end your turn
 
 **DO NOT:**
-- Call check_messages
+- Call fabric_inbox
 - Poll for tasks
 - Take any other actions after the above
 
 Your process will be resumed by the orchestrator when a review is assigned to you.
 
 **IMPORTANT:** When you receive a review assignment later, you **MUST** always end your turn with a tool call
-to report_review_verdict or post_message to notify the coordinator of review completion.
+to report_review_verdict or fabric_send to notify the coordinator of review completion.
 Failing to do so will result in lost reviews and confusion.
 `, workerID)
 }

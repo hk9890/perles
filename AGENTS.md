@@ -462,9 +462,9 @@ if event.IsWorker() { ... }
 Tools exposed to the AI coordinator via MCP:
 
 - `spawn_worker`, `assign_task`, `replace_worker`, `retire_worker`
-- `send_to_worker`, `post_message`, `read_message_log`
+- `send_to_worker`, `fabric_send`, `fabric_inbox`, `fabric_history`
 - `get_task_status`, `mark_task_complete`, `mark_task_failed`
-- `prepare_handoff`, `stop_worker`, `generate_accountability_summary`
+- `stop_worker`, `generate_accountability_summary`, `signal_workflow_complete`, `notify_user`
 
 ### Workflow Templates
 

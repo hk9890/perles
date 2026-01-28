@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/pubsub"
 )
 
@@ -89,14 +88,6 @@ func (b *CrossWorkflowEventBus) AttachWorkflow(inst *WorkflowInstance) {
 	log.SafeGo(fmt.Sprintf("eventbus.forwardEvents[%s]", inst.ID), func() {
 		b.forwardEvents(ctx, inst, ch)
 	})
-
-	// Subscribe to the workflow's MessageRepository broker for inter-agent messages
-	if inst.MessageRepo != nil {
-		msgCh := inst.MessageRepo.Broker().Subscribe(ctx)
-		log.SafeGo(fmt.Sprintf("eventbus.forwardMessageEvents[%s]", inst.ID), func() {
-			b.forwardMessageEvents(ctx, inst, msgCh)
-		})
-	}
 }
 
 // forwardEvents reads events from the workflow's event bus channel and
@@ -158,45 +149,6 @@ func (b *CrossWorkflowEventBus) forwardEvents(
 				if cb != nil {
 					cb(inst, cpEvent)
 				}
-			}
-
-			// Publish to central broker
-			b.broker.Publish(pubsub.UpdatedEvent, cpEvent)
-		}
-	}
-}
-
-// forwardMessageEvents reads message events from the MessageRepository broker
-// and republishes them as ControlPlaneEvents with workflow context.
-func (b *CrossWorkflowEventBus) forwardMessageEvents(
-	ctx context.Context,
-	inst *WorkflowInstance,
-	ch <-chan pubsub.Event[message.Event],
-) {
-	log.Debug(log.CatOrch, "forwardMessageEvents started", "subsystem", "eventbus", "workflowID", inst.ID)
-	for {
-		select {
-		case <-ctx.Done():
-			log.Debug(log.CatOrch, "forwardMessageEvents context done", "subsystem", "eventbus", "workflowID", inst.ID)
-			return
-		case event, ok := <-ch:
-			if !ok {
-				log.Debug(log.CatOrch, "forwardMessageEvents channel closed", "subsystem", "eventbus", "workflowID", inst.ID)
-				return
-			}
-
-			log.Debug(log.CatOrch, "forwardMessageEvents received message", "subsystem", "eventbus",
-				"workflowID", inst.ID, "from", event.Payload.Entry.From, "to", event.Payload.Entry.To)
-
-			// Create ControlPlaneEvent with message payload
-			cpEvent := ControlPlaneEvent{
-				Type:         EventMessagePosted,
-				Timestamp:    time.Now(),
-				WorkflowID:   inst.ID,
-				TemplateID:   inst.TemplateID,
-				WorkflowName: inst.Name,
-				State:        inst.State,
-				Payload:      event.Payload, // message.Event containing the Entry
 			}
 
 			// Publish to central broker

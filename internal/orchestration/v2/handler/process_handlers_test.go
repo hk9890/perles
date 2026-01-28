@@ -398,7 +398,7 @@ func TestDeliverProcessQueuedHandler_CallsResetTurnWhenDeliveringMessage(t *test
 
 	// Set up some state that should be cleared by ResetTurn
 	enforcer.MarkAsNewlySpawned("worker-1")
-	enforcer.RecordToolCall("worker-1", "post_message")
+	enforcer.RecordToolCall("worker-1", "fabric_send")
 	enforcer.IncrementRetry("worker-1")
 
 	// Verify state exists before delivery
@@ -495,7 +495,7 @@ func TestDeliverProcessQueuedHandler_ToolCallsFromPreviousTurnAreCleared(t *test
 	processRepo.AddProcess(worker)
 
 	// Simulate tool calls from previous turn
-	enforcer.RecordToolCall("worker-1", "post_message")
+	enforcer.RecordToolCall("worker-1", "fabric_send")
 	enforcer.RecordToolCall("worker-1", "signal_ready")
 
 	// Before delivery, tool calls exist - CheckTurnCompletion returns empty (compliant)
@@ -1200,7 +1200,7 @@ func TestProcessTurnCompleteHandler_WorkerWithoutRequiredToolCall_GetsReminder(t
 	}
 	processRepo.AddProcess(worker)
 
-	// NO tool calls recorded - worker didn't call post_message or report_implementation_complete
+	// NO tool calls recorded - worker didn't call fabric_send or report_implementation_complete
 
 	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
 		handler.WithProcessTurnEnforcer(enforcer))
@@ -1228,7 +1228,7 @@ func TestProcessTurnCompleteHandler_WorkerWithoutRequiredToolCall_GetsReminder(t
 	require.False(t, queue.IsEmpty(), "queue should contain reminder")
 	entry, _ := queue.Dequeue()
 	assert.Contains(t, entry.Content, "SYSTEM REMINDER")
-	assert.Contains(t, entry.Content, "post_message")
+	assert.Contains(t, entry.Content, "fabric_send")
 	assert.Equal(t, repository.SenderSystem, entry.Sender)
 
 	// Verify ProcessReady event was NOT emitted (to avoid UI confusion)
@@ -1250,8 +1250,8 @@ func TestProcessTurnCompleteHandler_WorkerWithRequiredToolCall_NoReminder(t *tes
 	}
 	processRepo.AddProcess(worker)
 
-	// Worker called post_message during turn
-	enforcer.RecordToolCall("worker-1", "post_message")
+	// Worker called fabric_send during turn
+	enforcer.RecordToolCall("worker-1", "fabric_send")
 
 	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
 		handler.WithProcessTurnEnforcer(enforcer))
@@ -1497,7 +1497,7 @@ func TestProcessTurnCompleteHandler_ReminderMessageIncludesMissingToolNames(t *t
 	// Get the reminder from the queue and verify it includes all the required tool names
 	queue := queueRepo.GetOrCreate("worker-1")
 	entry, _ := queue.Dequeue()
-	assert.Contains(t, entry.Content, "post_message")
+	assert.Contains(t, entry.Content, "fabric_send")
 	assert.Contains(t, entry.Content, "report_implementation_complete")
 	assert.Contains(t, entry.Content, "report_review_verdict")
 	assert.Contains(t, entry.Content, "signal_ready")
@@ -2181,7 +2181,7 @@ func TestRetireProcessHandler_CleanupDoesNotAffectOtherProcesses(t *testing.T) {
 
 	// Create enforcer and populate state for both workers
 	enforcer := handler.NewTurnCompletionTracker()
-	enforcer.RecordToolCall("worker-1", "post_message")
+	enforcer.RecordToolCall("worker-1", "fabric_send")
 	enforcer.MarkAsNewlySpawned("worker-1")
 	enforcer.RecordToolCall("worker-2", "signal_ready")
 	enforcer.MarkAsNewlySpawned("worker-2")
@@ -2222,7 +2222,7 @@ func TestRetireProcessHandler_CleanupRemovesAllStateForProcess(t *testing.T) {
 	enforcer := handler.NewTurnCompletionTracker()
 
 	// Record tool calls
-	enforcer.RecordToolCall("worker-1", "post_message")
+	enforcer.RecordToolCall("worker-1", "fabric_send")
 	enforcer.RecordToolCall("worker-1", "signal_ready")
 
 	// Mark as newly spawned
@@ -3442,7 +3442,7 @@ func TestBuildReplacePrompt_ContainsHandoffInstructions(t *testing.T) {
 	assert.Contains(t, p, "READ THE HANDOFF FIRST")
 	assert.Contains(t, p, "handoff message")
 	assert.Contains(t, p, "previous coordinator")
-	assert.Contains(t, p, "read_message_log")
+	assert.Contains(t, p, "fabric_inbox")
 }
 
 func TestBuildReplacePrompt_WaitsForUser(t *testing.T) {

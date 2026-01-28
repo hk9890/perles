@@ -142,9 +142,7 @@ func (w *TestCoordinatorServerWrapper) Close() {
 func NewTestCoordinatorServer(t *testing.T) *TestCoordinatorServerWrapper {
 	t.Helper()
 
-	msgLog := repository.NewMemoryMessageRepository()
 	cs := NewCoordinatorServer(
-		msgLog,
 		"/tmp/test",
 		8765,
 		mocks.NewMockIssueExecutor(t),
@@ -235,10 +233,10 @@ func (w *TestWorkerServerWrapper) Close() {
 }
 
 // NewTestWorkerServer creates a worker server with v2 adapter for testing.
-func NewTestWorkerServer(t *testing.T, workerID string, store MessageStore) *TestWorkerServerWrapper {
+func NewTestWorkerServer(t *testing.T, workerID string) *TestWorkerServerWrapper {
 	t.Helper()
 
-	ws := NewWorkerServer(workerID, store)
+	ws := NewWorkerServer(workerID)
 
 	// Create shared worker repository with a mock worker
 	processRepo := repository.NewMemoryProcessRepository()

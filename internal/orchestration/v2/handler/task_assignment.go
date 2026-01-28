@@ -185,6 +185,7 @@ func (h *AssignTaskHandler) handleAssign(_ context.Context, assignCmd *command.A
 		Implementer: assignCmd.WorkerID,
 		Status:      repository.TaskImplementing,
 		StartedAt:   time.Now(),
+		ThreadID:    assignCmd.ThreadID,
 	}
 
 	// 6. Update process: Phase = PhaseImplementing, TaskID = taskID
@@ -222,7 +223,7 @@ func (h *AssignTaskHandler) handleAssign(_ context.Context, assignCmd *command.A
 
 	// 9. Queue TaskAssignmentPrompt to the worker
 	// The worker will receive instructions to work on the task (from coordinator)
-	taskPrompt := prompt.TaskAssignmentPrompt(assignCmd.TaskID, assignCmd.TaskID, assignCmd.Summary)
+	taskPrompt := prompt.TaskAssignmentPrompt(assignCmd.TaskID, assignCmd.TaskID, assignCmd.Summary, assignCmd.ThreadID)
 	queue := h.queueRepo.GetOrCreate(assignCmd.WorkerID)
 	if err := queue.Enqueue(taskPrompt, repository.SenderCoordinator); err != nil {
 		return nil, fmt.Errorf("failed to queue task prompt: %w", err)

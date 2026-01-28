@@ -74,8 +74,8 @@ func TestBuildWorkflowContinuationPrompt_IncludesContinuationInstructions(t *tes
 		"Prompt should include tools section")
 	require.Contains(t, prompt, "query_worker_state",
 		"Prompt should mention query_worker_state tool")
-	require.Contains(t, prompt, "read_message_log",
-		"Prompt should mention read_message_log tool")
+	require.Contains(t, prompt, "fabric_inbox",
+		"Prompt should mention fabric_inbox tool")
 	require.Contains(t, prompt, "RECOVERY STEPS:",
 		"Prompt should include recovery steps section")
 }

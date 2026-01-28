@@ -520,6 +520,7 @@ func (s *Server) publishToolEvent(toolName string, requestParams json.RawMessage
 		Timestamp:   time.Now(),
 		Method:      "tools/call",
 		ToolName:    toolName,
+		WorkerID:    s.callerID, // Empty for coordinator, "worker-N" for workers
 		RequestJSON: requestParams,
 		Duration:    duration,
 		TraceID:     traceID,

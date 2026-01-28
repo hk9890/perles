@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricmcp "github.com/zjrosen/perles/internal/orchestration/fabric/mcp"
+	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/validation"
 )
 
@@ -20,20 +21,6 @@ const (
 	// MinSummaryLength is the minimum length for an accountability summary (at least a sentence).
 	MinSummaryLength = 20
 )
-
-// MessageStore defines the interface for message storage operations.
-// This allows for dependency injection and easier testing.
-// Note: This interface is a subset of repository.MessageRepository.
-// MemoryMessageRepository satisfies this interface, verified by compile-time assertion below.
-type MessageStore interface {
-	Append(from, to, content string, msgType message.MessageType) (*message.Entry, error)
-	// ReadAndMark atomically reads unread messages and marks them as read.
-	ReadAndMark(agentID string) []message.Entry
-}
-
-// Compile-time interface assertion: MemoryMessageRepository satisfies MessageStore.
-// This ensures compatibility with the v2 MessageRepository migration.
-var _ MessageStore = (*repository.MemoryMessageRepository)(nil)
 
 // AccountabilityWriter defines the interface for writing worker accountability summaries.
 // This allows the session service to handle storage without tight coupling.
@@ -59,7 +46,6 @@ type ToolCallRecorder interface {
 type WorkerServer struct {
 	*Server
 	workerID             string
-	msgStore             MessageStore
 	accountabilityWriter AccountabilityWriter
 	// dedup tracks recent messages to prevent duplicate sends to coordinator
 	dedup *MessageDeduplicator
@@ -72,18 +58,23 @@ type WorkerServer struct {
 	// When set, required tool calls are recorded so the orchestrator can verify
 	// workers properly complete their turns.
 	enforcer ToolCallRecorder
+
+	// fabricService provides graph-based messaging for signal_ready
+	fabricService *fabric.Service
 }
 
 // NewWorkerServer creates a new worker MCP server.
 // Instructions are generated dynamically via prompt.WorkerMCPInstructions.
-func NewWorkerServer(workerID string, msgStore MessageStore) *WorkerServer {
+func NewWorkerServer(workerID string) *WorkerServer {
 	// Generate MCP instructions for this worker
 	instructions := prompt.WorkerMCPInstructions(workerID)
 
 	ws := &WorkerServer{
-		Server:   NewServer("perles-worker", "1.0.0", WithInstructions(instructions)),
+		Server: NewServer("perles-worker", "1.0.0",
+			WithInstructions(instructions),
+			WithCallerInfo("worker", workerID),
+		),
 		workerID: workerID,
-		msgStore: msgStore,
 		dedup:    NewMessageDeduplicator(DefaultDeduplicationWindow),
 	}
 
@@ -111,54 +102,19 @@ func (ws *WorkerServer) SetTurnEnforcer(enforcer ToolCallRecorder) {
 	ws.enforcer = enforcer
 }
 
+// SetFabricService registers Fabric messaging tools with the worker MCP server.
+// This enables workers to use fabric_inbox, fabric_send, fabric_reply, etc.
+// The agentID is set to the worker's ID for proper message tracking.
+// Also stores the service reference for signal_ready to post to #system.
+func (ws *WorkerServer) SetFabricService(svc *fabric.Service) {
+	ws.fabricService = svc
+	handlers := fabricmcp.NewHandlers(svc, ws.workerID)
+	registerFabricTools(ws.Server, handlers)
+}
+
 // registerTools registers all worker tools with the MCP server.
 func (ws *WorkerServer) registerTools() {
-	// check_messages - Pull-based message retrieval
-	ws.RegisterTool(Tool{
-		Name:        "check_messages",
-		Description: "Check for new messages addressed to this worker. Returns structured JSON with unread messages from the coordinator or other workers.",
-		InputSchema: &InputSchema{
-			Type:       "object",
-			Properties: map[string]*PropertySchema{},
-			Required:   []string{},
-		},
-		OutputSchema: &OutputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"unread_count": {Type: "number", Description: "Number of unread messages"},
-				"messages": {
-					Type:        "array",
-					Description: "List of unread messages",
-					Items: &PropertySchema{
-						Type: "object",
-						Properties: map[string]*PropertySchema{
-							"timestamp": {Type: "string", Description: "Message timestamp (HH:MM:SS format)"},
-							"from":      {Type: "string", Description: "Sender ID (COORDINATOR, WORKER.N, etc.)"},
-							"to":        {Type: "string", Description: "Recipient ID (ALL, WORKER.N, etc.)"},
-							"content":   {Type: "string", Description: "Message content"},
-						},
-						Required: []string{"timestamp", "from", "to", "content"},
-					},
-				},
-			},
-			Required: []string{"unread_count", "messages"},
-		},
-	}, ws.handleCheckMessages)
-
-	// post_message - Post a message to the message log
-	ws.RegisterTool(Tool{
-		Name:        "post_message",
-		Description: "Send a message to the coordinator, other workers, or ALL agents.",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"to":       {Type: "string", Description: "Recipient: 'COORDINATOR', 'ALL', or a worker ID (e.g., 'WORKER.2')"},
-				"content":  {Type: "string", Description: "Message content"},
-				"trace_id": {Type: "string", Description: "Optional trace ID for distributed tracing correlation"},
-			},
-			Required: []string{"to", "content"},
-		},
-	}, ws.handlePostMessage)
+	// NOTE: check_messages and post_message removed - use fabric_inbox/fabric_send instead
 
 	// signal_ready - Worker ready notification
 	ws.RegisterTool(Tool{
@@ -239,12 +195,6 @@ func (ws *WorkerServer) registerTools() {
 	}, ws.handlePostAccountabilitySummary)
 }
 
-// Tool argument structs for JSON parsing.
-type sendMessageArgs struct {
-	To      string `json:"to"`
-	Content string `json:"content"`
-}
-
 // RetroFeedback contains structured retrospective feedback for accountability summaries.
 type RetroFeedback struct {
 	WentWell  string `json:"went_well,omitempty"`
@@ -265,100 +215,26 @@ type postAccountabilitySummaryArgs struct {
 	NextSteps          string         `json:"next_steps,omitempty"`
 }
 
-// checkMessagesResponse is the structured response for check_messages.
-type checkMessagesResponse struct {
-	UnreadCount int                 `json:"unread_count"`
-	Messages    []checkMessageEntry `json:"messages"`
-}
-
-// checkMessageEntry is a single unread message.
-type checkMessageEntry struct {
-	Timestamp string `json:"timestamp"` // HH:MM:SS format
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Content   string `json:"content"`
-}
-
-// handleCheckMessages returns unread messages for this worker.
-func (ws *WorkerServer) handleCheckMessages(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
-	if ws.msgStore == nil {
-		return nil, fmt.Errorf("message store not available")
-	}
-
-	// Use atomic ReadAndMark to prevent race where messages appended between
-	// UnreadFor and MarkRead would be marked as read without being returned.
-	unread := ws.msgStore.ReadAndMark(ws.workerID)
-
-	// Build structured response
-	messages := make([]checkMessageEntry, len(unread))
-	for i, entry := range unread {
-		messages[i] = checkMessageEntry{
-			Timestamp: entry.Timestamp.Format("15:04:05"),
-			From:      entry.From,
-			To:        entry.To,
-			Content:   entry.Content,
-		}
-	}
-
-	response := checkMessagesResponse{
-		UnreadCount: len(messages),
-		Messages:    messages,
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshaling response: %w", err)
-	}
-
-	log.Debug(log.CatMCP, "Returned unread messages", "workerID", ws.workerID, "count", len(unread))
-	return SuccessResult(string(data)), nil
-}
-
-// handlePostMessage posts a message to the message log from this worker.
-func (ws *WorkerServer) handlePostMessage(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	var args sendMessageArgs
-	if err := json.Unmarshal(rawArgs, &args); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if args.To == "" {
-		return nil, fmt.Errorf("to is required")
-	}
-	if args.Content == "" {
-		return nil, fmt.Errorf("content is required")
-	}
-
-	if ws.msgStore == nil {
-		return nil, fmt.Errorf("message store not available")
-	}
-
-	// Check for duplicate message within deduplication window
-	if ws.dedup.IsDuplicate(ws.workerID, args.Content) {
-		log.Debug(log.CatMCP, "Duplicate message suppressed", "workerID", ws.workerID)
-		return SuccessResult(fmt.Sprintf("Message sent to %s", args.To)), nil
-	}
-
-	_, err := ws.msgStore.Append(ws.workerID, args.To, args.Content, message.MessageInfo)
-	if err != nil {
-		log.Debug(log.CatMCP, "Failed to send message", "workerID", ws.workerID, "to", args.To, "error", err)
-		return nil, fmt.Errorf("failed to send message: %w", err)
-	}
-
-	// Record tool call for turn completion enforcement
-	if ws.enforcer != nil {
-		ws.enforcer.RecordToolCall(ws.workerID, "post_message")
-	}
-
-	log.Debug(log.CatMCP, "Message sent", "workerID", ws.workerID, "to", args.To)
-
-	return SuccessResult(fmt.Sprintf("Message sent to %s", args.To)), nil
+// reportImplementationCompleteArgs holds arguments for report_implementation_complete tool.
+type reportImplementationCompleteArgs struct {
+	Summary string `json:"summary"`
 }
 
 // handleSignalReady signals the coordinator that this worker is ready for task assignment.
-func (ws *WorkerServer) handleSignalReady(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
-	result, err := ws.v2Adapter.HandleSignalReady(ctx, args, ws.workerID)
-	if err != nil {
-		return result, err
+// Posts a ready message to #system channel, which triggers a nudge to the coordinator
+// (who is auto-subscribed to #system with mode=all).
+func (ws *WorkerServer) handleSignalReady(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+	// Post ready message to #system channel via Fabric
+	if ws.fabricService != nil {
+		content := fmt.Sprintf("%s is ready for task assignment", ws.workerID)
+		_, err := ws.fabricService.SendMessage(fabric.SendMessageInput{
+			ChannelSlug: "system",
+			Content:     content,
+			CreatedBy:   ws.workerID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to post ready message: %w", err)
+		}
 	}
 
 	// Record tool call for turn completion enforcement
@@ -366,37 +242,96 @@ func (ws *WorkerServer) handleSignalReady(ctx context.Context, args json.RawMess
 		ws.enforcer.RecordToolCall(ws.workerID, "signal_ready")
 	}
 
-	return result, nil
+	return SuccessResult(fmt.Sprintf("Worker %s ready signal acknowledged", ws.workerID)), nil
 }
 
 // handleReportImplementationComplete signals that implementation is complete and ready for review.
+// Replies to the task's Fabric thread (if available) with @coordinator mention.
 func (ws *WorkerServer) handleReportImplementationComplete(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	// Parse args to get summary for Fabric message
+	var args reportImplementationCompleteArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	// Submit the command via v2Adapter (handles state transitions, returns ThreadID)
 	result, err := ws.v2Adapter.HandleReportImplementationComplete(ctx, rawArgs, ws.workerID)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 
 	// Record tool call for turn completion enforcement
+	// Always record even when result indicates an error (processor error, not adapter error)
 	if ws.enforcer != nil {
 		ws.enforcer.RecordToolCall(ws.workerID, "report_implementation_complete")
 	}
 
-	return result, nil
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Message), nil
+	}
+
+	// Reply to the task's Fabric thread (if available)
+	if ws.fabricService != nil && result.ThreadID != "" {
+		content := fmt.Sprintf("Implementation complete: %s @coordinator", args.Summary)
+		if args.Summary == "" {
+			content = "Implementation complete @coordinator"
+		}
+
+		_, postErr := ws.fabricService.Reply(fabric.ReplyInput{
+			MessageID: result.ThreadID,
+			Content:   content,
+			CreatedBy: ws.workerID,
+			Mentions:  []string{"coordinator"},
+		})
+		if postErr != nil {
+			// Log but don't fail - the status update was successful
+			log.Debug(log.CatMCP, "Failed to reply to task thread",
+				"error", postErr, "threadID", result.ThreadID, "workerID", ws.workerID)
+		}
+	}
+
+	return mcptypes.SuccessResult(result.Message), nil
 }
 
 // handleReportReviewVerdict reports the code review verdict (APPROVED or DENIED).
+// Replies to the task's Fabric thread (if available) with @coordinator mention.
 func (ws *WorkerServer) handleReportReviewVerdict(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
 	result, err := ws.v2Adapter.HandleReportReviewVerdict(ctx, rawArgs, ws.workerID)
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 
 	// Record tool call for turn completion enforcement
+	// Always record even when result indicates an error (processor error, not adapter error)
 	if ws.enforcer != nil {
 		ws.enforcer.RecordToolCall(ws.workerID, "report_review_verdict")
 	}
 
-	return result, nil
+	if !result.Success {
+		return mcptypes.ErrorResult(result.Message), nil
+	}
+
+	// Reply to the task's Fabric thread (if available)
+	if ws.fabricService != nil && result.ThreadID != "" {
+		content := fmt.Sprintf("Review verdict: %s @coordinator", result.Verdict)
+		if result.Comments != "" {
+			content = fmt.Sprintf("Review verdict: %s - %s @coordinator", result.Verdict, result.Comments)
+		}
+
+		_, postErr := ws.fabricService.Reply(fabric.ReplyInput{
+			MessageID: result.ThreadID,
+			Content:   content,
+			CreatedBy: ws.workerID,
+			Mentions:  []string{"coordinator"},
+		})
+		if postErr != nil {
+			// Log but don't fail - the status update was successful
+			log.Debug(log.CatMCP, "Failed to reply to task thread",
+				"error", postErr, "threadID", result.ThreadID, "workerID", ws.workerID)
+		}
+	}
+
+	return mcptypes.SuccessResult(result.Message), nil
 }
 
 // validateAccountabilitySummaryArgs validates the arguments for the post_accountability_summary tool.

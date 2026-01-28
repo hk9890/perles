@@ -1082,7 +1082,7 @@ func TestReportVerdict_RaceWithNewTask(t *testing.T) {
 			assignHandler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
 			verdictCmd := command.NewReportVerdictCommand(command.SourceMCPTool, "worker-2", command.VerdictApproved, "LGTM")
-			assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-3", "perles-xyz9.1", "New task")
+			assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-3", "perles-xyz9.1", "New task", "")
 
 			var verdictErr, assignErr error
 

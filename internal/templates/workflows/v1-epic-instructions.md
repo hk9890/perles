@@ -94,7 +94,7 @@ Or you will see messages in the message log like:
 2. **Spawn workers** - Use `spawn_worker()` to create the workers you need
 3. **STOP AND WAIT** - End your turn immediately after spawning. Do NOT call `query_worker_state()` or `assign_task()` yet. Workers will signal when they are ready.
 4. **Receive ready signals** - The system will notify you (e.g., `[worker-1, worker-2] have started up and are now ready`)
-5. **Verify with read_message_log()** - Optionally confirm which workers are ready
+5. **Verify with fabric_inbox** - Optionally confirm which workers are ready
 6. **Assign tasks** - Now you can use `assign_task()` for ready workers
 
 ### Example
@@ -116,8 +116,8 @@ spawn_worker(agent_type="reviewer")     # Creates worker-3
 
 # 4. System notifies you: "[worker-1, worker-2, worker-3] have started up and are now ready"
 
-# 5. Verify with read_message_log()
-read_message_log()
+# 5. Verify with fabric_inbox
+fabric_inbox()
 # Output
 # worker-1 is ready for task assignment
 # worker-2 is ready for task assignment

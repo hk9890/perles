@@ -30,7 +30,7 @@ func TestNewTurnCompletionTrackerWithOptions(t *testing.T) {
 	require.NotNil(t, tracker)
 
 	// Verify logger is used
-	tracker.OnMaxRetriesExceeded("worker-1", []string{"post_message"})
+	tracker.OnMaxRetriesExceeded("worker-1", []string{"fabric_send"})
 	assert.True(t, logCalled, "logger should be called")
 }
 
@@ -41,7 +41,7 @@ func TestNewTurnCompletionTrackerWithOptions(t *testing.T) {
 func TestRecordToolCall_StoresToolName(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
-	tracker.RecordToolCall("worker-1", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
 
 	// Verify by checking that CheckTurnCompletion returns empty (compliant)
 	missing := tracker.CheckTurnCompletion("worker-1", repository.RoleWorker)
@@ -51,7 +51,7 @@ func TestRecordToolCall_StoresToolName(t *testing.T) {
 func TestRecordToolCall_TracksMultipleTools(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
-	tracker.RecordToolCall("worker-1", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
 	tracker.RecordToolCall("worker-1", "report_implementation_complete")
 
 	// Should still be compliant
@@ -62,7 +62,7 @@ func TestRecordToolCall_TracksMultipleTools(t *testing.T) {
 func TestRecordToolCall_TracksMultipleProcesses(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
-	tracker.RecordToolCall("worker-1", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
 	tracker.RecordToolCall("worker-2", "signal_ready")
 
 	// Both should be compliant
@@ -78,7 +78,7 @@ func TestResetTurn_ClearsToolCalls(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	// Record a tool call
-	tracker.RecordToolCall("worker-1", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
 	assert.Empty(t, tracker.CheckTurnCompletion("worker-1", repository.RoleWorker))
 
 	// Reset turn
@@ -122,8 +122,8 @@ func TestResetTurn_DoesNotAffectOtherProcesses(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	// Setup state for two workers
-	tracker.RecordToolCall("worker-1", "post_message")
-	tracker.RecordToolCall("worker-2", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
+	tracker.RecordToolCall("worker-2", "fabric_send")
 	tracker.MarkAsNewlySpawned("worker-1")
 	tracker.MarkAsNewlySpawned("worker-2")
 
@@ -189,7 +189,7 @@ func TestCheckTurnCompletion_ReturnsMissingToolsForWorkers(t *testing.T) {
 	missing := tracker.CheckTurnCompletion("worker-1", repository.RoleWorker)
 
 	assert.NotEmpty(t, missing)
-	assert.Contains(t, missing, "post_message")
+	assert.Contains(t, missing, "fabric_send")
 	assert.Contains(t, missing, "report_implementation_complete")
 	assert.Contains(t, missing, "report_review_verdict")
 	assert.Contains(t, missing, "signal_ready")
@@ -209,7 +209,7 @@ func TestCheckTurnCompletion_ReturnsEmptyWhenAnyRequiredToolCalled(t *testing.T)
 		name     string
 		toolName string
 	}{
-		{"post_message", "post_message"},
+		{"fabric_send", "fabric_send"},
 		{"report_implementation_complete", "report_implementation_complete"},
 		{"report_review_verdict", "report_review_verdict"},
 		{"signal_ready", "signal_ready"},
@@ -231,7 +231,7 @@ func TestCheckTurnCompletion_IgnoresNonRequiredTools(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	// Record non-required tools
-	tracker.RecordToolCall("worker-1", "check_messages")
+	tracker.RecordToolCall("worker-1", "fabric_inbox")
 	tracker.RecordToolCall("worker-1", "some_other_tool")
 
 	// Should still have missing tools
@@ -313,9 +313,9 @@ func TestIncrementRetry_TracksSeparatelyPerProcess(t *testing.T) {
 func TestGetReminderMessage_IncludesMissingToolNames(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
-	message := tracker.GetReminderMessage("worker-1", []string{"post_message", "report_implementation_complete"})
+	message := tracker.GetReminderMessage("worker-1", []string{"fabric_send", "report_implementation_complete"})
 
-	assert.Contains(t, message, "post_message")
+	assert.Contains(t, message, "fabric_send")
 	assert.Contains(t, message, "report_implementation_complete")
 	assert.Contains(t, message, "[SYSTEM REMINDER]")
 	assert.Contains(t, message, "CRITICAL")
@@ -328,7 +328,7 @@ func TestGetReminderMessage_ContainsInstructions(t *testing.T) {
 
 	// Should contain helpful instructions
 	assert.Contains(t, message, "report_implementation_complete")
-	assert.Contains(t, message, "post_message")
+	assert.Contains(t, message, "fabric_send")
 	assert.Contains(t, message, "signal_ready")
 }
 
@@ -344,7 +344,7 @@ func TestOnMaxRetriesExceeded_CallsLoggerWhenConfigured(t *testing.T) {
 
 	tracker := handler.NewTurnCompletionTrackerWithOptions(handler.WithLogger(logger))
 
-	tracker.OnMaxRetriesExceeded("worker-1", []string{"post_message"})
+	tracker.OnMaxRetriesExceeded("worker-1", []string{"fabric_send"})
 
 	require.Len(t, logMessages, 1)
 	assert.Contains(t, logMessages[0], "exceeded max enforcement retries")
@@ -355,7 +355,7 @@ func TestOnMaxRetriesExceeded_DoesNotPanicWithoutLogger(t *testing.T) {
 
 	// Should not panic when logger is nil
 	assert.NotPanics(t, func() {
-		tracker.OnMaxRetriesExceeded("worker-1", []string{"post_message"})
+		tracker.OnMaxRetriesExceeded("worker-1", []string{"fabric_send"})
 	})
 }
 
@@ -367,7 +367,7 @@ func TestCleanupProcess_RemovesAllStateForProcessID(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	// Setup state for worker-1
-	tracker.RecordToolCall("worker-1", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
 	tracker.MarkAsNewlySpawned("worker-1")
 	tracker.IncrementRetry("worker-1")
 
@@ -388,8 +388,8 @@ func TestCleanupProcess_DoesNotAffectOtherProcesses(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	// Setup state for two workers
-	tracker.RecordToolCall("worker-1", "post_message")
-	tracker.RecordToolCall("worker-2", "post_message")
+	tracker.RecordToolCall("worker-1", "fabric_send")
+	tracker.RecordToolCall("worker-2", "fabric_send")
 	tracker.MarkAsNewlySpawned("worker-1")
 	tracker.MarkAsNewlySpawned("worker-2")
 	tracker.IncrementRetry("worker-1")
@@ -432,7 +432,7 @@ func TestTurnCompletionTracker_ThreadSafety(t *testing.T) {
 			processID := "worker-" + string(rune('0'+id%processCount))
 
 			// Mix of operations
-			tracker.RecordToolCall(processID, "post_message")
+			tracker.RecordToolCall(processID, "fabric_send")
 			tracker.CheckTurnCompletion(processID, repository.RoleWorker)
 			tracker.MarkAsNewlySpawned(processID)
 			tracker.IsNewlySpawned(processID)
@@ -458,7 +458,7 @@ func TestTurnCompletionTracker_ConcurrentRecordAndCheck(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
-			tracker.RecordToolCall("worker-1", "post_message")
+			tracker.RecordToolCall("worker-1", "fabric_send")
 		}
 	}()
 
@@ -488,11 +488,13 @@ func TestTurnCompletionTracker_ConcurrentRecordAndCheck(t *testing.T) {
 // ===========================================================================
 
 func TestRequiredTools_ContainsExpectedTools(t *testing.T) {
-	assert.Contains(t, handler.RequiredTools, "post_message")
+	assert.Contains(t, handler.RequiredTools, "fabric_send")
+	assert.Contains(t, handler.RequiredTools, "fabric_reply")
+	assert.Contains(t, handler.RequiredTools, "fabric_ack")
 	assert.Contains(t, handler.RequiredTools, "report_implementation_complete")
 	assert.Contains(t, handler.RequiredTools, "report_review_verdict")
 	assert.Contains(t, handler.RequiredTools, "signal_ready")
-	assert.Len(t, handler.RequiredTools, 4)
+	assert.Len(t, handler.RequiredTools, 6)
 }
 
 // ===========================================================================

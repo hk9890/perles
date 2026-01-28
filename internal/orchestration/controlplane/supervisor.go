@@ -18,6 +18,8 @@ import (
 	domaingit "github.com/zjrosen/perles/internal/git/domain"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricpersist "github.com/zjrosen/perles/internal/orchestration/fabric/persistence"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
 	"github.com/zjrosen/perles/internal/orchestration/session"
 	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
@@ -355,10 +357,7 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	port := listener.Addr().(*net.TCPAddr).Port
 	log.Debug(log.CatOrch, "MCP listener created", "subsystem", "supervisor", "port", port, "workflowID", inst.ID)
 
-	// Step 3: Create message repository for this workflow
-	messageRepo := repository.NewMemoryMessageRepository()
-
-	// Step 3.5: Create or reopen session for this workflow
+	// Step 3: Create or reopen session for this workflow
 	workDir := getWorkDir(inst)
 	if coldResume && inst.SessionDir != "" {
 		// Cold resume: reopen existing session directory to preserve message history
@@ -391,12 +390,14 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 		AgentProviders:          s.agentProviders,
 		WorkDir:                 workDir,
 		BeadsDir:                s.beadsDir,
-		MessageRepo:             messageRepo,
 		SessionID:               inst.ID.String(),
 		SessionDir:              sess.Dir,
 		SessionRefNotifier:      sess,
 		SessionMetadataProvider: sess,
 		SoundService:            s.soundService,
+		CommandPersistenceProvider: func() processor.CommandWriter {
+			return sess
+		},
 	}
 
 	// Step 5: Create Infrastructure
@@ -407,8 +408,35 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	}
 
 	// Step 5.5: Attach session to event brokers for logging
-	sess.AttachToBrokers(workflowCtx, nil, messageRepo.Broker(), nil)
 	sess.AttachV2EventBus(workflowCtx, infra.Core.EventBus)
+
+	// Step 5.6: Create Fabric event logger and broker for mention-based notifications
+	var fabricLogger *fabricpersist.EventLogger
+	var fabricBroker *fabric.Broker
+
+	if infra.Core.FabricService != nil {
+		// Create event logger (persists fabric.jsonl to session directory)
+		fabricLogger, err = fabricpersist.NewEventLogger(sess.Dir)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("creating fabric event logger: %w", err)
+		}
+
+		// Create broker for batching @mention notifications (replaces CoordinatorNudger)
+		fabricBroker = fabric.NewBroker(fabric.BrokerConfig{
+			CmdSubmitter:  infra.Core.CmdSubmitter,
+			Subscriptions: infra.Core.FabricService.SubscriptionRepository(),
+			SlugLookup:    infra.Core.FabricService,
+		})
+
+		// Wire both handlers to FabricService using ChainHandler
+		infra.Core.FabricService.SetEventHandler(
+			fabricpersist.ChainHandler(fabricLogger.HandleEvent, fabricBroker.HandleEvent),
+		)
+
+		// Start the broker's event loop
+		fabricBroker.Start()
+	}
 
 	// Step 6: Start infrastructure (command processor)
 	if err := infra.Start(workflowCtx); err != nil {
@@ -419,18 +447,22 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	// Create coordinator MCP server with the v2 adapter
 	// Note: BeadsDir is empty here; the v2 infrastructure config handles BEADS_DIR for spawned processes
 	mcpCoordServer := mcp.NewCoordinatorServerWithV2Adapter(
-		messageRepo,
 		workDir,
 		port,
 		infrabeads.NewBDExecutor(workDir, ""),
 		infra.Core.Adapter,
 	)
 
+	// Wire Fabric messaging tools to coordinator MCP server
+	if infra.Core.FabricService != nil {
+		mcpCoordServer.SetFabricService(infra.Core.FabricService)
+	}
+
 	// Attach MCP broker to session for mcp_requests.jsonl logging
 	sess.AttachMCPBroker(workflowCtx, mcpCoordServer.Broker())
 
 	// Create worker server cache for /worker/ routes
-	workerServers := newWorkerServerCache(messageRepo, nil, infra.Core.Adapter, infra.Internal.TurnEnforcer)
+	workerServers := newWorkerServerCache(nil, infra.Core.Adapter, infra.Internal.TurnEnforcer, infra.Core.FabricService, sess, workflowCtx)
 
 	// Set up HTTP routes
 	mux := http.NewServeMux()
@@ -458,8 +490,9 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	inst.Cancel = cancel
 	inst.HTTPServer = httpServer
 	inst.MCPCoordServer = mcpCoordServer
-	inst.MessageRepo = messageRepo
 	inst.Session = sess // May be nil if session factory not configured
+	inst.FabricBroker = fabricBroker
+	inst.FabricLogger = fabricLogger
 
 	// For cold resume: restore ProcessRepository and ProcessRegistry from session data.
 	// This populates the coordinator and worker processes so Resume() can find them.
@@ -527,10 +560,8 @@ func (s *defaultSupervisor) Pause(ctx context.Context, inst *WorkflowInstance) e
 
 	// Stop infrastructure components but preserve the infrastructure for resume
 	if inst.Infrastructure != nil {
-		// Stop the nudger to prevent further nudges
-		if inst.Infrastructure.Internal.CoordinatorNudger != nil {
-			inst.Infrastructure.Internal.CoordinatorNudger.Stop()
-		}
+		// NOTE: FabricBroker.Stop() not called here - broker continues to exist
+		// but paused processes won't receive nudges anyway
 
 		// Clear all message queues to provide a clean slate for resume
 		if inst.Infrastructure.Repositories.QueueRepo != nil {
@@ -574,10 +605,7 @@ func (s *defaultSupervisor) Resume(ctx context.Context, inst *WorkflowInstance) 
 		return fmt.Errorf("transitioning to running: %w", err)
 	}
 
-	// Restart the coordinator nudger (it was stopped during pause)
-	if inst.Infrastructure != nil && inst.Infrastructure.Internal.CoordinatorNudger != nil {
-		inst.Infrastructure.Internal.CoordinatorNudger.Start()
-	}
+	// NOTE: FabricBroker restart not needed - it was never stopped during pause
 
 	// Resume all processes via commands (transitions Paused -> Ready)
 	// Resume workers first, then coordinator, so coordinator can see worker availability
@@ -602,16 +630,9 @@ func (s *defaultSupervisor) Resume(ctx context.Context, inst *WorkflowInstance) 
 		// Resume coordinator last
 		resumeCmd := command.NewResumeProcessCommand(command.SourceInternal, repository.CoordinatorID)
 		if result, err := inst.Infrastructure.Core.Processor.SubmitAndWait(inst.Ctx, resumeCmd); err != nil {
-			// Rollback: stop nudger and transition back to Paused state on failure
-			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
-				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
-			}
 			_ = inst.TransitionTo(WorkflowPaused)
 			return fmt.Errorf("resuming coordinator: %w", err)
 		} else if !result.Success {
-			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
-				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
-			}
 			_ = inst.TransitionTo(WorkflowPaused)
 			return fmt.Errorf("resuming coordinator: %w", result.Error)
 		}
@@ -620,10 +641,6 @@ func (s *defaultSupervisor) Resume(ctx context.Context, inst *WorkflowInstance) 
 	// Send system message with pause context - this triggers the delivery flow
 	// which spawns a new AI session and attaches it to the existing coordinator process
 	if err := s.sendResumeContextMessage(inst); err != nil {
-		// Rollback: stop nudger and transition back to Paused state on failure
-		if inst.Infrastructure != nil && inst.Infrastructure.Internal.CoordinatorNudger != nil {
-			inst.Infrastructure.Internal.CoordinatorNudger.Stop()
-		}
 		_ = inst.TransitionTo(WorkflowPaused)
 		return fmt.Errorf("sending resume message: %w", err)
 	}
@@ -689,24 +706,6 @@ func (s *defaultSupervisor) restoreProcessStateFromSession(inst *WorkflowInstanc
 			"subsystem", "supervisor", "workflowID", inst.ID)
 	}
 
-	// Restore MessageRepository (inter-agent messages)
-	if inst.MessageRepo != nil {
-		interAgentMsgs, err := session.LoadInterAgentMessages(inst.SessionDir)
-		if err != nil {
-			// Log but don't fail - messages are nice-to-have for resume
-			log.Debug(log.CatOrch, "Failed to load inter-agent messages",
-				"subsystem", "supervisor", "workflowID", inst.ID, "error", err)
-		} else if len(interAgentMsgs) > 0 {
-			if err := session.RestoreMessageRepository(inst.MessageRepo, interAgentMsgs); err != nil {
-				log.Debug(log.CatOrch, "Failed to restore message repository",
-					"subsystem", "supervisor", "workflowID", inst.ID, "error", err)
-			} else {
-				log.Debug(log.CatOrch, "Restored MessageRepository from session",
-					"subsystem", "supervisor", "workflowID", inst.ID, "messageCount", len(interAgentMsgs))
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -723,7 +722,7 @@ The workflow was paused by the user and has now been resumed. We are re-orientin
 
 Diagnose using these tools:
 1. Use query_workflow_state to check worker statuses
-2. Use read_message_log to review recent activity
+2. Use fabric_inbox to check for unread messages
 
 Based on what you find:
 - If workers are still in "working" state → No action needed, they're actively processing
@@ -773,7 +772,20 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 		}
 	}
 
-	// Step 1: Close the session if present (finalize session data before infrastructure shutdown)
+	// Step 1: Stop Fabric broker and close logger (before session close to ensure all events are flushed)
+	if inst.FabricBroker != nil {
+		inst.FabricBroker.Stop()
+		inst.FabricBroker = nil
+	}
+	if inst.FabricLogger != nil {
+		if err := inst.FabricLogger.Close(); err != nil {
+			log.Debug(log.CatOrch, "Failed to close fabric logger", "subsystem", "supervisor",
+				"workflowID", inst.ID, "error", err)
+		}
+		inst.FabricLogger = nil
+	}
+
+	// Step 2: Close the session if present (finalize session data before infrastructure shutdown)
 	if inst.Session != nil {
 		// Determine session status based on workflow state
 		var sessionStatus session.Status
@@ -790,7 +802,7 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 		inst.Session = nil
 	}
 
-	// Step 2: Shutdown HTTP server if present
+	// Step 3: Shutdown HTTP server if present
 	if inst.HTTPServer != nil {
 		if opts.Force {
 			// Force immediate close
@@ -804,7 +816,7 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 		inst.HTTPServer = nil
 	}
 
-	// Step 3: Shutdown infrastructure if present
+	// Step 4: Shutdown infrastructure if present
 	if inst.Infrastructure != nil {
 		if opts.Force {
 			// Force immediate shutdown
@@ -815,12 +827,12 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 		}
 	}
 
-	// Step 4: Cancel the workflow context
+	// Step 5: Cancel the workflow context
 	if inst.Cancel != nil {
 		inst.Cancel()
 	}
 
-	// Step 5: Transition to Failed state (user-initiated stop is treated as failure)
+	// Step 6: Transition to Failed state (user-initiated stop is treated as failure)
 	if err := inst.TransitionTo(WorkflowFailed); err != nil {
 		return fmt.Errorf("transitioning to Failed: %w", err)
 	}
@@ -831,7 +843,6 @@ func (s *defaultSupervisor) Shutdown(ctx context.Context, inst *WorkflowInstance
 	inst.Ctx = nil
 	inst.Cancel = nil
 	inst.MCPCoordServer = nil
-	inst.MessageRepo = nil
 
 	return nil
 }
@@ -860,31 +871,38 @@ func (a *processorSubmitterAdapter) Submit(cmd command.Command) {
 	_ = a.processor.Submit(cmd) // Ignore error - fire-and-forget for turn completion
 }
 
-// workerServerCache manages worker MCP servers that share the same message store.
-// Workers connect via HTTP to /worker/{workerID} and all share the coordinator's
-// message repository instance.
+// workerServerCache manages worker MCP servers.
+// Workers connect via HTTP to /worker/{workerID}.
 type workerServerCache struct {
-	msgStore             mcp.MessageStore
 	accountabilityWriter mcp.AccountabilityWriter
 	v2Adapter            *adapter.V2Adapter
 	turnEnforcer         handler.TurnCompletionEnforcer
+	fabricService        *fabric.Service
 	servers              map[string]*mcp.WorkerServer
 	mu                   sync.RWMutex
+
+	// For attaching worker MCP brokers to session logging
+	session     *session.Session
+	workflowCtx context.Context
 }
 
 // newWorkerServerCache creates a new worker server cache.
 func newWorkerServerCache(
-	msgStore mcp.MessageStore,
 	accountabilityWriter mcp.AccountabilityWriter,
 	v2Adapter *adapter.V2Adapter,
 	turnEnforcer handler.TurnCompletionEnforcer,
+	fabricService *fabric.Service,
+	sess *session.Session,
+	workflowCtx context.Context,
 ) *workerServerCache {
 	return &workerServerCache{
-		msgStore:             msgStore,
 		accountabilityWriter: accountabilityWriter,
 		v2Adapter:            v2Adapter,
 		turnEnforcer:         turnEnforcer,
+		fabricService:        fabricService,
 		servers:              make(map[string]*mcp.WorkerServer),
+		session:              sess,
+		workflowCtx:          workflowCtx,
 	}
 }
 
@@ -918,7 +936,7 @@ func (c *workerServerCache) getOrCreate(workerID string) *mcp.WorkerServer {
 		return ws
 	}
 
-	ws = mcp.NewWorkerServer(workerID, c.msgStore)
+	ws = mcp.NewWorkerServer(workerID)
 	if c.accountabilityWriter != nil {
 		ws.SetAccountabilityWriter(c.accountabilityWriter)
 	}
@@ -928,6 +946,15 @@ func (c *workerServerCache) getOrCreate(workerID string) *mcp.WorkerServer {
 	if c.turnEnforcer != nil {
 		ws.SetTurnEnforcer(c.turnEnforcer)
 	}
+	if c.fabricService != nil {
+		ws.SetFabricService(c.fabricService)
+	}
+
+	// Attach worker MCP broker to session for mcp_requests.jsonl logging
+	if c.session != nil && c.workflowCtx != nil {
+		c.session.AttachMCPBroker(c.workflowCtx, ws.Broker())
+	}
+
 	c.servers[workerID] = ws
 	log.Debug(log.CatOrch, "Created worker server", "subsystem", "supervisor", "workerID", workerID)
 	return ws

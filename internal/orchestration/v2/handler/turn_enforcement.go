@@ -18,7 +18,9 @@ import (
 // A worker must call at least one of these tools to complete their turn without
 // triggering an enforcement reminder.
 var RequiredTools = []string{
-	"post_message",
+	"fabric_send",
+	"fabric_reply",
+	"fabric_ack",
 	"report_implementation_complete",
 	"report_review_verdict",
 	"signal_ready",
@@ -227,7 +229,7 @@ func (t *TurnCompletionTracker) GetReminderMessage(processID string, missingTool
 **CRITICAL**: You MUST end your turn with a tool call to one of: %s
 
 If you completed a bd task, call: report_implementation_complete(summary="...")
-If you need to communicate with the coordinator, call: post_message(to="COORDINATOR", content="...")
+If you need to communicate with the coordinator, call: fabric_send(channel="general", content="...")
 If you just booted up and are ready, call: signal_ready()
 
 Please call one of these tools now to properly complete your turn.`, toolList)

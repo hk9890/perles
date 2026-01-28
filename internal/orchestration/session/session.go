@@ -16,6 +16,7 @@ import (
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/events"
 	"github.com/zjrosen/perles/internal/orchestration/message"
+	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/pubsub"
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
@@ -62,6 +63,7 @@ type Session struct {
 	workerMessages map[string]*BufferedWriter // workerID -> workers/{id}/messages.jsonl
 	messageLog     *BufferedWriter            // messages.jsonl (inter-agent messages)
 	mcpLog         *BufferedWriter            // mcp_requests.jsonl
+	commandLog     *BufferedWriter            // commands.jsonl (V2 command processor events)
 
 	// Metadata for tracking workers and token usage.
 	workers    []WorkerMetadata
@@ -134,6 +136,7 @@ const (
 	messagesJSONLFile         = "messages.jsonl" // Inter-agent messages (root level)
 	chatMessagesFile          = "messages.jsonl" // Chat messages (coordinator/worker directories)
 	mcpRequestsFile           = "mcp_requests.jsonl"
+	commandsFile              = "commands.jsonl"
 	summaryFile               = "summary.md"
 	accountabilitySummaryFile = "accountability_summary.md"
 )
@@ -218,6 +221,18 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 	}
 	mcpLog := NewBufferedWriter(mcpLogFile)
 
+	// Create commands.jsonl with BufferedWriter
+	commandsPath := filepath.Join(dir, commandsFile)
+	commandsLogFile, err := os.OpenFile(commandsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted dir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		_ = coordMessages.Close()
+		_ = messageLog.Close()
+		_ = mcpLog.Close()
+		return nil, fmt.Errorf("creating commands.jsonl: %w", err)
+	}
+	commandLog := NewBufferedWriter(commandsLogFile)
+
 	startTime := time.Now()
 
 	// Create session struct first so we can apply options
@@ -232,6 +247,7 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 		workerMessages: make(map[string]*BufferedWriter),
 		messageLog:     messageLog,
 		mcpLog:         mcpLog,
+		commandLog:     commandLog,
 		workers:        []WorkerMetadata{},
 		tokenUsage:     TokenUsageSummary{},
 		closed:         false,
@@ -259,6 +275,7 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 		_ = coordMessages.Close()
 		_ = messageLog.Close()
 		_ = mcpLog.Close()
+		_ = commandLog.Close()
 		return nil, fmt.Errorf("saving initial metadata: %w", err)
 	}
 
@@ -337,6 +354,18 @@ func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, erro
 	}
 	mcpLog := NewBufferedWriter(mcpLogFile)
 
+	// Open commands.jsonl in append mode
+	commandsPath := filepath.Join(sessionDir, commandsFile)
+	commandsLogFile, err := os.OpenFile(commandsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		_ = coordRaw.Close()
+		_ = coordMessages.Close()
+		_ = messageLog.Close()
+		_ = mcpLog.Close()
+		return nil, fmt.Errorf("reopening commands.jsonl: %w", err)
+	}
+	commandLog := NewBufferedWriter(commandsLogFile)
+
 	// Create session with current time as start time for this resumed session
 	sess := &Session{
 		ID:             sessionID,
@@ -349,6 +378,7 @@ func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, erro
 		workerMessages: make(map[string]*BufferedWriter),
 		messageLog:     messageLog,
 		mcpLog:         mcpLog,
+		commandLog:     commandLog,
 		// Restore workers from metadata to preserve existing worker list
 		workers:               meta.Workers,
 		tokenUsage:            meta.TokenUsage,
@@ -496,6 +526,30 @@ func (s *Session) WriteMCPEvent(event events.MCPEvent) error {
 	return s.mcpLog.Write(data)
 }
 
+// CommandEvent is an alias for processor.CommandEvent to avoid import cycles in tests.
+// The canonical definition is in internal/orchestration/v2/processor/middleware.go.
+type CommandEvent = processor.CommandEvent
+
+// WriteCommandEvent appends a V2 command event to commands.jsonl in JSONL format.
+// This method implements processor.CommandWriter interface.
+func (s *Session) WriteCommandEvent(event processor.CommandEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshaling command event: %w", err)
+	}
+
+	// Append newline for JSONL format
+	data = append(data, '\n')
+	return s.commandLog.Write(data)
+}
+
 // Close finalizes the session, flushes all BufferedWriters, updates metadata, and closes file handles.
 // After Close returns, no more writes are accepted.
 func (s *Session) Close(status Status) error {
@@ -532,11 +586,14 @@ func (s *Session) Close(status Status) error {
 		firstErr = err
 	}
 
-	// Close message and MCP logs
+	// Close message, MCP, and command logs
 	if err := s.messageLog.Close(); err != nil && firstErr == nil {
 		firstErr = err
 	}
 	if err := s.mcpLog.Close(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	if err := s.commandLog.Close(); err != nil && firstErr == nil {
 		firstErr = err
 	}
 

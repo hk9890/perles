@@ -147,21 +147,6 @@ func workerMetadataToProcess(w WorkerMetadata, status repository.ProcessStatus) 
 	return proc
 }
 
-// RestoreMessageRepository populates a MessageRepository from loaded inter-agent messages.
-// Uses AppendRestored to preserve existing IDs and timestamps without triggering broker events.
-//
-// The MessageRepository interface includes AppendRestored which is specifically designed
-// for session restoration - it preserves existing IDs and timestamps, and critically
-// does NOT publish to the broker (to avoid duplicate display in TUI).
-func RestoreMessageRepository(repo repository.MessageRepository, messages []message.Entry) error {
-	for _, entry := range messages {
-		if _, err := repo.AppendRestored(entry); err != nil {
-			return fmt.Errorf("failed to restore message %s: %w", entry.ID, err)
-		}
-	}
-	return nil
-}
-
 // RestoredUIState contains all TUI-ready state extracted from a loaded session.
 // This is the output of BuildRestoredUIState and is used by the orchestration model
 // to populate its panes on session resume.

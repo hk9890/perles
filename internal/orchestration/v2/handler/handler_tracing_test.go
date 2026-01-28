@@ -109,7 +109,7 @@ func TestAssignTaskHandler_Tracing_CreatesSpan(t *testing.T) {
 		WithAssignTaskTracer(tracer),
 	)
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 	require.NoError(t, err)
 
@@ -154,7 +154,7 @@ func TestAssignTaskHandler_Tracing_RecordsEvents(t *testing.T) {
 		WithAssignTaskTracer(tracer),
 	)
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 	require.NoError(t, err)
 
@@ -181,7 +181,7 @@ func TestAssignTaskHandler_Tracing_RecordsErrorOnFailure(t *testing.T) {
 	)
 
 	// Try to assign to non-existent worker
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "task-123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "task-123", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 	require.Error(t, err)
 
@@ -215,7 +215,7 @@ func TestAssignTaskHandler_Tracing_WorksWithNilTracer(t *testing.T) {
 		WithQueueRepository(queueRepo),
 	)
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task", "")
 	result, err := handler.Handle(context.Background(), cmd)
 	require.NoError(t, err)
 	require.True(t, result.Success)
@@ -594,7 +594,7 @@ func TestAssignTaskHandler_Tracing_SpanEndsOnSuccess(t *testing.T) {
 		WithAssignTaskTracer(tracer),
 	)
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "task-123", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 	require.NoError(t, err)
 

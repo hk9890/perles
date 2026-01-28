@@ -100,13 +100,11 @@ func (m *mockMessageStore) Append(from, to, content string, msgType message.Mess
 	return &entry, nil
 }
 
-// TestWorkerServer_RegistersAllTools verifies all 6 worker tools are registered.
+// TestWorkerServer_RegistersAllTools verifies all 4 worker tools are registered.
 func TestWorkerServer_RegistersAllTools(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	expectedTools := []string{
-		"check_messages",
-		"post_message",
 		"signal_ready",
 		"report_implementation_complete",
 		"report_review_verdict",
@@ -125,7 +123,7 @@ func TestWorkerServer_RegistersAllTools(t *testing.T) {
 
 // TestWorkerServer_ToolSchemas verifies tool schemas are valid.
 func TestWorkerServer_ToolSchemas(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	for name, tool := range ws.tools {
 		t.Run(name, func(t *testing.T) {
@@ -141,7 +139,7 @@ func TestWorkerServer_ToolSchemas(t *testing.T) {
 
 // TestWorkerServer_Instructions tests that instructions are set correctly.
 func TestWorkerServer_Instructions(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	require.NotEmpty(t, ws.instructions, "Instructions should be set")
 	require.Equal(t, "perles-worker", ws.info.Name, "Server name mismatch")
@@ -150,225 +148,18 @@ func TestWorkerServer_Instructions(t *testing.T) {
 
 // TestWorkerServer_DifferentWorkerIDs verifies different workers get separate identities.
 func TestWorkerServer_DifferentWorkerIDs(t *testing.T) {
-	store := newMockMessageStore()
-	ws1 := NewWorkerServer("WORKER.1", store)
-	ws2 := NewWorkerServer("WORKER.2", store)
+	ws1 := NewWorkerServer("WORKER.1")
+	ws2 := NewWorkerServer("WORKER.2")
 
-	// Test through behavior - send message from each worker
-	handler1 := ws1.handlers["post_message"]
-	handler2 := ws2.handlers["post_message"]
-
-	_, _ = handler1(context.Background(), json.RawMessage(`{"to": "ALL", "content": "from worker 1"}`))
-	_, _ = handler2(context.Background(), json.RawMessage(`{"to": "ALL", "content": "from worker 2"}`))
-
-	// Verify messages were sent with correct worker IDs
-	require.Len(t, store.appendCalls, 2, "Expected 2 append calls")
-	require.Equal(t, "WORKER.1", store.appendCalls[0].From, "First message from mismatch")
-	require.Equal(t, "WORKER.2", store.appendCalls[1].From, "Second message from mismatch")
-}
-
-// TestWorkerServer_CheckMessagesNoStore tests check_messages when no store is available.
-func TestWorkerServer_CheckMessagesNoStore(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-	handler := ws.handlers["check_messages"]
-
-	_, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.Error(t, err, "Expected error when message store is nil")
-	require.Contains(t, err.Error(), "message store not available", "Error should mention 'message store not available'")
-}
-
-// TestWorkerServer_CheckMessagesHappyPath tests successful message retrieval.
-func TestWorkerServer_CheckMessagesHappyPath(t *testing.T) {
-	store := newMockMessageStore()
-	store.addEntry(message.ActorCoordinator, "WORKER.1", "Hello worker!")
-	store.addEntry(message.ActorCoordinator, "WORKER.1", "Please start task")
-
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["check_messages"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.NoError(t, err, "Unexpected error")
-
-	// Verify ReadAndMark was called with correct worker ID
-	require.Len(t, store.readAndMarkCalls, 1, "ReadAndMark should be called once")
-	require.Equal(t, "WORKER.1", store.readAndMarkCalls[0], "ReadAndMark called with wrong worker ID")
-
-	// Verify result contains message count
-	require.NotNil(t, result, "Expected result with content")
-	require.NotEmpty(t, result.Content, "Expected result with content")
-	text := result.Content[0].Text
-
-	// Parse JSON response
-	var response checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
-
-	require.Equal(t, 2, response.UnreadCount, "Expected unread_count=2")
-	require.Len(t, response.Messages, 2, "Expected 2 messages")
-	require.Equal(t, "Hello worker!", response.Messages[0].Content, "First message content mismatch")
-}
-
-// TestWorkerServer_CheckMessagesNoMessages tests when there are no unread messages.
-func TestWorkerServer_CheckMessagesNoMessages(t *testing.T) {
-	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["check_messages"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.NoError(t, err, "Unexpected error")
-
-	require.NotNil(t, result, "Expected result with content")
-	require.NotEmpty(t, result.Content, "Expected result with content")
-	text := result.Content[0].Text
-
-	// Parse JSON response
-	var response checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
-
-	require.Equal(t, 0, response.UnreadCount, "Expected unread_count=0")
-	require.Empty(t, response.Messages, "Expected 0 messages")
-}
-
-// TestWorkerServer_CheckMessagesSeesAllMessages tests that workers see all messages.
-func TestWorkerServer_CheckMessagesSeesAllMessages(t *testing.T) {
-	store := newMockMessageStore()
-	// Messages for different workers
-	store.addEntry(message.ActorCoordinator, "WORKER.1", "For worker 1")
-	store.addEntry(message.ActorCoordinator, "WORKER.2", "For worker 2")
-	store.addEntry(message.ActorCoordinator, message.ActorAll, "For everyone")
-
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["check_messages"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.NoError(t, err, "Unexpected error")
-
-	text := result.Content[0].Text
-
-	// Parse JSON response
-	var response checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(text), &response), "Failed to parse JSON response")
-
-	// Workers see ALL messages (no filtering by recipient)
-	require.Equal(t, 3, response.UnreadCount, "Expected 3 messages")
-
-	contents := make(map[string]bool)
-	for _, msg := range response.Messages {
-		contents[msg.Content] = true
-	}
-
-	require.True(t, contents["For worker 1"], "Should contain message addressed to WORKER.1")
-	require.True(t, contents["For everyone"], "Should contain message addressed to ALL")
-	require.True(t, contents["For worker 2"], "Should contain message addressed to WORKER.2 (workers see all messages)")
-}
-
-// TestWorkerServer_CheckMessagesReadTracking tests that messages are marked as read.
-func TestWorkerServer_CheckMessagesReadTracking(t *testing.T) {
-	store := newMockMessageStore()
-	store.addEntry(message.ActorCoordinator, "WORKER.1", "First message")
-
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["check_messages"]
-
-	// First call should return the message
-	result1, _ := handler(context.Background(), json.RawMessage(`{}`))
-	var response1 checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(result1.Content[0].Text), &response1), "Failed to parse JSON response")
-	require.Equal(t, 1, response1.UnreadCount, "First call should return 1 message")
-	require.Equal(t, "First message", response1.Messages[0].Content, "First call should return the message")
-
-	// Second call should return no new messages
-	result2, _ := handler(context.Background(), json.RawMessage(`{}`))
-	var response2 checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(result2.Content[0].Text), &response2), "Failed to parse JSON response")
-	require.Equal(t, 0, response2.UnreadCount, "Second call should return 0 unread messages")
-
-	// Add a new message
-	store.addEntry(message.ActorCoordinator, "WORKER.1", "Second message")
-
-	// Third call should return only the new message
-	result3, _ := handler(context.Background(), json.RawMessage(`{}`))
-	var response3 checkMessagesResponse
-	require.NoError(t, json.Unmarshal([]byte(result3.Content[0].Text), &response3), "Failed to parse JSON response")
-	require.Equal(t, 1, response3.UnreadCount, "Third call should return 1 new message")
-	require.Equal(t, "Second message", response3.Messages[0].Content, "Third call should return the new message")
-}
-
-// TestWorkerServer_SendMessageValidation tests input validation for post_message.
-func TestWorkerServer_SendMessageValidation(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-	handler := ws.handlers["post_message"]
-
-	tests := []struct {
-		name    string
-		args    string
-		wantErr string
-	}{
-		{
-			name:    "missing to",
-			args:    `{"content": "hello"}`,
-			wantErr: "to is required",
-		},
-		{
-			name:    "missing content",
-			args:    `{"to": "COORDINATOR"}`,
-			wantErr: "content is required",
-		},
-		{
-			name:    "empty to",
-			args:    `{"to": "", "content": "hello"}`,
-			wantErr: "to is required",
-		},
-		{
-			name:    "empty content",
-			args:    `{"to": "COORDINATOR", "content": ""}`,
-			wantErr: "content is required",
-		},
-		{
-			name:    "message store not available",
-			args:    `{"to": "COORDINATOR", "content": "hello"}`,
-			wantErr: "message store not available",
-		},
-		{
-			name:    "invalid json",
-			args:    `not json`,
-			wantErr: "invalid arguments",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler(context.Background(), json.RawMessage(tt.args))
-			require.Error(t, err, "Expected error but got none")
-			require.Contains(t, err.Error(), tt.wantErr, "Error should contain expected message")
-		})
-	}
-}
-
-// TestWorkerServer_SendMessageHappyPath tests successful message sending.
-func TestWorkerServer_SendMessageHappyPath(t *testing.T) {
-	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	handler := ws.handlers["post_message"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Task complete"}`))
-	require.NoError(t, err, "Unexpected error")
-
-	// Verify Append was called with correct parameters
-	require.Len(t, store.appendCalls, 1, "Expected 1 append call")
-	call := store.appendCalls[0]
-	require.Equal(t, "WORKER.1", call.From, "From mismatch")
-	require.Equal(t, "COORDINATOR", call.To, "To mismatch")
-	require.Equal(t, "Task complete", call.Content, "Content mismatch")
-	require.Equal(t, message.MessageInfo, call.Type, "Type mismatch")
-
-	// Verify success result
-	require.Contains(t, result.Content[0].Text, "Message sent to COORDINATOR", "Result should confirm sending")
+	// Verify worker IDs are set correctly
+	require.Equal(t, "WORKER.1", ws1.workerID, "Worker 1 ID mismatch")
+	require.Equal(t, "WORKER.2", ws2.workerID, "Worker 2 ID mismatch")
 }
 
 // TestWorkerServer_SignalReadyValidation tests signal_ready with v2 adapter.
 // In v2 architecture, signal_ready posts to the v2 adapter's message log (if configured).
 func TestWorkerServer_SignalReadyValidation(t *testing.T) {
-	tws := NewTestWorkerServer(t, "WORKER.1", nil)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["signal_ready"]
 
@@ -379,18 +170,14 @@ func TestWorkerServer_SignalReadyValidation(t *testing.T) {
 }
 
 // TestWorkerServer_SignalReadyHappyPath tests successful ready signaling with v2.
-// In v2 architecture, signal_ready posts to the v2 adapter's message log, not the worker's message store.
+// In v2 architecture, signal_ready posts via Fabric, not the worker's message store.
 func TestWorkerServer_SignalReadyHappyPath(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["signal_ready"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
-
-	// signal_ready posts to v2 adapter's message log, not to worker's message store
-	require.Len(t, store.appendCalls, 0, "signal_ready posts to v2 message log, not worker store")
 
 	// Verify success result
 	require.Contains(t, result.Content[0].Text, "ready signal acknowledged", "Result should confirm signal")
@@ -398,23 +185,13 @@ func TestWorkerServer_SignalReadyHappyPath(t *testing.T) {
 
 // TestWorkerServer_ToolDescriptionsAreHelpful verifies tool descriptions are informative.
 func TestWorkerServer_ToolDescriptionsAreHelpful(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	tests := []struct {
 		toolName      string
 		mustContain   []string
 		descMinLength int
 	}{
-		{
-			toolName:      "check_messages",
-			mustContain:   []string{"message", "unread"},
-			descMinLength: 30,
-		},
-		{
-			toolName:      "post_message",
-			mustContain:   []string{"message", "coordinator"},
-			descMinLength: 30,
-		},
 		{
 			toolName:      "signal_ready",
 			mustContain:   []string{"ready", "task", "assignment"},
@@ -438,45 +215,19 @@ func TestWorkerServer_ToolDescriptionsAreHelpful(t *testing.T) {
 
 // TestWorkerServer_InstructionsContainToolNames verifies instructions mention all tools.
 func TestWorkerServer_InstructionsContainToolNames(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 	instructions := strings.ToLower(ws.instructions)
 
-	toolNames := []string{"check_messages", "post_message", "signal_ready"}
+	// Phase 3 Fabric migration: instructions now reference fabric_* tools instead of legacy tools
+	toolNames := []string{"fabric_inbox", "fabric_send", "fabric_reply", "signal_ready"}
 	for _, name := range toolNames {
 		require.Contains(t, instructions, name, "Instructions should mention %q", name)
 	}
 }
 
-// TestWorkerServer_CheckMessagesSchema verifies check_messages tool schema.
-func TestWorkerServer_CheckMessagesSchema(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-
-	tool, ok := ws.tools["check_messages"]
-	require.True(t, ok, "check_messages tool not registered")
-
-	require.Empty(t, tool.InputSchema.Required, "check_messages should not have required parameters")
-}
-
-// TestWorkerServer_SendMessageSchema verifies post_message tool schema.
-func TestWorkerServer_SendMessageSchema(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-
-	tool, ok := ws.tools["post_message"]
-	require.True(t, ok, "post_message tool not registered")
-
-	require.Len(t, tool.InputSchema.Required, 2, "post_message should have 2 required parameters")
-
-	requiredSet := make(map[string]bool)
-	for _, r := range tool.InputSchema.Required {
-		requiredSet[r] = true
-	}
-	require.True(t, requiredSet["to"], "'to' should be required")
-	require.True(t, requiredSet["content"], "'content' should be required")
-}
-
 // TestWorkerServer_SignalReadySchema verifies signal_ready tool schema.
 func TestWorkerServer_SignalReadySchema(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	tool, ok := ws.tools["signal_ready"]
 	require.True(t, ok, "signal_ready tool not registered")
@@ -489,8 +240,7 @@ func TestWorkerServer_SignalReadySchema(t *testing.T) {
 // In v2 architecture, report_implementation_complete submits a command to the processor,
 // not through the callback mechanism.
 func TestWorkerServer_ReportImplementationComplete_SubmitsCommand(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_implementation_complete"]
 
@@ -514,8 +264,7 @@ func TestWorkerServer_ReportImplementationComplete_SubmitsCommand(t *testing.T) 
 // TestWorkerServer_ReportImplementationComplete_EmptySummary tests that empty summary is accepted in v2.
 // In v2 architecture, summary is optional (empty string is valid).
 func TestWorkerServer_ReportImplementationComplete_EmptySummary(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_implementation_complete"]
 
@@ -534,8 +283,7 @@ func TestWorkerServer_ReportImplementationComplete_EmptySummary(t *testing.T) {
 // TestWorkerServer_ReportImplementationComplete_ProcessorRejectsWrongPhase tests that processor validates phase.
 // In v2 architecture, phase validation happens in the processor, not the MCP handler.
 func TestWorkerServer_ReportImplementationComplete_ProcessorRejectsWrongPhase(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_implementation_complete"]
 
@@ -554,8 +302,7 @@ func TestWorkerServer_ReportImplementationComplete_ProcessorRejectsWrongPhase(t 
 
 // TestWorkerServer_ReportImplementationComplete_HappyPath tests successful completion in v2.
 func TestWorkerServer_ReportImplementationComplete_HappyPath(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_implementation_complete"]
 
@@ -581,8 +328,7 @@ func TestWorkerServer_ReportImplementationComplete_HappyPath(t *testing.T) {
 
 // TestWorkerServer_ReportImplementationComplete_AddressingFeedback tests completion from addressing_feedback phase in v2.
 func TestWorkerServer_ReportImplementationComplete_AddressingFeedback(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_implementation_complete"]
 
@@ -600,8 +346,7 @@ func TestWorkerServer_ReportImplementationComplete_AddressingFeedback(t *testing
 
 // TestWorkerServer_ReportReviewVerdict_SubmitsCommand tests command submission in v2.
 func TestWorkerServer_ReportReviewVerdict_SubmitsCommand(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -624,8 +369,7 @@ func TestWorkerServer_ReportReviewVerdict_SubmitsCommand(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdict_MissingVerdict tests validation in v2.
 func TestWorkerServer_ReportReviewVerdict_MissingVerdict(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -638,8 +382,7 @@ func TestWorkerServer_ReportReviewVerdict_MissingVerdict(t *testing.T) {
 // TestWorkerServer_ReportReviewVerdict_EmptyComments tests that empty comments are valid in v2.
 // In v2 architecture, comments are optional.
 func TestWorkerServer_ReportReviewVerdict_EmptyComments(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -657,8 +400,7 @@ func TestWorkerServer_ReportReviewVerdict_EmptyComments(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdict_InvalidVerdict tests invalid verdict value in v2.
 func TestWorkerServer_ReportReviewVerdict_InvalidVerdict(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -671,8 +413,7 @@ func TestWorkerServer_ReportReviewVerdict_InvalidVerdict(t *testing.T) {
 // TestWorkerServer_ReportReviewVerdict_ProcessorRejectsWrongPhase tests that processor validates phase.
 // In v2 architecture, phase validation happens in the processor, not the MCP handler.
 func TestWorkerServer_ReportReviewVerdict_ProcessorRejectsWrongPhase(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -691,8 +432,7 @@ func TestWorkerServer_ReportReviewVerdict_ProcessorRejectsWrongPhase(t *testing.
 
 // TestWorkerServer_ReportReviewVerdict_Approved tests successful approval in v2.
 func TestWorkerServer_ReportReviewVerdict_Approved(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -719,8 +459,7 @@ func TestWorkerServer_ReportReviewVerdict_Approved(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdict_Denied tests successful denial in v2.
 func TestWorkerServer_ReportReviewVerdict_Denied(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	handler := tws.handlers["report_review_verdict"]
 
@@ -746,7 +485,7 @@ func TestWorkerServer_ReportReviewVerdict_Denied(t *testing.T) {
 
 // TestWorkerServer_ReportImplementationCompleteSchema verifies tool schema.
 func TestWorkerServer_ReportImplementationCompleteSchema(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	tool, ok := ws.tools["report_implementation_complete"]
 	require.True(t, ok, "report_implementation_complete tool not registered")
@@ -760,7 +499,7 @@ func TestWorkerServer_ReportImplementationCompleteSchema(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdictSchema verifies tool schema.
 func TestWorkerServer_ReportReviewVerdictSchema(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	tool, ok := ws.tools["report_review_verdict"]
 	require.True(t, ok, "report_review_verdict tool not registered")
@@ -1141,11 +880,10 @@ func (m *mockAccountabilityWriter) WriteWorkerAccountabilitySummary(workerID str
 
 // TestHandlePostAccountabilitySummary tests valid summary saves and returns path.
 func TestHandlePostAccountabilitySummary(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 	writer.returnPath = "/sessions/abc/workers/WORKER.1/accountability_summary.md"
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1187,10 +925,9 @@ func TestHandlePostAccountabilitySummary(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_EmptyTaskID tests that missing task_id returns error.
 func TestHandlePostAccountabilitySummary_EmptyTaskID(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1206,10 +943,9 @@ func TestHandlePostAccountabilitySummary_EmptyTaskID(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_EmptySummary tests that missing summary returns error.
 func TestHandlePostAccountabilitySummary_EmptySummary(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1225,10 +961,9 @@ func TestHandlePostAccountabilitySummary_EmptySummary(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_InvalidTaskID tests that path traversal is rejected.
 func TestHandlePostAccountabilitySummary_InvalidTaskID(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1244,10 +979,9 @@ func TestHandlePostAccountabilitySummary_InvalidTaskID(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_SummaryTooShort tests validation for summary length.
 func TestHandlePostAccountabilitySummary_SummaryTooShort(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1263,9 +997,7 @@ func TestHandlePostAccountabilitySummary_SummaryTooShort(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_NilWriter tests graceful error when writer not configured.
 func TestHandlePostAccountabilitySummary_NilWriter(t *testing.T) {
-	store := newMockMessageStore()
-
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	// Don't set accountability writer - leave it nil
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1281,11 +1013,10 @@ func TestHandlePostAccountabilitySummary_NilWriter(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_WriterError tests that writer errors are propagated.
 func TestHandlePostAccountabilitySummary_WriterError(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 	writer.returnErr = fmt.Errorf("disk full")
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1302,10 +1033,9 @@ func TestHandlePostAccountabilitySummary_WriterError(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_InvalidJSON tests that invalid JSON returns error.
 func TestHandlePostAccountabilitySummary_InvalidJSON(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1316,10 +1046,9 @@ func TestHandlePostAccountabilitySummary_InvalidJSON(t *testing.T) {
 
 // TestHandlePostAccountabilitySummary_OnlyRequiredFields tests success with only required fields.
 func TestHandlePostAccountabilitySummary_OnlyRequiredFields(t *testing.T) {
-	store := newMockMessageStore()
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", store)
+	ws := NewWorkerServer("WORKER.1")
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1346,7 +1075,7 @@ func TestHandlePostAccountabilitySummary_OnlyRequiredFields(t *testing.T) {
 func TestHandlePostAccountabilitySummary_NoMessageStore(t *testing.T) {
 	writer := newMockAccountabilityWriter()
 
-	ws := NewWorkerServer("WORKER.1", nil) // nil message store
+	ws := NewWorkerServer("WORKER.1") // nil message store
 	ws.SetAccountabilityWriter(writer)
 	handler := ws.handlers["post_accountability_summary"]
 
@@ -1369,7 +1098,7 @@ func TestHandlePostAccountabilitySummary_NoMessageStore(t *testing.T) {
 
 // TestPostAccountabilitySummaryToolRegistered tests that post_accountability_summary tool appears in registered tools.
 func TestPostAccountabilitySummaryToolRegistered(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	tool, ok := ws.tools["post_accountability_summary"]
 	require.True(t, ok, "post_accountability_summary tool should be registered")
@@ -1421,33 +1150,10 @@ func TestPostAccountabilitySummaryToolRegistered(t *testing.T) {
 
 // TestPostAccountabilitySummaryToolHandlerRegistered tests that handler is registered.
 func TestPostAccountabilitySummaryToolHandlerRegistered(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 
 	_, ok := ws.handlers["post_accountability_summary"]
 	require.True(t, ok, "post_accountability_summary handler should be registered")
-}
-
-// TestWorkerServer_RegistersAllToolsIncludingPostAccountabilitySummary verifies all 6 worker tools are registered.
-func TestWorkerServer_RegistersAllToolsIncludingPostAccountabilitySummary(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
-
-	expectedTools := []string{
-		"check_messages",
-		"post_message",
-		"signal_ready",
-		"report_implementation_complete",
-		"report_review_verdict",
-		"post_accountability_summary",
-	}
-
-	for _, toolName := range expectedTools {
-		_, ok := ws.tools[toolName]
-		require.True(t, ok, "Tool %q not registered", toolName)
-		_, ok = ws.handlers[toolName]
-		require.True(t, ok, "Handler for %q not registered", toolName)
-	}
-
-	require.Equal(t, len(expectedTools), len(ws.tools), "Tool count mismatch")
 }
 
 // ============================================================================
@@ -1491,7 +1197,7 @@ func (m *mockToolCallRecorder) GetCalls() []toolCallRecord {
 
 // TestWorkerServer_SetTurnEnforcer tests that SetTurnEnforcer correctly sets the enforcer.
 func TestWorkerServer_SetTurnEnforcer(t *testing.T) {
-	ws := NewWorkerServer("WORKER.1", nil)
+	ws := NewWorkerServer("WORKER.1")
 	require.Nil(t, ws.enforcer, "enforcer should be nil initially")
 
 	recorder := newMockToolCallRecorder()
@@ -1499,60 +1205,11 @@ func TestWorkerServer_SetTurnEnforcer(t *testing.T) {
 	require.NotNil(t, ws.enforcer, "enforcer should be set")
 }
 
-// TestWorkerServer_PostMessage_RecordsToolCall tests that post_message records tool call.
-func TestWorkerServer_PostMessage_RecordsToolCall(t *testing.T) {
-	store := newMockMessageStore()
-	recorder := newMockToolCallRecorder()
-
-	ws := NewWorkerServer("WORKER.1", store)
-	ws.SetTurnEnforcer(recorder)
-	handler := ws.handlers["post_message"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Test message"}`))
-	require.NoError(t, err, "Unexpected error")
-	require.NotNil(t, result, "Expected result")
-
-	// Verify RecordToolCall was called
-	calls := recorder.GetCalls()
-	require.Len(t, calls, 1, "Expected 1 recorder call")
-	require.Equal(t, "WORKER.1", calls[0].ProcessID, "Expected worker ID")
-	require.Equal(t, "post_message", calls[0].ToolName, "Expected tool name 'post_message'")
-}
-
-// TestWorkerServer_PostMessage_NilEnforcer tests that post_message works when enforcer is nil.
-func TestWorkerServer_PostMessage_NilEnforcer(t *testing.T) {
-	store := newMockMessageStore()
-	ws := NewWorkerServer("WORKER.1", store)
-	// Don't set enforcer - leave it nil
-	handler := ws.handlers["post_message"]
-
-	result, err := handler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Test message"}`))
-	require.NoError(t, err, "Should not panic with nil enforcer")
-	require.NotNil(t, result, "Expected result")
-}
-
-// TestWorkerServer_PostMessage_ErrorDoesNotRecordToolCall tests that errors don't record tool calls.
-func TestWorkerServer_PostMessage_ErrorDoesNotRecordToolCall(t *testing.T) {
-	recorder := newMockToolCallRecorder()
-
-	ws := NewWorkerServer("WORKER.1", nil) // nil store causes error
-	ws.SetTurnEnforcer(recorder)
-	handler := ws.handlers["post_message"]
-
-	_, err := handler(context.Background(), json.RawMessage(`{"to": "COORDINATOR", "content": "Test message"}`))
-	require.Error(t, err, "Expected error with nil store")
-
-	// Verify RecordToolCall was NOT called
-	calls := recorder.GetCalls()
-	require.Len(t, calls, 0, "RecordToolCall should not be called on error")
-}
-
 // TestWorkerServer_SignalReady_RecordsToolCall tests that signal_ready records tool call.
 func TestWorkerServer_SignalReady_RecordsToolCall(t *testing.T) {
-	store := newMockMessageStore()
 	recorder := newMockToolCallRecorder()
 
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
 	handler := tws.handlers["signal_ready"]
@@ -1570,8 +1227,7 @@ func TestWorkerServer_SignalReady_RecordsToolCall(t *testing.T) {
 
 // TestWorkerServer_SignalReady_NilEnforcer tests that signal_ready works when enforcer is nil.
 func TestWorkerServer_SignalReady_NilEnforcer(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	// Don't set enforcer - leave it nil
 	handler := tws.handlers["signal_ready"]
@@ -1583,10 +1239,9 @@ func TestWorkerServer_SignalReady_NilEnforcer(t *testing.T) {
 
 // TestWorkerServer_ReportImplementationComplete_RecordsToolCall tests that report_implementation_complete records tool call.
 func TestWorkerServer_ReportImplementationComplete_RecordsToolCall(t *testing.T) {
-	store := newMockMessageStore()
 	recorder := newMockToolCallRecorder()
 
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
 	tws.V2Handler.SetResult(&command.CommandResult{
@@ -1609,8 +1264,7 @@ func TestWorkerServer_ReportImplementationComplete_RecordsToolCall(t *testing.T)
 
 // TestWorkerServer_ReportImplementationComplete_NilEnforcer tests that report_implementation_complete works when enforcer is nil.
 func TestWorkerServer_ReportImplementationComplete_NilEnforcer(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	// Don't set enforcer - leave it nil
 	tws.V2Handler.SetResult(&command.CommandResult{
@@ -1626,10 +1280,9 @@ func TestWorkerServer_ReportImplementationComplete_NilEnforcer(t *testing.T) {
 
 // TestWorkerServer_ReportImplementationComplete_ErrorDoesNotRecordToolCall tests that errors don't record tool calls.
 func TestWorkerServer_ReportImplementationComplete_ErrorDoesNotRecordToolCall(t *testing.T) {
-	store := newMockMessageStore()
 	recorder := newMockToolCallRecorder()
 
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
 	// Configure mock to return error
@@ -1653,10 +1306,9 @@ func TestWorkerServer_ReportImplementationComplete_ErrorDoesNotRecordToolCall(t 
 
 // TestWorkerServer_ReportReviewVerdict_RecordsToolCall tests that report_review_verdict records tool call.
 func TestWorkerServer_ReportReviewVerdict_RecordsToolCall(t *testing.T) {
-	store := newMockMessageStore()
 	recorder := newMockToolCallRecorder()
 
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
 	tws.V2Handler.SetResult(&command.CommandResult{
@@ -1679,8 +1331,7 @@ func TestWorkerServer_ReportReviewVerdict_RecordsToolCall(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdict_NilEnforcer tests that report_review_verdict works when enforcer is nil.
 func TestWorkerServer_ReportReviewVerdict_NilEnforcer(t *testing.T) {
-	store := newMockMessageStore()
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	// Don't set enforcer - leave it nil
 	tws.V2Handler.SetResult(&command.CommandResult{
@@ -1696,10 +1347,9 @@ func TestWorkerServer_ReportReviewVerdict_NilEnforcer(t *testing.T) {
 
 // TestWorkerServer_ReportReviewVerdict_ErrorDoesNotRecordToolCall tests that errors don't record tool calls.
 func TestWorkerServer_ReportReviewVerdict_ErrorDoesNotRecordToolCall(t *testing.T) {
-	store := newMockMessageStore()
 	recorder := newMockToolCallRecorder()
 
-	tws := NewTestWorkerServer(t, "WORKER.1", store)
+	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
 	handler := tws.handlers["report_review_verdict"]

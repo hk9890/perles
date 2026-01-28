@@ -854,3 +854,149 @@ func TestCommandLogMiddleware_EmptyTraceID(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, event.TraceID, "TraceID should be empty when not set on command")
 }
+
+// ===========================================================================
+// Command Persistence Middleware Tests
+// ===========================================================================
+
+// mockCommandWriter implements CommandWriter for testing.
+type mockCommandWriter struct {
+	mu     sync.Mutex
+	events []CommandEvent
+}
+
+func (m *mockCommandWriter) WriteCommandEvent(event CommandEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, event)
+	return nil
+}
+
+func (m *mockCommandWriter) Events() []CommandEvent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]CommandEvent, len(m.events))
+	copy(result, m.events)
+	return result
+}
+
+func TestCommandPersistenceMiddleware_Success(t *testing.T) {
+	writer := &mockCommandWriter{}
+	middleware := NewCommandPersistenceMiddleware(CommandPersistenceMiddlewareConfig{
+		WriterProvider: func() CommandWriter { return writer },
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	base := command.NewBaseCommand("test_command", command.SourceMCPTool)
+	base.SetTraceID("trace-123")
+	cmd := &testCommand{BaseCommand: &base, value: 42}
+
+	result, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+
+	events := writer.Events()
+	require.Len(t, events, 1)
+	assert.Equal(t, cmd.ID(), events[0].CommandID)
+	assert.Equal(t, "test_command", events[0].CommandType)
+	assert.Equal(t, "mcp_tool", events[0].Source)
+	assert.True(t, events[0].Success)
+	assert.Empty(t, events[0].Error)
+	assert.Equal(t, "trace-123", events[0].TraceID)
+	assert.True(t, events[0].DurationMs >= 0)
+}
+
+func TestCommandPersistenceMiddleware_Error(t *testing.T) {
+	writer := &mockCommandWriter{}
+	middleware := NewCommandPersistenceMiddleware(CommandPersistenceMiddlewareConfig{
+		WriterProvider: func() CommandWriter { return writer },
+	})
+
+	handler := errorHandler("something went wrong")
+	wrapped := middleware(handler)
+
+	base := command.NewBaseCommand("test_command", command.SourceInternal)
+	cmd := &testCommand{BaseCommand: &base, value: 1}
+
+	_, err := wrapped.Handle(context.Background(), cmd)
+	require.Error(t, err)
+
+	events := writer.Events()
+	require.Len(t, events, 1)
+	assert.False(t, events[0].Success)
+	assert.Equal(t, "something went wrong", events[0].Error)
+}
+
+func TestCommandPersistenceMiddleware_NilProvider(t *testing.T) {
+	// Middleware with nil provider should be a no-op
+	middleware := NewCommandPersistenceMiddleware(CommandPersistenceMiddlewareConfig{
+		WriterProvider: nil,
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	base := command.NewBaseCommand("test_command", command.SourceMCPTool)
+	cmd := &testCommand{BaseCommand: &base, value: 1}
+
+	result, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+}
+
+func TestCommandPersistenceMiddleware_NilWriter(t *testing.T) {
+	// Provider that returns nil writer should be a no-op
+	middleware := NewCommandPersistenceMiddleware(CommandPersistenceMiddlewareConfig{
+		WriterProvider: func() CommandWriter { return nil },
+	})
+
+	handler := successHandler()
+	wrapped := middleware(handler)
+
+	base := command.NewBaseCommand("test_command", command.SourceMCPTool)
+	cmd := &testCommand{BaseCommand: &base, value: 1}
+
+	result, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+}
+
+func TestCommandPersistenceMiddleware_CapturesPayload(t *testing.T) {
+	writer := &mockCommandWriter{}
+	middleware := NewCommandPersistenceMiddleware(CommandPersistenceMiddlewareConfig{
+		WriterProvider: func() CommandWriter { return writer },
+	})
+
+	// Use a handler that returns data
+	handler := HandlerFunc(func(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
+		return &command.CommandResult{
+			Success: true,
+			Data:    map[string]string{"worker_id": "worker-123"},
+		}, nil
+	})
+	wrapped := middleware(handler)
+
+	base := command.NewBaseCommand("test_command", command.SourceMCPTool)
+	cmd := &testCommand{BaseCommand: &base, value: 42}
+
+	result, err := wrapped.Handle(context.Background(), cmd)
+	require.NoError(t, err)
+	require.True(t, result.Success)
+
+	events := writer.Events()
+	require.Len(t, events, 1)
+
+	// Verify payload is captured (best effort - test command has unexported fields,
+	// but real commands like SpawnProcessCommand have exported Role, ProcessID, etc.)
+	assert.NotNil(t, events[0].Payload)
+	// Even if empty object, the field should be set
+	assert.NotEmpty(t, events[0].Payload)
+
+	// Verify result data is captured
+	assert.NotNil(t, events[0].ResultData)
+	resultMap, ok := events[0].ResultData.(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "worker-123", resultMap["worker_id"])
+}

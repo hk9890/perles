@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -407,6 +408,130 @@ func NewCommandLogMiddleware(cfg CommandLogMiddlewareConfig) Middleware {
 				TraceID:     traceID,
 			}
 			cfg.EventBus.Publish("updated", event)
+
+			return result, err
+		})
+	}
+}
+
+// ===========================================================================
+// Command Persistence Middleware
+// ===========================================================================
+
+// CommandWriter defines the interface for persisting command events to storage.
+// This is implemented by session.Session.WriteCommandEvent.
+type CommandWriter interface {
+	WriteCommandEvent(event CommandEvent) error
+}
+
+// CommandEvent represents a V2 command processor event for persistence.
+// This is the same structure as session.CommandEvent to avoid import cycles.
+type CommandEvent struct {
+	CommandID   string          `json:"command_id"`
+	CommandType string          `json:"command_type"`
+	Source      string          `json:"source"`
+	Success     bool            `json:"success"`
+	Error       string          `json:"error,omitempty"`
+	DurationMs  int64           `json:"duration_ms"`
+	Timestamp   time.Time       `json:"timestamp"`
+	TraceID     string          `json:"trace_id,omitempty"`
+	Payload     json.RawMessage `json:"payload,omitempty"`
+	ResultData  any             `json:"result_data,omitempty"`
+}
+
+// CommandPersistenceMiddlewareConfig configures the command persistence middleware.
+type CommandPersistenceMiddlewareConfig struct {
+	// WriterProvider returns the current CommandWriter (session).
+	// Using a provider function allows the writer to change (e.g., session restart).
+	// If nil or returns nil, the middleware is a no-op.
+	WriterProvider func() CommandWriter
+}
+
+// NewCommandPersistenceMiddleware creates a middleware that persists CommandEvents
+// to commands.jsonl via the provided writer.
+// If writerProvider is nil or returns nil, the middleware is a no-op (graceful degradation).
+func NewCommandPersistenceMiddleware(cfg CommandPersistenceMiddlewareConfig) Middleware {
+	return func(next CommandHandler) CommandHandler {
+		return HandlerFunc(func(ctx context.Context, cmd command.Command) (*command.CommandResult, error) {
+			// If no writer provider, just pass through
+			if cfg.WriterProvider == nil {
+				return next.Handle(ctx, cmd)
+			}
+
+			start := time.Now()
+
+			// Execute the handler
+			result, err := next.Handle(ctx, cmd)
+
+			// Get the current writer (may be nil if session not started)
+			writer := cfg.WriterProvider()
+			if writer == nil {
+				return result, err
+			}
+
+			// Calculate duration
+			duration := time.Since(start)
+
+			// Determine success and error
+			var success bool
+			var cmdErrStr string
+
+			if err != nil {
+				success = false
+				cmdErrStr = err.Error()
+			} else if result != nil && !result.Success {
+				success = false
+				if result.Error != nil {
+					cmdErrStr = result.Error.Error()
+				}
+			} else {
+				success = true
+			}
+
+			// Extract source if available
+			var sourceStr string
+			if hasSource, ok := cmd.(interface{ Source() command.CommandSource }); ok {
+				sourceStr = string(hasSource.Source())
+			}
+
+			// Extract trace ID if available
+			var traceID string
+			if hasTraceID, ok := cmd.(interface{ TraceID() string }); ok {
+				traceID = hasTraceID.TraceID()
+			}
+
+			// Serialize command payload for debugging (best effort, don't fail on errors)
+			var payload json.RawMessage
+			if payloadBytes, marshalErr := json.Marshal(cmd); marshalErr == nil {
+				payload = payloadBytes
+			}
+
+			// Capture result data if available
+			var resultData any
+			if result != nil && result.Data != nil {
+				resultData = result.Data
+			}
+
+			// Write the event (fire-and-forget, don't block command processing)
+			event := CommandEvent{
+				CommandID:   cmd.ID(),
+				CommandType: cmd.Type().String(),
+				Source:      sourceStr,
+				Success:     success,
+				Error:       cmdErrStr,
+				DurationMs:  duration.Milliseconds(),
+				Timestamp:   time.Now(),
+				TraceID:     traceID,
+				Payload:     payload,
+				ResultData:  resultData,
+			}
+
+			if writeErr := writer.WriteCommandEvent(event); writeErr != nil {
+				log.Warn(log.CatOrch, "failed to persist command event",
+					"command_id", cmd.ID(),
+					"error", writeErr,
+				)
+			}
 
 			return result, err
 		})

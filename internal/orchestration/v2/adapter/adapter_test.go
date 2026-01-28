@@ -13,13 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
 )
 
 // ===========================================================================
@@ -74,130 +72,6 @@ func (h *mockHandler) getCommands() []command.Command {
 	result := make([]command.Command, len(h.commands))
 	copy(result, h.commands)
 	return result
-}
-
-// mockMessageLog records appended messages for testing.
-type mockMessageLog struct {
-	mu       sync.Mutex
-	messages []mockMessage
-	err      error // Error to return from Append
-}
-
-type mockMessage struct {
-	From    string
-	To      string
-	Content string
-	MsgType message.MessageType
-}
-
-func (m *mockMessageLog) Append(from, to, content string, msgType message.MessageType) (*message.Entry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.err != nil {
-		return nil, m.err
-	}
-
-	m.messages = append(m.messages, mockMessage{
-		From:    from,
-		To:      to,
-		Content: content,
-		MsgType: msgType,
-	})
-
-	return &message.Entry{
-		From:    from,
-		To:      to,
-		Content: content,
-		Type:    msgType,
-	}, nil
-}
-
-func (m *mockMessageLog) getMessages() []mockMessage {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]mockMessage, len(m.messages))
-	copy(result, m.messages)
-	return result
-}
-
-// mockFullMessageRepository implements MessageRepository for testing.
-type mockFullMessageRepository struct {
-	mockMessageLog
-	entries          []message.Entry
-	unreadFor        map[string][]message.Entry
-	readAndMarkCalls map[string]int
-	count            int
-}
-
-func newMockFullMessageRepository() *mockFullMessageRepository {
-	return &mockFullMessageRepository{
-		mockMessageLog: mockMessageLog{
-			messages: make([]mockMessage, 0),
-		},
-		entries:          make([]message.Entry, 0),
-		unreadFor:        make(map[string][]message.Entry),
-		readAndMarkCalls: make(map[string]int),
-	}
-}
-
-func (m *mockFullMessageRepository) Entries() []message.Entry {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]message.Entry, len(m.entries))
-	copy(result, m.entries)
-	return result
-}
-
-func (m *mockFullMessageRepository) ReadAndMark(agentID string) []message.Entry {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.readAndMarkCalls[agentID]++
-	if unread, ok := m.unreadFor[agentID]; ok {
-		result := make([]message.Entry, len(unread))
-		copy(result, unread)
-		// Clear unread after reading (simulates atomic read-and-mark)
-		m.unreadFor[agentID] = nil
-		return result
-	}
-	return []message.Entry{}
-}
-
-func (m *mockFullMessageRepository) Count() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.count
-}
-
-func (m *mockFullMessageRepository) Broker() *pubsub.Broker[message.Event] {
-	return nil
-}
-
-func (m *mockFullMessageRepository) AppendRestored(entry message.Entry) (*message.Entry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.entries = append(m.entries, entry)
-	m.count++
-	return &entry, nil
-}
-
-func (m *mockFullMessageRepository) addEntry(entry message.Entry) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.entries = append(m.entries, entry)
-	m.count++
-}
-
-func (m *mockFullMessageRepository) setUnreadFor(agentID string, entries []message.Entry) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.unreadFor[agentID] = entries
-}
-
-func (m *mockFullMessageRepository) getReadAndMarkCount(agentID string) int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.readAndMarkCalls[agentID]
 }
 
 // testAdapter creates an adapter with a running processor for testing.
@@ -486,290 +360,6 @@ func TestHandleSendToWorker(t *testing.T) {
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "content is required")
 	})
-}
-
-func TestHandlePostMessage(t *testing.T) {
-	t.Run("to_all_broadcasts", func(t *testing.T) {
-		adapter, handler, cleanup := testAdapter(t)
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"to":      "ALL",
-			"content": "Broadcast message",
-		})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "sender-id")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "broadcast")
-
-		// Verify broadcast command was created
-		cmds := handler.getCommands()
-		require.Len(t, cmds, 1)
-		broadcastCmd, ok := cmds[0].(*command.BroadcastCommand)
-		require.True(t, ok)
-		assert.Equal(t, "Broadcast message", broadcastCmd.Content)
-		assert.Contains(t, broadcastCmd.ExcludeWorkers, "sender-id")
-	})
-
-	t.Run("to_coordinator_success", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"to":      "COORDINATOR",
-			"content": "Message to coordinator",
-		})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "worker-1")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "Message posted to coordinator")
-
-		// Verify message was appended to the log
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "worker-1", messages[0].From)
-		assert.Equal(t, message.ActorCoordinator, messages[0].To)
-		assert.Equal(t, "Message to coordinator", messages[0].Content)
-		assert.Equal(t, message.MessageInfo, messages[0].MsgType)
-	})
-
-	t.Run("to_coordinator_no_message_log", func(t *testing.T) {
-		// Test the error case when MessageLog is not wired
-		adapter, _, cleanup := testAdapter(t) // No WithMessageRepository
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"to":      "COORDINATOR",
-			"content": "Message to coordinator",
-		})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "worker-1")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "requires message repository (not wired)")
-	})
-
-	t.Run("to_coordinator_append_error", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		msgRepo.err = errors.New("database error")
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"to":      "COORDINATOR",
-			"content": "Message to coordinator",
-		})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "worker-1")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "failed to append message to coordinator log")
-		assert.Contains(t, err.Error(), "database error")
-	})
-
-	t.Run("to_specific_worker", func(t *testing.T) {
-		adapter, handler, cleanup := testAdapter(t)
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"to":      "WORKER.5",
-			"content": "Direct message",
-		})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "worker-1")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "WORKER.5")
-
-		// Verify SendToProcess command was created
-		cmds := handler.getCommands()
-		require.Len(t, cmds, 1)
-		sendCmd, ok := cmds[0].(*command.SendToProcessCommand)
-		require.True(t, ok)
-		assert.Equal(t, "WORKER.5", sendCmd.ProcessID)
-		assert.Equal(t, "Direct message", sendCmd.Content)
-	})
-
-	t.Run("missing_to", func(t *testing.T) {
-		adapter, _, cleanup := testAdapter(t)
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{"content": "test"})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "sender")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "to is required")
-	})
-
-	t.Run("missing_content", func(t *testing.T) {
-		adapter, _, cleanup := testAdapter(t)
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{"to": "ALL"})
-
-		result, err := adapter.HandlePostMessage(context.Background(), args, "sender")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "content is required")
-	})
-}
-
-func TestHandleReadMessageLog(t *testing.T) {
-	t.Run("no_repository_configured", func(t *testing.T) {
-		adapter, _, cleanup := testAdapter(t)
-		defer cleanup()
-
-		result, err := adapter.HandleReadMessageLog(context.Background(), nil, "worker-1")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "message repository not configured for read operations")
-	})
-
-	t.Run("read_all_returns_all_entries", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		msgRepo.addEntry(message.Entry{
-			ID:      "msg-1",
-			From:    "worker-1",
-			To:      "COORDINATOR",
-			Content: "Hello",
-			Type:    message.MessageInfo,
-		})
-		msgRepo.addEntry(message.Entry{
-			ID:      "msg-2",
-			From:    "COORDINATOR",
-			To:      "worker-1",
-			Content: "Hi back",
-			Type:    message.MessageResponse,
-		})
-
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]bool{"read_all": true})
-		result, err := adapter.HandleReadMessageLog(context.Background(), args, "worker-1")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Parse the JSON response (now structured with messageLogResponse)
-		var resp messageLogResponse
-		err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
-		require.NoError(t, err)
-		assert.Equal(t, 2, resp.TotalCount)
-		assert.Equal(t, 2, resp.ReturnedCount)
-		assert.Len(t, resp.Messages, 2)
-		assert.Equal(t, "Hello", resp.Messages[0].Content)
-		assert.Equal(t, "Hi back", resp.Messages[1].Content)
-
-		// MarkRead should NOT be called when read_all=true
-		assert.Equal(t, 0, msgRepo.getReadAndMarkCount("worker-1"))
-	})
-
-	t.Run("read_unread_returns_unread_entries", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		unread := []message.Entry{
-			{
-				ID:      "msg-3",
-				From:    "COORDINATOR",
-				To:      "worker-1",
-				Content: "New task",
-				Type:    message.MessageInfo,
-			},
-		}
-		msgRepo.setUnreadFor("worker-1", unread)
-
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		// read_all defaults to false
-		result, err := adapter.HandleReadMessageLog(context.Background(), nil, "worker-1")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Parse the JSON response (now structured with messageLogResponse)
-		var resp messageLogResponse
-		err = json.Unmarshal([]byte(result.Content[0].Text), &resp)
-		require.NoError(t, err)
-		assert.Equal(t, 1, resp.TotalCount)
-		assert.Equal(t, 1, resp.ReturnedCount)
-		assert.Len(t, resp.Messages, 1)
-		assert.Equal(t, "New task", resp.Messages[0].Content)
-
-		// MarkRead should be called when read_all=false
-		assert.Equal(t, 1, msgRepo.getReadAndMarkCount("worker-1"))
-	})
-
-	t.Run("read_unread_calls_mark_read", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]bool{"read_all": false})
-		_, err := adapter.HandleReadMessageLog(context.Background(), args, "worker-2")
-
-		require.NoError(t, err)
-		assert.Equal(t, 1, msgRepo.getReadAndMarkCount("worker-2"))
-	})
-
-	t.Run("invalid_json_args", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		result, err := adapter.HandleReadMessageLog(context.Background(), []byte("invalid"), "worker-1")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "invalid arguments")
-	})
-}
-
-func TestWithMessageRepository(t *testing.T) {
-	t.Run("sets_msgRepo", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		p := processor.NewCommandProcessor()
-		adapter := NewV2Adapter(p, WithMessageRepository(msgRepo))
-
-		// msgRepo should be set for read/write operations
-		assert.NotNil(t, adapter.msgRepo)
-	})
-
-	t.Run("write_operations_work_via_msgRepo", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		// HandleSignalReady uses msgLog.Append
-		result, err := adapter.HandleSignalReady(context.Background(), nil, "worker-123")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Verify message was appended via the msgRepo interface
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "worker-123", messages[0].From)
-	})
-
 }
 
 // ===========================================================================
@@ -1130,57 +720,6 @@ func TestHandleApproveCommit(t *testing.T) {
 // State Transition Tests (Batch 5)
 // ===========================================================================
 
-func TestHandleSignalReady(t *testing.T) {
-	t.Run("posts_message_to_log", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		result, err := adapter.HandleSignalReady(context.Background(), nil, "worker-123")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "worker-123")
-		assert.Contains(t, result.Content[0].Text, "ready")
-
-		// Verify message was posted to log
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "worker-123", messages[0].From)
-		assert.Equal(t, message.ActorCoordinator, messages[0].To)
-		assert.Equal(t, message.MessageWorkerReady, messages[0].MsgType)
-		assert.Contains(t, messages[0].Content, "worker-123")
-		assert.Contains(t, messages[0].Content, "ready")
-	})
-
-	t.Run("succeeds_without_message_log", func(t *testing.T) {
-		// When no message log is configured, signal_ready still succeeds
-		adapter, _, cleanup := testAdapter(t)
-		defer cleanup()
-
-		result, err := adapter.HandleSignalReady(context.Background(), nil, "worker-456")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "worker-456")
-	})
-
-	t.Run("returns_error_on_log_failure", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		msgRepo.err = errors.New("log write failed")
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		result, err := adapter.HandleSignalReady(context.Background(), nil, "worker-789")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "failed to post ready message")
-	})
-}
-
 func TestHandleReportImplementationComplete(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		adapter, handler, cleanup := testAdapter(t)
@@ -1194,8 +733,8 @@ func TestHandleReportImplementationComplete(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "Implementation complete")
+		assert.True(t, result.Success)
+		assert.Contains(t, result.Message, "Implementation complete")
 
 		// Verify command
 		cmds := handler.getCommands()
@@ -1216,66 +755,6 @@ func TestHandleReportImplementationComplete(t *testing.T) {
 		assert.Nil(t, result)
 		assert.Contains(t, err.Error(), "invalid arguments")
 	})
-
-	t.Run("posts_completion_message_to_log", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"summary": "Implemented feature X",
-		})
-
-		result, err := adapter.HandleReportImplementationComplete(context.Background(), args, "worker-123")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Verify message was posted to log
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "worker-123", messages[0].From)
-		assert.Equal(t, message.ActorCoordinator, messages[0].To)
-		assert.Equal(t, message.MessageCompletion, messages[0].MsgType)
-		assert.Contains(t, messages[0].Content, "Implementation complete")
-		assert.Contains(t, messages[0].Content, "Implemented feature X")
-	})
-
-	t.Run("posts_completion_message_without_summary", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{})
-
-		result, err := adapter.HandleReportImplementationComplete(context.Background(), args, "worker-123")
-
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		// Verify message content when no summary
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "Implementation complete", messages[0].Content)
-	})
-
-	t.Run("returns_error_on_log_failure", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		msgRepo.err = errors.New("log write failed")
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"summary": "Done",
-		})
-
-		result, err := adapter.HandleReportImplementationComplete(context.Background(), args, "worker-123")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "failed to post completion message")
-	})
 }
 
 func TestHandleReportReviewVerdict(t *testing.T) {
@@ -1292,8 +771,10 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "APPROVED")
+		assert.True(t, result.Success)
+		assert.Equal(t, "APPROVED", result.Verdict)
+		assert.Equal(t, "LGTM", result.Comments)
+		assert.Contains(t, result.Message, "APPROVED")
 
 		// Verify command
 		cmds := handler.getCommands()
@@ -1318,8 +799,10 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-		assert.Contains(t, result.Content[0].Text, "DENIED")
+		assert.True(t, result.Success)
+		assert.Equal(t, "DENIED", result.Verdict)
+		assert.Equal(t, "Needs more tests", result.Comments)
+		assert.Contains(t, result.Message, "DENIED")
 
 		// Verify command
 		cmds := handler.getCommands()
@@ -1360,9 +843,8 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid verdict")
 	})
 
-	t.Run("posts_verdict_message_to_log", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
+	t.Run("returns_verdict_and_comments_in_result", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
@@ -1374,21 +856,13 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.False(t, result.IsError)
-
-		// Verify message was posted to log
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "worker-reviewer", messages[0].From)
-		assert.Equal(t, message.ActorCoordinator, messages[0].To)
-		assert.Equal(t, message.MessageCompletion, messages[0].MsgType)
-		assert.Contains(t, messages[0].Content, "Review verdict: APPROVED")
-		assert.Contains(t, messages[0].Content, "LGTM, great work!")
+		assert.True(t, result.Success)
+		assert.Equal(t, "APPROVED", result.Verdict)
+		assert.Equal(t, "LGTM, great work!", result.Comments)
 	})
 
-	t.Run("posts_verdict_message_without_comments", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
+	t.Run("returns_verdict_without_comments", func(t *testing.T) {
+		adapter, _, cleanup := testAdapter(t)
 		defer cleanup()
 
 		args := toJSON(t, map[string]string{
@@ -1399,28 +873,9 @@ func TestHandleReportReviewVerdict(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-
-		// Verify message content when no comments
-		messages := msgRepo.getMessages()
-		require.Len(t, messages, 1)
-		assert.Equal(t, "Review verdict: DENIED", messages[0].Content)
-	})
-
-	t.Run("returns_error_on_log_failure", func(t *testing.T) {
-		msgRepo := newMockFullMessageRepository()
-		msgRepo.err = errors.New("log write failed")
-		adapter, _, cleanup := testAdapter(t, WithMessageRepository(msgRepo))
-		defer cleanup()
-
-		args := toJSON(t, map[string]string{
-			"verdict": "APPROVED",
-		})
-
-		result, err := adapter.HandleReportReviewVerdict(context.Background(), args, "worker-reviewer")
-
-		require.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "failed to post verdict message")
+		assert.True(t, result.Success)
+		assert.Equal(t, "DENIED", result.Verdict)
+		assert.Empty(t, result.Comments)
 	})
 }
 
@@ -1775,7 +1230,7 @@ func TestAdapter_IntegrationMultipleTools(t *testing.T) {
 	})
 	result3, err := adapter.HandleReportImplementationComplete(context.Background(), args, "worker-1")
 	require.NoError(t, err)
-	assert.False(t, result3.IsError)
+	assert.True(t, result3.Success)
 
 	// Verify all commands were processed
 	cmds := handler.getCommands()

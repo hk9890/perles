@@ -32,8 +32,9 @@ var systemPromptTemplate = template.Must(template.New("prompt-mode").Parse(`
 - assign_task_review: assign a review task to exactly ONE ready worker.
 - assign_review_feedback: assign feedback incorporation to exactly ONE ready worker.
 - approve_commit: approve and instruct a worker to commit its output.
-- post_message: send a message to the shared message log for a specific worker or all workers.
-- read_message_log: read the shared message log (use ONLY after context refresh, NEVER to poll)
+- fabric_send: send a message to a channel (#general, #tasks, #system, #planning)
+- fabric_inbox: check for unread messages across channels (use ONLY after context refresh, NEVER to poll)
+- fabric_history: read channel message history
 - get_task_status / mark_task_complete / mark_task_failed: bd task tracking.
 - spawn_worker: starts a new worker, **YOU MUST** wait for "ready" message before delegating work.
 - replace_worker: replace a worker with a new worker.
@@ -43,13 +44,13 @@ var systemPromptTemplate = template.Must(template.New("prompt-mode").Parse(`
 ## ⚠️ CRITICAL RULE: NEVER POLL FOR WORKER STATUS ⚠️
 After you delegate work to a worker, you MUST end your turn IMMEDIATELY. Workers run as an async process they will message you when they complete.
 - **DO NOT** call ` + "`" + `query_worker_state` + "`" + ` to check worker status
-- **DO NOT** call ` + "`" + `read_message_log` + "`" + ` to check for updates
+- **DO NOT** call ` + "`" + `fabric_inbox` + "`" + ` or ` + "`" + `fabric_history` + "`" + ` to check for updates
 - **DO NOT** wait, loop, or check if workers are done
 - Workers will message you when they complete - you will receive their message automatically when they are done.
 - Every poll wastes tokens and slows down the system
 
 **Correct pattern:** send_to_worker or assign_task → end turn
-**Wrong pattern:** send_to_worker or assign_task → query_worker_state → query_worker_state → read_message_log (NEVER DO THIS)`))
+**Wrong pattern:** send_to_worker or assign_task → query_worker_state → query_worker_state → fabric_inbox (NEVER DO THIS)`))
 
 var initialPrompt = `**Goal** Report coordinator readiness and wait for user instructions.
 
@@ -149,9 +150,9 @@ Never do this:
 query_worker_state()  # "Let me check if they're done..."
 query_worker_state()  # "Still working..."
 
-# BAD: Polling with read_message_log
-read_message_log()    # "Any updates from workers?"
-read_message_log()    # "Let me check again..."
+# BAD: Polling with fabric_inbox/fabric_history
+fabric_inbox()        # "Any updates from workers?"
+fabric_history()      # "Let me check again..."
 ` + "`" + `` + "`" + `` + "`" + `
 This wastes tokens and adds no value. Workers message you when ready - you will receive their messages automatically.
 
@@ -224,12 +225,12 @@ func BuildReplacePrompt() string {
 
 	prompt.WriteString("WHAT YOU HAVE ACCESS TO:\n")
 	prompt.WriteString("- `query_worker_state`: See all workers, tasks, and retired workers\n")
-	prompt.WriteString("- `read_message_log`: See recent activity (including handoff from previous coordinator)\n")
+	prompt.WriteString("- `fabric_inbox`: See unread messages across channels (including handoff from previous coordinator)\n")
 	prompt.WriteString("- All standard coordinator tools\n\n")
 
 	prompt.WriteString("IMPORTANT - READ THE HANDOFF FIRST:\n")
 	prompt.WriteString("The previous coordinator posted a handoff message to the message log.\n")
-	prompt.WriteString("Run `read_message_log` to see this handoff and understand current state.\n\n")
+	prompt.WriteString("Run `fabric_inbox` to see unread messages and the handoff.\n\n")
 
 	prompt.WriteString("WHAT TO DO NOW:\n")
 	prompt.WriteString("1. Read the handoff message from the previous coordinator\n")
@@ -265,11 +266,11 @@ func BuildWorkflowContinuationPrompt(workflowState *workflow.WorkflowState) stri
 	// Section 4: Recovery instructions
 	prompt.WriteString("AVAILABLE TOOLS FOR RECOVERY:\n")
 	prompt.WriteString("- `query_worker_state`: See all workers, tasks, and their current status\n")
-	prompt.WriteString("- `read_message_log`: See recent activity and progress updates\n")
+	prompt.WriteString("- `fabric_inbox`: See unread messages and progress updates\n")
 	prompt.WriteString("- All standard coordinator tools\n\n")
 
 	prompt.WriteString("RECOVERY STEPS:\n")
-	prompt.WriteString("1. Read the message log to understand current progress\n")
+	prompt.WriteString("1. Check fabric_inbox to understand current progress\n")
 	prompt.WriteString("2. Query worker state to see what workers are doing\n")
 	prompt.WriteString("3. Continue executing the workflow from where it left off\n\n")
 

@@ -51,7 +51,7 @@ func TestAssignTaskHandler_AssignsToReadyWorker(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X", "")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestAssignTaskHandler_FailsIfWorkerNotReady(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-ready process")
@@ -124,7 +124,7 @@ func TestAssignTaskHandler_FailsIfWorkerNotIdlePhase(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for non-idle phase process")
@@ -150,7 +150,7 @@ func TestAssignTaskHandler_FailsIfWorkerAlreadyHasTask(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process with existing task")
@@ -186,7 +186,7 @@ func TestAssignTaskHandler_FailsIfWorkerAlreadyImplementer(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for process already implementing a task")
@@ -213,7 +213,7 @@ func TestAssignTaskHandler_QueuesPromptAndCreatesDeliveryFollowUp(t *testing.T) 
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature", "")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func TestAssignTaskHandler_CreatesTaskAssignment(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -290,7 +290,7 @@ func TestAssignTaskHandler_EmitsStatusChangeEvent(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -316,7 +316,7 @@ func TestAssignTaskHandler_FailsForUnknownWorker(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "perles-abc1.2", "")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "unknown-worker", "perles-abc1.2", "", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	require.Error(t, err, "expected error for unknown process")
@@ -343,7 +343,7 @@ func TestAssignTaskHandler_ReturnsAssignTaskResult(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Implement feature X", "")
 	result, err := handler.Handle(context.Background(), cmd)
 
 	require.NoError(t, err)
@@ -1073,7 +1073,7 @@ func TestFullAssignReviewApproveWorkflow(t *testing.T) {
 	// Step 1: Assign task to implementer
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	assignHandler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
-	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "")
+	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "", "")
 	result, err := assignHandler.Handle(context.Background(), assignCmd)
 	require.NoError(t, err, "assign task error")
 	require.True(t, result.Success, "assign task failed: %v", result.Error)
@@ -1160,7 +1160,7 @@ func TestAssignTaskHandler_FailsOnBDError(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-test123", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-test123", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	// Command should fail due to BD error
@@ -1191,7 +1191,7 @@ func TestAssignTaskHandler_PropagatesBDError(t *testing.T) {
 	queueRepo := repository.NewMemoryQueueRepository(0)
 	handler := NewAssignTaskHandler(processRepo, taskRepo, WithBDExecutor(bdExecutor), WithQueueRepository(queueRepo))
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Test task")
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, "worker-1", "perles-abc1.2", "Test task", "")
 	_, err := handler.Handle(context.Background(), cmd)
 
 	// Verify command failed with BD error

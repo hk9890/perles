@@ -197,8 +197,8 @@ func TestTurnEnforcement_FullCycle_ToolCalledNoEnforcement(t *testing.T) {
 	// Step 2: Simulate turn start by resetting turn (as DeliverProcessQueuedHandler would)
 	stack.enforcer.ResetTurn(workerID)
 
-	// Step 3: Worker calls post_message (required tool)
-	stack.enforcer.RecordToolCall(workerID, "post_message")
+	// Step 3: Worker calls fabric_send (required tool)
+	stack.enforcer.RecordToolCall(workerID, "fabric_send")
 
 	// Step 4: Turn completes
 	stack.updateStatus(workerID, repository.StatusWorking)
@@ -364,7 +364,7 @@ func TestTurnEnforcement_ProcessRetirementCleansUp(t *testing.T) {
 	workerID := "WORKER.6"
 	stack.createWorker(workerID, repository.StatusReady)
 	stack.enforcer.MarkAsNewlySpawned(workerID)
-	stack.enforcer.RecordToolCall(workerID, "post_message")
+	stack.enforcer.RecordToolCall(workerID, "fabric_send")
 	stack.enforcer.IncrementRetry(workerID)
 
 	// Verify state exists before retirement
@@ -426,7 +426,7 @@ func TestTurnEnforcement_SharedEnforcerAcrossHandlers(t *testing.T) {
 	assert.False(t, stack.enforcer.IsNewlySpawned(workerID), "Spawn state should be cleared after ResetTurn")
 
 	// Step 5: Record tool call
-	stack.enforcer.RecordToolCall(workerID, "post_message")
+	stack.enforcer.RecordToolCall(workerID, "fabric_send")
 
 	// Step 6: Check turn completion
 	missingTools := stack.enforcer.CheckTurnCompletion(workerID, repository.RoleWorker)
@@ -436,7 +436,7 @@ func TestTurnEnforcement_SharedEnforcerAcrossHandlers(t *testing.T) {
 // TestTurnEnforcement_AnyRequiredToolSuffices verifies that calling any one of
 // the required tools satisfies the enforcement requirement.
 func TestTurnEnforcement_AnyRequiredToolSuffices(t *testing.T) {
-	requiredTools := []string{"post_message", "report_implementation_complete", "report_review_verdict", "signal_ready"}
+	requiredTools := []string{"fabric_send", "fabric_reply", "report_implementation_complete", "report_review_verdict", "signal_ready"}
 
 	for _, tool := range requiredTools {
 		t.Run(tool, func(t *testing.T) {

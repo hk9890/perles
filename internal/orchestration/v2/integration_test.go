@@ -21,7 +21,6 @@ import (
 	"github.com/zjrosen/perles/internal/mocks"
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/handler"
@@ -424,9 +423,9 @@ func TestV2Integration_FullWorkflow(t *testing.T) {
 	completeArgs, _ := json.Marshal(map[string]string{
 		"summary": "Implementation complete",
 	})
-	result, err = stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, implementerID)
+	completeResult, err := stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, implementerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, completeResult.Success)
 
 	// Verify worker phase updated to awaiting review
 	require.Eventually(t, func() bool {
@@ -453,9 +452,9 @@ func TestV2Integration_FullWorkflow(t *testing.T) {
 		"verdict":  "APPROVED",
 		"comments": "LGTM!",
 	})
-	result, err = stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
+	verdictResult, err := stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, verdictResult.Success)
 
 	// Verify task marked approved
 	require.Eventually(t, func() bool {
@@ -740,9 +739,9 @@ func TestV2Integration_MessageQueueFlow(t *testing.T) {
 	completeArgs, _ := json.Marshal(map[string]string{
 		"summary": "Done",
 	})
-	result, err = stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, workerID)
+	completeResult, err := stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, workerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, completeResult.Success)
 
 	// After task completion, a DeliverQueued follow-up is submitted.
 	// Wait for the processor to have processed enough commands (avoid race with Size())
@@ -898,101 +897,14 @@ func getComments(m *mocks.MockIssueExecutor) []bdComment {
 	return comments
 }
 
-// mockMessageRepository records messages posted to COORDINATOR for E2E testing.
-// Implements adapter.MessageRepository.
-type mockMessageRepository struct {
-	mu       sync.Mutex
-	messages []mockLogMessage
-	err      error
-}
-
-type mockLogMessage struct {
-	From    string
-	To      string
-	Content string
-}
-
-func newMockMessageRepository() *mockMessageRepository {
-	return &mockMessageRepository{
-		messages: make([]mockLogMessage, 0),
-	}
-}
-
-func (m *mockMessageRepository) Append(from, to, content string, _ message.MessageType) (*message.Entry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.err != nil {
-		return nil, m.err
-	}
-
-	m.messages = append(m.messages, mockLogMessage{
-		From:    from,
-		To:      to,
-		Content: content,
-	})
-
-	return &message.Entry{
-		From:    from,
-		To:      to,
-		Content: content,
-	}, nil
-}
-
-func (m *mockMessageRepository) Entries() []message.Entry {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return nil
-}
-
-func (m *mockMessageRepository) ReadAndMark(_ string) []message.Entry {
-	return nil
-}
-
-func (m *mockMessageRepository) Count() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.messages)
-}
-
-func (m *mockMessageRepository) Broker() *pubsub.Broker[message.Event] {
-	return nil
-}
-
-func (m *mockMessageRepository) AppendRestored(entry message.Entry) (*message.Entry, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.err != nil {
-		return nil, m.err
-	}
-
-	m.messages = append(m.messages, mockLogMessage{
-		From:    entry.From,
-		To:      entry.To,
-		Content: entry.Content,
-	})
-
-	return &entry, nil
-}
-
-func (m *mockMessageRepository) getMessages() []mockLogMessage {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([]mockLogMessage, len(m.messages))
-	copy(result, m.messages)
-	return result
-}
-
 // testV2StackWithWiring contains all v2 components with wired integrations for E2E testing.
 type testV2StackWithWiring struct {
 	*testV2Stack
 	mockDeliverer  *mockMessageDeliverer
 	mockBDExecutor *mocks.MockIssueExecutor
-	mockMsgRepo    *mockMessageRepository
 }
 
-// newTestV2StackWithWiring creates a v2 stack with MessageDeliverer, BDExecutor, and MessageRepository wired.
+// newTestV2StackWithWiring creates a v2 stack with MessageDeliverer and BDExecutor wired.
 func newTestV2StackWithWiring(t *testing.T) *testV2StackWithWiring {
 	t.Helper()
 
@@ -1018,7 +930,6 @@ func newTestV2StackWithWiring(t *testing.T) *testV2StackWithWiring {
 	mockDeliverer := newMockMessageDeliverer()
 	mockBDExec := mocks.NewMockIssueExecutor(t)
 	setupPermissiveBDMock(mockBDExec)
-	mockMsgRepo := newMockMessageRepository()
 
 	// Create mock spawner
 	mockSpawner := &mockProcessSpawner{
@@ -1043,12 +954,11 @@ func newTestV2StackWithWiring(t *testing.T) *testV2StackWithWiring {
 	// Register handlers with wired integrations
 	registerHandlersWithWiring(t, stack, registry, mockDeliverer, mockBDExec)
 
-	// Create V2Adapter with MessageRepository for COORDINATOR routing
+	// Create V2Adapter with repositories for read-only operations
 	v2Adapter := adapter.NewV2Adapter(cmdProcessor,
 		adapter.WithProcessRepository(processRepo),
 		adapter.WithTaskRepository(taskRepo),
 		adapter.WithQueueRepository(queueRepo),
-		adapter.WithMessageRepository(mockMsgRepo),
 	)
 	stack.adapter = v2Adapter
 
@@ -1064,7 +974,6 @@ func newTestV2StackWithWiring(t *testing.T) *testV2StackWithWiring {
 		testV2Stack:    stack,
 		mockDeliverer:  mockDeliverer,
 		mockBDExecutor: mockBDExec,
-		mockMsgRepo:    mockMsgRepo,
 	}
 }
 
@@ -1223,9 +1132,9 @@ func TestV2E2E_MessageDelivery_QueuedThenDelivered(t *testing.T) {
 	completeArgs, _ := json.Marshal(map[string]string{
 		"summary": "Done",
 	})
-	result, err = stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, workerID)
+	completeResult, err := stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, workerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, completeResult.Success)
 
 	// Step 5: Verify at least one queued message was delivered after task completion
 	// DeliverQueued delivers ONE message per invocation (the user message in queue)
@@ -1318,7 +1227,7 @@ func TestV2E2E_BDSync_ReportComplete(t *testing.T) {
 
 	result, err := stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, workerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, result.Success)
 
 	// Step 3: Wait for async BD comment to be added
 	require.Eventually(t, func() bool {
@@ -1375,9 +1284,9 @@ func TestV2E2E_BDSync_ReportVerdict(t *testing.T) {
 		"comments": "LGTM! Great implementation.",
 	})
 
-	result, err := stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
+	verdictResult, err := stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, verdictResult.Success)
 
 	// Step 3: Wait for async BD comment to be added
 	require.Eventually(t, func() bool {
@@ -1473,59 +1382,6 @@ func TestV2E2E_EventBusWiring(t *testing.T) {
 }
 
 // ===========================================================================
-// E2E Integration Test: Coordinator Message Routing
-// ===========================================================================
-
-// TestV2E2E_CoordinatorMessage verifies that HandlePostMessage routes COORDINATOR
-// messages to MessageLog instead of returning an error.
-func TestV2E2E_CoordinatorMessage(t *testing.T) {
-	stack := newTestV2StackWithWiring(t)
-	defer stack.cleanup()
-
-	// Step 1: Spawn a worker (message sender)
-	workerID := stack.spawnWorkerAndWaitReady(t)
-	require.NotEmpty(t, workerID)
-
-	// Step 2: Worker posts message to COORDINATOR
-	msgContent := "Task completed! Ready for next assignment."
-	postArgs, _ := json.Marshal(map[string]string{
-		"to":      "COORDINATOR",
-		"content": msgContent,
-	})
-
-	result, err := stack.adapter.HandlePostMessage(stack.ctx, postArgs, workerID)
-	require.NoError(t, err, "post_message to COORDINATOR should not return error")
-	require.False(t, result.IsError, "should succeed: %s", result.Content)
-	assert.Contains(t, result.Content[0].Text, "Message posted to coordinator")
-
-	// Step 3: Verify message was appended to MessageRepository
-	messages := stack.mockMsgRepo.getMessages()
-	require.Len(t, messages, 1, "should have exactly one message")
-	assert.Equal(t, workerID, messages[0].From)
-	assert.Equal(t, message.ActorCoordinator, messages[0].To)
-	assert.Equal(t, msgContent, messages[0].Content)
-}
-
-// TestV2E2E_CoordinatorMessage_NoMessageRepository verifies descriptive error when MessageRepository not wired.
-func TestV2E2E_CoordinatorMessage_NoMessageRepository(t *testing.T) {
-	// Create stack WITHOUT MessageRepository wired
-	stack := newTestV2Stack(t)
-	defer stack.cleanup()
-
-	workerID := stack.spawnWorkerAndWaitReady(t)
-
-	// Post message to COORDINATOR without MessageRepository wired
-	postArgs, _ := json.Marshal(map[string]string{
-		"to":      "COORDINATOR",
-		"content": "Test message",
-	})
-
-	_, err := stack.adapter.HandlePostMessage(stack.ctx, postArgs, workerID)
-	require.Error(t, err, "should return error when MessageRepository not wired")
-	assert.Contains(t, err.Error(), "requires message repository")
-}
-
-// ===========================================================================
 // E2E Integration Test: Full Workflow
 // ===========================================================================
 
@@ -1602,9 +1458,9 @@ func TestV2E2E_FullWorkflow(t *testing.T) {
 		"summary": "Implemented full workflow with comprehensive tests",
 	})
 
-	result, err = stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, implementerID)
+	completeResult, err := stack.adapter.HandleReportImplementationComplete(stack.ctx, completeArgs, implementerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, completeResult.Success)
 
 	// Verify BD comment was added
 	require.Eventually(t, func() bool {
@@ -1653,9 +1509,9 @@ func TestV2E2E_FullWorkflow(t *testing.T) {
 		"comments": "Excellent implementation, LGTM!",
 	})
 
-	result, err = stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
+	verdictResult, err := stack.adapter.HandleReportReviewVerdict(stack.ctx, verdictArgs, reviewerID)
 	require.NoError(t, err)
-	require.False(t, result.IsError)
+	require.True(t, verdictResult.Success)
 
 	// Verify BD comment for verdict
 	require.Eventually(t, func() bool {
@@ -1799,7 +1655,7 @@ func TestIntegration_StopWorker_GracefulEscalation(t *testing.T) {
 
 	// Step 2: Assign a task to make the worker busy
 	taskID := "stop-tk001"
-	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, workerID, taskID, "Test task for escalation")
+	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, workerID, taskID, "Test task for escalation", "")
 	result, err := stack.processor.SubmitAndWait(stack.ctx, assignCmd)
 	require.NoError(t, err)
 	require.True(t, result.Success, "assign task should succeed: %v", result.Error)
@@ -1836,7 +1692,7 @@ func TestIntegration_StopWorker_TaskCleanup(t *testing.T) {
 
 	// Step 2: Assign a task
 	taskID := "stop-tk002"
-	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, workerID, taskID, "Test task for cleanup")
+	assignCmd := command.NewAssignTaskCommand(command.SourceMCPTool, workerID, taskID, "Test task for cleanup", "")
 	result, err := stack.processor.SubmitAndWait(stack.ctx, assignCmd)
 	require.NoError(t, err)
 	require.True(t, result.Success)

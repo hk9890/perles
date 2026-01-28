@@ -220,7 +220,7 @@ There has been no worker output detected recently.
 
 Diagnose using the following tools:
 1. Use query_workflow_state to check worker statuses
-2. Use read_message_log to review recent activity
+2. Use fabric_inbox to check for unread messages
 
 Based on what you find:
 - If workers are still in "working" state → No action needed, they're actively processing
@@ -290,9 +290,6 @@ func (e *defaultRecoveryExecutor) executePause(ctx context.Context, inst *Workfl
 			return fmt.Errorf("transitioning to paused: %w", err)
 		}
 		if inst.Infrastructure != nil {
-			if inst.Infrastructure.Internal.CoordinatorNudger != nil {
-				inst.Infrastructure.Internal.CoordinatorNudger.Stop()
-			}
 			if inst.Infrastructure.Internal.ProcessRegistry != nil {
 				inst.Infrastructure.Internal.ProcessRegistry.StopAll()
 			}

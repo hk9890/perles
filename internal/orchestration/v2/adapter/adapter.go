@@ -12,7 +12,6 @@ import (
 
 	"github.com/zjrosen/perles/internal/log"
 	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
-	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
@@ -40,7 +39,6 @@ type V2Adapter struct {
 	processRepo      repository.ProcessRepository
 	taskRepo         repository.TaskRepository
 	queueRepo        repository.QueueRepository
-	msgRepo          repository.MessageRepository
 	workflowProvider WorkflowConfigProvider
 	timeout          time.Duration
 	sessionID        string // Session ID for accountability summary generation
@@ -76,13 +74,6 @@ func WithTaskRepository(repo repository.TaskRepository) Option {
 func WithQueueRepository(repo repository.QueueRepository) Option {
 	return func(a *V2Adapter) {
 		a.queueRepo = repo
-	}
-}
-
-// WithMessageRepository sets the message repository for read and write operations.
-func WithMessageRepository(repo repository.MessageRepository) Option {
-	return func(a *V2Adapter) {
-		a.msgRepo = repo
 	}
 }
 
@@ -138,17 +129,12 @@ type sendToWorkerArgs struct {
 	Message  string `json:"message"`
 }
 
-// postMessageArgs holds arguments for post_message tool.
-type postMessageArgs struct {
-	To      string `json:"to"`
-	Content string `json:"content"`
-}
-
 // assignTaskArgs holds arguments for assign_task tool.
 type assignTaskArgs struct {
 	WorkerID string `json:"worker_id"`
 	TaskID   string `json:"task_id"`
 	Summary  string `json:"summary,omitempty"`
+	ThreadID string `json:"thread_id,omitempty"`
 }
 
 // assignTaskReviewArgs holds arguments for assign_task_review tool.
@@ -538,148 +524,6 @@ func (a *V2Adapter) HandleSendToWorker(ctx context.Context, args json.RawMessage
 	return mcptypes.SuccessResult(fmt.Sprintf("Message sent to worker %s", parsed.WorkerID)), nil
 }
 
-// HandlePostMessage handles the post_message MCP tool call.
-// This routes to SendToWorker or Broadcast based on the "to" field.
-func (a *V2Adapter) HandlePostMessage(ctx context.Context, args json.RawMessage, senderID string) (*mcptypes.ToolCallResult, error) {
-	var parsed postMessageArgs
-	if err := json.Unmarshal(args, &parsed); err != nil {
-		return nil, fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	if parsed.To == "" {
-		return nil, fmt.Errorf("to is required")
-	}
-	if parsed.Content == "" {
-		return nil, fmt.Errorf("content is required")
-	}
-
-	// Route based on "to" field
-	switch parsed.To {
-	case "ALL":
-		// Broadcast to all workers, excluding sender
-		cmd := command.NewBroadcastCommand(command.SourceMCPTool, parsed.Content, []string{senderID})
-		result, err := a.submitWithTimeout(ctx, cmd)
-		if err != nil {
-			return nil, fmt.Errorf("broadcast command failed: %w", err)
-		}
-		if !result.Success {
-			return mcptypes.ErrorResult(result.Error.Error()), nil
-		}
-		return mcptypes.SuccessResult("Message broadcast to all workers"), nil
-
-	case "COORDINATOR":
-		// Route to message log instead of returning error.
-		// This allows workers to post messages to the coordinator via v2Adapter.
-		if a.msgRepo != nil {
-			_, err := a.msgRepo.Append(senderID, message.ActorCoordinator, parsed.Content, message.MessageInfo)
-			if err != nil {
-				return nil, fmt.Errorf("failed to append message to coordinator log: %w", err)
-			}
-			return mcptypes.SuccessResult("Message posted to coordinator"), nil
-		}
-		return nil, fmt.Errorf("post_message to COORDINATOR requires message repository (not wired)")
-
-	default:
-		// Send to specific worker
-		cmd := command.NewSendToProcessCommand(command.SourceMCPTool, parsed.To, parsed.Content)
-		result, err := a.submitWithTimeout(ctx, cmd)
-		if err != nil {
-			return nil, fmt.Errorf("send_to_worker command failed: %w", err)
-		}
-		if !result.Success {
-			return mcptypes.ErrorResult(result.Error.Error()), nil
-		}
-		return mcptypes.SuccessResult(fmt.Sprintf("Message sent to %s", parsed.To)), nil
-	}
-}
-
-// readMessageLogArgs holds arguments for read_message_log tool.
-type readMessageLogArgs struct {
-	Limit   int  `json:"limit,omitempty"`
-	ReadAll bool `json:"read_all,omitempty"`
-}
-
-// messageLogResponse is the structured response for read_message_log.
-type messageLogResponse struct {
-	TotalCount    int               `json:"total_count"`
-	ReturnedCount int               `json:"returned_count"`
-	Messages      []messageLogEntry `json:"messages"`
-}
-
-// messageLogEntry is a single message in the log response.
-type messageLogEntry struct {
-	Timestamp string `json:"timestamp"` // HH:MM:SS format
-	From      string `json:"from"`
-	To        string `json:"to"`
-	Content   string `json:"content"`
-}
-
-// HandleReadMessageLog handles the read_message_log MCP tool call.
-// This is a read-only operation that reads from the message repository.
-// Requires a MessageRepository to be configured via WithMessageRepository.
-//
-// Arguments:
-//   - limit: maximum number of messages to return (default 20)
-//   - read_all: if true, returns all messages; if false, returns only unread messages
-//     for the given agent and marks them as read.
-func (a *V2Adapter) HandleReadMessageLog(_ context.Context, args json.RawMessage, agentID string) (*mcptypes.ToolCallResult, error) {
-	if a.msgRepo == nil {
-		return nil, fmt.Errorf("message repository not configured for read operations")
-	}
-
-	var parsed readMessageLogArgs
-	if len(args) > 0 {
-		if err := json.Unmarshal(args, &parsed); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
-		}
-	}
-
-	limit := parsed.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-
-	var entries []message.Entry
-	var totalCount int
-
-	if parsed.ReadAll {
-		allEntries := a.msgRepo.Entries()
-		totalCount = len(allEntries)
-		entries = allEntries
-		if len(entries) > limit {
-			entries = entries[len(entries)-limit:]
-		}
-	} else {
-		// Use atomic ReadAndMark to prevent race where messages appended between
-		// UnreadFor and MarkRead would be marked as read without being returned.
-		entries = a.msgRepo.ReadAndMark(agentID)
-		totalCount = len(entries)
-	}
-
-	messages := make([]messageLogEntry, len(entries))
-	for i, entry := range entries {
-		messages[i] = messageLogEntry{
-			Timestamp: entry.Timestamp.Format("15:04:05"),
-			From:      entry.From,
-			To:        entry.To,
-			Content:   entry.Content,
-		}
-	}
-
-	response := messageLogResponse{
-		TotalCount:    totalCount,
-		ReturnedCount: len(messages),
-		Messages:      messages,
-	}
-
-	data, err := json.MarshalIndent(response, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshaling response: %w", err)
-	}
-
-	return mcptypes.StructuredResult(string(data), response), nil
-}
-
 // ===========================================================================
 // Task Assignment Handlers (Batch 3-4)
 // ===========================================================================
@@ -691,7 +535,7 @@ func (a *V2Adapter) HandleAssignTask(ctx context.Context, args json.RawMessage) 
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, parsed.WorkerID, parsed.TaskID, parsed.Summary)
+	cmd := command.NewAssignTaskCommand(command.SourceMCPTool, parsed.WorkerID, parsed.TaskID, parsed.Summary, parsed.ThreadID)
 	err := cmd.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("assign_task command validation failed: %w", err)
@@ -792,28 +636,17 @@ func (a *V2Adapter) HandleApproveCommit(ctx context.Context, args json.RawMessag
 // State Transition Handlers (Batch 5)
 // ===========================================================================
 
-// HandleSignalReady handles the signal_ready MCP tool call.
-// This signals that a worker is ready for task assignment.
-// Posts a worker-ready message to the message log so the coordinator knows the worker is available.
-func (a *V2Adapter) HandleSignalReady(_ context.Context, _ json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
-	// Post worker-ready message to the message log for the coordinator
-	if a.msgRepo != nil {
-		_, err := a.msgRepo.Append(
-			workerID,
-			message.ActorCoordinator,
-			fmt.Sprintf("Worker %s is ready for task assignment", workerID),
-			message.MessageWorkerReady,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to post ready message: %w", err)
-		}
-	}
-
-	return mcptypes.SuccessResult(fmt.Sprintf("Worker %s ready signal acknowledged", workerID)), nil
+// ReportImplementationCompleteResult contains the result of report_implementation_complete.
+// This allows the MCP layer to access the task's ThreadID for Fabric replies.
+type ReportImplementationCompleteResult struct {
+	Success  bool
+	ThreadID string // Fabric thread ID for the task conversation
+	Message  string
 }
 
 // HandleReportImplementationComplete handles the report_implementation_complete MCP tool call.
-func (a *V2Adapter) HandleReportImplementationComplete(ctx context.Context, args json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
+// Returns ReportImplementationCompleteResult with ThreadID for Fabric integration.
+func (a *V2Adapter) HandleReportImplementationComplete(ctx context.Context, args json.RawMessage, workerID string) (*ReportImplementationCompleteResult, error) {
 	var parsed reportImplementationCompleteArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -830,31 +663,41 @@ func (a *V2Adapter) HandleReportImplementationComplete(ctx context.Context, args
 	}
 
 	if !result.Success {
-		return mcptypes.ErrorResult(result.Error.Error()), nil
+		return &ReportImplementationCompleteResult{
+			Success: false,
+			Message: result.Error.Error(),
+		}, nil
 	}
 
-	// Post completion message to the coordinator so it knows the worker is done
-	if a.msgRepo != nil {
-		content := fmt.Sprintf("Implementation complete: %s", parsed.Summary)
-		if parsed.Summary == "" {
-			content = "Implementation complete"
-		}
-		_, err := a.msgRepo.Append(
-			workerID,
-			message.ActorCoordinator,
-			content,
-			message.MessageCompletion,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to post completion message: %w", err)
+	// Look up the task's ThreadID for Fabric reply
+	var threadID string
+	if a.taskRepo != nil {
+		task, err := a.taskRepo.GetByWorker(workerID)
+		if err == nil && task != nil {
+			threadID = task.ThreadID
 		}
 	}
 
-	return mcptypes.SuccessResult("Implementation complete signal sent"), nil
+	return &ReportImplementationCompleteResult{
+		Success:  true,
+		ThreadID: threadID,
+		Message:  "Implementation complete signal sent",
+	}, nil
+}
+
+// ReportReviewVerdictResult contains the result of report_review_verdict.
+// This allows the MCP layer to access the task's ThreadID for Fabric replies.
+type ReportReviewVerdictResult struct {
+	Success  bool
+	ThreadID string // Fabric thread ID for the task conversation
+	Verdict  string // "APPROVED" or "DENIED"
+	Comments string // Review comments
+	Message  string
 }
 
 // HandleReportReviewVerdict handles the report_review_verdict MCP tool call.
-func (a *V2Adapter) HandleReportReviewVerdict(ctx context.Context, args json.RawMessage, workerID string) (*mcptypes.ToolCallResult, error) {
+// Returns ReportReviewVerdictResult with ThreadID for Fabric integration.
+func (a *V2Adapter) HandleReportReviewVerdict(ctx context.Context, args json.RawMessage, workerID string) (*ReportReviewVerdictResult, error) {
 	var parsed reportReviewVerdictArgs
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		return nil, fmt.Errorf("invalid arguments: %w", err)
@@ -886,27 +729,28 @@ func (a *V2Adapter) HandleReportReviewVerdict(ctx context.Context, args json.Raw
 	}
 
 	if !result.Success {
-		return mcptypes.ErrorResult(result.Error.Error()), nil
+		return &ReportReviewVerdictResult{
+			Success: false,
+			Message: result.Error.Error(),
+		}, nil
 	}
 
-	// Post verdict message to the coordinator so it knows the review is complete
-	if a.msgRepo != nil {
-		content := fmt.Sprintf("Review verdict: %s", parsed.Verdict)
-		if parsed.Comments != "" {
-			content = fmt.Sprintf("Review verdict: %s - %s", parsed.Verdict, parsed.Comments)
-		}
-		_, err := a.msgRepo.Append(
-			workerID,
-			message.ActorCoordinator,
-			content,
-			message.MessageCompletion,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to post verdict message: %w", err)
+	// Look up the task's ThreadID for Fabric reply
+	var threadID string
+	if a.taskRepo != nil {
+		task, err := a.taskRepo.GetByWorker(workerID)
+		if err == nil && task != nil {
+			threadID = task.ThreadID
 		}
 	}
 
-	return mcptypes.SuccessResult(fmt.Sprintf("Review verdict %s submitted", parsed.Verdict)), nil
+	return &ReportReviewVerdictResult{
+		Success:  true,
+		ThreadID: threadID,
+		Verdict:  parsed.Verdict,
+		Comments: parsed.Comments,
+		Message:  fmt.Sprintf("Review verdict %s submitted", parsed.Verdict),
+	}, nil
 }
 
 // ===========================================================================

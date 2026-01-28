@@ -54,16 +54,18 @@ type AssignTaskCommand struct {
 	WorkerID string // Required: ID of the worker to assign the task to
 	TaskID   string // Required: BD task ID to assign
 	Summary  string // Optional: context or instructions for the worker
+	ThreadID string // Optional: Fabric thread ID for task conversation
 }
 
 // NewAssignTaskCommand creates a new AssignTaskCommand.
-func NewAssignTaskCommand(source CommandSource, workerID, taskID, summary string) *AssignTaskCommand {
+func NewAssignTaskCommand(source CommandSource, workerID, taskID, summary, threadID string) *AssignTaskCommand {
 	base := NewBaseCommand(CmdAssignTask, source)
 	return &AssignTaskCommand{
 		BaseCommand: &base,
 		WorkerID:    workerID,
 		TaskID:      taskID,
 		Summary:     summary,
+		ThreadID:    threadID,
 	}
 }
 
