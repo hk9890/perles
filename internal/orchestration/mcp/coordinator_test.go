@@ -71,7 +71,6 @@ func TestCoordinatorServer_RegistersAllTools(t *testing.T) {
 		"assign_task",
 		"replace_worker",
 		"retire_worker",
-		"send_to_worker",
 		"get_task_status",
 		"mark_task_complete",
 		"mark_task_failed",
@@ -206,44 +205,6 @@ func TestCoordinatorServer_ReplaceWorkerValidation(t *testing.T) {
 		{
 			name:    "empty worker_id",
 			args:    `{"worker_id": ""}`,
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler(context.Background(), json.RawMessage(tt.args))
-			require.Equal(t, tt.wantErr, err != nil, "error = %v, wantErr = %v", err, tt.wantErr)
-		})
-	}
-}
-
-// TestCoordinatorServer_SendToWorkerValidation tests input validation for send_to_worker.
-// Note: With v2 routing, validation happens in v2 adapter.
-func TestCoordinatorServer_SendToWorkerValidation(t *testing.T) {
-	cs := NewCoordinatorServer("/tmp/test", 8765, mocks.NewMockIssueExecutor(t))
-
-	// Inject v2 adapter for test
-	_, cleanup := injectV2AdapterToCoordinator(t, cs)
-	defer cleanup()
-
-	handler := cs.handlers["send_to_worker"]
-
-	// Test only input validation errors (missing/empty fields)
-	// Business logic errors (worker not found) are handled in v2 handler tests
-	tests := []struct {
-		name    string
-		args    string
-		wantErr bool
-	}{
-		{
-			name:    "missing worker_id",
-			args:    `{"message": "hello"}`,
-			wantErr: true,
-		},
-		{
-			name:    "missing message",
-			args:    `{"worker_id": "worker-1"}`,
 			wantErr: true,
 		},
 	}

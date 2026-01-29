@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
 )
 
 // FabricEventsFile is the filename for the Fabric events JSONL log.
@@ -135,18 +134,4 @@ func ChainHandler(handlers ...func(fabric.Event)) func(fabric.Event) {
 			}
 		}
 	}
-}
-
-// ChannelState captures the state of channels for restoration.
-// This is a helper struct used during replay.
-type ChannelState struct {
-	Threads       []domain.Thread
-	Dependencies  []domain.Dependency
-	Subscriptions []domain.Subscription
-	Acks          []domain.Ack
-}
-
-// NewChannelState creates a new empty ChannelState.
-func NewChannelState() *ChannelState {
-	return &ChannelState{}
 }

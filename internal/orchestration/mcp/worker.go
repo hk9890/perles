@@ -109,7 +109,73 @@ func (ws *WorkerServer) SetTurnEnforcer(enforcer ToolCallRecorder) {
 func (ws *WorkerServer) SetFabricService(svc *fabric.Service) {
 	ws.fabricService = svc
 	handlers := fabricmcp.NewHandlers(svc, ws.workerID)
-	registerFabricTools(ws.Server, handlers)
+	ws.registerFabricToolsWithEnforcement(handlers)
+}
+
+// registerFabricToolsWithEnforcement registers Fabric tools with turn enforcement tracking.
+// Unlike the shared registerFabricTools, this wraps handlers to record tool calls
+// for turn completion enforcement (fabric_send, fabric_reply, fabric_ack).
+func (ws *WorkerServer) registerFabricToolsWithEnforcement(h *fabricmcp.Handlers) {
+	// Tools that satisfy turn completion requirements
+	turnCompletionTools := map[string]bool{
+		"fabric_send":  true,
+		"fabric_reply": true,
+		"fabric_ack":   true,
+	}
+
+	for _, tool := range fabricmcp.FabricTools() {
+		// Convert fabric/mcp.Tool to mcp.Tool
+		mcpTool := Tool{
+			Name:        tool.Name,
+			Description: tool.Description,
+		}
+		if tool.InputSchema != nil {
+			mcpTool.InputSchema = convertInputSchema(tool.InputSchema)
+		}
+		if tool.OutputSchema != nil {
+			mcpTool.OutputSchema = convertOutputSchema(tool.OutputSchema)
+		}
+
+		// Get the handler for this tool
+		var handler ToolHandler
+		switch tool.Name {
+		case "fabric_inbox":
+			handler = h.HandleInbox
+		case "fabric_send":
+			handler = h.HandleSend
+		case "fabric_reply":
+			handler = h.HandleReply
+		case "fabric_ack":
+			handler = h.HandleAck
+		case "fabric_subscribe":
+			handler = h.HandleSubscribe
+		case "fabric_unsubscribe":
+			handler = h.HandleUnsubscribe
+		case "fabric_attach":
+			handler = h.HandleAttach
+		case "fabric_history":
+			handler = h.HandleHistory
+		case "fabric_read_thread":
+			handler = h.HandleReadThread
+		}
+
+		if handler != nil {
+			// Wrap handlers for turn completion tools to record the call
+			if turnCompletionTools[tool.Name] {
+				toolName := tool.Name // Capture for closure
+				originalHandler := handler
+				handler = func(ctx context.Context, args json.RawMessage) (*ToolCallResult, error) {
+					result, err := originalHandler(ctx, args)
+					// Record tool call on success (or even on error - the attempt counts)
+					if ws.enforcer != nil {
+						ws.enforcer.RecordToolCall(ws.workerID, toolName)
+					}
+					return result, err
+				}
+			}
+			ws.RegisterTool(mcpTool, handler)
+		}
+	}
 }
 
 // registerTools registers all worker tools with the MCP server.

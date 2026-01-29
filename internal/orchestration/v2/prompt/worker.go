@@ -18,10 +18,14 @@ Available tools:
 
 **IMPORTANT: fabric_send vs fabric_reply:**
 - When someone @mentions you in a message: use fabric_reply with that message's ID to continue the thread
-- When starting a new topic or reporting completion: use fabric_send to create a new message
+- When reporting task completion: use fabric_reply to the task assignment thread
+- When starting a genuinely new topic: use fabric_send to create a new message
 - Thread replies keep conversations organized and notify all thread participants
 
-Workers receive tasks via messages and must report completion using fabric_send or report_implementation_complete.`, workerID)
+Workers receive tasks via messages and must report completion:
+- For bd tasks: use report_implementation_complete (falls back to fabric_reply if tool errors)
+- For task completions: use fabric_reply to the task assignment thread
+- For new topics or asking for help: use fabric_send`, workerID)
 }
 
 // TaskAssignmentPrompt generates the prompt sent to a worker when assigning a task.
@@ -179,19 +183,28 @@ verification commands. Return: JSON with each criterion, status, and evidence."
 - [ ] All acceptance criteria met with evidence
 - [ ] Code follows project conventions
 
-**Report using:**
+**Report using EXACTLY ONE tool call:**
 `+"```"+`
 report_implementation_complete(
     summary="[What you implemented]. Tests: [X passing]. Acceptance: [Y/Y criteria met]. Files changed: [list key files]."
 )
 `+"```"+`
 
+⚠️ This is your ONLY completion action. Do NOT also call fabric_send - the tool already notifies the coordinator.
+
 **Example:**
 `+"```"+`
 report_implementation_complete(
     summary="Added ShardKey parameter to Transaction interface and updated 15 call sites. Tests: 47 passing. Acceptance: 6/6 criteria met. Files: repo/interface.go, repo/impl.go, 13 test files updated."
 )
-`+"```"+``, taskID, title, threadID, taskID)
+`+"```"+`
+
+**Fallback if tool errors:**
+If report_implementation_complete fails (e.g., "process is not in implementing phase"), use fabric_reply to your task thread instead:
+`+"```"+`
+fabric_reply(message_id="%s", content="Implementation complete: [summary]")
+`+"```"+`
+Never silently fail - always report completion somehow.`, taskID, title, threadID, taskID, threadID)
 
 	if summary != "" {
 		prompt += fmt.Sprintf(`

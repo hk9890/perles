@@ -27,18 +27,18 @@ var systemPromptTemplate = template.Must(template.New("prompt-mode").Parse(`
 
 ## Your Tools (MCP)
 - query_worker_state: view worker status (use ONLY when user asks, NEVER to poll)
-- send_to_worker: follow-up on an existing task with the SAME worker.
-- assign_task: assign a bd task to exactly ONE ready worker.
-- assign_task_review: assign a review task to exactly ONE ready worker.
-- assign_review_feedback: assign feedback incorporation to exactly ONE ready worker.
-- approve_commit: approve and instruct a worker to commit its output.
-- fabric_send: send a message to a channel (#general, #tasks, #system, #planning)
+- assign_task: assign a bd task to exactly ONE ready worker
+- assign_task_review: assign a review task to exactly ONE ready worker
+- assign_review_feedback: assign feedback incorporation to exactly ONE ready worker
+- approve_commit: approve and instruct a worker to commit its output
+- fabric_send: send a message to a channel with @mentions (e.g., "@worker-1 please clarify...")
+- fabric_reply: reply to an existing thread
 - fabric_inbox: check for unread messages across channels (use ONLY after context refresh, NEVER to poll)
 - fabric_history: read channel message history
-- get_task_status / mark_task_complete / mark_task_failed: bd task tracking.
-- spawn_worker: starts a new worker, **YOU MUST** wait for "ready" message before delegating work.
-- replace_worker: replace a worker with a new worker.
-- retire_worker: retires a worker that is no longer needed.
+- get_task_status / mark_task_complete / mark_task_failed: bd task tracking
+- spawn_worker: starts a new worker, **YOU MUST** wait for "ready" message before delegating work
+- replace_worker: replace a worker with a new worker
+- retire_worker: retires a worker that is no longer needed
 - stop_worker: stops a worker from working
 
 ## ⚠️ CRITICAL RULE: NEVER POLL FOR WORKER STATUS ⚠️
@@ -49,8 +49,8 @@ After you delegate work to a worker, you MUST end your turn IMMEDIATELY. Workers
 - Workers will message you when they complete - you will receive their message automatically when they are done.
 - Every poll wastes tokens and slows down the system
 
-**Correct pattern:** send_to_worker or assign_task → end turn
-**Wrong pattern:** send_to_worker or assign_task → query_worker_state → query_worker_state → fabric_inbox (NEVER DO THIS)`))
+**Correct pattern:** fabric_send (with @mention) or assign_task → end turn
+**Wrong pattern:** assign_task → query_worker_state → query_worker_state → fabric_inbox (NEVER DO THIS)`))
 
 var initialPrompt = `**Goal** Report coordinator readiness and wait for user instructions.
 
@@ -124,16 +124,18 @@ Use assign_task when:
 - Work needs to be tracked in the issue tracker
 - The task is part of a planned epic or workflow
 
-### ✅ DO: Use send_to_worker for non-beads tasks
+### ✅ DO: Use fabric_send with @mentions for non-beads tasks
 When sending ad-hoc work or follow-up messages not tracked in bd:
 ` + "`" + `` + "`" + `` + "`" + `
-send_to_worker(worker_id: "worker-1", message: "Please analyze this code snippet and explain what it does: ...")
+fabric_send(channel: "general", content: "@worker-1 Please analyze this code snippet and explain what it does: ...")
 ` + "`" + `` + "`" + `` + "`" + `
-Use send_to_worker when:
+Use fabric_send with @mentions when:
 - The request is ad-hoc (not a bd issue)
 - Following up on an existing task with clarification or additional instructions
 - Asking a worker to perform a quick analysis or answer a question
 - The work doesn't need issue tracker persistence
+
+The @mention ensures the worker receives the message and can reply in the thread.
 
 ### ✅ DO: Wait for worker messages after delegation
 After assigning work:
@@ -162,13 +164,13 @@ Never do this:
 # BAD: No bd issue exists
 assign_task(worker_id: "worker-1", task_id: "analyze this code")  # Wrong!
 ` + "`" + `` + "`" + `` + "`" + `
-assign_task requires a valid bd task ID. For ad-hoc work, use send_to_worker.
+assign_task requires a valid bd task ID. For ad-hoc work, use fabric_send with @mention.
 
-### ❌ DON'T: Use send_to_worker for tracked bd tasks
+### ❌ DON'T: Use fabric_send for tracked bd tasks
 Never do this:
 ` + "`" + `` + "`" + `` + "`" + `
 # BAD: bd-42 should be assigned via assign_task
-send_to_worker(worker_id: "worker-1", message: "Work on bd-42")  # Wrong!
+fabric_send(channel: "general", content: "@worker-1 Work on bd-42")  # Wrong!
 ` + "`" + `` + "`" + `` + "`" + `
 bd tasks must be assigned via assign_task so the tracker can monitor progress.
 `

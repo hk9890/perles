@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricrepo "github.com/zjrosen/perles/internal/orchestration/fabric/repository"
 	"github.com/zjrosen/perles/internal/orchestration/message"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 )
@@ -1361,4 +1363,143 @@ func TestWorkerServer_ReportReviewVerdict_ErrorDoesNotRecordToolCall(t *testing.
 	// Verify RecordToolCall was NOT called
 	calls := recorder.GetCalls()
 	require.Len(t, calls, 0, "RecordToolCall should not be called on error")
+}
+
+// newTestFabricService creates a fabric service for testing.
+func newTestFabricService() *fabric.Service {
+	threadRepo := fabricrepo.NewMemoryThreadRepository()
+	depRepo := fabricrepo.NewMemoryDependencyRepository()
+	subRepo := fabricrepo.NewMemorySubscriptionRepository()
+	ackRepo := fabricrepo.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	// Initialize session to create channels
+	_ = svc.InitSession("coordinator")
+	return svc
+}
+
+// TestWorkerServer_FabricSend_RecordsToolCall tests that fabric_send records tool call for turn enforcement.
+func TestWorkerServer_FabricSend_RecordsToolCall(t *testing.T) {
+	recorder := newMockToolCallRecorder()
+	ws := NewWorkerServer("WORKER.1")
+	ws.SetTurnEnforcer(recorder)
+
+	// Create a fabric service
+	svc := newTestFabricService()
+
+	// SetFabricService registers tools with enforcement
+	ws.SetFabricService(svc)
+
+	// Get the handler
+	handler := ws.handlers["fabric_send"]
+	require.NotNil(t, handler, "fabric_send handler should be registered")
+
+	// Call fabric_send
+	args := json.RawMessage(`{"channel": "general", "content": "Hello coordinator"}`)
+	_, err := handler(context.Background(), args)
+	require.NoError(t, err, "fabric_send should succeed")
+
+	// Verify RecordToolCall was called
+	calls := recorder.GetCalls()
+	require.Len(t, calls, 1, "Expected 1 recorder call")
+	require.Equal(t, "WORKER.1", calls[0].ProcessID, "Expected worker ID")
+	require.Equal(t, "fabric_send", calls[0].ToolName, "Expected tool name 'fabric_send'")
+}
+
+// TestWorkerServer_FabricReply_RecordsToolCall tests that fabric_reply records tool call for turn enforcement.
+func TestWorkerServer_FabricReply_RecordsToolCall(t *testing.T) {
+	recorder := newMockToolCallRecorder()
+	ws := NewWorkerServer("WORKER.1")
+	ws.SetTurnEnforcer(recorder)
+
+	// Create a fabric service
+	svc := newTestFabricService()
+
+	// First send a message to have something to reply to
+	msg, err := svc.SendMessage(fabric.SendMessageInput{
+		ChannelSlug: "general",
+		Content:     "original message",
+		CreatedBy:   "WORKER.1",
+	})
+	require.NoError(t, err)
+
+	// SetFabricService registers tools with enforcement
+	ws.SetFabricService(svc)
+
+	// Get the handler
+	handler := ws.handlers["fabric_reply"]
+	require.NotNil(t, handler, "fabric_reply handler should be registered")
+
+	// Call fabric_reply
+	args := json.RawMessage(fmt.Sprintf(`{"message_id": "%s", "content": "This is a reply"}`, msg.ID))
+	_, err = handler(context.Background(), args)
+	require.NoError(t, err, "fabric_reply should succeed")
+
+	// Verify RecordToolCall was called
+	calls := recorder.GetCalls()
+	require.Len(t, calls, 1, "Expected 1 recorder call")
+	require.Equal(t, "WORKER.1", calls[0].ProcessID, "Expected worker ID")
+	require.Equal(t, "fabric_reply", calls[0].ToolName, "Expected tool name 'fabric_reply'")
+}
+
+// TestWorkerServer_FabricAck_RecordsToolCall tests that fabric_ack records tool call for turn enforcement.
+func TestWorkerServer_FabricAck_RecordsToolCall(t *testing.T) {
+	recorder := newMockToolCallRecorder()
+	ws := NewWorkerServer("WORKER.1")
+	ws.SetTurnEnforcer(recorder)
+
+	// Create a fabric service
+	svc := newTestFabricService()
+
+	// First send a message to have something to ack
+	msg, err := svc.SendMessage(fabric.SendMessageInput{
+		ChannelSlug: "general",
+		Content:     "message to ack",
+		CreatedBy:   "WORKER.1",
+	})
+	require.NoError(t, err)
+
+	// SetFabricService registers tools with enforcement
+	ws.SetFabricService(svc)
+
+	// Get the handler
+	handler := ws.handlers["fabric_ack"]
+	require.NotNil(t, handler, "fabric_ack handler should be registered")
+
+	// Call fabric_ack
+	args := json.RawMessage(fmt.Sprintf(`{"message_ids": ["%s"]}`, msg.ID))
+	_, err = handler(context.Background(), args)
+	require.NoError(t, err, "fabric_ack should succeed")
+
+	// Verify RecordToolCall was called
+	calls := recorder.GetCalls()
+	require.Len(t, calls, 1, "Expected 1 recorder call")
+	require.Equal(t, "WORKER.1", calls[0].ProcessID, "Expected worker ID")
+	require.Equal(t, "fabric_ack", calls[0].ToolName, "Expected tool name 'fabric_ack'")
+}
+
+// TestWorkerServer_FabricInbox_DoesNotRecordToolCall tests that fabric_inbox does NOT record tool call
+// (since it's not a turn-completing tool).
+func TestWorkerServer_FabricInbox_DoesNotRecordToolCall(t *testing.T) {
+	recorder := newMockToolCallRecorder()
+	ws := NewWorkerServer("WORKER.1")
+	ws.SetTurnEnforcer(recorder)
+
+	// Create a fabric service
+	svc := newTestFabricService()
+
+	// SetFabricService registers tools with enforcement
+	ws.SetFabricService(svc)
+
+	// Get the handler
+	handler := ws.handlers["fabric_inbox"]
+	require.NotNil(t, handler, "fabric_inbox handler should be registered")
+
+	// Call fabric_inbox
+	args := json.RawMessage(`{}`)
+	_, err := handler(context.Background(), args)
+	require.NoError(t, err, "fabric_inbox should succeed")
+
+	// Verify RecordToolCall was NOT called (fabric_inbox doesn't complete turns)
+	calls := recorder.GetCalls()
+	require.Len(t, calls, 0, "Expected no recorder calls for fabric_inbox")
 }

@@ -247,19 +247,6 @@ func (cs *CoordinatorServer) registerTools() {
 	}, cs.handleRetireWorker)
 
 	cs.RegisterTool(Tool{
-		Name:        "send_to_worker",
-		Description: "Send a follow-up message to a worker by resuming its session with new instructions.",
-		InputSchema: &InputSchema{
-			Type: "object",
-			Properties: map[string]*PropertySchema{
-				"worker_id": {Type: "string", Description: "The worker ID to message"},
-				"message":   {Type: "string", Description: "Message content to send"},
-			},
-			Required: []string{"worker_id", "message"},
-		},
-	}, cs.handleSendToWorker)
-
-	cs.RegisterTool(Tool{
 		Name:        "get_task_status",
 		Description: "Get the current status of a task from the bd tracker.",
 		InputSchema: &InputSchema{
@@ -593,11 +580,6 @@ func (cs *CoordinatorServer) handleReplaceWorker(ctx context.Context, rawArgs js
 // handleReplaceWorker retires a worker and spawns a fresh replacement.
 func (cs *CoordinatorServer) handleRetireWorker(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
 	return cs.v2Adapter.HandleRetireProcess(ctx, rawArgs)
-}
-
-// handleSendToWorker sends a message to a worker by resuming its session.
-func (cs *CoordinatorServer) handleSendToWorker(ctx context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
-	return cs.v2Adapter.HandleSendToWorker(ctx, rawArgs)
 }
 
 // handleGetTaskStatus gets task status from bd.

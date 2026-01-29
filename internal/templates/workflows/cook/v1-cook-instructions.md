@@ -678,7 +678,8 @@ Coordinator: signal_workflow_complete(
 | `report_implementation_complete` | `summary` | Signal implementation done, transition to `AwaitingReview` |
 | `report_review_verdict`          | `verdict` (APPROVED/DENIED), `comments` | Report review result, transition to `Idle` |
 | `signal_ready`                   | none | Signal ready for task assignment (on startup) |
-| `fabric_send`                    | `channel`, `content` | Send message to coordinator or workers |
+| `fabric_reply`                   | `message_id`, `content` | Reply to a message you received (use this for responses) |
+| `fabric_send`                    | `channel`, `content` | Start NEW conversation (only for new topics, not responses) |
 | `fabric_inbox`                   | none | Check for new messages |
 
 ### BD Commands
