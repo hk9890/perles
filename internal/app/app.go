@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
+	"github.com/zjrosen/perles/frontend"
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
 	"github.com/zjrosen/perles/internal/bql"
@@ -499,6 +500,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				ControlPlane:    m.controlPlane,
 				WorkflowCreator: m.workflowCreator,
 				RegistryService: m.registryService,
+				FrontendFS:      frontend.DistFS(),
 			})
 			if err != nil {
 				log.Error(log.CatOrch, "Failed to create API server", "error", err)

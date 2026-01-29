@@ -7,13 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/zjrosen/perles/internal/frontend"
 	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/controlplane"
+	"github.com/zjrosen/perles/internal/orchestration/session"
 	appreg "github.com/zjrosen/perles/internal/registry/application"
 )
 
@@ -695,6 +698,9 @@ type ServerConfig struct {
 	WorkflowCreator *appreg.WorkflowCreator
 	// RegistryService provides access to workflow templates (optional).
 	RegistryService *appreg.RegistryService
+	// FrontendFS provides the embedded frontend assets filesystem.
+	// When set, the embedded frontend SPA is served at / with session APIs.
+	FrontendFS fs.FS
 	// ReadTimeout is the maximum duration for reading the entire request.
 	ReadTimeout time.Duration
 	// WriteTimeout is the maximum duration before timing out writes of the response.
@@ -733,13 +739,36 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		port = tcpAddr.Port
 	}
 
+	// Build the combined HTTP handler
+	var httpHandler http.Handler
+	if cfg.FrontendFS != nil {
+		mux := http.NewServeMux()
+
+		// Mount workflow API routes under /api/v1/
+		mux.Handle("/api/v1/", http.StripPrefix("/api/v1", handler.Routes()))
+
+		// Mount frontend session APIs and SPA
+		spaFS, err := fs.Sub(cfg.FrontendFS, "dist")
+		if err != nil {
+			_ = listener.Close()
+			return nil, fmt.Errorf("creating frontend sub-filesystem: %w", err)
+		}
+		frontendHandler := frontend.NewHandler(session.DefaultBaseDir(), spaFS)
+		frontendHandler.RegisterAPIRoutes(mux)
+		frontendHandler.RegisterSPAHandler(mux)
+
+		httpHandler = mux
+	} else {
+		httpHandler = handler.Routes()
+	}
+
 	return &Server{
 		handler:  handler,
 		addr:     cfg.Addr,
 		port:     port,
 		listener: listener,
 		server: &http.Server{
-			Handler:           handler.Routes(),
+			Handler:           httpHandler,
 			ReadTimeout:       readTimeout,
 			ReadHeaderTimeout: 10 * time.Second,
 			WriteTimeout:      writeTimeout,

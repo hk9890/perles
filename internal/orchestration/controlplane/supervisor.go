@@ -476,6 +476,10 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	workerServers := newWorkerServerCache(sess, infra.Core.Adapter, infra.Internal.TurnEnforcer, infra.Core.FabricService, sess, workflowCtx)
 
 	// Set up HTTP routes
+	// IMPORTANT: Route registration order matters!
+	// 1. MCP routes first (/mcp, /worker/)
+	// 2. API routes second (/api/*)
+	// 3. SPA catch-all LAST (/) - serves index.html for client-side routing
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcpCoordServer.ServeHTTP())
 	mux.HandleFunc("/worker/", workerServers.ServeHTTP)

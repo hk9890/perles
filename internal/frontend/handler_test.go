@@ -1,0 +1,512 @@
+package frontend
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+	"testing/fstest"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/zjrosen/perles/internal/orchestration/session"
+)
+
+// createTestMux creates an http.ServeMux with the handler routes registered
+// in the same order as production (API first, SPA last).
+func createTestMux(h *Handler) *http.ServeMux {
+	mux := http.NewServeMux()
+	h.RegisterAPIRoutes(mux)
+	h.RegisterSPAHandler(mux)
+	return mux
+}
+
+// === Health Endpoint Tests ===
+
+func TestHandler_Health(t *testing.T) {
+	h := NewHandler("/tmp/sessions", createTestFS())
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp HealthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resp.Status)
+}
+
+// === ListSessions Endpoint Tests ===
+
+func TestHandler_ListSessions_EmptyDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp SessionListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.Equal(t, tmpDir, resp.BasePath)
+	assert.Empty(t, resp.Apps, "Expected empty apps array for empty directory")
+}
+
+func TestHandler_ListSessions_MissingDirectory(t *testing.T) {
+	h := NewHandler("/nonexistent/path/sessions", createTestFS())
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp SessionListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.Empty(t, resp.Apps, "Expected empty apps array for missing directory")
+}
+
+func TestHandler_ListSessions_HierarchicalStructure(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test session structure
+	// app1/2026-01-15/session-123/metadata.json
+	// app1/2026-01-14/session-456/metadata.json
+	// app2/2026-01-15/session-789/metadata.json
+	createTestSession(t, tmpDir, "app1", "2026-01-15", "session-123", session.StatusRunning, "claude")
+	createTestSession(t, tmpDir, "app1", "2026-01-14", "session-456", session.StatusCompleted, "amp")
+	createTestSession(t, tmpDir, "app2", "2026-01-15", "session-789", session.StatusFailed, "claude")
+
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp SessionListResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	// Verify apps are present and sorted alphabetically
+	require.Len(t, resp.Apps, 2)
+	assert.Equal(t, "app1", resp.Apps[0].Name)
+	assert.Equal(t, "app2", resp.Apps[1].Name)
+
+	// Verify app1 has 2 dates sorted descending
+	require.Len(t, resp.Apps[0].Dates, 2)
+	assert.Equal(t, "2026-01-15", resp.Apps[0].Dates[0].Date)
+	assert.Equal(t, "2026-01-14", resp.Apps[0].Dates[1].Date)
+
+	// Verify sessions
+	require.Len(t, resp.Apps[0].Dates[0].Sessions, 1)
+	assert.Equal(t, "session-123", resp.Apps[0].Dates[0].Sessions[0].ID)
+	assert.Equal(t, "running", resp.Apps[0].Dates[0].Sessions[0].Status)
+	assert.Equal(t, "claude", resp.Apps[0].Dates[0].Sessions[0].ClientType)
+}
+
+// === LoadSession Endpoint Tests ===
+
+func TestHandler_LoadSession_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a session with all file types
+	sessionDir := createTestSession(t, tmpDir, "app1", "2026-01-15", "session-123", session.StatusRunning, "claude")
+
+	// Add coordinator messages
+	coordDir := filepath.Join(sessionDir, "coordinator")
+	require.NoError(t, os.MkdirAll(coordDir, 0750))
+	writeJSONL(t, filepath.Join(coordDir, "messages.jsonl"), []map[string]any{
+		{"role": "assistant", "content": "Hello"},
+		{"role": "user", "content": "Hi"},
+	})
+	writeJSONL(t, filepath.Join(coordDir, "raw.jsonl"), []map[string]any{
+		{"type": "text", "text": "raw data"},
+	})
+
+	// Add worker data
+	workerDir := filepath.Join(sessionDir, "workers", "worker-1")
+	require.NoError(t, os.MkdirAll(workerDir, 0750))
+	writeJSONL(t, filepath.Join(workerDir, "messages.jsonl"), []map[string]any{
+		{"role": "assistant", "content": "Worker output"},
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(workerDir, "accountability_summary.md"), []byte("# Summary\nDone."), 0600))
+
+	// Add root-level JSONL files
+	writeJSONL(t, filepath.Join(sessionDir, "messages.jsonl"), []map[string]any{
+		{"id": "msg-1", "content": "Inter-agent message"},
+	})
+	writeJSONL(t, filepath.Join(sessionDir, "mcp_requests.jsonl"), []map[string]any{
+		{"tool": "bash", "input": "ls"},
+	})
+	writeJSONL(t, filepath.Join(sessionDir, "commands.jsonl"), []map[string]any{
+		{"command": "spawn_worker"},
+	})
+
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	body := `{"path": "` + sessionDir + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp LoadSessionResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	// Verify path
+	assert.Equal(t, sessionDir, resp.Path)
+
+	// Verify metadata
+	require.NotNil(t, resp.Metadata)
+	assert.Equal(t, "session-123", resp.Metadata.SessionID)
+	assert.Equal(t, "running", resp.Metadata.Status)
+	assert.Equal(t, "claude", resp.Metadata.ClientType)
+
+	// Verify coordinator data
+	assert.Len(t, resp.Coordinator.Messages, 2)
+	assert.Len(t, resp.Coordinator.Raw, 1)
+
+	// Verify worker data
+	require.Contains(t, resp.Workers, "worker-1")
+	assert.Len(t, resp.Workers["worker-1"].Messages, 1)
+	require.NotNil(t, resp.Workers["worker-1"].AccountabilitySummary)
+	assert.Contains(t, *resp.Workers["worker-1"].AccountabilitySummary, "# Summary")
+
+	// Verify root-level JSONL
+	assert.Len(t, resp.Messages, 1)
+	assert.Len(t, resp.MCPRequests, 1)
+	assert.Len(t, resp.Commands, 1)
+}
+
+func TestHandler_LoadSession_MissingFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a minimal session with only metadata
+	sessionDir := createTestSession(t, tmpDir, "app1", "2026-01-15", "session-123", session.StatusRunning, "claude")
+
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	body := `{"path": "` + sessionDir + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp LoadSessionResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	// Should return empty arrays, not errors
+	assert.Empty(t, resp.Coordinator.Messages)
+	assert.Empty(t, resp.Coordinator.Raw)
+	assert.Empty(t, resp.Workers)
+	assert.Empty(t, resp.Messages)
+	assert.Empty(t, resp.MCPRequests)
+	assert.Empty(t, resp.Commands)
+}
+
+func TestHandler_LoadSession_CorruptedJSONL(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sessionDir := createTestSession(t, tmpDir, "app1", "2026-01-15", "session-123", session.StatusRunning, "claude")
+
+	// Create coordinator dir and write corrupted JSONL
+	coordDir := filepath.Join(sessionDir, "coordinator")
+	require.NoError(t, os.MkdirAll(coordDir, 0750))
+
+	// Mix of valid and invalid JSON lines
+	content := `{"role": "assistant", "content": "Valid"}
+not valid json
+{"role": "user", "content": "Also valid"}
+{incomplete json
+`
+	require.NoError(t, os.WriteFile(filepath.Join(coordDir, "messages.jsonl"), []byte(content), 0600))
+
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	body := `{"path": "` + sessionDir + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp LoadSessionResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	// Should have 2 valid messages (skipped the corrupted lines)
+	assert.Len(t, resp.Coordinator.Messages, 2)
+}
+
+func TestHandler_LoadSession_PathTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"double dot", tmpDir + "/../etc/passwd"},
+		{"embedded double dot", tmpDir + "/app/../../../etc/passwd"},
+		{"triple dot attempt", tmpDir + "/..."},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"path": "` + tc.path + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			mux.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+
+			var resp APIError
+			err := json.Unmarshal(w.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, "invalid_path", resp.Code)
+		})
+	}
+}
+
+func TestHandler_LoadSession_PathOutsideBase(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	// Try to access a path outside the session base directory
+	body := `{"path": "/etc/passwd"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_path", resp.Code)
+	assert.Contains(t, resp.Error, "not under session directory")
+}
+
+func TestHandler_LoadSession_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString("not json"))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_json", resp.Code)
+}
+
+func TestHandler_LoadSession_SiblingDirectoryAttack(t *testing.T) {
+	// Regression test for sibling directory path attack
+	// If baseDir is /tmp/sessions, an attacker might try /tmp/sessionsx
+	tmpDir := t.TempDir()
+	h := NewHandler(tmpDir, createTestFS())
+	mux := createTestMux(h)
+
+	// Try to access a sibling directory with a matching prefix
+	siblingPath := tmpDir + "x/evil"
+	body := `{"path": "` + siblingPath + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_path", resp.Code)
+	assert.Contains(t, resp.Error, "not under session directory")
+}
+
+// === Helper Functions ===
+
+func createTestFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html></html>")},
+	}
+}
+
+func createTestSession(t *testing.T, baseDir, app, date, sessionID string, status session.Status, clientType string) string {
+	t.Helper()
+
+	sessionDir := filepath.Join(baseDir, app, date, sessionID)
+	require.NoError(t, os.MkdirAll(sessionDir, 0750))
+
+	// Create metadata
+	meta := &session.Metadata{
+		SessionID:       sessionID,
+		StartTime:       time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC),
+		Status:          status,
+		SessionDir:      sessionDir,
+		ClientType:      clientType,
+		ApplicationName: app,
+		DatePartition:   date,
+		Workers:         []session.WorkerMetadata{},
+	}
+	require.NoError(t, meta.Save(sessionDir))
+
+	return sessionDir
+}
+
+func writeJSONL(t *testing.T, path string, items []map[string]any) {
+	t.Helper()
+
+	var content []byte
+	for _, item := range items {
+		data, err := json.Marshal(item)
+		require.NoError(t, err)
+		content = append(content, data...)
+		content = append(content, '\n')
+	}
+
+	require.NoError(t, os.WriteFile(path, content, 0600))
+}
+
+// === Unit Tests for Helper Functions ===
+
+func TestIsValidDateFormat(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"2026-01-15", true},
+		{"2020-12-31", true},
+		{"2026-1-15", false},   // Missing leading zero
+		{"26-01-15", false},    // Wrong year format
+		{"2026/01/15", false},  // Wrong separator
+		{"2026-01-151", false}, // Too long
+		{"2026-01-1", false},   // Too short
+		{"abcd-ef-gh", false},  // Non-numeric
+		{"", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			assert.Equal(t, tc.expected, isValidDateFormat(tc.input))
+		})
+	}
+}
+
+func TestLoadRawJSONL_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create empty file
+	require.NoError(t, os.WriteFile(path, []byte(""), 0600))
+
+	result := loadRawJSONL(path)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+}
+
+func TestLoadRawJSONL_NonExistent(t *testing.T) {
+	result := loadRawJSONL("/nonexistent/path.jsonl")
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+}
+
+func TestLoadRawJSONL_ValidContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "test.jsonl")
+
+	content := `{"key": "value1"}
+{"key": "value2"}
+{"key": "value3"}
+`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+
+	result := loadRawJSONL(path)
+	require.Len(t, result, 3)
+
+	// Verify content
+	var item1 map[string]string
+	require.NoError(t, json.Unmarshal(result[0], &item1))
+	assert.Equal(t, "value1", item1["key"])
+}
+
+// === SPA Handler Integration Test ===
+
+func TestHandler_SPAFallback(t *testing.T) {
+	testFS := fstest.MapFS{
+		"index.html":        &fstest.MapFile{Data: []byte("<html>SPA</html>")},
+		"assets/app.js":     &fstest.MapFile{Data: []byte("console.log('app')")},
+		"assets/styles.css": &fstest.MapFile{Data: []byte("body {}")},
+	}
+
+	h := NewHandler("/tmp/sessions", testFS)
+	mux := createTestMux(h)
+
+	tests := []struct {
+		name           string
+		path           string
+		expectedStatus int
+		expectedBody   string
+	}{
+		{"root path serves index.html", "/", http.StatusOK, "<html>SPA</html>"},
+		{"existing file served", "/assets/app.js", http.StatusOK, "console.log('app')"},
+		{"non-existent path serves index.html", "/some/route", http.StatusOK, "<html>SPA</html>"},
+		{"api paths return 404", "/api/nonexistent", http.StatusNotFound, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			w := httptest.NewRecorder()
+
+			mux.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.expectedStatus, w.Code)
+			if tc.expectedBody != "" {
+				assert.Contains(t, w.Body.String(), tc.expectedBody)
+			}
+		})
+	}
+}

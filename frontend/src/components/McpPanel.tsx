@@ -4,12 +4,15 @@ import './McpPanel.css'
 
 interface Props {
   requests: McpRequest[]
+  initialWorkerFilter?: string
 }
 
-export default function McpPanel({ requests }: Props) {
+export default function McpPanel({ requests, initialWorkerFilter }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [toolFilters, setToolFilters] = useState<Set<string>>(new Set())
-  const [workerFilters, setWorkerFilters] = useState<Set<string>>(new Set())
+  const [workerFilters, setWorkerFilters] = useState<Set<string>>(
+    initialWorkerFilter ? new Set([initialWorkerFilter]) : new Set()
+  )
 
   const toggleToolFilter = (name: string) => {
     setToolFilters(prev => {

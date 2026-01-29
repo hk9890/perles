@@ -65,6 +65,12 @@
   border-radius: 4px;
 }
 
+.last-refreshed {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: default;
+}
+
 .initial-loading {
   display: flex;
   align-items: center;

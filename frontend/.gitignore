@@ -1,8 +1,8 @@
 # Dependencies
 node_modules/
 
-# Build output
-dist/
+# Build output - NOT ignored because we commit pre-built assets
+# dist/
 
 # Vite cache
 .vite/

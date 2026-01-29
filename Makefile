@@ -1,4 +1,4 @@
-.PHONY: all build run install test test-v test-update clean lint mocks mocks-clean playground up down jaeger
+.PHONY: all build build-go build-frontend run run-all install test test-v test-update clean lint mocks mocks-clean playground up down jaeger daemon
 
 # Version from git (tag or commit hash)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -7,20 +7,35 @@ LDFLAGS := -X 'main.version=$(VERSION)'
 # Default target
 all: build test
 
-# Build the binary with version info
-build:
+# Build frontend (requires Node.js)
+build-frontend:
+	@echo "Building frontend..."
+	cd frontend && npm install && npm run build
+
+# Go-only build (assumes frontend is pre-built)
+build-go:
 	go build -ldflags "$(LDFLAGS)" -o perles .
 
-# Build and run the binary
-run: build
+build: build-frontend build-go
+
+# Build the frontend and back and run the binary
+run-all: build
 	./perles
+
+# Build and run the binary
+run: build-go
+	./perles
+
+# Build dameon 
+daemon: build-go
+	./perles daemon -p 19999
 
 # Builds and starts the playground
 playground: build
 	./perles playground
 
 # Build and run the binary with the debug flag
-debug: build
+debug: build-go
 	./perles -d
 
 # Install the binary to $GOPATH/bin with version info

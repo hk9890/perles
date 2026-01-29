@@ -4,21 +4,23 @@ A React-based viewer for Perles orchestration session files.
 
 ## Quick Start
 
+The frontend is served by the Perles Go binary. To develop:
+
 ```bash
-# Install dependencies
+# 1. Start perles in dashboard mode (note the API port in output)
+cd .. && ./perles
+# Look for: "API server started port=XXXXX"
+
+# 2. Install dependencies
 npm install
 
-# Start the API server (in one terminal)
-npm run server
-
-# Start the frontend dev server (in another terminal)
-npm run dev
+# 3. Start the frontend dev server with the API port
+VITE_API_PORT=XXXXX npm run dev
 ```
 
-Then open http://localhost:3000 and enter a session path like:
-```
-/Users/zack/.perles/sessions/perles/2026-01-28/058cd149-0eb1-4935-b98e-3bab36b520bd
-```
+For production, the frontend is embedded in the Go binary and served
+automatically when you run Perles in dashboard mode. Press `o` on a
+workflow to open the session viewer in your browser.
 
 ## Features
 
@@ -30,11 +32,11 @@ Then open http://localhost:3000 and enter a session path like:
 
 ## Architecture
 
-- **Frontend**: React + TypeScript + Vite (port 3000)
-- **Backend**: Express.js API server (port 3001)
+- **Frontend**: React + TypeScript + Vite
+- **Backend**: Go API server (embedded in Perles binary)
 
-The API server reads session files from disk and returns structured JSON.
-The frontend proxies `/api` requests to the backend server.
+The Go server reads session files from disk and returns structured JSON.
+In development, Vite proxies `/api` requests to the Go backend.
 
 ## Session File Structure
 

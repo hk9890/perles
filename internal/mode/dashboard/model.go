@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -21,9 +22,11 @@ import (
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/flags"
+	"github.com/zjrosen/perles/internal/frontend"
 	appgit "github.com/zjrosen/perles/internal/git/application"
 	domaingit "github.com/zjrosen/perles/internal/git/domain"
 	"github.com/zjrosen/perles/internal/keys"
+	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/mode"
 	"github.com/zjrosen/perles/internal/orchestration/controlplane"
 	"github.com/zjrosen/perles/internal/orchestration/events"
@@ -933,6 +936,9 @@ func (m Model) handleTableKeys(msg tea.KeyMsg) (mode.Controller, tea.Cmd) {
 	case "a": // Archive workflow (only when session persistence is enabled)
 		return m.archiveSelectedWorkflow()
 
+	case "o": // Open session in browser
+		return m.openSessionInBrowser()
+
 	case "n", "N": // New workflow (always starts immediately)
 		return m.openNewWorkflowModal()
 
@@ -1728,6 +1734,49 @@ func (m Model) archiveSelectedWorkflow() (mode.Controller, tea.Cmd) {
 	archiveModal.SetSize(m.width, m.height)
 	m.archiveModal = &archiveModal
 	return m, nil
+}
+
+// openSessionInBrowser opens the session viewer in the default browser.
+// URL format: http://localhost:<port>/?path=<url-encoded-session-path>
+// Falls back to displaying the URL in a toast if browser launch fails.
+func (m Model) openSessionInBrowser() (mode.Controller, tea.Cmd) {
+	workflow := m.SelectedWorkflow()
+	if workflow == nil {
+		return m, nil
+	}
+
+	// Need the session path to open the viewer
+	if workflow.SessionDir == "" {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{
+				Message: "No session directory available",
+				Style:   toaster.StyleError,
+			}
+		}
+	}
+
+	// Build the session viewer URL with URL-encoded path
+	encodedPath := url.QueryEscape(workflow.SessionDir)
+	viewerURL := fmt.Sprintf("http://localhost:%d/?path=%s", m.apiPort, encodedPath)
+
+	// Attempt to open the browser
+	if err := frontend.OpenBrowser(viewerURL); err != nil {
+		log.Warn(log.CatUI, "Could not open browser", "error", err)
+		// Fallback: show the URL so user can copy/paste it
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{
+				Message: fmt.Sprintf("Open: %s", viewerURL),
+				Style:   toaster.StyleInfo,
+			}
+		}
+	}
+
+	return m, func() tea.Msg {
+		return mode.ShowToastMsg{
+			Message: "Opening session in browser...",
+			Style:   toaster.StyleInfo,
+		}
+	}
 }
 
 // renameSelectedWorkflow shows the rename modal after validating the workflow.

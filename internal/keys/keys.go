@@ -534,6 +534,7 @@ var Dashboard = struct {
 	Help            key.Binding
 	Quit            key.Binding
 	CoordinatorChat key.Binding
+	OpenInBrowser   key.Binding
 }{
 	Up: key.NewBinding(
 		key.WithKeys("k", "up"),
@@ -602,6 +603,10 @@ var Dashboard = struct {
 	CoordinatorChat: key.NewBinding(
 		key.WithKeys("ctrl+w"),
 		key.WithHelp("ctrl+w", "coordinator chat"),
+	),
+	OpenInBrowser: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "open in browser"),
 	),
 }
 

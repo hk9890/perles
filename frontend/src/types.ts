@@ -1,3 +1,10 @@
+export interface TokenUsage {
+  context_tokens?: number;
+  total_input_tokens?: number;  // Legacy field name
+  total_output_tokens: number;
+  total_cost_usd: number;
+}
+
 export interface SessionMetadata {
   session_id: string;
   start_time: string;
@@ -7,11 +14,8 @@ export interface SessionMetadata {
   resumable: boolean;
   workers: WorkerMeta[];
   client_type: string;
-  token_usage: {
-    total_input_tokens: number;
-    total_output_tokens: number;
-    total_cost_usd: number;
-  };
+  token_usage: TokenUsage;
+  coordinator_token_usage?: TokenUsage;
   application_name: string;
   work_dir: string;
   date_partition: string;
@@ -22,6 +26,7 @@ export interface WorkerMeta {
   spawned_at: string;
   headless_session_ref: string;
   work_dir: string;
+  token_usage?: TokenUsage;
 }
 
 export interface FabricEvent {

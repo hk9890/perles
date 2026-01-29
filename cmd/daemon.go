@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zjrosen/perles/frontend"
 	"github.com/zjrosen/perles/internal/beads/application"
 	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
 	"github.com/zjrosen/perles/internal/config"
@@ -145,6 +146,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 		ControlPlane:    cp,
 		WorkflowCreator: workflowCreator,
 		RegistryService: registryService,
+		FrontendFS:      frontend.DistFS(),
 	})
 	if err != nil {
 		return fmt.Errorf("creating API server: %w", err)

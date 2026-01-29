@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Session } from '../types'
 import MetadataPanel from './MetadataPanel'
 import FabricPanel from './FabricPanel'
@@ -9,7 +9,6 @@ import './SessionViewer.css'
 
 interface Props {
   session: Session
-  onRefresh: () => void
 }
 
 type Tab = 'overview' | 'fabric' | 'commands' | 'coordinator' | 'workers' | 'mcp'
@@ -25,20 +24,31 @@ function getInitialTab(): Tab {
   return 'overview'
 }
 
-export default function SessionViewer({ session, onRefresh }: Props) {
+export default function SessionViewer({ session }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(getInitialTab)
   const [selectedWorker, setSelectedWorker] = useState<string>(
     Object.keys(session.workers)[0] || ''
   )
+  const [mcpWorkerFilter, setMcpWorkerFilter] = useState<string | undefined>(undefined)
 
-  // Update URL when tab changes and refresh data
+  // Update URL when tab changes
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', tab)
-    window.history.replaceState({}, '', url.toString())
-    onRefresh()
+    window.history.pushState({ tab }, '', url.toString())
   }
+
+  // Listen for browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const tab = getInitialTab()
+      setActiveTab(tab)
+      setMcpWorkerFilter(undefined) // Reset filter on navigation
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'overview', label: 'Overview' },
@@ -68,7 +78,18 @@ export default function SessionViewer({ session, onRefresh }: Props) {
 
       <div className="viewer-content">
         {activeTab === 'overview' && session.metadata && (
-          <MetadataPanel metadata={session.metadata} session={session} />
+          <MetadataPanel 
+            metadata={session.metadata} 
+            session={session}
+            onNavigateToWorker={(workerId) => {
+              setSelectedWorker(workerId)
+              handleTabChange('workers')
+            }}
+            onNavigateToMcp={(workerId) => {
+              setMcpWorkerFilter(workerId)
+              handleTabChange('mcp')
+            }}
+          />
         )}
         
         {activeTab === 'fabric' && (
@@ -113,7 +134,7 @@ export default function SessionViewer({ session, onRefresh }: Props) {
         )}
         
         {activeTab === 'mcp' && (
-          <McpPanel requests={session.mcpRequests} />
+          <McpPanel requests={session.mcpRequests} initialWorkerFilter={mcpWorkerFilter} />
         )}
       </div>
     </div>

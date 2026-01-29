@@ -12,6 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        run: npm ci && npm run build
+        working-directory: frontend
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -33,6 +42,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        run: npm ci && npm run build
+        working-directory: frontend
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -48,6 +66,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        run: npm ci && npm run build
+        working-directory: frontend
 
       - name: Set up Go
         uses: actions/setup-go@v6

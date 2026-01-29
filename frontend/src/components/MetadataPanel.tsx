@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import type { Session, SessionMetadata } from '../types'
+import { hashColor } from '../utils/colors'
 import MarkdownModal from './MarkdownModal'
 import './MetadataPanel.css'
 
 interface Props {
   metadata: SessionMetadata
   session: Session
+  onNavigateToWorker?: (workerId: string) => void
+  onNavigateToMcp?: (workerId: string) => void
 }
 
-export default function MetadataPanel({ metadata, session }: Props) {
+export default function MetadataPanel({ metadata, session, onNavigateToWorker, onNavigateToMcp }: Props) {
   const [showSummary, setShowSummary] = useState(false)
   const [workerSummary, setWorkerSummary] = useState<{ id: string; content: string } | null>(null)
   const formatTime = (ts: string) => {
@@ -119,19 +122,15 @@ export default function MetadataPanel({ metadata, session }: Props) {
           </section>
 
           <section className="meta-section">
-            <h2>Token Usage</h2>
+            <h2>Tokens</h2>
             <div className="meta-grid">
               <div className="meta-item">
-                <label>Input Tokens</label>
-                <span className="token-count">{metadata.token_usage.total_input_tokens.toLocaleString()}</span>
-              </div>
-              <div className="meta-item">
-                <label>Output Tokens</label>
-                <span className="token-count">{metadata.token_usage.total_output_tokens.toLocaleString()}</span>
+                <label>Context Tokens</label>
+                <span className="token-count">{(metadata.token_usage.context_tokens ?? metadata.token_usage.total_input_tokens ?? 0).toLocaleString()}</span>
               </div>
               <div className="meta-item">
                 <label>Total Cost</label>
-                <span className="cost">${metadata.token_usage.total_cost_usd.toFixed(4)}</span>
+                <span className="cost">${(metadata.token_usage.total_cost_usd ?? 0).toFixed(4)}</span>
               </div>
             </div>
           </section>
@@ -203,10 +202,11 @@ export default function MetadataPanel({ metadata, session }: Props) {
               {metadata.workers.map(worker => {
                 const workerData = session.workers[worker.id]
                 const hasSummary = workerData?.accountabilitySummary
+                const tokens = worker.token_usage
                 return (
                   <div key={worker.id} className="worker-card">
                     <div className="worker-header">
-                      <span className="worker-id">{worker.id}</span>
+                      <span className="worker-id" style={{ color: hashColor(worker.id) }}>{worker.id}</span>
                       <span className="worker-time">{formatTime(worker.spawned_at)}</span>
                     </div>
                     <div className="worker-details">
@@ -219,6 +219,35 @@ export default function MetadataPanel({ metadata, session }: Props) {
                           📋 Summary
                         </button>
                       )}
+                    </div>
+                    <div className="worker-footer">
+                      {tokens && (
+                        <div className="worker-tokens">
+                          <span className="worker-token-item">
+                            <span className="worker-token-label">Context:</span>
+                            <span className="worker-token-value">{(tokens.context_tokens ?? tokens.total_input_tokens ?? 0).toLocaleString()}</span>
+                          </span>
+                          <span className="worker-token-item">
+                            <span className="worker-token-label">Cost:</span>
+                            <span className="worker-token-value">${(tokens.total_cost_usd ?? 0).toFixed(4)}</span>
+                          </span>
+                        </div>
+                      )}
+                      <div className="worker-nav-links">
+                        <button 
+                          className="worker-nav-link"
+                          onClick={() => onNavigateToWorker?.(worker.id)}
+                        >
+                          Messages
+                        </button>
+                        <span className="worker-nav-divider">|</span>
+                        <button 
+                          className="worker-nav-link"
+                          onClick={() => onNavigateToMcp?.(worker.id)}
+                        >
+                          MCP Requests
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
