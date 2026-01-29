@@ -1096,6 +1096,45 @@ func TestExecutor_ClosedAtNullForOpenIssue(t *testing.T) {
 	require.True(t, issues[0].ClosedAt.IsZero(), "ClosedAt should be zero for open issues")
 }
 
+func TestExecutor_CloseReasonPopulated(t *testing.T) {
+	closedAt := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
+	createdAt := time.Date(2024, 6, 1, 9, 0, 0, 0, time.UTC)
+
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.WithIssue("closed-with-reason",
+			testutil.Title("Closed Issue With Reason"),
+			testutil.Status("closed"),
+			testutil.CreatedAt(createdAt),
+			testutil.ClosedAt(closedAt),
+			testutil.CloseReason("All 7 child beads completed"),
+		)
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("id = closed-with-reason")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, beads.StatusClosed, issues[0].Status)
+	require.Equal(t, "All 7 child beads completed", issues[0].CloseReason)
+}
+
+func TestExecutor_CloseReasonEmptyForOpenIssue(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("id = test-1")
+	require.NoError(t, err)
+
+	require.Len(t, issues, 1)
+	require.Equal(t, beads.StatusOpen, issues[0].Status)
+	require.Empty(t, issues[0].CloseReason)
+}
+
 func TestExecutor_ExpandLargeFanout(t *testing.T) {
 	// Create 1 epic with 100 children (large fan-out)
 	db := testutil.NewTestDB(t)

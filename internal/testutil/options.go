@@ -32,6 +32,7 @@ type issueData struct {
 	createdBy    string
 	updatedAt    time.Time
 	closedAt     *time.Time
+	closeReason  string
 	deletedAt    *time.Time
 	hookBead     string
 	roleBead     string
@@ -123,6 +124,11 @@ func UpdatedAt(t time.Time) IssueOption {
 // ClosedAt sets the closed_at timestamp explicitly.
 func ClosedAt(t time.Time) IssueOption {
 	return func(i *issueData) { i.closedAt = &t }
+}
+
+// CloseReason sets the close_reason field for closed issues.
+func CloseReason(reason string) IssueOption {
+	return func(i *issueData) { i.closeReason = reason }
 }
 
 // DeletedAt sets the deleted_at timestamp for soft-deleted issues.

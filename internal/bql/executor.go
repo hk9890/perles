@@ -157,6 +157,7 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 			i.created_by,
 			i.updated_at,
 			i.closed_at,
+			i.close_reason,
 			i.hook_bead,
 			i.role_bead,
 			i.agent_state,
@@ -260,6 +261,7 @@ func (e *Executor) scanIssuesBase(rows *sql.Rows) ([]beads.Issue, error) {
 			isTemplate         sql.NullBool
 			createdBy          sql.NullString
 			closedAt           sql.NullTime
+			closeReason        sql.NullString
 			hookBead           sql.NullString
 			roleBead           sql.NullString
 			agentState         sql.NullString
@@ -288,6 +290,7 @@ func (e *Executor) scanIssuesBase(rows *sql.Rows) ([]beads.Issue, error) {
 			&createdBy,
 			&issue.UpdatedAt,
 			&closedAt,
+			&closeReason,
 			&hookBead,
 			&roleBead,
 			&agentState,
@@ -333,6 +336,9 @@ func (e *Executor) scanIssuesBase(rows *sql.Rows) ([]beads.Issue, error) {
 		}
 		if closedAt.Valid {
 			issue.ClosedAt = closedAt.Time
+		}
+		if closeReason.Valid {
+			issue.CloseReason = closeReason.String
 		}
 		if hookBead.Valid {
 			issue.HookBead = hookBead.String

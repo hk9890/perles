@@ -32,6 +32,7 @@ CREATE TABLE issues (
 	created_by TEXT DEFAULT '',
 	updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	closed_at DATETIME,
+	close_reason TEXT DEFAULT '',
 	deleted_at DATETIME,
 	hook_bead TEXT DEFAULT '',
 	role_bead TEXT DEFAULT '',

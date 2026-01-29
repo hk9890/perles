@@ -466,15 +466,16 @@ func (m Model) renderHeader() string {
 	statusStyle := getStatusStyle(issue.Status)
 	metaLine := fmt.Sprintf("\nStatus: %s", statusStyle.Render(formatStatus(issue.Status)))
 
-	// Labels line
-	var labelsLine string
-	if len(issue.Labels) > 0 {
-		labelsLine = "Labels: " + strings.Join(issue.Labels, ", ")
+	lines := []string{titleLine, metaLine}
+
+	// Close reason (for closed issues)
+	if issue.CloseReason != "" {
+		lines = append(lines, "Close Reason: "+issue.CloseReason)
 	}
 
-	lines := []string{titleLine, metaLine}
-	if labelsLine != "" {
-		lines = append(lines, labelsLine)
+	// Labels line
+	if len(issue.Labels) > 0 {
+		lines = append(lines, "Labels: "+strings.Join(issue.Labels, ", "))
 	}
 
 	return strings.Join(lines, "\n") + "\n"
@@ -674,6 +675,28 @@ func (m Model) renderMetadataColumn() string {
 		sb.WriteString(labelStyle.Render("Duration"))
 		sb.WriteString(valueStyle.Render(formatDuration(duration)))
 		sb.WriteString("\n")
+
+		// Close reason (if set)
+		if issue.CloseReason != "" {
+			// Use a label style without fixed width since "Close Reason" is longer
+			// and the value is on its own line anyway
+			sectionLabelStyle := lipgloss.NewStyle().
+				Foreground(styles.TextDescriptionColor)
+			sb.WriteString(indentedDivider)
+			sb.WriteString("\n")
+			sb.WriteString(indent)
+			sb.WriteString(sectionLabelStyle.Render("Close Reason"))
+			sb.WriteString("\n")
+			// Wrap long reasons to fit metadata column
+			reasonIndent := indent + " "
+			maxReasonWidth := metadataContentWidth() - 1
+			wrapped := wordwrap.String(issue.CloseReason, maxReasonWidth)
+			for line := range strings.SplitSeq(wrapped, "\n") {
+				sb.WriteString(reasonIndent)
+				sb.WriteString(valueStyle.Render(line))
+				sb.WriteString("\n")
+			}
+		}
 	}
 
 	// Labels section

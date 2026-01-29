@@ -65,6 +65,7 @@ type Issue struct {
 	CreatedBy          string    `json:"created_by,omitempty"`
 	UpdatedAt          time.Time `json:"updated_at"`
 	ClosedAt           time.Time `json:"closed_at"`
+	CloseReason        string    `json:"close_reason,omitempty"`
 
 	// Agent fields (agent-as-bead pattern)
 	HookBead     string    `json:"hook_bead,omitempty"`
