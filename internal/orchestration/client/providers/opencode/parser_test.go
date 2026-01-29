@@ -328,3 +328,49 @@ func TestParser_ImplementsEventParser(t *testing.T) {
 	// Verify at runtime that Parser implements EventParser
 	var _ client.EventParser = p
 }
+
+func TestOpenCodeParser_ExtractsCost(t *testing.T) {
+	p := NewParser()
+
+	// OpenCode step_finish event with cost field populated
+	input := `{"type":"step_finish","sessionID":"ses_cost123","part":{"type":"step-finish","reason":"stop","cost":0.0234,"tokens":{"input":5000,"output":1000}}}`
+
+	event, err := p.ParseEvent([]byte(input))
+
+	require.NoError(t, err)
+	require.Equal(t, client.EventType("step_finish"), event.Type)
+	require.InDelta(t, 0.0234, event.TotalCostUSD, 0.0001, "TotalCostUSD should be extracted from raw.Part.Cost")
+	require.NotNil(t, event.Usage, "Usage should also be populated")
+	require.Equal(t, 5000, event.Usage.TokensUsed)
+	require.Equal(t, 1000, event.Usage.OutputTokens)
+}
+
+func TestOpenCodeParser_ZeroCost(t *testing.T) {
+	p := NewParser()
+
+	// OpenCode step_finish event with cost: 0 (valid for cache hits)
+	input := `{"type":"step_finish","sessionID":"ses_zerocost","part":{"type":"step-finish","reason":"stop","cost":0,"tokens":{"input":100,"output":50,"cache":{"read":500}}}}`
+
+	event, err := p.ParseEvent([]byte(input))
+
+	require.NoError(t, err)
+	require.Equal(t, client.EventType("step_finish"), event.Type)
+	require.Equal(t, float64(0), event.TotalCostUSD, "Zero cost should remain zero (valid for cache hits)")
+	require.NotNil(t, event.Usage, "Usage should still be populated")
+	require.Equal(t, 600, event.Usage.TokensUsed) // input + cache.read
+}
+
+func TestOpenCodeParser_MissingCost(t *testing.T) {
+	p := NewParser()
+
+	// OpenCode step_finish event without cost field (graceful degradation)
+	input := `{"type":"step_finish","sessionID":"ses_nocost","part":{"type":"step-finish","reason":"tool-calls","tokens":{"input":3000,"output":500}}}`
+
+	event, err := p.ParseEvent([]byte(input))
+
+	require.NoError(t, err)
+	require.Equal(t, client.EventType("step_finish"), event.Type)
+	require.Equal(t, float64(0), event.TotalCostUSD, "Missing cost field should default to zero")
+	require.NotNil(t, event.Usage, "Usage should still be populated when cost is missing")
+	require.Equal(t, 3000, event.Usage.TokensUsed)
+}

@@ -78,7 +78,7 @@ func TestMetadata_Save_Load(t *testing.T) {
 		ClientType: "claude",
 		Model:      "sonnet",
 		TokenUsage: TokenUsageSummary{
-			TotalInputTokens:  125000,
+			ContextTokens:     125000,
 			TotalOutputTokens: 45000,
 			TotalCostUSD:      2.35,
 		},
@@ -106,7 +106,7 @@ func TestMetadata_Save_Load(t *testing.T) {
 	require.Equal(t, meta.CoordinatorID, loaded.CoordinatorID)
 	require.Equal(t, meta.ClientType, loaded.ClientType)
 	require.Equal(t, meta.Model, loaded.Model)
-	require.Equal(t, meta.TokenUsage.TotalInputTokens, loaded.TokenUsage.TotalInputTokens)
+	require.Equal(t, meta.TokenUsage.ContextTokens, loaded.TokenUsage.ContextTokens)
 	require.Equal(t, meta.TokenUsage.TotalOutputTokens, loaded.TokenUsage.TotalOutputTokens)
 	require.Equal(t, meta.TokenUsage.TotalCostUSD, loaded.TokenUsage.TotalCostUSD)
 
@@ -209,7 +209,7 @@ func TestMetadata_ZeroValueFields(t *testing.T) {
 	require.Empty(t, loaded.Model)
 	require.Empty(t, loaded.EpicID)
 	require.Empty(t, loaded.AccountabilitySummaryPath)
-	require.Equal(t, 0, loaded.TokenUsage.TotalInputTokens)
+	require.Equal(t, 0, loaded.TokenUsage.ContextTokens)
 	require.Equal(t, 0, loaded.TokenUsage.TotalOutputTokens)
 	require.Equal(t, 0.0, loaded.TokenUsage.TotalCostUSD)
 }
@@ -627,7 +627,7 @@ func TestMetadata_FullSessionResumption(t *testing.T) {
 		WorkDir:         "/home/user/project",
 		DatePartition:   "2026-01-11",
 		TokenUsage: TokenUsageSummary{
-			TotalInputTokens:  50000,
+			ContextTokens:     50000,
 			TotalOutputTokens: 15000,
 			TotalCostUSD:      1.25,
 		},
@@ -1975,8 +1975,9 @@ func TestSession_CoordinatorSubscriber(t *testing.T) {
 
 	// Publish a token usage event
 	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type: events.ProcessTokenUsage,
-		Role: events.RoleCoordinator,
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
 		Metrics: &metrics.TokenMetrics{
 			TokensUsed:   100,
 			OutputTokens: 50,
@@ -2007,9 +2008,8 @@ func TestSession_CoordinatorSubscriber(t *testing.T) {
 	// Verify metadata has token usage
 	meta, err := Load(sessionDir)
 	require.NoError(t, err)
-	require.Equal(t, 100, meta.TokenUsage.TotalInputTokens)
 	require.Equal(t, 50, meta.TokenUsage.TotalOutputTokens)
-	require.Equal(t, 0.05, meta.TokenUsage.TotalCostUSD)
+	require.InDelta(t, 0.05, meta.TokenUsage.TotalCostUSD, 0.001)
 }
 
 func TestSession_WorkerSubscriber(t *testing.T) {
@@ -2351,10 +2351,16 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 	// Give goroutines time to start
 	time.Sleep(10 * time.Millisecond)
 
+	// Add workers to session first (required for per-worker token tracking)
+	now := time.Now()
+	session.addWorker("worker-1", now, "/project")
+	session.addWorker("worker-2", now, "/project")
+
 	// Publish multiple token usage events from coordinator and workers
 	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type: events.ProcessTokenUsage,
-		Role: events.RoleCoordinator,
+		Type:      events.ProcessTokenUsage,
+		ProcessID: "coordinator",
+		Role:      events.RoleCoordinator,
 		Metrics: &metrics.TokenMetrics{
 			TokensUsed:   100,
 			OutputTokens: 50,
@@ -2392,14 +2398,16 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify token usage:
-	// - TotalInputTokens: last value only (context is cumulative per-turn, not additive)
 	// - TotalOutputTokens: accumulated (output tokens are incremental per-turn)
 	// - TotalCostUSD: accumulated (cost is incremental per-turn)
 	meta, err := Load(sessionDir)
 	require.NoError(t, err)
-	require.Equal(t, 300, meta.TokenUsage.TotalInputTokens)  // Last value (worker-2), not sum
 	require.Equal(t, 225, meta.TokenUsage.TotalOutputTokens) // 50 + 75 + 100
 	require.InDelta(t, 0.06, meta.TokenUsage.TotalCostUSD, 0.001)
+
+	// Verify per-process tracking
+	require.Equal(t, 50, meta.CoordinatorTokenUsage.TotalOutputTokens)
+	require.InDelta(t, 0.01, meta.CoordinatorTokenUsage.TotalCostUSD, 0.001)
 }
 
 func TestSession_WorkerMetadataUpdates(t *testing.T) {
@@ -3730,9 +3738,11 @@ func TestSession_HandleCoordinatorProcessEvent_TokenUsage(t *testing.T) {
 	// Verify token usage was updated in metadata
 	meta, err := Load(sessionDir)
 	require.NoError(t, err)
-	require.Equal(t, 1000, meta.TokenUsage.TotalInputTokens)
 	require.Equal(t, 500, meta.TokenUsage.TotalOutputTokens)
 	require.InDelta(t, 0.05, meta.TokenUsage.TotalCostUSD, 0.001)
+	// Verify coordinator-specific tracking
+	require.Equal(t, 500, meta.CoordinatorTokenUsage.TotalOutputTokens)
+	require.InDelta(t, 0.05, meta.CoordinatorTokenUsage.TotalCostUSD, 0.001)
 }
 
 // Tests for handleProcessEvent (worker events)
@@ -5109,4 +5119,194 @@ func TestSession_WorkflowState_ClosedSessionErrors(t *testing.T) {
 	// ClearActiveWorkflowState should error
 	err = sess.ClearActiveWorkflowState()
 	require.ErrorIs(t, err, os.ErrClosed)
+}
+
+// TestSessionResume_MetricsLoaded verifies that when a session is reopened,
+// token usage metrics ARE loaded from the prior metadata (not reset to zero).
+// This is the correct behavior because:
+// 1. Processes publish turn costs (not cumulative) via setMetrics()
+// 2. updateTokenUsage() accumulates turn costs with +=
+// 3. Loading prior metrics ensures the total reflects all work done
+func TestSessionResume_MetricsLoaded(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-resume-metrics-loaded"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Phase 1: Create initial session with token usage
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Simulate token usage from coordinator in original session
+	// Parameters: processID, contextTokens, outputTokens, costUSD
+	origSess.updateTokenUsage("coordinator", 10000, 500, 1.50) // 10k context, 500 output, $1.50
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Verify metadata was saved with token usage
+	meta, err := Load(sessionDir)
+	require.NoError(t, err)
+	require.Equal(t, 10000, meta.TokenUsage.ContextTokens)
+	require.Equal(t, 500, meta.TokenUsage.TotalOutputTokens)
+	require.InDelta(t, 1.50, meta.TokenUsage.TotalCostUSD, 0.001)
+	require.Equal(t, 500, meta.CoordinatorTokenUsage.TotalOutputTokens)
+
+	// Phase 2: Reopen and verify metrics ARE loaded (not reset)
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	// Verify the reopened session has the prior token usage loaded
+	// This is the key assertion: metrics are NOT reset to zero
+	sess.mu.Lock()
+	contextTokens := sess.tokenUsage.ContextTokens
+	outputTokens := sess.tokenUsage.TotalOutputTokens
+	cost := sess.tokenUsage.TotalCostUSD
+	coordOutput := sess.coordinatorTokenUsage.TotalOutputTokens
+	sess.mu.Unlock()
+
+	require.Equal(t, 10000, contextTokens, "Context tokens should be loaded from prior metadata")
+	require.Equal(t, 500, outputTokens, "Output tokens should be loaded from prior metadata")
+	require.InDelta(t, 1.50, cost, 0.001, "Cost should be loaded from prior metadata")
+	require.Equal(t, 500, coordOutput, "Coordinator output tokens should be loaded from prior metadata")
+
+	// Phase 3: Simulate additional turn cost and verify accumulation
+	sess.updateTokenUsage("coordinator", 12000, 100, 0.25) // 12k context (replaces), 100 output (adds), $0.25 (adds)
+
+	sess.mu.Lock()
+	finalContext := sess.tokenUsage.ContextTokens
+	finalOutput := sess.tokenUsage.TotalOutputTokens
+	finalCost := sess.tokenUsage.TotalCostUSD
+	sess.mu.Unlock()
+
+	// Context tokens are REPLACED (current context window usage)
+	require.Equal(t, 12000, finalContext, "Context tokens should be replaced: 12000")
+	// Output tokens are ACCUMULATED
+	require.Equal(t, 600, finalOutput, "Output tokens should be accumulated: 500 + 100 = 600")
+	// Cost is ACCUMULATED from turn costs
+	require.InDelta(t, 1.75, finalCost, 0.001, "Cost should be accumulated: 1.50 + 0.25 = 1.75")
+}
+
+// TestSessionResume_PriorMetadataPreserved verifies that reopening a session
+// does not modify the metadata file until the reopened session is closed.
+// The original metadata values are preserved and accessible.
+func TestSessionResume_PriorMetadataPreserved(t *testing.T) {
+	baseDir := t.TempDir()
+	sessionID := "test-resume-metadata-preserved"
+	sessionDir := filepath.Join(baseDir, "session")
+
+	// Phase 1: Create initial session with known metadata
+	origSess, err := New(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Set token usage and workers
+	// Parameters: processID, contextTokens, outputTokens, costUSD
+	origSess.updateTokenUsage("coordinator", 20000, 800, 2.50)
+	now := time.Now().Truncate(time.Second)
+	origSess.addWorker("worker-1", now, "/project")
+
+	err = origSess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Record original metadata state
+	origMeta, err := Load(sessionDir)
+	require.NoError(t, err)
+	origContext := origMeta.TokenUsage.ContextTokens
+	origOutputTokens := origMeta.TokenUsage.TotalOutputTokens
+	origCost := origMeta.TokenUsage.TotalCostUSD
+	origWorkerCount := len(origMeta.Workers)
+
+	// Phase 2: Reopen session - verify metrics are loaded but not modified until new activity
+	sess, err := Reopen(sessionID, sessionDir)
+	require.NoError(t, err)
+
+	// Verify original values are loaded
+	sess.mu.Lock()
+	loadedContext := sess.tokenUsage.ContextTokens
+	loadedOutput := sess.tokenUsage.TotalOutputTokens
+	loadedCost := sess.tokenUsage.TotalCostUSD
+	sess.mu.Unlock()
+	require.Equal(t, origContext, loadedContext, "Context tokens should be loaded")
+	require.Equal(t, origOutputTokens, loadedOutput, "Output tokens should be loaded")
+	require.InDelta(t, origCost, loadedCost, 0.001, "Cost should be loaded")
+
+	// Add new activity to reopened session
+	sess.updateTokenUsage("coordinator", 25000, 200, 0.50) // 25k context (replaces), 200 output, $0.50
+
+	// Close the reopened session
+	err = sess.Close(StatusCompleted)
+	require.NoError(t, err)
+
+	// Phase 3: Verify metadata is now updated with new totals
+	finalMeta, err := Load(sessionDir)
+	require.NoError(t, err)
+
+	// Context replaced (25000), output accumulated (800+200=1000), cost accumulated (2.50+0.50=3.00)
+	require.Equal(t, 25000, finalMeta.TokenUsage.ContextTokens, "Context should be replaced")
+	require.Equal(t, 1000, finalMeta.TokenUsage.TotalOutputTokens, "Output should be accumulated")
+	require.InDelta(t, 3.00, finalMeta.TokenUsage.TotalCostUSD, 0.001, "Cost should be accumulated")
+	require.Equal(t, origWorkerCount, len(finalMeta.Workers), "Workers should be preserved")
+}
+
+// TestUpdateTokenUsage_CostOnlyEventDoesNotResetContext verifies that cost-only
+// events (with contextTokens=0) do not reset previously tracked context tokens.
+// This can happen when result events report cost but don't include token counts.
+func TestUpdateTokenUsage_CostOnlyEventDoesNotResetContext(t *testing.T) {
+	sessionDir := t.TempDir()
+	sess, err := New("test-cost-only", sessionDir)
+	require.NoError(t, err)
+	defer func() { _ = sess.Close(StatusCompleted) }()
+
+	// Add a worker
+	sess.addWorker("worker-1", time.Now(), "/project")
+
+	// First event: normal token usage with context
+	sess.updateTokenUsage("coordinator", 50000, 100, 0.50)
+	sess.updateTokenUsage("worker-1", 30000, 50, 0.25)
+
+	// Verify initial context tokens
+	sess.mu.Lock()
+	require.Equal(t, 50000, sess.coordinatorTokenUsage.ContextTokens)
+	require.Equal(t, 30000, sess.workers[0].TokenUsage.ContextTokens)
+	sess.mu.Unlock()
+
+	// Second event: cost-only (contextTokens=0) - should NOT reset context
+	sess.updateTokenUsage("coordinator", 0, 200, 1.00)
+	sess.updateTokenUsage("worker-1", 0, 100, 0.50)
+
+	// Verify context tokens are preserved (not reset to 0)
+	sess.mu.Lock()
+	require.Equal(t, 50000, sess.coordinatorTokenUsage.ContextTokens,
+		"Coordinator context should be preserved after cost-only event")
+	require.Equal(t, 300, sess.coordinatorTokenUsage.TotalOutputTokens,
+		"Coordinator output should be accumulated: 100 + 200 = 300")
+	require.InDelta(t, 1.50, sess.coordinatorTokenUsage.TotalCostUSD, 0.001,
+		"Coordinator cost should be accumulated: 0.50 + 1.00 = 1.50")
+
+	require.Equal(t, 30000, sess.workers[0].TokenUsage.ContextTokens,
+		"Worker context should be preserved after cost-only event")
+	require.Equal(t, 150, sess.workers[0].TokenUsage.TotalOutputTokens,
+		"Worker output should be accumulated: 50 + 100 = 150")
+	require.InDelta(t, 0.75, sess.workers[0].TokenUsage.TotalCostUSD, 0.001,
+		"Worker cost should be accumulated: 0.25 + 0.50 = 0.75")
+	sess.mu.Unlock()
+
+	// Third event: new context tokens should still replace
+	sess.updateTokenUsage("coordinator", 60000, 50, 0.25)
+	sess.updateTokenUsage("worker-1", 35000, 25, 0.10)
+
+	sess.mu.Lock()
+	require.Equal(t, 60000, sess.coordinatorTokenUsage.ContextTokens,
+		"Coordinator context should be replaced with new value")
+	require.Equal(t, 35000, sess.workers[0].TokenUsage.ContextTokens,
+		"Worker context should be replaced with new value")
+	sess.mu.Unlock()
+
+	// Verify session totals are correct
+	sess.mu.Lock()
+	require.Equal(t, 60000+35000, sess.tokenUsage.ContextTokens,
+		"Session context should be sum of coordinator + worker")
+	require.Equal(t, 350+175, sess.tokenUsage.TotalOutputTokens,
+		"Session output should be sum of all outputs")
+	sess.mu.Unlock()
 }

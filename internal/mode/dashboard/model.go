@@ -1335,8 +1335,9 @@ func (m *Model) updateCachedUIState(event controlplane.ControlPlaneEvent) {
 				// Output events - append message to chat
 				m.appendCoordinatorMessageToCache(uiState, payload)
 			case events.ProcessTokenUsage:
-				// Token usage events - update metrics
-				if payload.Metrics != nil {
+				// Token usage events - update metrics only if token data is present.
+				// Skip cost-only events (TokensUsed=0) to avoid wiping token display.
+				if payload.Metrics != nil && payload.Metrics.TokensUsed > 0 {
 					uiState.CoordinatorMetrics = payload.Metrics
 				}
 			case events.ProcessQueueChanged:
@@ -1382,8 +1383,9 @@ func (m *Model) updateCachedUIState(event controlplane.ControlPlaneEvent) {
 				// Output events - append message to chat
 				m.appendWorkerMessageToCache(uiState, payload)
 			case events.ProcessTokenUsage:
-				// Token usage events - update metrics
-				if payload.Metrics != nil {
+				// Token usage events - update metrics only if token data is present.
+				// Skip cost-only events (TokensUsed=0) to avoid wiping token display.
+				if payload.Metrics != nil && payload.Metrics.TokensUsed > 0 {
 					if uiState.WorkerMetrics == nil {
 						uiState.WorkerMetrics = make(map[string]*metrics.TokenMetrics)
 					}

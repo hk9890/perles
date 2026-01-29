@@ -145,6 +145,11 @@ func (p *Parser) ParseEvent(data []byte) (client.OutputEvent, error) {
 					OutputTokens: tokens.Output,
 				}
 			}
+
+			// Extract cost if available (OpenCode reports cost in step_finish events)
+			if raw.Part.Cost > 0 {
+				event.TotalCostUSD = raw.Part.Cost
+			}
 		}
 	}
 

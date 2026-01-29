@@ -53,8 +53,11 @@ type Metadata struct {
 	// Model is the AI model used (e.g., "sonnet").
 	Model string `json:"model,omitempty"`
 
-	// TokenUsage aggregates token usage across the session.
+	// TokenUsage aggregates token usage across the session (sum of all processes).
 	TokenUsage TokenUsageSummary `json:"token_usage,omitzero"`
+
+	// CoordinatorTokenUsage tracks the coordinator's cumulative token usage.
+	CoordinatorTokenUsage TokenUsageSummary `json:"coordinator_token_usage,omitzero"`
 
 	// ApplicationName is the derived or configured name for the application.
 	// Used for organizing sessions in centralized storage.
@@ -98,17 +101,21 @@ type WorkerMetadata struct {
 	// WorkDir is this worker's working directory.
 	// Currently same as session WorkDir, but supports future per-worker worktrees.
 	WorkDir string `json:"work_dir,omitempty"`
+
+	// TokenUsage tracks cumulative token usage for this worker.
+	TokenUsage TokenUsageSummary `json:"token_usage,omitzero"`
 }
 
 // TokenUsageSummary aggregates token usage across the session.
 type TokenUsageSummary struct {
-	// TotalInputTokens is the total number of input tokens used.
-	TotalInputTokens int `json:"total_input_tokens"`
+	// ContextTokens is the current context window usage (input + cache).
+	// This is the latest value, not cumulative (context fluctuates per turn).
+	ContextTokens int `json:"context_tokens"`
 
-	// TotalOutputTokens is the total number of output tokens used.
+	// TotalOutputTokens is the cumulative number of output tokens generated.
 	TotalOutputTokens int `json:"total_output_tokens"`
 
-	// TotalCostUSD is the estimated total cost in USD.
+	// TotalCostUSD is the cumulative total cost in USD.
 	TotalCostUSD float64 `json:"total_cost_usd"`
 }
 

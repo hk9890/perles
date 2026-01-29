@@ -66,8 +66,9 @@ type Session struct {
 	commandLog     *BufferedWriter            // commands.jsonl (V2 command processor events)
 
 	// Metadata for tracking workers and token usage.
-	workers    []WorkerMetadata
-	tokenUsage TokenUsageSummary
+	workers               []WorkerMetadata
+	tokenUsage            TokenUsageSummary // Aggregate of all processes (computed)
+	coordinatorTokenUsage TokenUsageSummary // Coordinator's cumulative usage
 
 	// Session resumption fields.
 	coordinatorSessionRef string
@@ -235,7 +236,13 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 
 	startTime := time.Now()
 
-	// Create session struct first so we can apply options
+	// Create session struct first so we can apply options.
+	// Note: tokenUsage is initialized to zero for new sessions since there is no prior
+	// metadata. For resumed sessions (via Reopen), tokenUsage IS loaded from the prior
+	// metadata to preserve accumulated totals. The updateTokenUsage() method then
+	// accumulates turn costs (not cumulative costs) from processes, so there is no
+	// double-counting on resume - see setMetrics() in process.go for the turn-cost
+	// publishing semantics that make this safe.
 	sess := &Session{
 		ID:             id,
 		Dir:            dir,
@@ -366,7 +373,15 @@ func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, erro
 	}
 	commandLog := NewBufferedWriter(commandsLogFile)
 
-	// Create session with current time as start time for this resumed session
+	// Create session with current time as start time for this resumed session.
+	// Token usage metrics ARE loaded from prior metadata (meta.TokenUsage) to preserve
+	// accumulated totals from before the session was paused. This does NOT cause
+	// double-counting because:
+	// 1. Processes publish turn costs (not cumulative) via setMetrics() in process.go
+	// 2. updateTokenUsage() accumulates these turn costs with +=
+	// 3. The prior total from metadata serves as the correct starting point
+	// Example: Prior session had $1.50 cost. Resumed session receives turn costs of
+	// $0.10, $0.20. Final total = $1.50 + $0.10 + $0.20 = $1.80 (correct).
 	sess := &Session{
 		ID:             sessionID,
 		Dir:            sessionDir,
@@ -381,7 +396,8 @@ func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, erro
 		commandLog:     commandLog,
 		// Restore workers from metadata to preserve existing worker list
 		workers:               meta.Workers,
-		tokenUsage:            meta.TokenUsage,
+		tokenUsage:            meta.TokenUsage,            // Load prior aggregate - see comment above for why this is safe
+		coordinatorTokenUsage: meta.CoordinatorTokenUsage, // Load prior coordinator usage
 		coordinatorSessionRef: meta.CoordinatorSessionRef,
 		resumable:             meta.Resumable,
 		applicationName:       meta.ApplicationName,
@@ -715,9 +731,8 @@ func (s *Session) generateSummary(meta *Metadata) error {
 		content += "\n"
 	}
 
-	if meta.TokenUsage.TotalInputTokens > 0 || meta.TokenUsage.TotalOutputTokens > 0 {
+	if meta.TokenUsage.TotalOutputTokens > 0 || meta.TokenUsage.TotalCostUSD > 0 {
 		content += "## Token Usage\n\n"
-		content += fmt.Sprintf("- **Input Tokens:** %d\n", meta.TokenUsage.TotalInputTokens)
 		content += fmt.Sprintf("- **Output Tokens:** %d\n", meta.TokenUsage.TotalOutputTokens)
 		if meta.TokenUsage.TotalCostUSD > 0 {
 			content += fmt.Sprintf("- **Total Cost:** $%.2f\n", meta.TokenUsage.TotalCostUSD)
@@ -926,9 +941,9 @@ func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 		}
 
 	case events.ProcessTokenUsage:
-		// Update token usage in metadata
+		// Update coordinator token usage in metadata
 		if event.Metrics != nil {
-			s.updateTokenUsage(event.Metrics.TokensUsed, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
+			s.updateTokenUsage("coordinator", event.Metrics.TokensUsed, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
 		}
 
 	case events.ProcessError:
@@ -1070,9 +1085,9 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		// Status changes are not user-visible chat - skip writing to messages.jsonl
 
 	case events.ProcessTokenUsage:
-		// Update token usage in metadata
+		// Update worker token usage in metadata
 		if event.Metrics != nil {
-			s.updateTokenUsage(event.Metrics.TokensUsed, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
+			s.updateTokenUsage(workerID, event.Metrics.TokensUsed, event.Metrics.OutputTokens, event.Metrics.TotalCostUSD)
 		}
 
 	case events.ProcessIncoming:
@@ -1172,16 +1187,73 @@ func (s *Session) handleMCPEvent(event events.MCPEvent) {
 	}
 }
 
-// updateTokenUsage atomically updates the session's token usage counters.
-func (s *Session) updateTokenUsage(inputTokens, outputTokens int, costUSD float64) {
+// updateTokenUsage atomically updates per-process token usage and recomputes session totals.
+//
+// Parameters:
+//   - processID: identifies which process (coordinator or worker-X) the usage is for
+//   - contextTokens: current context window usage (replaces previous value, not accumulated)
+//   - outputTokens: output tokens generated this turn (accumulated)
+//   - costUSD: turn cost (accumulated)
+//
+// IMPORTANT: outputTokens and costUSD must be turn-based (not cumulative) from each process.
+// Process.setMetrics() publishes turn cost via m.TotalCostUSD, which we accumulate here.
+func (s *Session) updateTokenUsage(processID string, contextTokens, outputTokens int, costUSD float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Context tokens (inputTokens) are cumulative per-turn (includes CacheRead),
-	// so we replace rather than accumulate. Output tokens and cost are incremental.
-	s.tokenUsage.TotalInputTokens = inputTokens
-	s.tokenUsage.TotalOutputTokens += outputTokens
-	s.tokenUsage.TotalCostUSD += costUSD
+	if s.closed {
+		return
+	}
+
+	// Update per-process usage
+	// Only update ContextTokens when we have actual token data (> 0).
+	// Cost-only events (e.g., result events) have TokensUsed=0 and should not
+	// reset the previously tracked context window size.
+	if processID == "coordinator" {
+		if contextTokens > 0 {
+			s.coordinatorTokenUsage.ContextTokens = contextTokens
+		}
+		s.coordinatorTokenUsage.TotalOutputTokens += outputTokens
+		s.coordinatorTokenUsage.TotalCostUSD += costUSD
+	} else {
+		// Find and update worker usage
+		for i := range s.workers {
+			if s.workers[i].ID == processID {
+				if contextTokens > 0 {
+					s.workers[i].TokenUsage.ContextTokens = contextTokens
+				}
+				s.workers[i].TokenUsage.TotalOutputTokens += outputTokens
+				s.workers[i].TokenUsage.TotalCostUSD += costUSD
+				break
+			}
+		}
+	}
+
+	// Recompute session totals from all processes
+	s.recomputeTokenUsageLocked()
+
+	// Persist to disk so token usage survives crashes/restarts
+	if err := s.saveMetadataLocked(); err != nil {
+		log.Warn(log.CatOrch, "Session: failed to persist token usage", "error", err)
+	}
+}
+
+// recomputeTokenUsageLocked recalculates session totals from coordinator + all workers.
+// Caller must hold s.mu.
+func (s *Session) recomputeTokenUsageLocked() {
+	total := TokenUsageSummary{
+		ContextTokens:     s.coordinatorTokenUsage.ContextTokens,
+		TotalOutputTokens: s.coordinatorTokenUsage.TotalOutputTokens,
+		TotalCostUSD:      s.coordinatorTokenUsage.TotalCostUSD,
+	}
+
+	for _, w := range s.workers {
+		total.ContextTokens += w.TokenUsage.ContextTokens
+		total.TotalOutputTokens += w.TokenUsage.TotalOutputTokens
+		total.TotalCostUSD += w.TokenUsage.TotalCostUSD
+	}
+
+	s.tokenUsage = total
 }
 
 // addWorker adds a new worker to the session's metadata.
@@ -1334,6 +1406,7 @@ func (s *Session) saveMetadataLocked() error {
 	meta.Resumable = s.resumable
 	meta.Workers = s.workers
 	meta.TokenUsage = s.tokenUsage
+	meta.CoordinatorTokenUsage = s.coordinatorTokenUsage
 
 	return meta.Save(s.Dir)
 }

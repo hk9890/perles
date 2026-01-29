@@ -1308,7 +1308,8 @@ func TestCumulativeCostAccumulation_SingleTurn(t *testing.T) {
 	// Verify cumulative cost equals turn cost
 	result := p.Metrics()
 	assert.Equal(t, 0.05, result.CumulativeCostUSD, "CumulativeCostUSD should equal turn cost after single turn")
-	assert.Equal(t, 0.05, result.TotalCostUSD, "TotalCostUSD should equal cumulative cost")
+	// TotalCostUSD now contains turn cost (not cumulative) to prevent double-accumulation at session level
+	assert.Equal(t, 0.05, result.TotalCostUSD, "TotalCostUSD should equal turn cost for this turn")
 }
 
 func TestCumulativeCostAccumulation_MultipleTurns(t *testing.T) {
@@ -1329,7 +1330,8 @@ func TestCumulativeCostAccumulation_MultipleTurns(t *testing.T) {
 	p.setMetrics(&metrics.TokenMetrics{TurnCostUSD: 0.02})
 	m3 := p.Metrics()
 	assert.Equal(t, 0.10, m3.CumulativeCostUSD, "After turn 3")
-	assert.Equal(t, 0.10, m3.TotalCostUSD, "TotalCostUSD should equal cumulative")
+	// TotalCostUSD now contains turn cost (not cumulative) to prevent double-accumulation at session level
+	assert.Equal(t, 0.02, m3.TotalCostUSD, "TotalCostUSD should equal turn cost for this turn")
 }
 
 func TestCumulativeCostAccumulation_ZeroCostTurn(t *testing.T) {
@@ -1345,7 +1347,8 @@ func TestCumulativeCostAccumulation_ZeroCostTurn(t *testing.T) {
 	// Cumulative should still be 0.05
 	result := p.Metrics()
 	assert.Equal(t, 0.05, result.CumulativeCostUSD, "Zero cost turn shouldn't change cumulative")
-	assert.Equal(t, 0.05, result.TotalCostUSD)
+	// TotalCostUSD now contains turn cost (not cumulative) to prevent double-accumulation at session level
+	assert.Equal(t, 0.0, result.TotalCostUSD, "TotalCostUSD should equal turn cost for this turn (zero)")
 }
 
 func TestCumulativeCostAccumulation_ThreadSafe(t *testing.T) {
@@ -1369,7 +1372,9 @@ func TestCumulativeCostAccumulation_ThreadSafe(t *testing.T) {
 	result := p.Metrics()
 	expected := float64(goroutines) * 0.01
 	assert.InDelta(t, expected, result.CumulativeCostUSD, 0.0001, "Cumulative cost should be correct after concurrent updates")
-	assert.InDelta(t, expected, result.TotalCostUSD, 0.0001)
+	// TotalCostUSD now contains turn cost (not cumulative) - in this concurrent scenario,
+	// it will contain the turn cost from whichever goroutine ran last (0.01)
+	assert.InDelta(t, 0.01, result.TotalCostUSD, 0.0001, "TotalCostUSD should equal turn cost for the last turn")
 }
 
 func TestCumulativeCostAccumulation_EmittedInTokenUsageEvent(t *testing.T) {
@@ -1400,10 +1405,11 @@ func TestCumulativeCostAccumulation_EmittedInTokenUsageEvent(t *testing.T) {
 	select {
 	case evt := <-sub:
 		require.NotNil(t, evt.Payload)
-		// The event should have been published with cumulative cost
+		// The event should have been published with turn cost (not cumulative)
 		m := p.Metrics()
 		assert.Equal(t, 0.05, m.CumulativeCostUSD, "CumulativeCostUSD should be set")
-		assert.Equal(t, 0.05, m.TotalCostUSD, "TotalCostUSD should equal cumulative")
+		// TotalCostUSD now contains turn cost to prevent double-accumulation at session level
+		assert.Equal(t, 0.05, m.TotalCostUSD, "TotalCostUSD should equal turn cost for this turn")
 	case <-time.After(500 * time.Millisecond):
 		require.FailNow(t, "did not receive token usage event")
 	}
@@ -1828,4 +1834,319 @@ func TestHandleInFlightError_DoesNotOverwriteContextExceededError(t *testing.T) 
 	var contextErr *ContextExceededError
 	assert.True(t, errors.As(turnCmd.Error, &contextErr),
 		"ContextExceededError should be preserved even after subsequent errors")
+}
+
+// ===========================================================================
+// Cost Extraction Tests
+// ===========================================================================
+
+func TestHandleOutputEvent_ExtractsCostFromResult(t *testing.T) {
+	// Test that result events with TotalCostUSD > 0 trigger cost extraction
+	// and a cost event is published, even when event.Usage is nil.
+
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send a result event with cost but NO usage data
+	// This simulates the Claude result event pattern where cost comes in result events
+	proc.events <- client.OutputEvent{
+		Type:         client.EventResult,
+		TotalCostUSD: 0.05,
+		// Usage is intentionally nil - this is the bug we're fixing
+	}
+
+	// Give it time to process
+	time.Sleep(50 * time.Millisecond)
+
+	// Receive the cost event
+	select {
+	case evt := <-sub:
+		require.NotNil(t, evt.Payload)
+		processEvent, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok, "expected ProcessEvent")
+		require.Equal(t, events.ProcessTokenUsage, processEvent.Type)
+		require.NotNil(t, processEvent.Metrics)
+		assert.Equal(t, 0.05, processEvent.Metrics.TurnCostUSD, "TurnCostUSD should be extracted from result event")
+		assert.Equal(t, 0.05, processEvent.Metrics.TotalCostUSD, "TotalCostUSD should be set to turn cost")
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive cost event from result")
+	}
+
+	// Verify the cumulative cost was tracked
+	p.mu.RLock()
+	cumulativeCost := p.cumulativeCostUSD
+	p.mu.RUnlock()
+	assert.Equal(t, 0.05, cumulativeCost, "cumulativeCostUSD should be updated")
+
+	proc.Complete()
+	<-p.eventDone
+}
+
+func TestHandleOutputEvent_NoCostForZeroValue(t *testing.T) {
+	// Test that result events with TotalCostUSD == 0 do NOT trigger cost event.
+	// This is valid for cache hits where cost is legitimately zero.
+
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send a result event with zero cost (e.g., cache hit)
+	proc.events <- client.OutputEvent{
+		Type:         client.EventResult,
+		TotalCostUSD: 0.0,
+	}
+
+	// Give it time to process
+	time.Sleep(50 * time.Millisecond)
+
+	// No event should be published for zero cost
+	select {
+	case evt := <-sub:
+		// If we get an event, it should NOT be a token usage event for zero cost
+		if processEvent, ok := evt.Payload.(events.ProcessEvent); ok {
+			if processEvent.Type == events.ProcessTokenUsage {
+				require.FailNow(t, "should not publish cost event for zero cost")
+			}
+		}
+	case <-time.After(100 * time.Millisecond):
+		// This is expected - no event should be published
+	}
+
+	// Verify the cumulative cost was NOT updated
+	p.mu.RLock()
+	cumulativeCost := p.cumulativeCostUSD
+	p.mu.RUnlock()
+	assert.Equal(t, 0.0, cumulativeCost, "cumulativeCostUSD should remain zero for zero-cost result")
+
+	proc.Complete()
+	<-p.eventDone
+}
+
+func TestHandleOutputEvent_CostIgnoredForAssistant(t *testing.T) {
+	// Test that the new cost extraction path does NOT apply to assistant events.
+	// Assistant events go through the existing event.Usage != nil path, and cost
+	// should only be extracted from result events to avoid double-counting.
+
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send an assistant event with usage data (the normal path)
+	proc.events <- client.OutputEvent{
+		Type: client.EventAssistant,
+		Usage: &client.UsageInfo{
+			TokensUsed:   1000,
+			TotalTokens:  200000,
+			OutputTokens: 500,
+		},
+		TotalCostUSD: 0.0, // Assistant events typically have zero cost
+	}
+
+	// Give it time to process
+	time.Sleep(50 * time.Millisecond)
+
+	// Receive the token usage event (from the normal path)
+	select {
+	case evt := <-sub:
+		require.NotNil(t, evt.Payload)
+		processEvent, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok, "expected ProcessEvent")
+		require.Equal(t, events.ProcessTokenUsage, processEvent.Type)
+		require.NotNil(t, processEvent.Metrics)
+		// Token data should be present
+		assert.Equal(t, 1000, processEvent.Metrics.TokensUsed)
+		assert.Equal(t, 500, processEvent.Metrics.OutputTokens)
+		// Cost should be zero (assistant events don't carry cost)
+		assert.Equal(t, 0.0, processEvent.Metrics.TurnCostUSD)
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive token usage event")
+	}
+
+	// Now send a result event with cost
+	proc.events <- client.OutputEvent{
+		Type:         client.EventResult,
+		TotalCostUSD: 0.03,
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Receive the cost event
+	select {
+	case evt := <-sub:
+		require.NotNil(t, evt.Payload)
+		processEvent, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok, "expected ProcessEvent")
+		require.Equal(t, events.ProcessTokenUsage, processEvent.Type)
+		require.NotNil(t, processEvent.Metrics)
+		assert.Equal(t, 0.03, processEvent.Metrics.TurnCostUSD, "cost event should have turn cost")
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive cost event from result")
+	}
+
+	// Verify cumulative cost only reflects the result event, not double-counted
+	p.mu.RLock()
+	cumulativeCost := p.cumulativeCostUSD
+	p.mu.RUnlock()
+	assert.Equal(t, 0.03, cumulativeCost, "cumulativeCostUSD should only reflect result event cost")
+
+	proc.Complete()
+	<-p.eventDone
+}
+
+// TestNoDoubleAccumulation is a multi-turn property test that verifies session-level
+// accumulation produces the correct total without double-counting.
+// It simulates 5 turns with varying turn costs and verifies that a session-like
+// accumulator receives exactly the sum of turn costs (not 2x or higher).
+func TestNoDoubleAccumulation(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Simulate 5 turns with varying turn costs
+	turnCosts := []float64{0.01, 0.02, 0.015, 0.01, 0.025}
+	expectedSessionTotal := 0.0
+	for _, cost := range turnCosts {
+		expectedSessionTotal += cost
+	}
+
+	// Simulate session-level accumulator (like session.go:updateTokenUsage does)
+	sessionTotal := 0.0
+
+	for _, cost := range turnCosts {
+		// Send a result event with the turn cost
+		proc.events <- client.OutputEvent{
+			Type: client.EventResult,
+			Usage: &client.UsageInfo{
+				TokensUsed:   1000,
+				TotalTokens:  200000,
+				OutputTokens: 500,
+			},
+			TotalCostUSD: cost,
+		}
+
+		// Give it time to process
+		time.Sleep(30 * time.Millisecond)
+
+		// Receive the event and accumulate like session does
+		select {
+		case evt := <-sub:
+			require.NotNil(t, evt.Payload)
+			processEvent, ok := evt.Payload.(events.ProcessEvent)
+			require.True(t, ok, "expected ProcessEvent")
+			if processEvent.Type == events.ProcessTokenUsage && processEvent.Metrics != nil {
+				// Session accumulates TotalCostUSD, which now contains turn cost (not cumulative)
+				sessionTotal += processEvent.Metrics.TotalCostUSD
+			}
+		case <-time.After(500 * time.Millisecond):
+			require.FailNow(t, "did not receive token usage event")
+		}
+	}
+
+	// CRITICAL: Verify session total equals exact sum of turn costs (no double-accumulation)
+	assert.InDelta(t, expectedSessionTotal, sessionTotal, 0.0001,
+		"Session total should equal exact sum of turn costs (%.4f), got %.4f",
+		expectedSessionTotal, sessionTotal)
+
+	// Also verify process cumulative cost is correct
+	m := p.Metrics()
+	assert.InDelta(t, expectedSessionTotal, m.CumulativeCostUSD, 0.0001,
+		"Process cumulative cost should also equal sum of turn costs")
+
+	proc.Complete()
+	<-p.eventDone
+}
+
+// TestPublishTokenUsageEvent_SendsTurnCost verifies that published events contain
+// turn cost (not cumulative) in the TotalCostUSD field, which is what session uses
+// for accumulation.
+func TestPublishTokenUsageEvent_SendsTurnCost(t *testing.T) {
+	proc := newMockHeadlessProcess()
+	eventBus := pubsub.NewBroker[any]()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := eventBus.Subscribe(ctx)
+
+	p := New("worker-1", repository.RoleWorker, proc, nil, eventBus)
+	p.Start()
+
+	// Send first turn with cost $0.05
+	proc.events <- client.OutputEvent{
+		Type: client.EventResult,
+		Usage: &client.UsageInfo{
+			TokensUsed:   1000,
+			TotalTokens:  200000,
+			OutputTokens: 500,
+		},
+		TotalCostUSD: 0.05,
+	}
+
+	time.Sleep(30 * time.Millisecond)
+
+	// Verify first event has TotalCostUSD = 0.05 (turn cost)
+	select {
+	case evt := <-sub:
+		processEvent, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok)
+		require.NotNil(t, processEvent.Metrics)
+		assert.Equal(t, 0.05, processEvent.Metrics.TurnCostUSD, "TurnCostUSD should be 0.05")
+		assert.Equal(t, 0.05, processEvent.Metrics.TotalCostUSD, "TotalCostUSD should be turn cost 0.05")
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive event for turn 1")
+	}
+
+	// Send second turn with cost $0.03
+	proc.events <- client.OutputEvent{
+		Type: client.EventResult,
+		Usage: &client.UsageInfo{
+			TokensUsed:   1200,
+			TotalTokens:  201200,
+			OutputTokens: 600,
+		},
+		TotalCostUSD: 0.03,
+	}
+
+	time.Sleep(30 * time.Millisecond)
+
+	// Verify second event has TotalCostUSD = 0.03 (turn cost), NOT 0.08 (cumulative)
+	select {
+	case evt := <-sub:
+		processEvent, ok := evt.Payload.(events.ProcessEvent)
+		require.True(t, ok)
+		require.NotNil(t, processEvent.Metrics)
+		assert.Equal(t, 0.03, processEvent.Metrics.TurnCostUSD, "TurnCostUSD should be 0.03")
+		// CRITICAL: TotalCostUSD must be turn cost (0.03), not cumulative (0.08)
+		// This prevents double-accumulation at session level
+		assert.Equal(t, 0.03, processEvent.Metrics.TotalCostUSD,
+			"TotalCostUSD should be turn cost 0.03, not cumulative 0.08")
+	case <-time.After(500 * time.Millisecond):
+		require.FailNow(t, "did not receive event for turn 2")
+	}
+
+	// Verify process-level cumulative is still tracked correctly
+	m := p.Metrics()
+	assert.InDelta(t, 0.08, m.CumulativeCostUSD, 0.0001, "Process cumulative should be 0.08")
+
+	proc.Complete()
+	<-p.eventDone
 }

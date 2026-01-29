@@ -244,6 +244,16 @@ func (p *Process) handleOutputEvent(event *client.OutputEvent) {
 		}
 	}
 
+	// Extract cost from result events when usage data is absent.
+	// Cost data typically arrives in result events (TotalCostUSD > 0) while usage data
+	// arrives in assistant events. Since result events often have event.Usage == nil,
+	// we need to extract cost separately from the usage block above.
+	// Only extract here if Usage was nil - otherwise cost was already processed above.
+	if event.Type == client.EventResult && event.TotalCostUSD > 0 && event.Usage == nil {
+		p.addTurnCost(event.TotalCostUSD)
+		p.publishCostEvent(event.TotalCostUSD)
+	}
+
 	// Check for context exhaustion in assistant messages with error code
 	// This catches the Claude-specific pattern where error is in message content
 	if event.IsAssistant() && event.Error != nil && event.Error.IsContextExceeded() {
@@ -466,6 +476,38 @@ func (p *Process) publishErrorEvent(err error) {
 	})
 }
 
+// addTurnCost adds the turn cost to the cumulative total thread-safely.
+// This is called when extracting cost from result events, which have TotalCostUSD > 0
+// but event.Usage == nil.
+func (p *Process) addTurnCost(cost float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cumulativeCostUSD += cost
+	log.Debug(log.CatOrch, "cost_extracted", "id", p.ID, "session", p.sessionID, "turn_cost", cost, "cumulative", p.cumulativeCostUSD)
+}
+
+// publishCostEvent publishes a cost-only metrics event.
+// This is used when cost arrives in result events without token usage data.
+// The event uses the existing ProcessTokenUsage type with only cost populated,
+// allowing session to accumulate cost without requiring token data.
+func (p *Process) publishCostEvent(turnCost float64) {
+	if p.eventBus == nil {
+		return
+	}
+
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
+		Type:      events.ProcessTokenUsage,
+		ProcessID: p.ID,
+		Role:      p.Role,
+		TaskID:    p.GetTaskID(),
+		Metrics: &metrics.TokenMetrics{
+			TurnCostUSD:   turnCost,
+			TotalCostUSD:  turnCost, // Turn cost for this event (session accumulates)
+			LastUpdatedAt: time.Now(),
+		},
+	})
+}
+
 // setSessionID updates the session ID thread-safely.
 func (p *Process) setSessionID(id string) {
 	p.mu.Lock()
@@ -492,7 +534,12 @@ func (p *Process) setMetrics(m *metrics.TokenMetrics) {
 
 	// Update metrics with cumulative totals
 	m.CumulativeCostUSD = p.cumulativeCostUSD
-	m.TotalCostUSD = p.cumulativeCostUSD
+	// IMPORTANT: Publish turn cost (not cumulative) to prevent double-accumulation.
+	// The session accumulates turn costs into its own total via updateTokenUsage().
+	// If we published cumulative here, session would add cumulative to its running total,
+	// causing costs to inflate: Turn1=$0.01→Session=$0.01, Turn2=$0.02→cumulative=$0.03
+	// →Session+=$0.03→$0.04 (wrong!). By publishing turn cost, session correctly sums.
+	m.TotalCostUSD = m.TurnCostUSD
 	p.metrics = m
 }
 
