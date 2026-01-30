@@ -28,7 +28,7 @@ func TestIntegration_APIAndSPARoutesOnSameMux(t *testing.T) {
 	}
 
 	// Create the handler (same pattern used in production)
-	h := frontend.NewHandler(t.TempDir(), testFS)
+	h := frontend.NewHandler(t.TempDir(), testFS, nil)
 
 	// Create a mux and register routes in the same order as supervisor.go:
 	// 1. MCP routes (simulated here as /mcp)
@@ -184,7 +184,7 @@ func TestIntegration_RouteOrderMatters(t *testing.T) {
 		"index.html": &fstest.MapFile{Data: []byte("SPA")},
 	}
 
-	h := frontend.NewHandler(t.TempDir(), testFS)
+	h := frontend.NewHandler(t.TempDir(), testFS, nil)
 
 	// WRONG ORDER: SPA first, then API (this would break API routes)
 	wrongOrderMux := http.NewServeMux()

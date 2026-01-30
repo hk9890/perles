@@ -78,6 +78,7 @@ type Session struct {
 	applicationName string
 	workDir         string
 	datePartition   string
+	workflowID      string
 
 	// pathBuilder is used for constructing session index paths.
 	// Set via WithPathBuilder option.
@@ -115,6 +116,14 @@ func WithApplicationName(name string) SessionOption {
 func WithDatePartition(date string) SessionOption {
 	return func(s *Session) {
 		s.datePartition = date
+	}
+}
+
+// WithWorkflowID sets the workflow ID for the session.
+// Enables frontend to route API calls to the correct active workflow.
+func WithWorkflowID(id string) SessionOption {
+	return func(s *Session) {
+		s.workflowID = id
 	}
 }
 
@@ -275,6 +284,7 @@ func New(id, dir string, opts ...SessionOption) (*Session, error) {
 		ApplicationName: sess.applicationName,
 		WorkDir:         sess.workDir,
 		DatePartition:   sess.datePartition,
+		WorkflowID:      sess.workflowID,
 	}
 
 	if err := meta.Save(dir); err != nil {
@@ -403,6 +413,7 @@ func Reopen(sessionID, sessionDir string, opts ...SessionOption) (*Session, erro
 		applicationName:       meta.ApplicationName,
 		workDir:               meta.WorkDir,
 		datePartition:         meta.DatePartition,
+		workflowID:            meta.WorkflowID,
 		closed:                false,
 	}
 
@@ -626,6 +637,7 @@ func (s *Session) Close(status Status) error {
 			ApplicationName: s.applicationName,
 			WorkDir:         s.workDir,
 			DatePartition:   s.datePartition,
+			WorkflowID:      s.workflowID,
 		}
 	}
 	meta.EndTime = time.Now()
@@ -1398,6 +1410,7 @@ func (s *Session) saveMetadataLocked() error {
 			ApplicationName: s.applicationName,
 			WorkDir:         s.workDir,
 			DatePartition:   s.datePartition,
+			WorkflowID:      s.workflowID,
 		}
 	}
 
@@ -1407,6 +1420,7 @@ func (s *Session) saveMetadataLocked() error {
 	meta.Workers = s.workers
 	meta.TokenUsage = s.tokenUsage
 	meta.CoordinatorTokenUsage = s.coordinatorTokenUsage
+	meta.WorkflowID = s.workflowID
 
 	return meta.Save(s.Dir)
 }
@@ -1465,6 +1479,7 @@ func (s *Session) UpdateWorkflowCompletion(status, summary string, completedAt t
 			ApplicationName: s.applicationName,
 			WorkDir:         s.workDir,
 			DatePartition:   s.datePartition,
+			WorkflowID:      s.workflowID,
 		}
 	}
 

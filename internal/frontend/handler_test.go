@@ -2,19 +2,28 @@ package frontend
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zjrosen/perles/internal/orchestration/controlplane"
+	"github.com/zjrosen/perles/internal/orchestration/controlplane/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	"github.com/zjrosen/perles/internal/orchestration/fabric/repository"
 	"github.com/zjrosen/perles/internal/orchestration/session"
+	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
+	v2repo "github.com/zjrosen/perles/internal/orchestration/v2/repository"
 )
 
 // createTestMux creates an http.ServeMux with the handler routes registered
@@ -29,7 +38,7 @@ func createTestMux(h *Handler) *http.ServeMux {
 // === Health Endpoint Tests ===
 
 func TestHandler_Health(t *testing.T) {
-	h := NewHandler("/tmp/sessions", createTestFS())
+	h := NewHandler("/tmp/sessions", createTestFS(), nil)
 	mux := createTestMux(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
@@ -49,7 +58,7 @@ func TestHandler_Health(t *testing.T) {
 
 func TestHandler_ListSessions_EmptyDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
@@ -68,7 +77,7 @@ func TestHandler_ListSessions_EmptyDirectory(t *testing.T) {
 }
 
 func TestHandler_ListSessions_MissingDirectory(t *testing.T) {
-	h := NewHandler("/nonexistent/path/sessions", createTestFS())
+	h := NewHandler("/nonexistent/path/sessions", createTestFS(), nil)
 	mux := createTestMux(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
@@ -96,7 +105,7 @@ func TestHandler_ListSessions_HierarchicalStructure(t *testing.T) {
 	createTestSession(t, tmpDir, "app1", "2026-01-14", "session-456", session.StatusCompleted, "amp")
 	createTestSession(t, tmpDir, "app2", "2026-01-15", "session-789", session.StatusFailed, "claude")
 
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
@@ -165,7 +174,7 @@ func TestHandler_LoadSession_Success(t *testing.T) {
 		{"command": "spawn_worker"},
 	})
 
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	body := `{"path": "` + sessionDir + `"}`
@@ -211,7 +220,7 @@ func TestHandler_LoadSession_MissingFiles(t *testing.T) {
 	// Create a minimal session with only metadata
 	sessionDir := createTestSession(t, tmpDir, "app1", "2026-01-15", "session-123", session.StatusRunning, "claude")
 
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	body := `{"path": "` + sessionDir + `"}`
@@ -252,7 +261,7 @@ not valid json
 `
 	require.NoError(t, os.WriteFile(filepath.Join(coordDir, "messages.jsonl"), []byte(content), 0600))
 
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	body := `{"path": "` + sessionDir + `"}`
@@ -273,7 +282,7 @@ not valid json
 
 func TestHandler_LoadSession_PathTraversal(t *testing.T) {
 	tmpDir := t.TempDir()
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	tests := []struct {
@@ -305,7 +314,7 @@ func TestHandler_LoadSession_PathTraversal(t *testing.T) {
 
 func TestHandler_LoadSession_PathOutsideBase(t *testing.T) {
 	tmpDir := t.TempDir()
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	// Try to access a path outside the session base directory
@@ -326,7 +335,7 @@ func TestHandler_LoadSession_PathOutsideBase(t *testing.T) {
 
 func TestHandler_LoadSession_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/load-session", bytes.NewBufferString("not json"))
@@ -346,7 +355,7 @@ func TestHandler_LoadSession_SiblingDirectoryAttack(t *testing.T) {
 	// Regression test for sibling directory path attack
 	// If baseDir is /tmp/sessions, an attacker might try /tmp/sessionsx
 	tmpDir := t.TempDir()
-	h := NewHandler(tmpDir, createTestFS())
+	h := NewHandler(tmpDir, createTestFS(), nil)
 	mux := createTestMux(h)
 
 	// Try to access a sibling directory with a matching prefix
@@ -481,7 +490,7 @@ func TestHandler_SPAFallback(t *testing.T) {
 		"assets/styles.css": &fstest.MapFile{Data: []byte("body {}")},
 	}
 
-	h := NewHandler("/tmp/sessions", testFS)
+	h := NewHandler("/tmp/sessions", testFS, nil)
 	mux := createTestMux(h)
 
 	tests := []struct {
@@ -510,3 +519,330 @@ func TestHandler_SPAFallback(t *testing.T) {
 		})
 	}
 }
+
+// === Fabric Messaging Endpoint Tests ===
+
+// newTestFabricService creates a test fabric service with initialized channels.
+func newTestFabricService(t *testing.T) *fabric.Service {
+	t.Helper()
+	threadRepo := repository.NewMemoryThreadRepository()
+	depRepo := repository.NewMemoryDependencyRepository()
+	subRepo := repository.NewMemorySubscriptionRepository()
+	ackRepo := repository.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	err := svc.InitSession("coordinator")
+	require.NoError(t, err)
+	return svc
+}
+
+// newTestWorkflowWithFabric creates a test workflow instance with fabric service and process repo.
+func newTestWorkflowWithFabric(t *testing.T, state controlplane.WorkflowState) *controlplane.WorkflowInstance {
+	t.Helper()
+	fabricSvc := newTestFabricService(t)
+	processRepo := v2repo.NewMemoryProcessRepository()
+
+	// Add coordinator process
+	_ = processRepo.Save(&v2repo.Process{
+		ID:     "coordinator",
+		Role:   v2repo.RoleCoordinator,
+		Status: v2repo.StatusReady,
+	})
+
+	// Add a worker process
+	_ = processRepo.Save(&v2repo.Process{
+		ID:     "worker-1",
+		Role:   v2repo.RoleWorker,
+		Status: v2repo.StatusReady,
+	})
+
+	return &controlplane.WorkflowInstance{
+		ID:    "test-workflow",
+		Name:  "Test Workflow",
+		State: state,
+		Infrastructure: &v2.Infrastructure{
+			Core: v2.CoreComponents{
+				FabricService: fabricSvc,
+			},
+			Repositories: v2.RepositoryComponents{
+				ProcessRepo: processRepo,
+			},
+		},
+	}
+}
+
+// === SendMessage Tests ===
+
+func TestHandler_SendMessage_Success(t *testing.T) {
+	workflow := newTestWorkflowWithFabric(t, controlplane.WorkflowRunning)
+
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("test-workflow")).Return(workflow, nil)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	body := `{"workflowId":"test-workflow","channelSlug":"tasks","content":"Hello from user"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/send-message", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp SendMessageResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.True(t, resp.Success)
+	assert.NotEmpty(t, resp.MessageID)
+}
+
+func TestHandler_SendMessage_EmptyContent(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	body := `{"workflowId":"test-workflow","channelSlug":"tasks","content":"   "}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/send-message", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "validation_error", resp.Code)
+	assert.Contains(t, resp.Error, "empty")
+}
+
+func TestHandler_SendMessage_ContentTooLong(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	// Create content that exceeds 10,000 characters
+	longContent := strings.Repeat("a", 10001)
+	body := `{"workflowId":"test-workflow","channelSlug":"tasks","content":"` + longContent + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/send-message", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "validation_error", resp.Code)
+	assert.Contains(t, resp.Error, "maximum length")
+}
+
+func TestHandler_SendMessage_WorkflowNotFound(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("nonexistent")).Return(nil, controlplane.ErrWorkflowNotFound)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	body := `{"workflowId":"nonexistent","channelSlug":"tasks","content":"Hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/send-message", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+// === Reply Tests ===
+
+func TestHandler_Reply_Success(t *testing.T) {
+	workflow := newTestWorkflowWithFabric(t, controlplane.WorkflowRunning)
+
+	// Send a message first to get a thread ID
+	msg, err := workflow.Infrastructure.Core.FabricService.SendMessage(fabric.SendMessageInput{
+		ChannelSlug: "tasks",
+		Content:     "Initial message",
+		CreatedBy:   "coordinator",
+	})
+	require.NoError(t, err)
+
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("test-workflow")).Return(workflow, nil)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	body := `{"workflowId":"test-workflow","threadId":"` + msg.ID + `","content":"Reply from user"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/reply", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp SendMessageResponse
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.True(t, resp.Success)
+	assert.NotEmpty(t, resp.MessageID)
+}
+
+func TestHandler_Reply_ThreadNotFound(t *testing.T) {
+	workflow := newTestWorkflowWithFabric(t, controlplane.WorkflowRunning)
+
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("test-workflow")).Return(workflow, nil)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	body := `{"workflowId":"test-workflow","threadId":"nonexistent-thread","content":"Reply"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/fabric/reply", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_found", resp.Code)
+	assert.Contains(t, resp.Error, "Thread not found")
+}
+
+// === ListAgents Tests ===
+
+func TestHandler_ListAgents_Success(t *testing.T) {
+	workflow := newTestWorkflowWithFabric(t, controlplane.WorkflowRunning)
+
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("test-workflow")).Return(workflow, nil)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fabric/agents?workflowId=test-workflow", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp AgentsResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.True(t, resp.IsActive)
+	assert.Len(t, resp.Agents, 2) // coordinator + worker-1
+
+	// Find coordinator and worker
+	var foundCoord, foundWorker bool
+	for _, agent := range resp.Agents {
+		if agent.ID == "coordinator" && agent.Role == "coordinator" {
+			foundCoord = true
+		}
+		if agent.ID == "worker-1" && agent.Role == "worker" {
+			foundWorker = true
+		}
+	}
+	assert.True(t, foundCoord, "should have coordinator")
+	assert.True(t, foundWorker, "should have worker-1")
+}
+
+func TestHandler_ListAgents_InactiveWorkflow(t *testing.T) {
+	workflow := newTestWorkflowWithFabric(t, controlplane.WorkflowCompleted)
+
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("test-workflow")).Return(workflow, nil)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fabric/agents?workflowId=test-workflow", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp AgentsResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.False(t, resp.IsActive)
+	assert.Len(t, resp.Agents, 2) // Agents are still returned, just marked inactive
+}
+
+func TestHandler_ListAgents_MissingWorkflowId(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fabric/agents", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "validation_error", resp.Code)
+}
+
+func TestHandler_ListAgents_WorkflowNotFound(t *testing.T) {
+	mockCP := mocks.NewMockControlPlane(t)
+	mockCP.EXPECT().Get(mock.Anything, controlplane.WorkflowID("nonexistent")).Return(nil, controlplane.ErrWorkflowNotFound)
+
+	h := NewHandler("/tmp/sessions", createTestFS(), mockCP)
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fabric/agents?workflowId=nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp APIError
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "not_found", resp.Code)
+}
+
+func TestHandler_ListAgents_NoControlPlane(t *testing.T) {
+	// Handler with nil ControlPlane
+	h := NewHandler("/tmp/sessions", createTestFS(), nil)
+	mux := createTestMux(h)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fabric/agents?workflowId=test-workflow", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp AgentsResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	assert.False(t, resp.IsActive)
+	assert.Empty(t, resp.Agents)
+}
+
+// Suppress unused import warning for context
+var _ = context.Background

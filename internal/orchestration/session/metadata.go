@@ -70,6 +70,10 @@ type Metadata struct {
 	// DatePartition is the date-based partition (YYYY-MM-DD format) for organizing sessions.
 	DatePartition string `json:"date_partition,omitempty"`
 
+	// WorkflowID is the ID of the workflow this session belongs to.
+	// Enables frontend to route API calls to the correct active workflow.
+	WorkflowID string `json:"workflow_id,omitempty"`
+
 	// WorkflowCompletionStatus indicates the workflow outcome.
 	// Values: "success", "partial", "aborted", or empty (not yet completed).
 	WorkflowCompletionStatus string `json:"workflow_completion_status,omitempty"`

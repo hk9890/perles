@@ -753,7 +753,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			_ = listener.Close()
 			return nil, fmt.Errorf("creating frontend sub-filesystem: %w", err)
 		}
-		frontendHandler := frontend.NewHandler(session.DefaultBaseDir(), spaFS)
+		frontendHandler := frontend.NewHandler(session.DefaultBaseDir(), spaFS, cfg.ControlPlane)
 		frontendHandler.RegisterAPIRoutes(mux)
 		frontendHandler.RegisterSPAHandler(mux)
 

@@ -19,6 +19,7 @@ export interface SessionMetadata {
   application_name: string;
   work_dir: string;
   date_partition: string;
+  workflow_id?: string;
 }
 
 export interface WorkerMeta {
@@ -87,6 +88,16 @@ export interface Command {
   timestamp: string;
   payload: Record<string, unknown>;
   result_data?: Record<string, unknown>;
+}
+
+export interface Agent {
+  id: string;
+  role: string;
+}
+
+export interface AgentsResponse {
+  agents: Agent[];
+  isActive: boolean;
 }
 
 export interface Session {

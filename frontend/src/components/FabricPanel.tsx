@@ -1,10 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
-import type { FabricEvent } from '../types'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import type { FabricEvent, Agent, AgentsResponse } from '../types'
 import { hashColor } from '../utils/colors'
+import ChatInput from './ChatInput'
+import Toast from './Toast'
 import './FabricPanel.css'
 
 interface Props {
   events: FabricEvent[]
+  workflowId?: string
 }
 
 interface Channel {
@@ -48,11 +51,16 @@ function getInitialChannelId(): string | null {
   return params.get('channel')
 }
 
-export default function FabricPanel({ events }: Props) {
+export default function FabricPanel({ events, workflowId }: Props) {
   const [selectedChannelId, setSelectedChannelIdState] = useState<string | null>(getInitialChannelId)
   const [selectedThread, setSelectedThread] = useState<Thread | null>(null)
   const [sidebarTab, setSidebarTabState] = useState<'events' | 'messages'>(getInitialSidebarTab)
   const [expandedEvents, setExpandedEvents] = useState<Set<number>>(new Set())
+  // agents is fetched here for use by MentionAutocomplete
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [isWorkflowActive, setIsWorkflowActive] = useState(false)
+  // Toast state for error/success notifications
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' } | null>(null)
 
   const setSidebarTab = (tab: 'events' | 'messages') => {
     setSidebarTabState(tab)
@@ -197,6 +205,100 @@ export default function FabricPanel({ events }: Props) {
     }
   }, [channels, selectedChannel])
 
+  // Fetch agents when workflowId changes
+  useEffect(() => {
+    if (workflowId) {
+      fetch(`/api/fabric/agents?workflowId=${encodeURIComponent(workflowId)}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch agents')
+          return res.json()
+        })
+        .then((data: AgentsResponse) => {
+          setAgents(data.agents || [])
+          setIsWorkflowActive(data.isActive)
+        })
+        .catch(() => {
+          setAgents([])
+          setIsWorkflowActive(false)
+        })
+    } else {
+      setAgents([])
+      setIsWorkflowActive(false)
+    }
+  }, [workflowId])
+
+  // Handle sending a new message to a channel
+  const handleChannelSend = useCallback(async (content: string, mentions: string[]) => {
+    if (!workflowId || !selectedChannel) {
+      const error = new Error('No active workflow or channel')
+      setToast({ message: error.message, type: 'error' })
+      throw error
+    }
+    try {
+      const res = await fetch('/api/fabric/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId,
+          channelSlug: selectedChannel.slug,
+          content,
+          mentions
+        })
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        const errorMessage = data.error || 'Failed to send message'
+        setToast({ message: errorMessage, type: 'error' })
+        throw new Error(errorMessage)
+      }
+    } catch (error) {
+      // Handle network errors (fetch failed)
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        setToast({ message: 'Network error. Please try again.', type: 'error' })
+      } else if (error instanceof Error && !toast) {
+        // Only show toast if not already set by the !res.ok block
+        setToast({ message: error.message, type: 'error' })
+      }
+      throw error
+    }
+  }, [workflowId, selectedChannel, toast])
+
+  // Handle sending a reply to a thread
+  const handleThreadReply = useCallback(async (content: string, mentions: string[]) => {
+    if (!workflowId || !selectedThread) {
+      const error = new Error('No active workflow or thread')
+      setToast({ message: error.message, type: 'error' })
+      throw error
+    }
+    try {
+      const res = await fetch('/api/fabric/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId,
+          threadId: selectedThread.parentMessage.id,
+          content,
+          mentions
+        })
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        const errorMessage = data.error || 'Failed to send reply'
+        setToast({ message: errorMessage, type: 'error' })
+        throw new Error(errorMessage)
+      }
+    } catch (error) {
+      // Handle network errors (fetch failed)
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        setToast({ message: 'Network error. Please try again.', type: 'error' })
+      } else if (error instanceof Error && !toast) {
+        // Only show toast if not already set by the !res.ok block
+        setToast({ message: error.message, type: 'error' })
+      }
+      throw error
+    }
+  }, [workflowId, selectedThread, toast])
+
   const formatTime = (ts: string) => {
     const date = new Date(ts)
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -315,8 +417,8 @@ export default function FabricPanel({ events }: Props) {
                   </div>
                 ) : (
                   threads.map((thread) => (
-                    <div 
-                      key={thread.parentMessage.id} 
+                    <div
+                      key={thread.parentMessage.id}
                       className={`message-item ${selectedThread?.parentMessage.id === thread.parentMessage.id ? 'selected' : ''}`}
                     >
                       <div className="message-avatar" style={{ background: getAgentColor(thread.parentMessage.createdBy) }}>
@@ -332,16 +434,16 @@ export default function FabricPanel({ events }: Props) {
                         <div className="message-content">
                           {thread.parentMessage.content}
                         </div>
-                        
+
                         {/* Reply indicator */}
                         {thread.replies.length > 0 && (
-                          <button 
+                          <button
                             className="reply-indicator"
                             onClick={() => setSelectedThread(thread)}
                           >
                             <div className="reply-avatars">
                               {getReplyAvatars(thread.replies).map((author, i) => (
-                                <div 
+                                <div
                                   key={i}
                                   className="reply-avatar"
                                   style={{ background: getAgentColor(author) }}
@@ -362,6 +464,17 @@ export default function FabricPanel({ events }: Props) {
                     </div>
                   ))
                 )}
+              </div>
+
+              <div className="channel-input-container">
+                <ChatInput
+                  channelSlug={selectedChannel.slug}
+                  placeholder={`Message #${selectedChannel.title}...`}
+                  onSend={handleChannelSend}
+                  disabled={!isWorkflowActive}
+                  disabledReason="This session has ended"
+                  agentIds={agents.map(a => a.id)}
+                />
               </div>
             </>
           ) : (
@@ -434,7 +547,7 @@ export default function FabricPanel({ events }: Props) {
               ✕
             </button>
           </header>
-          
+
           <div className="thread-content">
             {/* Parent message */}
             <div className="thread-message parent">
@@ -486,7 +599,31 @@ export default function FabricPanel({ events }: Props) {
               </div>
             ))}
           </div>
+
+          <div className="thread-input-container">
+            <ChatInput
+              channelSlug={selectedChannel?.slug || ''}
+              threadId={selectedThread.parentMessage.id}
+              placeholder="Reply to thread..."
+              onSend={handleThreadReply}
+              disabled={!isWorkflowActive}
+              disabledReason="This session has ended"
+              agentIds={agents.map(a => a.id)}
+            />
+          </div>
         </aside>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fabric-panel-toast-container">
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            duration={5000}
+            onDismiss={() => setToast(null)}
+          />
+        </div>
       )}
     </div>
   )

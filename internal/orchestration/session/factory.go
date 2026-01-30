@@ -48,6 +48,10 @@ type CreateOptions struct {
 	// ApplicationName overrides the derived application name.
 	// If empty, it's derived from git remote or WorkDir basename.
 	ApplicationName string
+
+	// WorkflowID is the ID of the workflow this session belongs to.
+	// Enables frontend to route API calls to the correct active workflow.
+	WorkflowID string
 }
 
 // Create creates a new session with the given options.
@@ -79,6 +83,7 @@ func (f *Factory) Create(opts CreateOptions) (*Session, error) {
 		WithApplicationName(appName),
 		WithDatePartition(datePartition),
 		WithPathBuilder(pathBuilder),
+		WithWorkflowID(opts.WorkflowID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating session: %w", err)

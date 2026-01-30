@@ -67,6 +67,7 @@ type SessionMetadata struct {
 	ApplicationName       string            `json:"application_name"`
 	WorkDir               string            `json:"work_dir"`
 	DatePartition         string            `json:"date_partition"`
+	WorkflowID            string            `json:"workflow_id,omitempty"`
 }
 
 // WorkerMeta contains worker metadata.
@@ -110,4 +111,41 @@ type APIError struct {
 // HealthResponse is the response for GET /api/health.
 type HealthResponse struct {
 	Status string `json:"status"`
+}
+
+// === Fabric Messaging Types ===
+
+// SendMessageRequest is the request body for POST /api/fabric/send-message.
+type SendMessageRequest struct {
+	WorkflowID  string   `json:"workflowId"`
+	ChannelSlug string   `json:"channelSlug"`
+	Content     string   `json:"content"`
+	Mentions    []string `json:"mentions,omitempty"`
+}
+
+// SendMessageResponse is the response for POST /api/fabric/send-message.
+type SendMessageResponse struct {
+	Success   bool   `json:"success"`
+	MessageID string `json:"messageId,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ReplyRequest is the request body for POST /api/fabric/reply.
+type ReplyRequest struct {
+	WorkflowID string   `json:"workflowId"`
+	ThreadID   string   `json:"threadId"`
+	Content    string   `json:"content"`
+	Mentions   []string `json:"mentions,omitempty"`
+}
+
+// Agent represents an agent (coordinator or worker) in a workflow.
+type Agent struct {
+	ID   string `json:"id"`
+	Role string `json:"role"`
+}
+
+// AgentsResponse is the response for GET /api/fabric/agents.
+type AgentsResponse struct {
+	Agents   []Agent `json:"agents"`
+	IsActive bool    `json:"isActive"`
 }

@@ -372,8 +372,9 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 	} else {
 		// New workflow: create fresh session
 		sess, err = s.sessionFactory.Create(session.CreateOptions{
-			SessionID: inst.ID.String(),
-			WorkDir:   workDir,
+			SessionID:  inst.ID.String(),
+			WorkDir:    workDir,
+			WorkflowID: inst.ID.String(),
 		})
 		if err != nil {
 			cleanup()

@@ -1,0 +1,90 @@
+/* MentionAutocomplete - @mention dropdown */
+
+.mention-autocomplete {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  max-width: 280px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+/* Empty state */
+.mention-autocomplete-empty {
+  padding: 0.75rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* List container */
+.mention-autocomplete-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  max-height: calc(6 * 44px); /* MAX_VISIBLE_ITEMS * item height */
+  overflow-y: auto;
+}
+
+/* List item */
+.mention-autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.mention-autocomplete-item:hover,
+.mention-autocomplete-item.highlighted {
+  background: var(--bg-tertiary);
+}
+
+.mention-autocomplete-item.highlighted {
+  background: rgba(88, 166, 255, 0.15);
+}
+
+/* Avatar */
+.mention-autocomplete-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+/* Agent name */
+.mention-autocomplete-name {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scrollbar styling */
+.mention-autocomplete-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mention-autocomplete-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mention-autocomplete-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.mention-autocomplete-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

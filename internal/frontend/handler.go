@@ -3,7 +3,9 @@ package frontend
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -13,28 +15,38 @@ import (
 	"strings"
 
 	"github.com/zjrosen/perles/internal/log"
+	"github.com/zjrosen/perles/internal/orchestration/controlplane"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
 	"github.com/zjrosen/perles/internal/orchestration/session"
 )
 
 // maxLineSize is the buffer size for reading JSONL lines (1MB).
 const maxLineSize = 1024 * 1024
 
+// maxContentLength is the maximum allowed content length for fabric messages (10,000 chars).
+const maxContentLength = 10000
+
 // Handler provides HTTP endpoints for the session viewer frontend.
 type Handler struct {
 	sessionBaseDir string
 	spaHandler     http.Handler
+	controlPlane   controlplane.ControlPlane
 }
 
-// NewHandler creates a new Handler with the given session base directory and SPA filesystem.
+// NewHandler creates a new Handler with the given session base directory, SPA filesystem,
+// and optional ControlPlane for workflow operations.
 // If sessionBaseDir is empty, session.DefaultBaseDir() is used.
 // The spaFS should be pre-processed with fs.Sub() to strip any prefix (e.g., "dist/").
-func NewHandler(sessionBaseDir string, spaFS fs.FS) *Handler {
+// The controlPlane parameter can be nil if workflow lookup is not needed.
+func NewHandler(sessionBaseDir string, spaFS fs.FS, cp controlplane.ControlPlane) *Handler {
 	if sessionBaseDir == "" {
 		sessionBaseDir = session.DefaultBaseDir()
 	}
 	return &Handler{
 		sessionBaseDir: sessionBaseDir,
 		spaHandler:     NewSPAHandler(spaFS),
+		controlPlane:   cp,
 	}
 }
 
@@ -44,6 +56,11 @@ func (h *Handler) RegisterAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.Health)
 	mux.HandleFunc("GET /api/sessions", h.ListSessions)
 	mux.HandleFunc("POST /api/load-session", h.LoadSession)
+
+	// Fabric messaging endpoints
+	mux.HandleFunc("POST /api/fabric/send-message", h.SendMessage)
+	mux.HandleFunc("POST /api/fabric/reply", h.Reply)
+	mux.HandleFunc("GET /api/fabric/agents", h.ListAgents)
 }
 
 // RegisterSPAHandler registers the SPA catch-all handler on the provided mux.
@@ -360,6 +377,7 @@ func (h *Handler) convertMetadata(meta *session.Metadata) *SessionMetadata {
 		ApplicationName: meta.ApplicationName,
 		WorkDir:         meta.WorkDir,
 		DatePartition:   meta.DatePartition,
+		WorkflowID:      meta.WorkflowID,
 	}
 }
 
@@ -450,4 +468,193 @@ func (h *Handler) writeError(w http.ResponseWriter, status int, code, message, d
 		Code:    code,
 		Details: details,
 	})
+}
+
+// === Fabric Messaging Handlers ===
+
+// SendMessage creates a new thread in a channel.
+// POST /api/fabric/send-message
+func (h *Handler) SendMessage(w http.ResponseWriter, r *http.Request) {
+	var req SendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON body", err.Error())
+		return
+	}
+
+	// Validate content
+	if err := h.validateContent(req.Content); err != nil {
+		h.writeError(w, http.StatusBadRequest, "validation_error", err.Error(), "")
+		return
+	}
+
+	// Get workflow and fabric service
+	fabricSvc, err := h.getFabricService(r.Context(), req.WorkflowID)
+	if err != nil {
+		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
+			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", req.WorkflowID)
+			return
+		}
+		h.writeError(w, http.StatusServiceUnavailable, "service_unavailable", "Fabric service unavailable", err.Error())
+		return
+	}
+
+	// Send message
+	msg, err := fabricSvc.SendMessage(fabric.SendMessageInput{
+		ChannelSlug: req.ChannelSlug,
+		Content:     req.Content,
+		Kind:        domain.KindInfo,
+		CreatedBy:   "user",
+		Mentions:    req.Mentions,
+	})
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "send_failed", "Failed to send message", err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, SendMessageResponse{
+		Success:   true,
+		MessageID: msg.ID,
+	})
+}
+
+// Reply adds a reply to an existing thread.
+// POST /api/fabric/reply
+func (h *Handler) Reply(w http.ResponseWriter, r *http.Request) {
+	var req ReplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON body", err.Error())
+		return
+	}
+
+	// Validate content
+	if err := h.validateContent(req.Content); err != nil {
+		h.writeError(w, http.StatusBadRequest, "validation_error", err.Error(), "")
+		return
+	}
+
+	// Get workflow and fabric service
+	fabricSvc, err := h.getFabricService(r.Context(), req.WorkflowID)
+	if err != nil {
+		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
+			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", req.WorkflowID)
+			return
+		}
+		h.writeError(w, http.StatusServiceUnavailable, "service_unavailable", "Fabric service unavailable", err.Error())
+		return
+	}
+
+	// Reply to message
+	reply, err := fabricSvc.Reply(fabric.ReplyInput{
+		MessageID: req.ThreadID,
+		Content:   req.Content,
+		Kind:      domain.KindResponse,
+		CreatedBy: "user",
+		Mentions:  req.Mentions,
+	})
+	if err != nil {
+		// Check if this is a "not found" error for the thread
+		if strings.Contains(err.Error(), "get parent message") {
+			h.writeError(w, http.StatusNotFound, "not_found", "Thread not found", req.ThreadID)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "reply_failed", "Failed to reply", err.Error())
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, SendMessageResponse{
+		Success:   true,
+		MessageID: reply.ID,
+	})
+}
+
+// ListAgents returns available agents for a workflow.
+// GET /api/fabric/agents?workflowId=...
+func (h *Handler) ListAgents(w http.ResponseWriter, r *http.Request) {
+	workflowID := r.URL.Query().Get("workflowId")
+	if workflowID == "" {
+		h.writeError(w, http.StatusBadRequest, "validation_error", "workflowId query parameter is required", "")
+		return
+	}
+
+	// Check if ControlPlane is available
+	if h.controlPlane == nil {
+		h.writeJSON(w, http.StatusOK, AgentsResponse{
+			Agents:   []Agent{},
+			IsActive: false,
+		})
+		return
+	}
+
+	// Get workflow
+	wf, err := h.controlPlane.Get(r.Context(), controlplane.WorkflowID(workflowID))
+	if err != nil {
+		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
+			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", workflowID)
+			return
+		}
+		h.writeError(w, http.StatusInternalServerError, "get_failed", "Failed to get workflow", err.Error())
+		return
+	}
+
+	// Determine if workflow is active
+	isActive := wf.State == controlplane.WorkflowRunning || wf.State == controlplane.WorkflowPaused
+
+	// Get agents from process repository
+	agents := []Agent{}
+	if wf.Infrastructure != nil {
+		// Add coordinator
+		if coord, err := wf.Infrastructure.Repositories.ProcessRepo.GetCoordinator(); err == nil {
+			agents = append(agents, Agent{
+				ID:   coord.ID,
+				Role: "coordinator",
+			})
+		}
+
+		// Add workers
+		for _, worker := range wf.Infrastructure.Repositories.ProcessRepo.Workers() {
+			agents = append(agents, Agent{
+				ID:   worker.ID,
+				Role: "worker",
+			})
+		}
+	}
+
+	h.writeJSON(w, http.StatusOK, AgentsResponse{
+		Agents:   agents,
+		IsActive: isActive,
+	})
+}
+
+// validateContent checks that content is valid for a fabric message.
+func (h *Handler) validateContent(content string) error {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return fmt.Errorf("content cannot be empty")
+	}
+	if len(content) > maxContentLength {
+		return fmt.Errorf("content exceeds maximum length of %d characters", maxContentLength)
+	}
+	return nil
+}
+
+// getFabricService retrieves the fabric service for a workflow.
+func (h *Handler) getFabricService(ctx context.Context, workflowID string) (*fabric.Service, error) {
+	if h.controlPlane == nil {
+		return nil, fmt.Errorf("control plane not available")
+	}
+
+	wf, err := h.controlPlane.Get(ctx, controlplane.WorkflowID(workflowID))
+	if err != nil {
+		return nil, err
+	}
+
+	if wf.Infrastructure == nil {
+		return nil, fmt.Errorf("workflow infrastructure not initialized")
+	}
+
+	if wf.Infrastructure.Core.FabricService == nil {
+		return nil, fmt.Errorf("fabric service not available")
+	}
+
+	return wf.Infrastructure.Core.FabricService, nil
 }

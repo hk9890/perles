@@ -195,3 +195,116 @@ func TestMetadata_WorkflowCompletionStatus_AllValues(t *testing.T) {
 		})
 	}
 }
+
+func TestMetadata_WorkflowID_Serialization(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+
+	meta := &Metadata{
+		SessionID:  "test-session-wfid",
+		StartTime:  now,
+		Status:     StatusRunning,
+		SessionDir: "/test/dir",
+		WorkflowID: "workflow-abc-123",
+	}
+
+	// Serialize to JSON
+	data, err := json.Marshal(meta)
+	require.NoError(t, err)
+
+	// Verify field is present in JSON with correct key
+	var jsonMap map[string]any
+	err = json.Unmarshal(data, &jsonMap)
+	require.NoError(t, err)
+
+	require.Equal(t, "workflow-abc-123", jsonMap["workflow_id"])
+}
+
+func TestMetadata_WorkflowID_Deserialization(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	nowStr := now.Format(time.RFC3339)
+
+	jsonStr := `{
+		"session_id": "test-session-wfid-deser",
+		"start_time": "` + nowStr + `",
+		"status": "running",
+		"session_dir": "/test/dir",
+		"workflow_id": "workflow-xyz-789",
+		"workers": []
+	}`
+
+	var meta Metadata
+	err := json.Unmarshal([]byte(jsonStr), &meta)
+	require.NoError(t, err)
+
+	require.Equal(t, "workflow-xyz-789", meta.WorkflowID)
+}
+
+func TestMetadata_WorkflowID_Omitempty(t *testing.T) {
+	meta := &Metadata{
+		SessionID:  "test-session-wfid-empty",
+		StartTime:  time.Now().Truncate(time.Second),
+		Status:     StatusRunning,
+		SessionDir: "/test/dir",
+		WorkflowID: "", // Empty - should be omitted
+	}
+
+	data, err := json.Marshal(meta)
+	require.NoError(t, err)
+
+	var jsonMap map[string]any
+	err = json.Unmarshal(data, &jsonMap)
+	require.NoError(t, err)
+
+	// Empty workflow_id should be omitted
+	_, hasWorkflowID := jsonMap["workflow_id"]
+	require.False(t, hasWorkflowID, "empty workflow_id should be omitted")
+}
+
+func TestMetadata_WorkflowID_RoundTrip(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+
+	original := &Metadata{
+		SessionID:  "test-roundtrip-wfid",
+		StartTime:  now,
+		Status:     StatusCompleted,
+		SessionDir: "/test/dir",
+		WorkflowID: "workflow-roundtrip-456",
+		ClientType: "claude",
+	}
+
+	// Marshal
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	// Unmarshal
+	var loaded Metadata
+	err = json.Unmarshal(data, &loaded)
+	require.NoError(t, err)
+
+	// Verify workflow_id survived round-trip
+	require.Equal(t, original.WorkflowID, loaded.WorkflowID)
+}
+
+func TestMetadata_WorkflowID_BackwardCompatibility(t *testing.T) {
+	// JSON without workflow_id field (simulating older session metadata)
+	jsonStr := `{
+		"session_id": "old-session-no-wfid",
+		"start_time": "2026-01-14T10:00:00Z",
+		"status": "completed",
+		"session_dir": "/old/dir",
+		"coordinator_id": "coord-1",
+		"workers": [],
+		"client_type": "claude"
+	}`
+
+	var meta Metadata
+	err := json.Unmarshal([]byte(jsonStr), &meta)
+	require.NoError(t, err)
+
+	// WorkflowID should be empty for old sessions
+	require.Empty(t, meta.WorkflowID)
+
+	// Other fields should load correctly
+	require.Equal(t, "old-session-no-wfid", meta.SessionID)
+	require.Equal(t, "coord-1", meta.CoordinatorID)
+}
