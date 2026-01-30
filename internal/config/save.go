@@ -247,12 +247,6 @@ func buildColumnsNode(columns []ColumnConfig) *yaml.Node {
 	return node
 }
 
-// UpdateColumn updates a single column in the config and saves.
-// Deprecated: Use UpdateColumnInView for multi-view support.
-func UpdateColumn(configPath string, index int, newCol ColumnConfig, allCols []ColumnConfig) error {
-	return UpdateColumnInView(configPath, 0, index, newCol, allCols, nil)
-}
-
 // UpdateColumnInView updates a single column within a specific view.
 func UpdateColumnInView(configPath string, viewIndex, colIndex int, newCol ColumnConfig, allCols []ColumnConfig, allViews []ViewConfig) error {
 	if colIndex < 0 || colIndex >= len(allCols) {
@@ -265,12 +259,6 @@ func UpdateColumnInView(configPath string, viewIndex, colIndex int, newCol Colum
 	updated[colIndex] = newCol
 
 	return SaveColumnsForView(configPath, viewIndex, updated, allViews)
-}
-
-// DeleteColumn removes a column from the config and saves.
-// Deprecated: Use DeleteColumnInView for multi-view support.
-func DeleteColumn(configPath string, index int, allCols []ColumnConfig) error {
-	return DeleteColumnInView(configPath, 0, index, allCols, nil)
 }
 
 // DeleteColumnInView removes a column from a specific view.
@@ -305,13 +293,6 @@ func SwapColumnsInView(configPath string, viewIndex, idxA, idxB int, allCols []C
 	updated[idxA], updated[idxB] = updated[idxB], updated[idxA]
 
 	return SaveColumnsForView(configPath, viewIndex, updated, allViews)
-}
-
-// AddColumn inserts a new column at the specified position and saves.
-// The column is inserted after the given index (use -1 to insert at beginning).
-// Deprecated: Use AddColumnInView for multi-view support.
-func AddColumn(configPath string, insertAfterIndex int, newCol ColumnConfig, allCols []ColumnConfig) error {
-	return AddColumnInView(configPath, 0, insertAfterIndex, newCol, allCols, nil)
 }
 
 // AddView appends a new view to the config and saves it.
