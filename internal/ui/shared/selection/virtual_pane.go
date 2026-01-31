@@ -421,10 +421,13 @@ func (p *VirtualSelectablePane) renderEmptyState() string {
 	for i := 0; i < p.height; i++ {
 		if i == p.height/2 {
 			// Show centered placeholder text on middle line
-			placeholder := emptyStateStyle.Render("No messages")
+			text := "No messages"
+			placeholder := emptyStateStyle.Render(text)
 			// Center the placeholder if we have width
-			if p.width > 0 && stringDisplayWidth(placeholder) < p.width {
-				padding := (p.width - stringDisplayWidth(placeholder)) / 2
+			// Use plain text width for calculation (ANSI codes don't contribute to display width)
+			textWidth := stringDisplayWidth(text)
+			if p.width > 0 && textWidth < p.width {
+				padding := (p.width - textWidth) / 2
 				placeholder = strings.Repeat(" ", padding) + placeholder
 			}
 			lines = append(lines, placeholder)
