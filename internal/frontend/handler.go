@@ -312,6 +312,23 @@ func (h *Handler) LoadSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Load observer data (if observer directory exists)
+	observerDir := filepath.Join(req.Path, "observer")
+	if _, err := os.Stat(observerDir); err == nil {
+		observerMessages := loadRawJSONL(filepath.Join(observerDir, "messages.jsonl"))
+		observerNotes := ""
+		if data, err := os.ReadFile(filepath.Join(observerDir, "observer_notes.md")); err == nil { //nolint:gosec // G304: path is validated by validateSessionPath before calling this handler
+			observerNotes = string(data)
+		}
+		// Only include observer data if there are messages or notes
+		if len(observerMessages) > 0 || observerNotes != "" {
+			resp.Observer = &ObserverData{
+				Messages: observerMessages,
+				Notes:    observerNotes,
+			}
+		}
+	}
+
 	h.writeJSON(w, http.StatusOK, resp)
 }
 

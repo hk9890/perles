@@ -1,0 +1,134 @@
+.observer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.observer-panel h3 {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.observer-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.observer-messages,
+.observer-notes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.observer-messages .messages-list,
+.observer-notes .notes-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Messages list styles (reuse from AgentPanel) */
+.observer-messages .messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.observer-messages .message-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.observer-messages .message-item.tool-call {
+  background: rgba(136, 87, 229, 0.05);
+  border-color: rgba(136, 87, 229, 0.3);
+}
+
+.observer-messages .message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.observer-messages .message-role {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+}
+
+.observer-messages .message-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.observer-messages .message-content {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.observer-messages .message-content pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.observer-messages .tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.observer-messages .tool-badge {
+  display: inline-block;
+  background: var(--bg-tertiary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.8125rem;
+  color: var(--accent-purple);
+}
+
+/* Notes panel styles */
+.notes-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.notes-content pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: inherit;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.empty-notes {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Responsive: stack on smaller screens */
+@media (max-width: 900px) {
+  .observer-split {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}

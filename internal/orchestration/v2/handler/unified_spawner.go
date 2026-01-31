@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/zjrosen/perles/internal/orchestration/client"
 	"github.com/zjrosen/perles/internal/orchestration/mcp"
@@ -54,6 +55,7 @@ type UnifiedProcessSpawnerImpl struct {
 	submitter             process.CommandSubmitter
 	eventBus              *pubsub.Broker[any]
 	beadsDir              string
+	sessionDir            string
 }
 
 // UnifiedSpawnerConfig holds configuration for creating a UnifiedProcessSpawnerImpl.
@@ -79,6 +81,9 @@ type UnifiedSpawnerConfig struct {
 	// BeadsDir is the path to the beads database directory.
 	// When set, spawned processes receive BEADS_DIR environment variable.
 	BeadsDir string
+	// SessionDir is the path to the session directory.
+	// Used for template replacement in Observer prompts ({{SESSION_DIR}}).
+	SessionDir string
 }
 
 // NewUnifiedProcessSpawner creates a new UnifiedProcessSpawnerImpl.
@@ -115,6 +120,7 @@ func NewUnifiedProcessSpawner(cfg UnifiedSpawnerConfig) *UnifiedProcessSpawnerIm
 		submitter:             cfg.Submitter,
 		eventBus:              cfg.EventBus,
 		beadsDir:              cfg.BeadsDir,
+		sessionDir:            cfg.SessionDir,
 	}
 }
 
@@ -203,6 +209,9 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 		// Observer uses fixed prompts - no overrides supported
 		systemPrompt := roles.ObserverSystemPrompt()
 		initialPrompt := roles.ObserverIdlePrompt()
+
+		// Replace {{SESSION_DIR}} placeholder in Observer prompt
+		initialPrompt = strings.ReplaceAll(initialPrompt, "{{SESSION_DIR}}", s.sessionDir)
 
 		cfg = client.Config{
 			WorkDir:         s.workDir,

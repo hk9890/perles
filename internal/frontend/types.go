@@ -49,6 +49,7 @@ type LoadSessionResponse struct {
 	Messages    []json.RawMessage     `json:"messages"`
 	Coordinator CoordinatorData       `json:"coordinator"`
 	Workers     map[string]WorkerData `json:"workers"`
+	Observer    *ObserverData         `json:"observer,omitempty"`
 }
 
 // SessionMetadata contains parsed session metadata.
@@ -99,6 +100,12 @@ type WorkerData struct {
 	Messages              []json.RawMessage `json:"messages"`
 	Raw                   []json.RawMessage `json:"raw"`
 	AccountabilitySummary *string           `json:"accountabilitySummary,omitempty"`
+}
+
+// ObserverData contains observer process data.
+type ObserverData struct {
+	Messages []json.RawMessage `json:"messages"`
+	Notes    string            `json:"notes"`
 }
 
 // APIError provides consistent error response format.

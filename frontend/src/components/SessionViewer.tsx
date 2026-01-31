@@ -5,15 +5,16 @@ import FabricPanel from './FabricPanel'
 import AgentPanel from './AgentPanel'
 import McpPanel from './McpPanel'
 import CommandsPanel from './CommandsPanel'
+import ObserverPanel from './ObserverPanel'
 import './SessionViewer.css'
 
 interface Props {
   session: Session
 }
 
-type Tab = 'overview' | 'fabric' | 'commands' | 'coordinator' | 'workers' | 'mcp'
+type Tab = 'overview' | 'fabric' | 'commands' | 'coordinator' | 'workers' | 'observer' | 'mcp'
 
-const validTabs: Tab[] = ['overview', 'fabric', 'commands', 'coordinator', 'workers', 'mcp']
+const validTabs: Tab[] = ['overview', 'fabric', 'commands', 'coordinator', 'workers', 'observer', 'mcp']
 
 function getInitialTab(): Tab {
   const params = new URLSearchParams(window.location.search)
@@ -50,19 +51,20 @@ export default function SessionViewer({ session }: Props) {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  const tabs: { id: Tab; label: string; count?: number }[] = [
+  const tabs: { id: Tab; label: string; count?: number; hidden?: boolean }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'fabric', label: 'Fabric', count: session.fabric.length },
     { id: 'commands', label: 'Commands', count: session.commands?.length || 0 },
     { id: 'coordinator', label: 'Coordinator', count: session.coordinator.messages.length },
     { id: 'workers', label: 'Workers', count: Object.keys(session.workers).length },
+    { id: 'observer', label: 'Observer', count: session.observer?.messages.length || 0, hidden: !session.observer },
     { id: 'mcp', label: 'MCP Requests', count: session.mcpRequests.length },
   ]
 
   return (
     <div className="session-viewer">
       <nav className="viewer-tabs">
-        {tabs.map(tab => (
+        {tabs.filter(tab => !tab.hidden).map(tab => (
           <button
             key={tab.id}
             className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
@@ -133,6 +135,13 @@ export default function SessionViewer({ session }: Props) {
           </div>
         )}
         
+        {activeTab === 'observer' && session.observer && (
+          <ObserverPanel 
+            messages={session.observer.messages} 
+            notes={session.observer.notes}
+          />
+        )}
+
         {activeTab === 'mcp' && (
           <McpPanel requests={session.mcpRequests} initialWorkerFilter={mcpWorkerFilter} />
         )}

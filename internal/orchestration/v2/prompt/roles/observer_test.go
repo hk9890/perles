@@ -107,14 +107,17 @@ func TestObserverSystemPromptVersion_IsSemver(t *testing.T) {
 }
 
 // TestObserverIdlePrompt_ContainsSubscriptionInstructions verifies idle prompt
-// instructs the Observer to subscribe to all channels on startup.
+// instructs the Observer to subscribe to channels on startup.
 func TestObserverIdlePrompt_ContainsSubscriptionInstructions(t *testing.T) {
 	prompt := ObserverIdlePrompt()
 
 	require.Contains(t, prompt, "fabric_subscribe",
 		"ObserverIdlePrompt should contain subscription instructions")
-	require.Contains(t, prompt, "Subscribe to all channels",
-		"ObserverIdlePrompt should instruct subscribing to all channels")
+	// Observer now subscribes to #observer first, then remaining channels
+	require.Contains(t, prompt, "Subscribe to #observer channel first",
+		"ObserverIdlePrompt should instruct subscribing to #observer first")
+	require.Contains(t, prompt, "Subscribe to remaining channels",
+		"ObserverIdlePrompt should instruct subscribing to remaining channels")
 }
 
 // TestObserverIdlePrompt_IdentifiesAsObserver verifies role identification.
@@ -153,4 +156,96 @@ func TestObserverSystemPrompt_MentionsRestrictedWriteTools(t *testing.T) {
 		"ObserverSystemPrompt should mention fabric_reply as restricted")
 	require.Contains(t, prompt, "Restricted write tools",
 		"ObserverSystemPrompt should have a restricted write tools section")
+}
+
+// ============================================================================
+// Observer v1.1.0 Tests - Artifact and Inbox Management
+// ============================================================================
+
+// TestObserverSystemPromptVersion_Is_1_1_0 verifies version constant is "1.1.0".
+func TestObserverSystemPromptVersion_Is_1_1_0(t *testing.T) {
+	require.Equal(t, "1.1.0", ObserverSystemPromptVersion,
+		"ObserverSystemPromptVersion should be 1.1.0")
+}
+
+// TestObserverIdlePrompt_ContainsArtifactInstructions verifies idle prompt includes
+// {{SESSION_DIR}} placeholder and artifact creation steps.
+func TestObserverIdlePrompt_ContainsArtifactInstructions(t *testing.T) {
+	prompt := ObserverIdlePrompt()
+
+	// Verify {{SESSION_DIR}} placeholder exists
+	require.Contains(t, prompt, "{{SESSION_DIR}}",
+		"ObserverIdlePrompt should contain {{SESSION_DIR}} placeholder")
+
+	// Verify observer_notes.md creation instructions
+	require.Contains(t, prompt, "observer_notes.md",
+		"ObserverIdlePrompt should instruct creating observer_notes.md")
+
+	// Verify fabric_attach instructions
+	require.Contains(t, prompt, "fabric_attach",
+		"ObserverIdlePrompt should instruct using fabric_attach")
+
+	// Verify channel_id note for fabric_attach
+	require.Contains(t, prompt, "channel_id",
+		"ObserverIdlePrompt should mention channel_id for fabric_attach")
+
+	// Verify "append, don't overwrite" instruction
+	require.Contains(t, prompt, "append, don't overwrite",
+		"ObserverIdlePrompt should instruct to append, not overwrite notes")
+}
+
+// TestObserverSystemPrompt_ContainsInboxManagement verifies system prompt includes
+// fabric_ack and fabric_history guidance.
+func TestObserverSystemPrompt_ContainsInboxManagement(t *testing.T) {
+	prompt := ObserverSystemPrompt()
+
+	// Verify INBOX MANAGEMENT section exists
+	require.Contains(t, prompt, "INBOX MANAGEMENT",
+		"ObserverSystemPrompt should have INBOX MANAGEMENT section")
+
+	// Verify fabric_ack guidance
+	require.Contains(t, prompt, "fabric_ack",
+		"ObserverSystemPrompt should contain fabric_ack guidance")
+	require.Contains(t, prompt, "message_ids",
+		"ObserverSystemPrompt should explain message_ids parameter for fabric_ack")
+
+	// Verify REVIEWING HISTORY section
+	require.Contains(t, prompt, "REVIEWING HISTORY",
+		"ObserverSystemPrompt should have REVIEWING HISTORY section")
+
+	// Verify fabric_history usage examples
+	require.Contains(t, prompt, "fabric_history(channel=",
+		"ObserverSystemPrompt should contain fabric_history usage examples")
+}
+
+// TestObserverIdlePrompt_NoExtraWhitespace verifies prompts render correctly
+// without leading/trailing whitespace issues.
+func TestObserverIdlePrompt_NoExtraWhitespace(t *testing.T) {
+	prompt := ObserverIdlePrompt()
+
+	// Should not start with newline
+	require.False(t, strings.HasPrefix(prompt, "\n"),
+		"ObserverIdlePrompt should not start with newline")
+
+	// Should not end with excessive newlines (more than 1)
+	trimmed := strings.TrimRight(prompt, "\n")
+	trailing := len(prompt) - len(trimmed)
+	require.LessOrEqual(t, trailing, 1,
+		"ObserverIdlePrompt should not have more than 1 trailing newline")
+}
+
+// TestObserverSystemPrompt_NoExtraWhitespace verifies prompts render correctly
+// without leading/trailing whitespace issues.
+func TestObserverSystemPrompt_NoExtraWhitespace(t *testing.T) {
+	prompt := ObserverSystemPrompt()
+
+	// Should not start with newline
+	require.False(t, strings.HasPrefix(prompt, "\n"),
+		"ObserverSystemPrompt should not start with newline")
+
+	// Should not end with excessive newlines (more than 1)
+	trimmed := strings.TrimRight(prompt, "\n")
+	trailing := len(prompt) - len(trimmed)
+	require.LessOrEqual(t, trailing, 1,
+		"ObserverSystemPrompt should not have more than 1 trailing newline")
 }

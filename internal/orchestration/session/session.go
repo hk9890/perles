@@ -70,9 +70,12 @@ type Session struct {
 	workers               []WorkerMetadata
 	tokenUsage            TokenUsageSummary // Aggregate of all processes (computed)
 	coordinatorTokenUsage TokenUsageSummary // Coordinator's cumulative usage
+	observerTokenUsage    TokenUsageSummary // Observer's cumulative usage
 
 	// Session resumption fields.
 	coordinatorSessionRef string
+	observerSessionRef    string
+	observerSpawnedAt     time.Time
 	resumable             bool
 
 	// Application context fields (set via options).
@@ -1350,13 +1353,20 @@ func (s *Session) updateTokenUsage(processID string, contextTokens, outputTokens
 	// Only update ContextTokens when we have actual token data (> 0).
 	// Cost-only events (e.g., result events) have TokensUsed=0 and should not
 	// reset the previously tracked context window size.
-	if processID == "coordinator" {
+	switch processID {
+	case "coordinator":
 		if contextTokens > 0 {
 			s.coordinatorTokenUsage.ContextTokens = contextTokens
 		}
 		s.coordinatorTokenUsage.TotalOutputTokens += outputTokens
 		s.coordinatorTokenUsage.TotalCostUSD += costUSD
-	} else {
+	case "observer":
+		if contextTokens > 0 {
+			s.observerTokenUsage.ContextTokens = contextTokens
+		}
+		s.observerTokenUsage.TotalOutputTokens += outputTokens
+		s.observerTokenUsage.TotalCostUSD += costUSD
+	default:
 		// Find and update worker usage
 		for i := range s.workers {
 			if s.workers[i].ID == processID {
@@ -1379,7 +1389,7 @@ func (s *Session) updateTokenUsage(processID string, contextTokens, outputTokens
 	}
 }
 
-// recomputeTokenUsageLocked recalculates session totals from coordinator + all workers.
+// recomputeTokenUsageLocked recalculates session totals from coordinator + observer + all workers.
 // Caller must hold s.mu.
 func (s *Session) recomputeTokenUsageLocked() {
 	total := TokenUsageSummary{
@@ -1387,6 +1397,11 @@ func (s *Session) recomputeTokenUsageLocked() {
 		TotalOutputTokens: s.coordinatorTokenUsage.TotalOutputTokens,
 		TotalCostUSD:      s.coordinatorTokenUsage.TotalCostUSD,
 	}
+
+	// Add observer usage
+	total.ContextTokens += s.observerTokenUsage.ContextTokens
+	total.TotalOutputTokens += s.observerTokenUsage.TotalOutputTokens
+	total.TotalCostUSD += s.observerTokenUsage.TotalCostUSD
 
 	for _, w := range s.workers {
 		total.ContextTokens += w.TokenUsage.ContextTokens
@@ -1488,6 +1503,24 @@ func (s *Session) SetCoordinatorSessionRef(ref string) error {
 	return s.saveMetadataLocked()
 }
 
+// SetObserverSessionRef sets the observer's headless session reference.
+// Should be called after the observer's first successful turn.
+// Immediately persists metadata to ensure crash resilience.
+func (s *Session) SetObserverSessionRef(ref string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return os.ErrClosed
+	}
+
+	s.observerSessionRef = ref
+	if s.observerSpawnedAt.IsZero() {
+		s.observerSpawnedAt = time.Now()
+	}
+	return s.saveMetadataLocked()
+}
+
 // SetWorkerSessionRef sets a worker's headless session reference.
 // Should be called after the worker's first successful turn.
 // Immediately persists metadata to ensure crash resilience.
@@ -1551,6 +1584,17 @@ func (s *Session) saveMetadataLocked() error {
 	meta.CoordinatorTokenUsage = s.coordinatorTokenUsage
 	meta.WorkflowID = s.workflowID
 
+	// Update observer metadata if observer was spawned
+	if s.observerSessionRef != "" || !s.observerSpawnedAt.IsZero() || s.observerTokenUsage != (TokenUsageSummary{}) {
+		meta.Observer = &ObserverMetadata{
+			HeadlessSessionRef: s.observerSessionRef,
+			TokenUsage:         s.observerTokenUsage,
+		}
+		if !s.observerSpawnedAt.IsZero() {
+			meta.Observer.SpawnedAt = s.observerSpawnedAt.Format(time.RFC3339)
+		}
+	}
+
 	return meta.Save(s.Dir)
 }
 
@@ -1562,6 +1606,10 @@ func (s *Session) NotifySessionRef(processID, sessionRef, workDir string) error 
 			return err
 		}
 		return s.MarkResumable()
+	}
+
+	if processID == "observer" {
+		return s.SetObserverSessionRef(sessionRef)
 	}
 
 	// Worker session ref

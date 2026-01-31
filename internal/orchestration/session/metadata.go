@@ -83,6 +83,21 @@ type Metadata struct {
 
 	// WorkflowSummary is the completion summary provided by the coordinator.
 	WorkflowSummary string `json:"workflow_summary,omitempty"`
+
+	// Observer contains metadata for the observer agent (if enabled).
+	Observer *ObserverMetadata `json:"observer,omitempty"`
+}
+
+// ObserverMetadata tracks the observer agent lifecycle.
+type ObserverMetadata struct {
+	// HeadlessSessionRef is the AI client session reference for resuming the observer.
+	HeadlessSessionRef string `json:"headless_session_ref,omitempty"`
+
+	// SpawnedAt is when the observer was created.
+	SpawnedAt string `json:"spawned_at,omitempty"`
+
+	// TokenUsage tracks cumulative token usage for the observer.
+	TokenUsage TokenUsageSummary `json:"token_usage,omitzero"`
 }
 
 // WorkerMetadata tracks individual worker lifecycle.

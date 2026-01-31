@@ -100,6 +100,11 @@ export interface AgentsResponse {
   isActive: boolean;
 }
 
+export interface ObserverData {
+  messages: AgentMessage[];
+  notes: string;
+}
+
 export interface Session {
   path: string;
   metadata: SessionMetadata | null;
@@ -118,5 +123,6 @@ export interface Session {
       accountabilitySummary?: string;
     };
   };
+  observer?: ObserverData;
   accountabilitySummary: string | null;
 }

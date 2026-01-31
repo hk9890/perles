@@ -41,6 +41,28 @@ func LoadInterAgentMessages(sessionDir string) ([]message.Entry, error) {
 	return loadInterAgentMessagesJSONL(path)
 }
 
+// LoadObserverMessages loads the observer's chat history from observer/messages.jsonl.
+// Returns an empty slice if the file doesn't exist (observer may not be enabled).
+// Malformed JSON lines are skipped gracefully.
+func LoadObserverMessages(sessionDir string) ([]chatrender.Message, error) {
+	path := filepath.Join(sessionDir, observerDir, chatMessagesFile)
+	return loadMessagesJSONL(path)
+}
+
+// LoadObserverNotes loads the observer's notes file from observer/observer_notes.md.
+// Returns an empty string if the file doesn't exist.
+func LoadObserverNotes(sessionDir string) (string, error) {
+	path := filepath.Join(sessionDir, observerDir, "observer_notes.md")
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is constructed from trusted sessionDir parameter
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("reading observer notes: %w", err)
+	}
+	return string(data), nil
+}
+
 // loadMessagesJSONL is the internal implementation for loading chat messages from a JSONL file.
 // Returns an empty slice if the file doesn't exist.
 // Malformed JSON lines are skipped gracefully to provide resilience against partial writes.

@@ -234,6 +234,7 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		eventBus,
 		cfg.WorkDir,
 		cfg.BeadsDir,
+		cfg.SessionDir,
 		cfg.Tracer,
 		cfg.SessionRefNotifier,
 		cfg.SoundService,
@@ -346,6 +347,7 @@ func registerHandlers(
 	eventBus *pubsub.Broker[any],
 	workDir string,
 	beadsDir string,
+	sessionDir string,
 	tracer trace.Tracer,
 	sessionRefNotifier handler.SessionRefNotifier,
 	soundService sound.SoundService,
@@ -420,6 +422,7 @@ func registerHandlers(
 		Submitter:             cmdSubmitter,
 		EventBus:              eventBus,
 		BeadsDir:              beadsDir,
+		SessionDir:            sessionDir,
 	})
 
 	// MessageDeliverer for delivering messages to processes via session resume
