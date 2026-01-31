@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
 	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
 	"github.com/zjrosen/perles/internal/orchestration/fabric/repository"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
@@ -222,11 +221,10 @@ func (b *Broker) handleEvent(event Event) {
 	// Get channel slug for notification message
 	channelSlug := b.channelSlugForID(channelID)
 
-	// Skip all notifications for suppressed channels (e.g., #observer)
-	if isNotificationSuppressedChannel(channelSlug) {
-		log.Debug(log.CatOrch, "notifications suppressed for channel", "channel", channelSlug)
-		return
-	}
+	// Check if this is a notification-suppressed channel (e.g., #observer)
+	// For these channels, we only notify the channel's "owner" agent (e.g., OBSERVER for #observer)
+	// This prevents coordinator/workers from receiving notifications about observer channel activity
+	isSuppressed := isNotificationSuppressedChannel(channelSlug)
 
 	// Get subscribers to this channel
 	subscribers, err := b.subscriptions.ListForChannel(channelID)
@@ -238,6 +236,11 @@ func (b *Broker) handleEvent(event Event) {
 	for _, sub := range subscribers {
 		// Don't notify the sender
 		if sub.AgentID == sender {
+			continue
+		}
+
+		// For suppressed channels, only notify the channel's owner agent
+		if isSuppressed && !isChannelOwner(channelSlug, sub.AgentID) {
 			continue
 		}
 
@@ -261,8 +264,12 @@ func (b *Broker) handleEvent(event Event) {
 	}
 
 	// Also notify anyone @mentioned who isn't subscribed (explicit mention always notifies)
+	// Skip for suppressed channels unless they're the channel owner
 	for _, mentionedID := range mentions {
 		if mentionedID == sender {
+			continue
+		}
+		if isSuppressed && !isChannelOwner(channelSlug, mentionedID) {
 			continue
 		}
 		b.addPending(mentionedID, channelSlug, sender)
@@ -270,9 +277,13 @@ func (b *Broker) handleEvent(event Event) {
 
 	// For replies: notify all participants of the parent thread
 	// This enables thread-following behavior (once you're in a thread, you see all replies)
+	// For suppressed channels, only notify the channel owner
 	if event.Type == EventReplyPosted {
 		for _, participantID := range event.Participants {
 			if participantID == sender {
+				continue
+			}
+			if isSuppressed && !isChannelOwner(channelSlug, participantID) {
 				continue
 			}
 			b.addPending(participantID, channelSlug, sender)
@@ -360,10 +371,21 @@ func containsMention(mentions []string, agentID string) bool {
 	return false
 }
 
-// isNotificationSuppressedChannel returns true if the channel suppresses all notifications.
+// isNotificationSuppressedChannel returns true if the channel suppresses notifications
+// to agents other than the channel's owner.
 // The #observer channel is a dedicated private channel between Observer and User.
 // If more channels need this behavior, consider adding a SuppressNotifications property
 // to the Thread/Channel domain type instead of extending this function.
 func isNotificationSuppressedChannel(channelSlug string) bool {
 	return channelSlug == domain.SlugObserver
+}
+
+// isChannelOwner returns true if the agent is the "owner" of a suppressed channel.
+// For #observer, the OBSERVER agent is the owner and should still receive notifications.
+func isChannelOwner(channelSlug, agentID string) bool {
+	if channelSlug == domain.SlugObserver {
+		// OBSERVER agent owns the #observer channel
+		return strings.EqualFold(agentID, "OBSERVER")
+	}
+	return false
 }

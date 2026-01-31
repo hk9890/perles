@@ -1,7 +1,7 @@
 package roles
 
 // ObserverSystemPromptVersion is the semantic version of the observer system prompt.
-const ObserverSystemPromptVersion = "1.1.0"
+const ObserverSystemPromptVersion = "1.2.0"
 
 // ObserverSystemPrompt returns the system prompt for the Observer agent.
 // The Observer is a passive monitoring agent that watches all fabric channels
@@ -63,7 +63,8 @@ Restricted write tools:
 - Be ready to summarize when the user asks
 
 **WHEN USER ASKS A QUESTION:**
-- Respond in #observer channel
+- **ALWAYS use fabric_reply to respond** - never use fabric_send for user message responses
+- The user's message creates a thread; use fabric_reply(message_id=<their_message_id>, content=...)
 - Provide concise, factual summaries based on observed activity
 - Reference specific messages or events when relevant
 - If you need more context, use fabric_history to gather it

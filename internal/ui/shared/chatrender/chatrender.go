@@ -20,6 +20,15 @@ var (
 	AssistantColor = CoordinatorColor
 )
 
+// Channel colors - consistent colors for fabric channel names.
+var (
+	ChannelGeneralColor  = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#43BF6D"} // Green
+	ChannelTasksColor    = lipgloss.AdaptiveColor{Light: "#E09B24", Dark: "#E09B24"} // Orange
+	ChannelPlanningColor = lipgloss.AdaptiveColor{Light: "#3B82F6", Dark: "#60A5FA"} // Blue
+	ChannelSystemColor   = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"} // Red
+	ChannelObserverColor = ObserverColor                                             // Purple (matches observer agent)
+)
+
 // Chat rendering styles.
 var (
 	// RoleStyle applies bold formatting to role labels.
@@ -159,4 +168,22 @@ func WordWrap(text string, width int) string {
 	}
 
 	return result.String()
+}
+
+// ChannelColor returns the appropriate color for a channel slug.
+func ChannelColor(slug string) lipgloss.AdaptiveColor {
+	switch slug {
+	case "general":
+		return ChannelGeneralColor
+	case "tasks":
+		return ChannelTasksColor
+	case "planning":
+		return ChannelPlanningColor
+	case "system":
+		return ChannelSystemColor
+	case "observer":
+		return ChannelObserverColor
+	default:
+		return lipgloss.AdaptiveColor{Light: "#888888", Dark: "#777777"} // Muted fallback
+	}
 }

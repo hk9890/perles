@@ -614,7 +614,7 @@ func TestBroker_ObserverChannel_SuppressesSubscriptionNotifications(t *testing.T
 }
 
 func TestBroker_ObserverChannel_SuppressesThreadParticipantNotifications(t *testing.T) {
-	// Test that reply events in #observer do NOT notify thread participants
+	// Test that reply events in #observer do NOT notify non-owner thread participants
 	subs := repository.NewMemorySubscriptionRepository()
 	submitter := &mockCommandSubmitter{}
 	slugLookup := &mockSlugLookup{
@@ -632,7 +632,7 @@ func TestBroker_ObserverChannel_SuppressesThreadParticipantNotifications(t *test
 	defer broker.Stop()
 
 	// Observer sends a reply to a thread in #observer
-	// The parent thread has participants: user, observer, worker-1 (who observer was discussing)
+	// The parent thread has participants: user, OBSERVER, worker-1 (who observer was discussing)
 	event := Event{
 		Type:      EventReplyPosted,
 		ChannelID: "channel-observer",
@@ -640,11 +640,11 @@ func TestBroker_ObserverChannel_SuppressesThreadParticipantNotifications(t *test
 		Thread: &domain.Thread{
 			ID:        "reply-1",
 			Type:      domain.ThreadMessage,
-			CreatedBy: "observer",
+			CreatedBy: "OBSERVER", // Observer is the sender
 			Content:   "worker-1 seems to be making progress now",
 		},
 		Mentions:     []string{},
-		Participants: []string{"user", "observer", "worker-1"},
+		Participants: []string{"user", "OBSERVER", "worker-1"},
 	}
 
 	broker.HandleEvent(event)
@@ -652,9 +652,57 @@ func TestBroker_ObserverChannel_SuppressesThreadParticipantNotifications(t *test
 	// Wait for debounce to flush
 	time.Sleep(50 * time.Millisecond)
 
-	// NO participants should be notified - observer channel suppresses all notifications
+	// worker-1 should NOT be notified - they're not the channel owner
+	// user is also not notified (not an agent)
 	cmds := submitter.getCommands()
-	assert.Len(t, cmds, 0, "observer channel should suppress all thread participant notifications")
+	assert.Len(t, cmds, 0, "observer channel should suppress notifications to non-owner participants")
+}
+
+func TestBroker_ObserverChannel_NotifiesObserverOnUserReply(t *testing.T) {
+	// Test that OBSERVER is notified when user replies in #observer thread
+	subs := repository.NewMemorySubscriptionRepository()
+	submitter := &mockCommandSubmitter{}
+	slugLookup := &mockSlugLookup{
+		slugs: map[string]string{"channel-observer": domain.SlugObserver},
+	}
+
+	broker := NewBroker(BrokerConfig{
+		CmdSubmitter:  submitter,
+		Subscriptions: subs,
+		SlugLookup:    slugLookup,
+		Debounce:      10 * time.Millisecond,
+	})
+
+	broker.Start()
+	defer broker.Stop()
+
+	// User sends a reply to a thread in #observer
+	// The parent thread has participants: user, OBSERVER
+	event := Event{
+		Type:      EventReplyPosted,
+		ChannelID: "channel-observer",
+		ParentID:  "parent-thread-1",
+		Thread: &domain.Thread{
+			ID:        "reply-1",
+			Type:      domain.ThreadMessage,
+			CreatedBy: "user", // User is the sender
+			Content:   "Can you give me a summary of what's happening?",
+		},
+		Mentions:     []string{},
+		Participants: []string{"user", "OBSERVER"},
+	}
+
+	broker.HandleEvent(event)
+
+	// Wait for debounce to flush
+	time.Sleep(50 * time.Millisecond)
+
+	// OBSERVER should be notified since they own the #observer channel
+	cmds := submitter.getCommands()
+	require.Len(t, cmds, 1, "OBSERVER should be notified when user replies in #observer")
+	sendCmd, ok := cmds[0].(*command.SendToProcessCommand)
+	require.True(t, ok, "command should be SendToProcessCommand")
+	assert.Equal(t, "OBSERVER", sendCmd.ProcessID)
 }
 
 func TestBroker_OtherChannels_NotificationsWork(t *testing.T) {

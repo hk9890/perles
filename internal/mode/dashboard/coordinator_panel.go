@@ -148,6 +148,10 @@ var (
 				Foreground(chatrender.CoordinatorColor).
 				Bold(true)
 
+	observerSenderStyle = lipgloss.NewStyle().
+				Foreground(chatrender.ObserverColor).
+				Bold(true)
+
 	workerSenderStyle = lipgloss.NewStyle().
 				Foreground(chatrender.WorkerColor).
 				Bold(true)
@@ -155,11 +159,6 @@ var (
 	userSenderStyle = lipgloss.NewStyle().
 			Foreground(chatrender.UserColor).
 			Bold(true)
-
-	// Border styles for left message border (no bold)
-	coordinatorBorderStyle = lipgloss.NewStyle().Foreground(chatrender.CoordinatorColor)
-	workerBorderStyle      = lipgloss.NewStyle().Foreground(chatrender.WorkerColor)
-	userBorderStyle        = lipgloss.NewStyle().Foreground(chatrender.UserColor)
 )
 
 // Command log pane styles (matches orchestration mode command_pane.go)
@@ -206,6 +205,12 @@ func NewCoordinatorPanel(debugMode, vimMode, observerEnabled bool, clipboard sha
 	// Don't focus input by default - panel starts unfocused
 	input.Blur()
 
+	// Build channel slugs based on observer state
+	channelSlugs := []string{"dm", fabricdomain.SlugGeneral, fabricdomain.SlugTasks, fabricdomain.SlugPlanning}
+	if observerEnabled {
+		channelSlugs = append(channelSlugs, fabricdomain.SlugObserver)
+	}
+
 	panel := &CoordinatorPanel{
 		input:                      input,
 		clipboard:                  clipboard,
@@ -228,9 +233,9 @@ func NewCoordinatorPanel(debugMode, vimMode, observerEnabled bool, clipboard sha
 		focused:                    false,
 		pendingWorkerScrollOffsets: make(map[string]*int),
 		// Channel state: default to DM (direct message to coordinator), then fabric channels
-		// Index 0 = DM, Index 1+ = fabric channels
+		// Index 0 = DM, Index 1+ = fabric channels (+ observer if enabled)
 		activeChannel: 0,
-		channelSlugs:  []string{"dm", fabricdomain.SlugGeneral, fabricdomain.SlugTasks, fabricdomain.SlugPlanning},
+		channelSlugs:  channelSlugs,
 		// @mention autocomplete
 		mentionModel: mention.New(),
 		// Thread picker for selecting existing threads
@@ -561,9 +566,12 @@ func (p *CoordinatorPanel) CycleChannel() {
 // updatePlaceholder updates the input placeholder based on active channel.
 func (p *CoordinatorPanel) updatePlaceholder() {
 	channel := p.ActiveChannel()
-	if channel == "dm" {
+	switch channel {
+	case "dm":
 		p.input.SetPlaceholder("Message coordinator...")
-	} else {
+	case fabricdomain.SlugObserver:
+		p.input.SetPlaceholder("Message observer...")
+	default:
 		p.input.SetPlaceholder("Message #" + channel + "...")
 	}
 }
@@ -621,9 +629,13 @@ func (p *CoordinatorPanel) IsThreadPickerActive() bool {
 
 // updateMentionProcesses updates the list of mentionable processes.
 func (p *CoordinatorPanel) updateMentionProcesses() {
-	processes := make([]mention.Process, 0, 1+len(p.workerIDs))
+	processes := make([]mention.Process, 0, 2+len(p.workerIDs))
 	// Always include coordinator
 	processes = append(processes, mention.Process{ID: repository.CoordinatorID, Role: "Coordinator"})
+	// Include observer if enabled
+	if p.observerEnabled {
+		processes = append(processes, mention.Process{ID: repository.ObserverID, Role: "Observer"})
+	}
 	// Add all workers
 	for _, wid := range p.workerIDs {
 		processes = append(processes, mention.Process{ID: wid, Role: "Worker"})
@@ -1311,38 +1323,33 @@ func (p *CoordinatorPanel) renderFabricEventsWithSelection(wrapWidth int, selSta
 			sender = event.AgentID
 		}
 
-		// Check if sender is a worker
+		// Check if sender is a worker (used for sender styling)
 		fromUpper := strings.ToUpper(sender)
 		isWorker := strings.HasPrefix(fromUpper, "WORKER")
 
-		// Determine left border style based on sender
-		var borderStyle lipgloss.Style
-		switch {
-		case sender == message.ActorCoordinator:
-			borderStyle = coordinatorBorderStyle
-		case sender == message.ActorUser:
-			borderStyle = userBorderStyle
-		case isWorker:
-			borderStyle = workerBorderStyle
-		default:
-			borderStyle = messageTimestampStyle
-		}
-
-		leftBorder := borderStyle.Render("│")
+		// Left border uses channel color for consistent channel-based visual grouping
+		channelSlug := event.ChannelSlug
+		channelColor := chatrender.ChannelColor(channelSlug)
+		leftBorder := lipgloss.NewStyle().Foreground(channelColor).Render("│")
 
 		// Format timestamp
 		timestamp := messageTimestampStyle.Render(event.Timestamp.Format("15:04"))
 
 		// Build plain header: HH:MM [#channel] sender
-		channelSlug := event.ChannelSlug
 		headerPlain := fmt.Sprintf("%s [#%s] %s", event.Timestamp.Format("15:04"), channelSlug, sender)
 
-		// Style sender based on who sent it
+		// Style channel slug with appropriate color (reuse channelColor from border)
+		channelStyled := lipgloss.NewStyle().Foreground(channelColor).Render("[#" + channelSlug + "]")
+
+		// Style sender based on who sent it (case-insensitive matching)
+		senderUpper := strings.ToUpper(sender)
 		var senderStyled string
 		switch {
-		case sender == message.ActorCoordinator:
+		case senderUpper == message.ActorCoordinator:
 			senderStyled = coordinatorSenderStyle.Render(sender)
-		case sender == message.ActorUser:
+		case senderUpper == strings.ToUpper(repository.ObserverID):
+			senderStyled = observerSenderStyle.Render(sender)
+		case senderUpper == message.ActorUser:
 			senderStyled = userSenderStyle.Render(sender)
 		case isWorker:
 			senderStyled = workerSenderStyle.Render(sender)
@@ -1351,7 +1358,7 @@ func (p *CoordinatorPanel) renderFabricEventsWithSelection(wrapWidth int, selSta
 		}
 
 		// Format styled header: HH:MM [#channel] sender
-		headerStyled := fmt.Sprintf("%s [#%s] %s", timestamp, channelSlug, senderStyled)
+		headerStyled := fmt.Sprintf("%s %s %s", timestamp, channelStyled, senderStyled)
 
 		// Get content from Thread
 		msgContent := event.Thread.Content
@@ -1437,16 +1444,20 @@ func (p *CoordinatorPanel) renderInputPane(width, height int) string {
 		channelIndicator = dmStyle.Render("DM: Coordinator")
 	case fabricdomain.SlugGeneral:
 		// General channel - green
-		generalStyle := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#43BF6D"})
+		generalStyle := lipgloss.NewStyle().Foreground(chatrender.ChannelGeneralColor)
 		channelIndicator = generalStyle.Render("#" + channel)
 	case fabricdomain.SlugTasks:
 		// Tasks channel - orange
-		tasksStyle := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#E09B24", Dark: "#E09B24"})
+		tasksStyle := lipgloss.NewStyle().Foreground(chatrender.ChannelTasksColor)
 		channelIndicator = tasksStyle.Render("#" + channel)
 	case fabricdomain.SlugPlanning:
-		// Planning channel - purple
-		planningStyle := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#A066D3", Dark: "#A066D3"})
+		// Planning channel - blue
+		planningStyle := lipgloss.NewStyle().Foreground(chatrender.ChannelPlanningColor)
 		channelIndicator = planningStyle.Render("#" + channel)
+	case fabricdomain.SlugObserver:
+		// Observer channel - use observer color
+		observerStyle := lipgloss.NewStyle().Foreground(chatrender.ObserverColor)
+		channelIndicator = observerStyle.Render("#" + channel)
 	default:
 		// Fallback - muted
 		defaultStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)

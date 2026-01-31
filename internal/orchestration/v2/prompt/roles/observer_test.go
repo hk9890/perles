@@ -162,10 +162,25 @@ func TestObserverSystemPrompt_MentionsRestrictedWriteTools(t *testing.T) {
 // Observer v1.1.0 Tests - Artifact and Inbox Management
 // ============================================================================
 
-// TestObserverSystemPromptVersion_Is_1_1_0 verifies version constant is "1.1.0".
-func TestObserverSystemPromptVersion_Is_1_1_0(t *testing.T) {
-	require.Equal(t, "1.1.0", ObserverSystemPromptVersion,
-		"ObserverSystemPromptVersion should be 1.1.0")
+// TestObserverSystemPromptVersion_Is_1_2_0 verifies version constant is "1.2.0".
+func TestObserverSystemPromptVersion_Is_1_2_0(t *testing.T) {
+	require.Equal(t, "1.2.0", ObserverSystemPromptVersion,
+		"ObserverSystemPromptVersion should be 1.2.0")
+}
+
+// ============================================================================
+// Observer v1.2.0 Tests - User Message Response via fabric_reply
+// ============================================================================
+
+// TestObserverSystemPrompt_ContainsFabricReplyInstruction verifies prompt instructs
+// the observer to use fabric_reply when responding to user messages.
+func TestObserverSystemPrompt_ContainsFabricReplyInstruction(t *testing.T) {
+	prompt := ObserverSystemPrompt()
+
+	require.Contains(t, prompt, "ALWAYS use fabric_reply to respond",
+		"ObserverSystemPrompt should instruct to ALWAYS use fabric_reply for user responses")
+	require.Contains(t, prompt, "never use fabric_send for user message responses",
+		"ObserverSystemPrompt should instruct against using fabric_send for user message responses")
 }
 
 // TestObserverIdlePrompt_ContainsArtifactInstructions verifies idle prompt includes

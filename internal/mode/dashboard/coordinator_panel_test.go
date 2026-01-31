@@ -1668,10 +1668,30 @@ func TestCoordinatorPanel_CycleChannel(t *testing.T) {
 	panel.CycleChannel()
 	require.Equal(t, fabricDomain.SlugPlanning, panel.ActiveChannel())
 
+	// Cycle to observer (when observer is enabled)
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugObserver, panel.ActiveChannel())
+
 	// Cycle back to DM
 	panel.CycleChannel()
 	require.Equal(t, "dm", panel.ActiveChannel())
 	require.True(t, panel.IsDMMode())
+}
+
+func TestCoordinatorPanel_CycleChannel_NoObserver(t *testing.T) {
+	// Without observer enabled, channel cycle should be: dm -> general -> tasks -> planning -> dm
+	panel := NewCoordinatorPanel(false, false, false, nil)
+	panel.SetSize(60, 20)
+
+	require.Equal(t, "dm", panel.ActiveChannel())
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugGeneral, panel.ActiveChannel())
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugTasks, panel.ActiveChannel())
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugPlanning, panel.ActiveChannel())
+	panel.CycleChannel()
+	require.Equal(t, "dm", panel.ActiveChannel()) // Back to DM (no observer)
 }
 
 func TestCoordinatorPanel_ChannelIndicatorInView(t *testing.T) {
@@ -1691,12 +1711,22 @@ func TestCoordinatorPanel_ChannelIndicatorInView(t *testing.T) {
 	panel.CycleChannel()
 	view = panel.View()
 	require.Contains(t, view, "#tasks", "view should show tasks channel indicator")
+
+	// Cycle to #planning
+	panel.CycleChannel()
+	view = panel.View()
+	require.Contains(t, view, "#planning", "view should show planning channel indicator")
+
+	// Cycle to #observer (when observer enabled)
+	panel.CycleChannel()
+	view = panel.View()
+	require.Contains(t, view, "#observer", "view should show observer channel indicator")
 }
 
 // === Mention Autocomplete Tests ===
 
 func TestCoordinatorPanel_MentionProcesses_IncludesCoordinator(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, true, nil)
+	panel := NewCoordinatorPanel(false, false, false, nil) // observer disabled to test just coordinator
 
 	// Check that coordinator is always in the mention list
 	require.Equal(t, 1, panel.mentionModel.ProcessCount()) // Just coordinator by default
@@ -1706,7 +1736,7 @@ func TestCoordinatorPanel_MentionProcesses_IncludesCoordinator(t *testing.T) {
 }
 
 func TestCoordinatorPanel_MentionProcesses_UpdatesWithWorkers(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, true, nil)
+	panel := NewCoordinatorPanel(false, false, false, nil) // observer disabled to test coordinator + workers only
 	panel.SetSize(60, 20)
 
 	state := &WorkflowUIState{
@@ -1736,13 +1766,15 @@ func TestCoordinatorPanel_SubmitMsg_IncludesChannel(t *testing.T) {
 	// Default is DM mode
 	require.Equal(t, "dm", panel.ActiveChannel())
 
-	// Cycle through channels: dm -> general -> tasks -> planning -> dm
+	// Cycle through channels: dm -> general -> tasks -> planning -> observer -> dm
 	panel.CycleChannel()
 	require.Equal(t, fabricDomain.SlugGeneral, panel.ActiveChannel())
 	panel.CycleChannel()
 	require.Equal(t, fabricDomain.SlugTasks, panel.ActiveChannel())
 	panel.CycleChannel()
 	require.Equal(t, fabricDomain.SlugPlanning, panel.ActiveChannel())
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugObserver, panel.ActiveChannel())
 	panel.CycleChannel()
 	require.Equal(t, "dm", panel.ActiveChannel()) // Back to DM
 
@@ -1780,6 +1812,11 @@ func TestCoordinatorPanel_CycleChannel_SyncsTab(t *testing.T) {
 	// Cycle to planning - tab stays Messages
 	panel.CycleChannel()
 	require.Equal(t, fabricDomain.SlugPlanning, panel.ActiveChannel())
+	require.Equal(t, TabMessages, panel.activeTab)
+
+	// Cycle to observer - tab stays Messages
+	panel.CycleChannel()
+	require.Equal(t, fabricDomain.SlugObserver, panel.ActiveChannel())
 	require.Equal(t, TabMessages, panel.activeTab)
 
 	// Cycle back to DM - tab should switch back to Coordinator
@@ -1858,6 +1895,7 @@ func TestCoordinatorPanel_ThreadState_PerChannel(t *testing.T) {
 
 	// Cycle back to general - thread should still be there
 	panel.CycleChannel() // planning
+	panel.CycleChannel() // observer (when enabled)
 	panel.CycleChannel() // dm
 	panel.CycleChannel() // general
 	require.Equal(t, fabricDomain.SlugGeneral, panel.ActiveChannel())
