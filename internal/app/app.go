@@ -1239,6 +1239,7 @@ func (m *Model) createControlPlane() controlplane.ControlPlane {
 		Flags:              m.services.Flags,
 		SessionFactory:     sessionFactory,
 		SoundService:       m.services.Sounds,
+		BeadsDir:           m.services.Config.ResolvedBeadsDir,
 	})
 	if err != nil {
 		log.Error(log.CatMode, "Failed to create Supervisor", "error", err)
