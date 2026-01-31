@@ -161,6 +161,9 @@ type Model struct {
 	// Vim mode enables vim keybindings in text input areas
 	vimMode bool
 
+	// Observer enabled controls whether the observer tab is shown in coordinator panel
+	observerEnabled bool
+
 	// Dimensions
 	width  int
 	height int
@@ -198,6 +201,9 @@ type Config struct {
 	// VimMode enables vim keybindings in text input areas.
 	// When true, the coordinator panel input uses vim mode.
 	VimMode bool
+	// ObserverEnabled enables the observer tab in the coordinator panel.
+	// When true, an observer agent is spawned and its output is displayed in a dedicated tab.
+	ObserverEnabled bool
 }
 
 // New creates a new dashboard mode model with the given configuration.
@@ -224,6 +230,7 @@ func New(cfg Config) Model {
 		apiPort:            cfg.APIPort,
 		debugMode:          cfg.DebugMode,
 		vimMode:            cfg.VimMode,
+		observerEnabled:    cfg.ObserverEnabled,
 	}
 
 	// Initialize the workflow table with config
@@ -1286,8 +1293,8 @@ func (m *Model) openCoordinatorPanelForSelected() {
 		return
 	}
 
-	// Create new panel (pass debugMode for command log tab, vimMode for input, clipboard for copy)
-	panel := NewCoordinatorPanel(m.debugMode, m.vimMode, m.services.Clipboard)
+	// Create new panel (pass debugMode for command log tab, vimMode for input, observerEnabled, clipboard for copy)
+	panel := NewCoordinatorPanel(m.debugMode, m.vimMode, m.observerEnabled, m.services.Clipboard)
 	panel.SetSize(CoordinatorPanelWidth, m.height)
 
 	// Load cached state for this workflow (ensures state exists)

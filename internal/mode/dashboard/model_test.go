@@ -1748,7 +1748,7 @@ func TestModel_CoordinatorPanel_TwoWorkflowsEventRouting(t *testing.T) {
 
 	// Open coordinator panel for wf-1
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 	uiState := m.getOrCreateUIState("wf-1")
 	m.coordinatorPanel.SetWorkflow("wf-1", uiState)
 
@@ -1844,7 +1844,7 @@ func TestModel_CoordinatorPanel_PanelStaysOnWorkflowAfterReload(t *testing.T) {
 
 	// Open coordinator panel for wf-1 and receive some messages
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 	uiState := m.getOrCreateUIState("wf-1")
 	m.coordinatorPanel.SetWorkflow("wf-1", uiState)
 
@@ -2169,7 +2169,7 @@ func TestFocusCyclingForward(t *testing.T) {
 
 	// Now open coordinator panel and test full cycle
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 
 	// Tab through: Table → Tree → Details → Coordinator → Table
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -2230,7 +2230,7 @@ func TestFocusCyclingBackward(t *testing.T) {
 
 	// Now open coordinator panel and test full backward cycle
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 
 	// Shift+Tab through: Table → Coordinator → Details → Tree → Table
 	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
@@ -2308,7 +2308,7 @@ func TestKeyDispatchToCoordinator(t *testing.T) {
 	m, _ := createTestModel(t, workflows)
 	m.focus = FocusCoordinator // Set focus to coordinator
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 	m.selectedIndex = 0
 
 	// Press j when focused on coordinator - should NOT navigate workflow table
@@ -2817,7 +2817,7 @@ func TestWorkflowsLoaded_EmptyList_ClosesCoordinatorPanel(t *testing.T) {
 
 	// Simulate coordinator panel being open
 	m.showCoordinatorPanel = true
-	m.coordinatorPanel = NewCoordinatorPanel(false, false, nil)
+	m.coordinatorPanel = NewCoordinatorPanel(false, false, true, nil)
 
 	// Simulate receiving empty workflow list (after archiving the last one)
 	result, _ := m.Update(workflowsLoadedMsg{workflows: []*controlplane.WorkflowInstance{}})

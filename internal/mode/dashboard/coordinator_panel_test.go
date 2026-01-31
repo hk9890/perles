@@ -23,7 +23,7 @@ import (
 )
 
 func TestNewCoordinatorPanel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	require.NotNil(t, panel)
 	require.False(t, panel.IsFocused(), "panel should be unfocused by default")
@@ -32,7 +32,7 @@ func TestNewCoordinatorPanel(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetWorkflow(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	state := &WorkflowUIState{
 		CoordinatorMessages: []chatrender.Message{
@@ -52,7 +52,7 @@ func TestCoordinatorPanel_SetWorkflow(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetWorkflow_SameWorkflowNewMessages(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set initial state
 	state := &WorkflowUIState{
@@ -73,7 +73,7 @@ func TestCoordinatorPanel_SetWorkflow_SameWorkflowNewMessages(t *testing.T) {
 }
 
 func TestCoordinatorPanel_Focus(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.Blur()
 
 	require.False(t, panel.IsFocused())
@@ -84,7 +84,7 @@ func TestCoordinatorPanel_Focus(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetSize(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	panel.SetSize(100, 50)
 
@@ -93,7 +93,7 @@ func TestCoordinatorPanel_SetSize(t *testing.T) {
 }
 
 func TestCoordinatorPanel_View_EmptyMessages(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 	panel.SetWorkflow("wf-123", nil)
 
@@ -105,7 +105,7 @@ func TestCoordinatorPanel_View_EmptyMessages(t *testing.T) {
 }
 
 func TestNewCoordinatorPanel_InputStartsUnfocused(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Verify the input starts unfocused (focus is given on explicit Focus() call)
 	require.False(t, panel.input.Focused())
@@ -118,7 +118,7 @@ func TestNewCoordinatorPanel_InputStartsUnfocused(t *testing.T) {
 }
 
 func TestCoordinatorPanel_TabNavigation(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Initially on TabCoordinator
 	require.Equal(t, TabCoordinator, panel.ActiveTab())
@@ -141,7 +141,7 @@ func TestCoordinatorPanel_TabNavigation(t *testing.T) {
 }
 
 func TestCoordinatorPanel_TabNavigationDebugMode(t *testing.T) {
-	panel := NewCoordinatorPanel(true, false, nil) // debug mode, no vim
+	panel := NewCoordinatorPanel(true, false, true, nil) // debug mode, no vim
 
 	// Initially on TabCoordinator
 	require.Equal(t, TabCoordinator, panel.ActiveTab())
@@ -164,7 +164,7 @@ func TestCoordinatorPanel_TabNavigationDebugMode(t *testing.T) {
 }
 
 func TestCoordinatorPanel_TabNavigationWithWorkers(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set workflow with workers
 	state := &WorkflowUIState{
@@ -195,7 +195,7 @@ func TestCoordinatorPanel_TabNavigationWithWorkers(t *testing.T) {
 
 func TestCoordinatorPanel_HasObserverTab(t *testing.T) {
 	// Verify Observer tab exists in CoordinatorPanel at index 1
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Verify tab constants
 	require.Equal(t, 0, TabCoordinator, "TabCoordinator should be 0")
@@ -209,7 +209,7 @@ func TestCoordinatorPanel_HasObserverTab(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetWorkflow_SyncsObserverData(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	state := &WorkflowUIState{
 		ObserverMessages:   []chatrender.Message{{Role: "assistant", Content: "Observing workflow..."}},
@@ -225,7 +225,7 @@ func TestCoordinatorPanel_SetWorkflow_SyncsObserverData(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ObserverTab_DisplaysOutput(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	state := &WorkflowUIState{
@@ -249,7 +249,7 @@ func TestCoordinatorPanel_ObserverTab_DisplaysOutput(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetWorkflow_SyncsWorkerData(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	state := &WorkflowUIState{
 		WorkerIDs: []string{"worker-1", "worker-2"},
@@ -277,7 +277,7 @@ func TestCoordinatorPanel_SetWorkflow_SyncsWorkerData(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SetWorkflow_ResetsTabWhenWorkerRemoved(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Initial state with workers
 	state := &WorkflowUIState{
@@ -301,7 +301,7 @@ func TestCoordinatorPanel_SetWorkflow_ResetsTabWhenWorkerRemoved(t *testing.T) {
 }
 
 func TestCoordinatorPanel_FormatWorkerTabLabel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	require.Equal(t, "W1", panel.formatWorkerTabLabel("worker-1"))
 	require.Equal(t, "W99", panel.formatWorkerTabLabel("worker-99"))
@@ -310,7 +310,7 @@ func TestCoordinatorPanel_FormatWorkerTabLabel(t *testing.T) {
 }
 
 func TestSetWorkflow_SyncsMetrics(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	coordinatorMetrics := &metrics.TokenMetrics{
 		TokensUsed:  27000,
@@ -345,7 +345,7 @@ func TestSetWorkflow_SyncsMetrics(t *testing.T) {
 }
 
 func TestSetWorkflow_ClearsStaleMetrics(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// First workflow with worker-1 and worker-2
 	state1 := &WorkflowUIState{
@@ -393,7 +393,7 @@ func TestSetWorkflow_ClearsStaleMetrics(t *testing.T) {
 }
 
 func TestGetActiveMetricsDisplay_Coordinator(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set up coordinator with metrics
 	state := &WorkflowUIState{
@@ -414,7 +414,7 @@ func TestGetActiveMetricsDisplay_Coordinator(t *testing.T) {
 }
 
 func TestGetActiveMetricsDisplay_Worker(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set up with workers and metrics
 	state := &WorkflowUIState{
@@ -452,7 +452,7 @@ func TestGetActiveMetricsDisplay_Worker(t *testing.T) {
 }
 
 func TestGetActiveMetricsDisplay_Messages(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set up with coordinator metrics
 	state := &WorkflowUIState{
@@ -473,7 +473,7 @@ func TestGetActiveMetricsDisplay_Messages(t *testing.T) {
 }
 
 func TestGetActiveMetricsDisplay_NilMetrics(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set up without any metrics (nil)
 	state := &WorkflowUIState{
@@ -499,7 +499,7 @@ func TestGetActiveMetricsDisplay_NilMetrics(t *testing.T) {
 }
 
 func TestGetActiveMetricsDisplay_InvalidWorkerTab(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set up with only one worker
 	state := &WorkflowUIState{
@@ -524,7 +524,7 @@ func TestGetActiveMetricsDisplay_InvalidWorkerTab(t *testing.T) {
 }
 
 func TestView_ShowsMetricsInBottomRight(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Set up coordinator with metrics
@@ -546,7 +546,7 @@ func TestView_ShowsMetricsInBottomRight(t *testing.T) {
 }
 
 func TestView_MetricsFitInPanelWidth(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Use exactly 60-char width as specified in task
 	panel.SetSize(60, 20)
@@ -976,14 +976,14 @@ func TestReplaceCommand_CreatesCorrectCommand(t *testing.T) {
 // ============================================================================
 
 func TestCoordinatorPanel_HasClipboardField(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Verify clipboard field exists and is nil by default (not set by constructor)
 	require.Nil(t, panel.clipboard, "clipboard should be nil by default (set by parent)")
 }
 
 func TestCoordinatorPanel_ClipboardCanBeSet(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Create a mock clipboard
 	mockClipboard := &mockClipboardForTest{}
@@ -1021,7 +1021,7 @@ func (m *mockClipboardWithError) Copy(_ string) error {
 
 func TestCoordinatorPanel_SelectionNilClipboard(t *testing.T) {
 	// Test that selection with nil clipboard does not crash
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	// clipboard is nil by default
 	panel.SetSize(100, 30)
 	panel.SetScreenXOffset(0)
@@ -1051,7 +1051,7 @@ func TestCoordinatorPanel_SelectionNilClipboard(t *testing.T) {
 
 func TestCoordinatorPanel_ScrollAfterSelection(t *testing.T) {
 	// Verify scroll behavior works after selection
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	mockClip := &mockClipboardForTest{}
 	panel.clipboard = mockClip
 	panel.SetSize(100, 30)
@@ -1106,7 +1106,7 @@ func TestCoordinatorPanel_ScrollAfterSelection(t *testing.T) {
 
 func TestCoordinatorPanel_TabSwitchAfterSelection(t *testing.T) {
 	// Verify tab switching still works after selection
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	mockClip := &mockClipboardForTest{}
 	panel.clipboard = mockClip
 	panel.SetSize(100, 30)
@@ -1145,7 +1145,7 @@ func TestCoordinatorPanel_TabSwitchAfterSelection(t *testing.T) {
 
 func TestCoordinatorPanel_HasFabricEvents(t *testing.T) {
 	// Verify struct has fabricEvents field with correct type
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// fabricEvents should exist and be initialized as empty slice
 	require.NotNil(t, panel.fabricEvents, "fabricEvents field should exist")
@@ -1163,7 +1163,7 @@ func TestCoordinatorPanel_HasFabricEvents(t *testing.T) {
 
 func TestSetWorkflow_SyncsFabricEvents(t *testing.T) {
 	// Verify fabricEvents synced from WorkflowUIState
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Create state with fabric events
 	state := &WorkflowUIState{
@@ -1185,7 +1185,7 @@ func TestSetWorkflow_SyncsFabricEvents(t *testing.T) {
 
 func TestWorkflowSwitch_PreservesFabricEvents(t *testing.T) {
 	// Verify events are preserved when switching workflows
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Set workflow 1 with some events
 	state1 := &WorkflowUIState{
@@ -1226,7 +1226,7 @@ func TestWorkflowSwitch_PreservesFabricEvents(t *testing.T) {
 
 func TestRenderFabricEvents_MessagePosted(t *testing.T) {
 	// Verify format: timestamp, channel, sender, content
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 
 	// Create test event with specific timestamp for verification
@@ -1275,7 +1275,7 @@ func TestRenderFabricEvents_MessagePosted(t *testing.T) {
 
 func TestRenderFabricEvents_ReplyPosted(t *testing.T) {
 	// Verify "↳ reply:" prefix shown for reply.posted events
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 
 	testTime := time.Date(2025, 1, 15, 15, 45, 0, 0, time.UTC)
@@ -1316,7 +1316,7 @@ func TestRenderFabricEvents_ReplyPosted(t *testing.T) {
 
 func TestRenderFabricEvents_EmptyList(t *testing.T) {
 	// Verify "No inter-agent messages yet." shown for empty state
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 
 	// Empty fabric events
@@ -1337,7 +1337,7 @@ func TestRenderFabricEvents_EmptyList(t *testing.T) {
 
 func TestRenderFabricEvents_CoordinatorStyle(t *testing.T) {
 	// Verify coordinator messages have correct format and use coordinator styling path
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 
 	testTime := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
@@ -1377,7 +1377,7 @@ func TestRenderFabricEvents_CoordinatorStyle(t *testing.T) {
 
 func TestRenderFabricEvents_WorkerStyle(t *testing.T) {
 	// Verify worker messages have correct format and use worker styling path
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 20)
 
 	testTime := time.Date(2025, 1, 15, 11, 30, 0, 0, time.UTC)
@@ -1420,7 +1420,7 @@ func TestRenderFabricEvents_WorkerStyle(t *testing.T) {
 // ============================================================================
 
 func TestSaveScrollPositions_SavesCoordinatorOffset(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Set up panel with messages to enable scrolling
@@ -1451,7 +1451,7 @@ func TestSaveScrollPositions_SavesCoordinatorOffset(t *testing.T) {
 }
 
 func TestSaveScrollPositions_SavesWorkerOffsets(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Set up panel with workers
@@ -1485,7 +1485,7 @@ func TestSaveScrollPositions_SavesWorkerOffsets(t *testing.T) {
 }
 
 func TestSaveScrollPositions_NilState(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Should not panic with nil state
@@ -1495,7 +1495,7 @@ func TestSaveScrollPositions_NilState(t *testing.T) {
 }
 
 func TestSetWorkflow_RestoresScrollPositions(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Create state with saved scroll positions
@@ -1530,7 +1530,7 @@ func TestSetWorkflow_RestoresScrollPositions(t *testing.T) {
 }
 
 func TestSetWorkflow_FirstTimeViewScrollsToBottom(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Create state with NO saved scroll positions (first time view)
@@ -1555,7 +1555,7 @@ func TestSetWorkflow_FirstTimeViewScrollsToBottom(t *testing.T) {
 }
 
 func TestSetWorkflow_SameWorkflowDoesNotRestore(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Set up initial state
@@ -1582,7 +1582,7 @@ func TestSetWorkflow_SameWorkflowDoesNotRestore(t *testing.T) {
 }
 
 func TestWorkflowSwitch_PreservesScrollPosition(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(80, 30)
 
 	// Create two workflow states
@@ -1641,7 +1641,7 @@ func createTestMessages(count int) []chatrender.Message {
 // === Channel Cycling Tests ===
 
 func TestCoordinatorPanel_ActiveChannel_DefaultsToDM(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Default channel is DM (direct message to coordinator)
 	require.Equal(t, "dm", panel.ActiveChannel())
@@ -1649,7 +1649,7 @@ func TestCoordinatorPanel_ActiveChannel_DefaultsToDM(t *testing.T) {
 }
 
 func TestCoordinatorPanel_CycleChannel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Default is DM
@@ -1675,7 +1675,7 @@ func TestCoordinatorPanel_CycleChannel(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ChannelIndicatorInView(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Default is DM mode
@@ -1696,7 +1696,7 @@ func TestCoordinatorPanel_ChannelIndicatorInView(t *testing.T) {
 // === Mention Autocomplete Tests ===
 
 func TestCoordinatorPanel_MentionProcesses_IncludesCoordinator(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// Check that coordinator is always in the mention list
 	require.Equal(t, 1, panel.mentionModel.ProcessCount()) // Just coordinator by default
@@ -1706,7 +1706,7 @@ func TestCoordinatorPanel_MentionProcesses_IncludesCoordinator(t *testing.T) {
 }
 
 func TestCoordinatorPanel_MentionProcesses_UpdatesWithWorkers(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	state := &WorkflowUIState{
@@ -1728,7 +1728,7 @@ func TestCoordinatorPanel_MentionProcesses_UpdatesWithWorkers(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SubmitMsg_IncludesChannel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 	panel.SetWorkflow("wf-123", nil)
 	panel.Focus()
@@ -1760,7 +1760,7 @@ func TestCoordinatorPanel_SubmitMsg_IncludesChannel(t *testing.T) {
 // === Channel-Tab Sync Tests ===
 
 func TestCoordinatorPanel_CycleChannel_SyncsTab(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Default is DM mode, tab should be Coordinator
@@ -1789,7 +1789,7 @@ func TestCoordinatorPanel_CycleChannel_SyncsTab(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ManualTabSwitch_IndependentOfChannel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Start in DM mode (Coordinator tab)
@@ -1818,14 +1818,14 @@ func TestCoordinatorPanel_ManualTabSwitch_IndependentOfChannel(t *testing.T) {
 // === Thread State Tests ===
 
 func TestCoordinatorPanel_ActiveThreadID_DefaultsEmpty(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// No active thread by default
 	require.Empty(t, panel.ActiveThreadID())
 }
 
 func TestCoordinatorPanel_ActiveThreadID_DMHasNoThreads(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 
 	// In DM mode, setting a thread should have no effect
 	require.True(t, panel.IsDMMode())
@@ -1834,7 +1834,7 @@ func TestCoordinatorPanel_ActiveThreadID_DMHasNoThreads(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ThreadState_PerChannel(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Cycle to general channel
@@ -1865,7 +1865,7 @@ func TestCoordinatorPanel_ThreadState_PerChannel(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ClearActiveThread(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Cycle to general channel
@@ -1882,7 +1882,7 @@ func TestCoordinatorPanel_ClearActiveThread(t *testing.T) {
 }
 
 func TestCoordinatorPanel_FormatThreadIndicator(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// No thread - empty indicator
@@ -1898,7 +1898,7 @@ func TestCoordinatorPanel_FormatThreadIndicator(t *testing.T) {
 }
 
 func TestCoordinatorPanel_FormatThreadIndicator_ShortID(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Cycle to general and set short thread ID
@@ -1911,7 +1911,7 @@ func TestCoordinatorPanel_FormatThreadIndicator_ShortID(t *testing.T) {
 }
 
 func TestCoordinatorPanel_ThreadIndicator_ShownInView(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 
 	// Cycle to general and set thread
@@ -1924,7 +1924,7 @@ func TestCoordinatorPanel_ThreadIndicator_ShownInView(t *testing.T) {
 }
 
 func TestCoordinatorPanel_EscClearsThread_WhenInputEmpty(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 	panel.Focus()
 
@@ -1942,7 +1942,7 @@ func TestCoordinatorPanel_EscClearsThread_WhenInputEmpty(t *testing.T) {
 }
 
 func TestCoordinatorPanel_EscDoesNotClearThread_WhenInputHasContent(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 	panel.Focus()
 
@@ -1961,7 +1961,7 @@ func TestCoordinatorPanel_EscDoesNotClearThread_WhenInputHasContent(t *testing.T
 }
 
 func TestCoordinatorPanel_SubmitMsg_IncludesThreadID(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 	panel.SetWorkflow("wf-123", nil)
 	panel.Focus()
@@ -1989,7 +1989,7 @@ func TestCoordinatorPanel_SubmitMsg_IncludesThreadID(t *testing.T) {
 }
 
 func TestCoordinatorPanel_SubmitMsg_EmptyThreadForNewMessage(t *testing.T) {
-	panel := NewCoordinatorPanel(false, false, nil)
+	panel := NewCoordinatorPanel(false, false, true, nil)
 	panel.SetSize(60, 20)
 	panel.SetWorkflow("wf-123", nil)
 	panel.Focus()
@@ -2005,4 +2005,336 @@ func TestCoordinatorPanel_SubmitMsg_EmptyThreadForNewMessage(t *testing.T) {
 	submitMsg, ok := msg.(CoordinatorPanelSubmitMsg)
 	require.True(t, ok)
 	require.Empty(t, submitMsg.ThreadID)
+}
+
+// ============================================================================
+// Observer Tab Visibility Tests (perles-dmvcz.2)
+// ============================================================================
+
+func TestCoordinatorPanel_TabCount_ObserverDisabled(t *testing.T) {
+	// When observer is disabled, should have: Coordinator(0), Messages(1), Workers(2+)
+	// With no workers, that's 2 base tabs
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+
+	// Verify base tab count with no workers
+	require.Equal(t, 2, panel.tabCount(), "observer disabled with no workers should have 2 tabs")
+
+	// Add workers and verify count increases
+	state := &WorkflowUIState{
+		WorkerIDs:         []string{"worker-1"},
+		WorkerStatus:      make(map[string]events.ProcessStatus),
+		WorkerPhases:      make(map[string]events.ProcessPhase),
+		WorkerMessages:    make(map[string][]chatrender.Message),
+		WorkerQueueCounts: make(map[string]int),
+	}
+	panel.SetWorkflow("wf-123", state)
+	require.Equal(t, 3, panel.tabCount(), "observer disabled with 1 worker should have 3 tabs")
+}
+
+func TestCoordinatorPanel_TabCount_ObserverEnabled(t *testing.T) {
+	// When observer is enabled, should have: Coordinator(0), Observer(1), Messages(2), Workers(3+)
+	// With no workers, that's 3 base tabs
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+
+	// Verify base tab count with no workers
+	require.Equal(t, 3, panel.tabCount(), "observer enabled with no workers should have 3 tabs")
+
+	// Add workers and verify count increases
+	state := &WorkflowUIState{
+		WorkerIDs:         []string{"worker-1"},
+		WorkerStatus:      make(map[string]events.ProcessStatus),
+		WorkerPhases:      make(map[string]events.ProcessPhase),
+		WorkerMessages:    make(map[string][]chatrender.Message),
+		WorkerQueueCounts: make(map[string]int),
+	}
+	panel.SetWorkflow("wf-123", state)
+	require.Equal(t, 4, panel.tabCount(), "observer enabled with 1 worker should have 4 tabs")
+}
+
+func TestCoordinatorPanel_FirstWorkerTabIndex_ObserverDisabled(t *testing.T) {
+	// When observer is disabled: Coordinator(0), Messages(1), Workers(2+)
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+
+	require.Equal(t, 2, panel.firstWorkerTabIndex(), "observer disabled should have firstWorkerTabIndex=2")
+}
+
+func TestCoordinatorPanel_FirstWorkerTabIndex_ObserverEnabled(t *testing.T) {
+	// When observer is enabled: Coordinator(0), Observer(1), Messages(2), Workers(3+)
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+
+	require.Equal(t, 3, panel.firstWorkerTabIndex(), "observer enabled should have firstWorkerTabIndex=3")
+}
+
+func TestCoordinatorPanel_MessagesTabIndex_ObserverDisabled(t *testing.T) {
+	// When observer is disabled: Coordinator(0), Messages(1)
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+
+	require.Equal(t, 1, panel.messagesTabIndex(), "observer disabled should have messagesTabIndex=1")
+}
+
+func TestCoordinatorPanel_MessagesTabIndex_ObserverEnabled(t *testing.T) {
+	// When observer is enabled: Coordinator(0), Observer(1), Messages(2)
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+
+	require.Equal(t, 2, panel.messagesTabIndex(), "observer enabled should have messagesTabIndex=2")
+}
+
+func TestCoordinatorPanel_BuildTabs_ExcludesObserverWhenDisabled(t *testing.T) {
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+	panel.SetSize(80, 30)
+
+	// Build tabs and verify Observer tab is not included
+	tabs := panel.buildTabs(30)
+
+	// Should have 2 tabs: Coordinator, Messages
+	require.Len(t, tabs, 2, "should have 2 tabs when observer disabled")
+
+	// Verify first tab is Coordinator
+	require.Contains(t, tabs[0].Label, "Coord", "first tab should be Coordinator")
+
+	// Verify second tab is Messages (not Observer)
+	require.Contains(t, tabs[1].Label, "Msgs", "second tab should be Messages")
+}
+
+func TestCoordinatorPanel_BuildTabs_IncludesObserverWhenEnabled(t *testing.T) {
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+	panel.SetSize(80, 30)
+
+	// Build tabs and verify Observer tab is included
+	tabs := panel.buildTabs(30)
+
+	// Should have 3 tabs: Coordinator, Observer, Messages
+	require.Len(t, tabs, 3, "should have 3 tabs when observer enabled")
+
+	// Verify first tab is Coordinator
+	require.Contains(t, tabs[0].Label, "Coord", "first tab should be Coordinator")
+
+	// Verify second tab is Observer
+	require.Contains(t, tabs[1].Label, "Obs", "second tab should be Observer")
+
+	// Verify third tab is Messages
+	require.Contains(t, tabs[2].Label, "Msgs", "third tab should be Messages")
+}
+
+func TestCoordinatorPanel_DebugMode_TabIndexes_ObserverDisabled(t *testing.T) {
+	// When debug mode is on and observer is disabled:
+	// Coordinator(0), Messages(1), CommandLog(2), Workers(3+)
+	panel := NewCoordinatorPanel(true, false, false, nil) // debugMode=true, observerEnabled=false
+
+	require.Equal(t, 2, panel.commandLogTabIndex(), "debug mode + observer disabled should have commandLogTabIndex=2")
+	require.Equal(t, 3, panel.firstWorkerTabIndex(), "debug mode + observer disabled should have firstWorkerTabIndex=3")
+}
+
+func TestCoordinatorPanel_DebugMode_TabIndexes_ObserverEnabled(t *testing.T) {
+	// When debug mode is on and observer is enabled:
+	// Coordinator(0), Observer(1), Messages(2), CommandLog(3), Workers(4+)
+	panel := NewCoordinatorPanel(true, false, true, nil) // debugMode=true, observerEnabled=true
+
+	require.Equal(t, 3, panel.commandLogTabIndex(), "debug mode + observer enabled should have commandLogTabIndex=3")
+	require.Equal(t, 4, panel.firstWorkerTabIndex(), "debug mode + observer enabled should have firstWorkerTabIndex=4")
+}
+
+func TestCoordinatorPanel_TabNavigation_ObserverDisabled(t *testing.T) {
+	// When observer is disabled: Coordinator(0), Messages(1), Workers(2+)
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+
+	// Initially on Coordinator
+	require.Equal(t, TabCoordinator, panel.ActiveTab())
+
+	// Tab forward: Coordinator -> Messages (skips observer)
+	panel.NextTab()
+	require.Equal(t, 1, panel.ActiveTab(), "should be on Messages tab (index 1)")
+	require.Equal(t, panel.messagesTabIndex(), panel.ActiveTab(), "should match messagesTabIndex()")
+
+	// Tab backward: Messages -> Coordinator
+	panel.PrevTab()
+	require.Equal(t, TabCoordinator, panel.ActiveTab())
+
+	// Tab backward from Coordinator wraps to Messages (last tab)
+	panel.PrevTab()
+	require.Equal(t, 1, panel.ActiveTab(), "should wrap to Messages tab")
+
+	// Verify Ctrl+j/k navigation works correctly
+	panel.activeTab = TabCoordinator
+	panel, _ = panel.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	require.Equal(t, 1, panel.ActiveTab(), "Ctrl+j should go to Messages")
+
+	panel, _ = panel.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+	require.Equal(t, TabCoordinator, panel.ActiveTab(), "Ctrl+k should go back to Coordinator")
+}
+
+func TestCoordinatorPanel_TabNavigation_ObserverEnabled(t *testing.T) {
+	// When observer is enabled: Coordinator(0), Observer(1), Messages(2), Workers(3+)
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+
+	// Initially on Coordinator
+	require.Equal(t, TabCoordinator, panel.ActiveTab())
+
+	// Tab forward: Coordinator -> Observer -> Messages
+	panel.NextTab()
+	require.Equal(t, TabObserver, panel.ActiveTab(), "should be on Observer tab")
+	panel.NextTab()
+	require.Equal(t, 2, panel.ActiveTab(), "should be on Messages tab (index 2)")
+	require.Equal(t, panel.messagesTabIndex(), panel.ActiveTab(), "should match messagesTabIndex()")
+
+	// Tab backward: Messages -> Observer -> Coordinator
+	panel.PrevTab()
+	require.Equal(t, TabObserver, panel.ActiveTab())
+	panel.PrevTab()
+	require.Equal(t, TabCoordinator, panel.ActiveTab())
+
+	// Tab backward from Coordinator wraps to Messages (last tab)
+	panel.PrevTab()
+	require.Equal(t, 2, panel.ActiveTab(), "should wrap to Messages tab")
+
+	// Verify Ctrl+j/k navigation works correctly
+	panel.activeTab = TabCoordinator
+	panel, _ = panel.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	require.Equal(t, TabObserver, panel.ActiveTab(), "Ctrl+j should go to Observer")
+
+	panel, _ = panel.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	require.Equal(t, 2, panel.ActiveTab(), "Ctrl+j again should go to Messages")
+
+	panel, _ = panel.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+	require.Equal(t, TabObserver, panel.ActiveTab(), "Ctrl+k should go back to Observer")
+}
+
+// ============================================================================
+// Observer Tab Visibility View Tests (perles-dmvcz.5)
+// ============================================================================
+
+func TestCoordinatorPanel_View_ObserverDisabled(t *testing.T) {
+	// When observer is disabled, 'Obs' should NOT appear in the View() output
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+	panel.SetSize(80, 30)
+	panel.SetWorkflow("wf-123", nil)
+
+	view := panel.View()
+
+	// Should NOT contain 'Obs' tab label
+	require.NotContains(t, view, "Obs", "observer disabled: 'Obs' should NOT appear in view")
+
+	// Should still contain Coordinator and Messages tabs
+	require.Contains(t, view, "Coord", "observer disabled: should still show Coordinator tab")
+	require.Contains(t, view, "Msgs", "observer disabled: should still show Messages tab")
+}
+
+func TestCoordinatorPanel_View_ObserverEnabled(t *testing.T) {
+	// When observer is enabled, 'Obs' should appear in the View() output
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+	panel.SetSize(80, 30)
+	panel.SetWorkflow("wf-123", nil)
+
+	view := panel.View()
+
+	// Should contain 'Obs' tab label
+	require.Contains(t, view, "Obs", "observer enabled: 'Obs' should appear in view")
+
+	// Should also contain Coordinator and Messages tabs
+	require.Contains(t, view, "Coord", "observer enabled: should show Coordinator tab")
+	require.Contains(t, view, "Msgs", "observer enabled: should show Messages tab")
+}
+
+func TestCoordinatorPanel_TabIndicator_ObserverDisabled(t *testing.T) {
+	// When observer is disabled: 2 base tabs (Coordinator, Messages)
+	// Tab count should reflect this: navigating shows 1/2, 2/2
+	panel := NewCoordinatorPanel(false, false, false, nil) // observerEnabled=false
+
+	// Tab count should be 2 (Coordinator, Messages)
+	require.Equal(t, 2, panel.tabCount(), "observer disabled should have 2 tabs")
+
+	// Navigation should cycle through 2 tabs
+	require.Equal(t, TabCoordinator, panel.ActiveTab()) // Start at 0 (Coordinator)
+
+	panel.NextTab()
+	require.Equal(t, 1, panel.ActiveTab()) // Should be at 1 (Messages, NOT Observer)
+
+	panel.NextTab()
+	require.Equal(t, TabCoordinator, panel.ActiveTab()) // Should wrap back to 0 (Coordinator)
+}
+
+func TestCoordinatorPanel_TabIndicator_ObserverEnabled(t *testing.T) {
+	// When observer is enabled: 3 base tabs (Coordinator, Observer, Messages)
+	// Tab count should reflect this: navigating shows 1/3, 2/3, 3/3
+	panel := NewCoordinatorPanel(false, false, true, nil) // observerEnabled=true
+
+	// Tab count should be 3 (Coordinator, Observer, Messages)
+	require.Equal(t, 3, panel.tabCount(), "observer enabled should have 3 tabs")
+
+	// Navigation should cycle through 3 tabs
+	require.Equal(t, TabCoordinator, panel.ActiveTab()) // Start at 0 (Coordinator)
+
+	panel.NextTab()
+	require.Equal(t, TabObserver, panel.ActiveTab()) // Should be at 1 (Observer)
+
+	panel.NextTab()
+	require.Equal(t, 2, panel.ActiveTab()) // Should be at 2 (Messages)
+
+	panel.NextTab()
+	require.Equal(t, TabCoordinator, panel.ActiveTab()) // Should wrap back to 0 (Coordinator)
+}
+
+func TestCoordinatorPanel_DebugMode_WithObserverDisabled(t *testing.T) {
+	// Debug mode with observer disabled: Coordinator(0), Messages(1), CmdLog(2)
+	panel := NewCoordinatorPanel(true, false, false, nil) // debugMode=true, observerEnabled=false
+	panel.SetSize(80, 30)
+	panel.SetWorkflow("wf-123", nil)
+
+	// Tab count should be 3 (Coordinator, Messages, CmdLog)
+	require.Equal(t, 3, panel.tabCount(), "debug mode + observer disabled should have 3 tabs")
+
+	// Command log tab should be at index 2
+	require.Equal(t, 2, panel.commandLogTabIndex(), "command log should be at index 2")
+
+	// First worker tab should be at index 3
+	require.Equal(t, 3, panel.firstWorkerTabIndex(), "first worker should be at index 3")
+
+	// View should show CmdLog tab but NOT Observer
+	view := panel.View()
+	require.Contains(t, view, "CmdLog", "debug mode should show CmdLog tab")
+	require.NotContains(t, view, "Obs", "observer disabled: 'Obs' should NOT appear in view")
+
+	// Navigate to command log tab and verify it works
+	panel.NextTab() // -> Messages (index 1)
+	panel.NextTab() // -> CmdLog (index 2)
+	require.Equal(t, panel.commandLogTabIndex(), panel.ActiveTab(), "should be on CmdLog tab")
+
+	// View should still render without error
+	view = panel.View()
+	require.NotEmpty(t, view, "view should render with CmdLog tab active")
+}
+
+func TestCoordinatorPanel_DebugMode_WithObserverEnabled(t *testing.T) {
+	// Debug mode with observer enabled: Coordinator(0), Observer(1), Messages(2), CmdLog(3)
+	panel := NewCoordinatorPanel(true, false, true, nil) // debugMode=true, observerEnabled=true
+	panel.SetSize(80, 30)
+	panel.SetWorkflow("wf-123", nil)
+
+	// Tab count should be 4 (Coordinator, Observer, Messages, CmdLog)
+	require.Equal(t, 4, panel.tabCount(), "debug mode + observer enabled should have 4 tabs")
+
+	// Command log tab should be at index 3
+	require.Equal(t, 3, panel.commandLogTabIndex(), "command log should be at index 3")
+
+	// First worker tab should be at index 4
+	require.Equal(t, 4, panel.firstWorkerTabIndex(), "first worker should be at index 4")
+
+	// View should show both Observer and CmdLog tabs
+	view := panel.View()
+	require.Contains(t, view, "CmdLog", "debug mode should show CmdLog tab")
+	require.Contains(t, view, "Obs", "observer enabled should show Obs tab")
+
+	// Navigate to command log tab and verify it works
+	panel.NextTab() // -> Observer (index 1)
+	require.Equal(t, TabObserver, panel.ActiveTab(), "should be on Observer tab")
+
+	panel.NextTab() // -> Messages (index 2)
+	require.Equal(t, panel.messagesTabIndex(), panel.ActiveTab(), "should be on Messages tab")
+
+	panel.NextTab() // -> CmdLog (index 3)
+	require.Equal(t, panel.commandLogTabIndex(), panel.ActiveTab(), "should be on CmdLog tab")
+
+	// View should still render without error
+	view = panel.View()
+	require.NotEmpty(t, view, "view should render with CmdLog tab active")
 }

@@ -534,6 +534,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			APIPort:            m.apiServerPort,
 			DebugMode:          m.debugMode,
 			VimMode:            m.services.Config.UI.VimMode,
+			ObserverEnabled:    m.services.Config.Orchestration.IsObserverEnabled(),
 		}).SetSize(m.width, m.height).(dashboard.Model)
 
 		return m, m.dashboard.Init()

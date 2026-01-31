@@ -93,6 +93,9 @@ type CoordinatorPanel struct {
 	commandLogDirty    bool
 	debugMode          bool // When true, show command log tab
 
+	// Observer tab visibility
+	observerEnabled bool // When true, show observer tab
+
 	// Focus state
 	focused bool
 
@@ -190,8 +193,9 @@ var (
 // The panel starts unfocused - use Focus() to give it input focus.
 // If debugMode is true, the command log tab is shown.
 // If vimMode is true, vim keybindings are enabled in the input.
+// If observerEnabled is true, the observer tab is shown.
 // Clipboard is used for copy operations during text selection.
-func NewCoordinatorPanel(debugMode, vimMode bool, clipboard shared.Clipboard) *CoordinatorPanel {
+func NewCoordinatorPanel(debugMode, vimMode, observerEnabled bool, clipboard shared.Clipboard) *CoordinatorPanel {
 	input := vimtextarea.New(vimtextarea.Config{
 		VimEnabled:  vimMode,
 		DefaultMode: vimtextarea.ModeInsert,
@@ -220,6 +224,7 @@ func NewCoordinatorPanel(debugMode, vimMode bool, clipboard shared.Clipboard) *C
 		commandLogEntries:          make([]CommandLogEntry, 0),
 		commandLogDirty:            true,
 		debugMode:                  debugMode,
+		observerEnabled:            observerEnabled,
 		focused:                    false,
 		pendingWorkerScrollOffsets: make(map[string]*int),
 		// Channel state: default to DM (direct message to coordinator), then fabric channels
@@ -468,18 +473,45 @@ func (p *CoordinatorPanel) restoreScrollPositions(state *WorkflowUIState) {
 	}
 }
 
-// tabCount returns the total number of tabs (coordinator + messages + [cmdlog] + workers).
+// tabCount returns the total number of tabs (coordinator + [observer] + messages + [cmdlog] + workers).
+// The observer tab is only included when observerEnabled is true.
 func (p *CoordinatorPanel) tabCount() int {
 	return p.firstWorkerTabIndex() + len(p.workerIDs)
 }
 
 // firstWorkerTabIndex returns the tab index where worker tabs start.
-// This accounts for the optional command log tab in debug mode.
+// This accounts for the optional observer tab and the optional command log tab in debug mode.
 func (p *CoordinatorPanel) firstWorkerTabIndex() int {
-	if p.debugMode {
-		return 4 // Coordinator(0), Observer(1), Messages(2), CommandLog(3), Workers(4+)
+	// Base index: Coordinator(0) + Messages(1 or 2 depending on observer)
+	baseIndex := 2 // Coordinator + Messages
+	if p.observerEnabled {
+		baseIndex = 3 // Coordinator + Observer + Messages
 	}
-	return TabFirstWorker // Coordinator(0), Observer(1), Messages(2), Workers(3+)
+	if p.debugMode {
+		baseIndex++ // Add CommandLog tab
+	}
+	return baseIndex
+}
+
+// messagesTabIndex returns the tab index for the Messages tab.
+// This accounts for the optional observer tab.
+func (p *CoordinatorPanel) messagesTabIndex() int {
+	if p.observerEnabled {
+		return TabMessages // 2 when observer enabled
+	}
+	return 1 // 1 when observer disabled (Coordinator(0), Messages(1))
+}
+
+// commandLogTabIndex returns the tab index for the CommandLog tab (debug mode only).
+// This accounts for the optional observer tab.
+func (p *CoordinatorPanel) commandLogTabIndex() int {
+	return p.messagesTabIndex() + 1
+}
+
+// isObserverTab returns true if the given tab index is the Observer tab.
+// Returns false if observer is disabled (no observer tab exists).
+func (p *CoordinatorPanel) isObserverTab(tabIndex int) bool {
+	return p.observerEnabled && tabIndex == TabObserver
 }
 
 // NextTab switches to the next tab.
@@ -522,7 +554,7 @@ func (p *CoordinatorPanel) CycleChannel() {
 	if p.IsDMMode() {
 		p.activeTab = TabCoordinator
 	} else {
-		p.activeTab = TabMessages
+		p.activeTab = p.messagesTabIndex()
 	}
 }
 
@@ -699,21 +731,21 @@ func (p *CoordinatorPanel) Update(msg tea.Msg) (*CoordinatorPanel, tea.Cmd) {
 
 	case tea.MouseMsg:
 		// Handle text selection and scrolling for the active tab
-		switch p.activeTab {
-		case TabCoordinator:
+		switch {
+		case p.activeTab == TabCoordinator:
 			if cmd := p.coordinatorPane.HandleMouse(msg); cmd != nil {
 				return p, cmd
 			}
-		case TabObserver:
+		case p.isObserverTab(p.activeTab):
 			if cmd := p.observerPane.HandleMouse(msg); cmd != nil {
 				return p, cmd
 			}
-		case TabMessages:
+		case p.activeTab == p.messagesTabIndex():
 			if cmd := p.messagePane.HandleMouse(msg); cmd != nil {
 				return p, cmd
 			}
 		default:
-			// Worker tab
+			// Worker tab or command log tab
 			firstWorker := p.firstWorkerTabIndex()
 			workerIdx := p.activeTab - firstWorker
 			if workerIdx >= 0 && workerIdx < len(p.workerIDs) {
@@ -896,37 +928,41 @@ func (p *CoordinatorPanel) buildTabs(contentHeight int) []panes.Tab {
 		ZoneID:  makeTabZoneID(TabCoordinator),
 	})
 
-	// Tab 1: Observer with status indicator
-	obsIndicator, obsIndicatorStyle := chatrender.StatusIndicator(p.observerStatus)
-	obsLabel := p.formatTabLabel(obsIndicator, obsIndicatorStyle, "Obs", p.activeTab == TabObserver, mutedStyle)
-	tabs = append(tabs, panes.Tab{
-		Label:   obsLabel,
-		Content: p.renderObserverContent(contentHeight),
-		Color:   observerTitleColor,
-		ZoneID:  makeTabZoneID(TabObserver),
-	})
+	// Tab 1 (conditional): Observer with status indicator - only when observerEnabled
+	if p.observerEnabled {
+		obsIndicator, obsIndicatorStyle := chatrender.StatusIndicator(p.observerStatus)
+		obsLabel := p.formatTabLabel(obsIndicator, obsIndicatorStyle, "Obs", p.activeTab == TabObserver, mutedStyle)
+		tabs = append(tabs, panes.Tab{
+			Label:   obsLabel,
+			Content: p.renderObserverContent(contentHeight),
+			Color:   observerTitleColor,
+			ZoneID:  makeTabZoneID(TabObserver),
+		})
+	}
 
-	// Tab 2: Messages (no status indicator)
+	// Messages tab (index depends on observer state)
+	msgsTabIndex := p.messagesTabIndex()
 	msgsLabel := "Msgs"
-	if p.activeTab != TabMessages {
+	if p.activeTab != msgsTabIndex {
 		msgsLabel = mutedStyle.Render(msgsLabel)
 	}
 	tabs = append(tabs, panes.Tab{
 		Label:   msgsLabel,
 		Content: p.renderMessageLogContent(contentHeight),
-		ZoneID:  makeTabZoneID(TabMessages),
+		ZoneID:  makeTabZoneID(msgsTabIndex),
 	})
 
-	// Tab 3 (debug mode only): Command Log
+	// Command Log tab (debug mode only, index depends on observer state)
 	if p.debugMode {
+		cmdLogTabIndex := p.commandLogTabIndex()
 		cmdLogLabel := "CmdLog"
-		if p.activeTab != 3 {
+		if p.activeTab != cmdLogTabIndex {
 			cmdLogLabel = mutedStyle.Render(cmdLogLabel)
 		}
 		tabs = append(tabs, panes.Tab{
 			Label:   cmdLogLabel,
 			Content: p.renderCommandLogContent(contentHeight),
-			ZoneID:  makeTabZoneID(3),
+			ZoneID:  makeTabZoneID(cmdLogTabIndex),
 		})
 	}
 
@@ -974,16 +1010,17 @@ func (p *CoordinatorPanel) formatWorkerTabLabel(workerID string) string {
 
 // getActiveBorderColor returns the border color based on the active tab's status.
 func (p *CoordinatorPanel) getActiveBorderColor() lipgloss.AdaptiveColor {
-	switch p.activeTab {
-	case TabCoordinator:
+	switch {
+	case p.activeTab == TabCoordinator:
 		return chatrender.StatusBorderColor(p.coordinatorStatus)
-	case TabObserver:
+	case p.isObserverTab(p.activeTab):
 		return chatrender.StatusBorderColor(p.observerStatus)
-	case TabMessages:
+	case p.activeTab == p.messagesTabIndex():
 		return styles.BorderDefaultColor
 	default:
-		// Worker tab
-		workerIdx := p.activeTab - TabFirstWorker
+		// Worker tab or command log tab
+		firstWorker := p.firstWorkerTabIndex()
+		workerIdx := p.activeTab - firstWorker
 		if workerIdx >= 0 && workerIdx < len(p.workerIDs) {
 			workerID := p.workerIDs[workerIdx]
 			if status, ok := p.workerStatus[workerID]; ok {
@@ -996,16 +1033,17 @@ func (p *CoordinatorPanel) getActiveBorderColor() lipgloss.AdaptiveColor {
 
 // getActiveBottomIndicators returns the bottom-left indicator for the active tab.
 func (p *CoordinatorPanel) getActiveBottomIndicators() string {
-	switch p.activeTab {
-	case TabCoordinator:
+	switch {
+	case p.activeTab == TabCoordinator:
 		return chatrender.FormatQueueCount(p.coordinatorQueue)
-	case TabObserver:
+	case p.isObserverTab(p.activeTab):
 		return chatrender.FormatQueueCount(p.observerQueue)
-	case TabMessages:
+	case p.activeTab == p.messagesTabIndex():
 		return ""
 	default:
-		// Worker tab
-		workerIdx := p.activeTab - TabFirstWorker
+		// Worker tab or command log tab
+		firstWorker := p.firstWorkerTabIndex()
+		workerIdx := p.activeTab - firstWorker
 		if workerIdx >= 0 && workerIdx < len(p.workerIDs) {
 			workerID := p.workerIDs[workerIdx]
 			queueCount := p.workerQueues[workerID]
@@ -1019,16 +1057,17 @@ func (p *CoordinatorPanel) getActiveBottomIndicators() string {
 // Returns formatted token usage (e.g., "27k/200k") for coordinator or worker tabs,
 // or empty string for the message log tab or when no metrics are available.
 func (p *CoordinatorPanel) getActiveMetricsDisplay() string {
-	switch p.activeTab {
-	case TabCoordinator:
+	switch {
+	case p.activeTab == TabCoordinator:
 		return chatrender.FormatMetricsDisplay(p.coordinatorMetrics)
-	case TabObserver:
+	case p.isObserverTab(p.activeTab):
 		return chatrender.FormatMetricsDisplay(p.observerMetrics)
-	case TabMessages:
+	case p.activeTab == p.messagesTabIndex():
 		return "" // No metrics for message log
 	default:
-		// Worker tab
-		workerIdx := p.activeTab - TabFirstWorker
+		// Worker tab or command log tab
+		firstWorker := p.firstWorkerTabIndex()
+		workerIdx := p.activeTab - firstWorker
 		if workerIdx >= 0 && workerIdx < len(p.workerIDs) {
 			workerID := p.workerIDs[workerIdx]
 			return chatrender.FormatMetricsDisplay(p.workerMetrics[workerID])
