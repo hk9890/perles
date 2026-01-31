@@ -39,7 +39,7 @@ debug: build-go
 	./perles -d
 
 # Install the binary to $GOPATH/bin with version info
-install:
+install: build-frontend
 	go install -ldflags "$(LDFLAGS)" .
 
 # Run all tests
