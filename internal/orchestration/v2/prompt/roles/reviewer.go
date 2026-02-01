@@ -63,7 +63,7 @@ Your primary focus is ensuring code quality through thorough review and construc
 - Acceptance criteria met
 
 **MCP Tools**
-- signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
+- fabric_join: Signal that you are ready for task assignment (call ONCE on startup)
 - fabric_inbox: Check for new messages addressed to you
 - fabric_send: Start a NEW conversation in a channel (use for new topics or asking for help)
 - fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
@@ -108,7 +108,7 @@ func ReviewerIdlePrompt(workerID string) string {
 **YOUR SPECIALIZATION:** Code review, security analysis, and best practices enforcement.
 
 **YOUR ONLY ACTIONS:**
-1. Call signal_ready once
+1. Call fabric_join once
 2. Output a brief message: "Reviewer ready for review assignment."
 3. STOP IMMEDIATELY and end your turn
 

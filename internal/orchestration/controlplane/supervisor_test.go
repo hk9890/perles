@@ -2107,7 +2107,8 @@ func createMinimalInfrastructureWithFabric(t *testing.T) *v2.Infrastructure {
 	depRepo := fabricrepo.NewMemoryDependencyRepository()
 	subRepo := fabricrepo.NewMemorySubscriptionRepository()
 	ackRepo := fabricrepo.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
-	infra.Core.FabricService = fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	participantRepo := fabricrepo.NewMemoryParticipantRepository()
+	infra.Core.FabricService = fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 
 	return infra
 }

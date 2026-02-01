@@ -23,7 +23,7 @@ var RequiredTools = []string{
 	"fabric_ack",
 	"report_implementation_complete",
 	"report_review_verdict",
-	"signal_ready",
+	"fabric_join",
 }
 
 // maxEnforcementAttempts is the maximum number of enforcement reminders to send
@@ -59,7 +59,7 @@ type TurnCompletionEnforcer interface {
 	CheckTurnCompletion(processID string, role repository.ProcessRole) []string
 
 	// IsNewlySpawned returns true if this is the process's first turn after spawn.
-	// First turns are exempt from enforcement (workers call signal_ready).
+	// First turns are exempt from enforcement (workers call fabric_join).
 	IsNewlySpawned(processID string) bool
 
 	// ShouldRetry returns true if enforcement retry is allowed.
@@ -230,7 +230,7 @@ func (t *TurnCompletionTracker) GetReminderMessage(processID string, missingTool
 
 If you completed a bd task, call: report_implementation_complete(summary="...")
 If you need to communicate with the coordinator, call: fabric_send(channel="general", content="...")
-If you just booted up and are ready, call: signal_ready()
+If you just booted up and are ready, call: fabric_join()
 
 Please call one of these tools now to properly complete your turn.`, toolList)
 }

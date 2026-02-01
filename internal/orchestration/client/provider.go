@@ -37,6 +37,14 @@ func (p AgentProviders) Worker() AgentProvider {
 	return p.Coordinator()
 }
 
+// Observer returns the observer provider, falling back to worker if not set.
+func (p AgentProviders) Observer() AgentProvider {
+	if provider, ok := p[RoleObserver]; ok {
+		return provider
+	}
+	return p.Worker()
+}
+
 // AgentProvider creates and configures AI agent processes.
 // It combines the client factory with provider-specific configuration,
 // providing a single object that can be passed through the orchestration

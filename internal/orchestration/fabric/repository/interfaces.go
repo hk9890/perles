@@ -101,3 +101,22 @@ type AckRepository interface {
 	// GetAckedThreadIDs returns all thread IDs that an agent has acknowledged.
 	GetAckedThreadIDs(agentID string) ([]string, error)
 }
+
+// ParticipantRepository manages active participants in the fabric.
+type ParticipantRepository interface {
+	// Join adds a participant to the registry.
+	// If the participant already exists, their JoinedAt is updated.
+	Join(agentID string, role domain.ParticipantRole) (*domain.Participant, error)
+
+	// Leave removes a participant from the registry.
+	Leave(agentID string) error
+
+	// Get returns a participant by ID, or nil if not found.
+	Get(agentID string) (*domain.Participant, error)
+
+	// List returns all active participants.
+	List() ([]domain.Participant, error)
+
+	// ListByRole returns participants with the given role.
+	ListByRole(role domain.ParticipantRole) ([]domain.Participant, error)
+}

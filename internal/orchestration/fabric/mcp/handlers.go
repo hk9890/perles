@@ -25,19 +25,29 @@ type ToolRegistrar interface {
 // Handlers provides MCP tool handlers for Fabric messaging.
 type Handlers struct {
 	service *fabric.Service
-	agentID string // The agent ID for this handler instance
+	agentID string                 // The agent ID for this handler instance
+	role    domain.ParticipantRole // The role for fabric_join
 }
 
 // NewHandlers creates a new Handlers instance.
+// The role defaults to RoleWorker if not set via WithRole.
 func NewHandlers(service *fabric.Service, agentID string) *Handlers {
 	return &Handlers{
 		service: service,
 		agentID: agentID,
+		role:    domain.RoleWorker, // Default role
 	}
+}
+
+// WithRole sets the participant role for fabric_join.
+func (h *Handlers) WithRole(role domain.ParticipantRole) *Handlers {
+	h.role = role
+	return h
 }
 
 // RegisterAll registers all Fabric tools with the MCP server.
 func (h *Handlers) RegisterAll(server ToolRegistrar) {
+	server.RegisterTool(ToolFabricJoin, h.HandleJoin)
 	server.RegisterTool(ToolFabricInbox, h.HandleInbox)
 	server.RegisterTool(ToolFabricSend, h.HandleSend)
 	server.RegisterTool(ToolFabricReply, h.HandleReply)
@@ -47,6 +57,23 @@ func (h *Handlers) RegisterAll(server ToolRegistrar) {
 	server.RegisterTool(ToolFabricAttach, h.HandleAttach)
 	server.RegisterTool(ToolFabricHistory, h.HandleHistory)
 	server.RegisterTool(ToolFabricReadThread, h.HandleReadThread)
+}
+
+// HandleJoin handles the fabric_join tool call.
+// Registers the agent as a participant in the fabric and posts a join message to #system.
+func (h *Handlers) HandleJoin(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
+	_, err := h.service.Join(h.agentID, h.role)
+	if err != nil {
+		return nil, fmt.Errorf("join fabric: %w", err)
+	}
+
+	response := JoinResponse{
+		AgentID: h.agentID,
+		Role:    string(h.role),
+		Message: fmt.Sprintf("%s joined fabric as %s and ready for task assignment", h.agentID, h.role),
+	}
+
+	return types.StructuredResult(response.Message, response), nil
 }
 
 // HandleInbox handles the fabric_inbox tool call.

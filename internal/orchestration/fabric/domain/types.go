@@ -54,6 +54,28 @@ const (
 	SlugObserver = "observer"
 )
 
+// Special mentions
+const (
+	// MentionHere is a broadcast mention that notifies all channel subscribers.
+	MentionHere = "here"
+)
+
+// ParticipantRole identifies the role of a participant in the fabric.
+type ParticipantRole string
+
+const (
+	RoleCoordinator ParticipantRole = "coordinator"
+	RoleWorker      ParticipantRole = "worker"
+	RoleObserver    ParticipantRole = "observer"
+)
+
+// Participant represents an active agent in the fabric.
+type Participant struct {
+	AgentID  string          `json:"agent_id"`
+	Role     ParticipantRole `json:"role"`
+	JoinedAt time.Time       `json:"joined_at"`
+}
+
 // Thread is the universal node in the Fabric graph.
 type Thread struct {
 	ID        string     `json:"id"`

@@ -221,6 +221,110 @@ func TestMemoryAckRepository_GetUnacked_NestedReplies(t *testing.T) {
 	require.Contains(t, unacked[channel.ID].ThreadIDs, reply2.ID)
 }
 
+func TestMemoryAckRepository_GetUnacked_HereMention(t *testing.T) {
+	ackRepo, threadRepo, depRepo, _ := setupAckTestRepos()
+
+	// Create participant repository and wire it to ack repo
+	participantRepo := NewMemoryParticipantRepository()
+	ackRepo.SetParticipantRepository(participantRepo)
+
+	// Create a channel
+	channel, err := threadRepo.Create(domain.Thread{
+		Type: domain.ThreadChannel,
+		Slug: "tasks",
+	})
+	require.NoError(t, err)
+
+	// Register some participants (simulates workers calling fabric_join)
+	_, err = participantRepo.Join("worker-1", domain.RoleWorker)
+	require.NoError(t, err)
+	_, err = participantRepo.Join("worker-2", domain.RoleWorker)
+	require.NoError(t, err)
+	_, err = participantRepo.Join("coordinator", domain.RoleCoordinator)
+	require.NoError(t, err)
+
+	// Create a message with @here mention
+	msg, err := threadRepo.Create(domain.Thread{
+		Type:      domain.ThreadMessage,
+		Content:   "@here All workers please check in",
+		CreatedBy: "coordinator",
+		Mentions:  []string{"here"}, // @here is stored as literal "here"
+	})
+	require.NoError(t, err)
+	err = depRepo.Add(domain.NewDependency(msg.ID, channel.ID, domain.RelationChildOf))
+	require.NoError(t, err)
+
+	// Worker-1 should see the @here message (they are a fabric participant)
+	unacked, err := ackRepo.GetUnacked("worker-1")
+	require.NoError(t, err)
+	require.Equal(t, 1, unacked[channel.ID].Count, "worker-1 should see @here message")
+	require.Contains(t, unacked[channel.ID].ThreadIDs, msg.ID)
+
+	// Worker-2 should also see the @here message
+	unacked, err = ackRepo.GetUnacked("worker-2")
+	require.NoError(t, err)
+	require.Equal(t, 1, unacked[channel.ID].Count, "worker-2 should see @here message")
+	require.Contains(t, unacked[channel.ID].ThreadIDs, msg.ID)
+
+	// Non-participant (worker-3) should NOT see the @here message
+	unacked, err = ackRepo.GetUnacked("worker-3")
+	require.NoError(t, err)
+	require.Empty(t, unacked, "worker-3 is not a participant - should not see @here message")
+}
+
+func TestMemoryAckRepository_GetUnacked_HereMentionInReply(t *testing.T) {
+	ackRepo, threadRepo, depRepo, _ := setupAckTestRepos()
+
+	// Create participant repository and wire it to ack repo
+	participantRepo := NewMemoryParticipantRepository()
+	ackRepo.SetParticipantRepository(participantRepo)
+
+	// Create a channel
+	channel, err := threadRepo.Create(domain.Thread{
+		Type: domain.ThreadChannel,
+		Slug: "tasks",
+	})
+	require.NoError(t, err)
+
+	// Register participants
+	_, err = participantRepo.Join("worker-1", domain.RoleWorker)
+	require.NoError(t, err)
+	_, err = participantRepo.Join("worker-2", domain.RoleWorker)
+	require.NoError(t, err)
+
+	// Create a root message (no @here)
+	rootMsg, err := threadRepo.Create(domain.Thread{
+		Type:      domain.ThreadMessage,
+		Content:   "Discussion topic",
+		CreatedBy: "coordinator",
+	})
+	require.NoError(t, err)
+	err = depRepo.Add(domain.NewDependency(rootMsg.ID, channel.ID, domain.RelationChildOf))
+	require.NoError(t, err)
+
+	// Create a reply with @here mention
+	reply, err := threadRepo.Create(domain.Thread{
+		Type:      domain.ThreadMessage,
+		Content:   "@here I need everyone's input",
+		CreatedBy: "coordinator",
+		Mentions:  []string{"here"},
+	})
+	require.NoError(t, err)
+	err = depRepo.Add(domain.NewDependency(reply.ID, rootMsg.ID, domain.RelationReplyTo))
+	require.NoError(t, err)
+
+	// Worker-1 should see the @here reply (they are a participant)
+	unacked, err := ackRepo.GetUnacked("worker-1")
+	require.NoError(t, err)
+	require.Equal(t, 1, unacked[channel.ID].Count, "worker-1 should see @here reply")
+	require.Contains(t, unacked[channel.ID].ThreadIDs, reply.ID)
+
+	// Non-participant should NOT see the @here reply
+	unacked, err = ackRepo.GetUnacked("outside-agent")
+	require.NoError(t, err)
+	require.Empty(t, unacked, "outside-agent is not a participant - should not see @here reply")
+}
+
 func TestMemoryAckRepository_GetUnacked_ParticipantSeesReplies(t *testing.T) {
 	ackRepo, threadRepo, depRepo, _ := setupAckTestRepos()
 

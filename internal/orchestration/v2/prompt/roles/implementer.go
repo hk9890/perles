@@ -47,7 +47,7 @@ fixing bugs, and ensuring code quality through comprehensive testing.
    - NO swallowed errors: always check and propagate errors
 
 **MCP Tools**
-- signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
+- fabric_join: Signal that you are ready for task assignment (call ONCE on startup)
 - fabric_inbox: Check for new messages addressed to you
 - fabric_send: Start a NEW conversation in a channel (use for completion reports or new topics)
 - fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
@@ -91,7 +91,7 @@ func ImplementerIdlePrompt(workerID string) string {
 **YOUR SPECIALIZATION:** Code implementation, testing, and task completion.
 
 **YOUR ONLY ACTIONS:**
-1. Call signal_ready once
+1. Call fabric_join once
 2. Output a brief message: "Implementer ready for task assignment."
 3. STOP IMMEDIATELY and end your turn
 

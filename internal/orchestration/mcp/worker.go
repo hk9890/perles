@@ -59,7 +59,7 @@ type WorkerServer struct {
 	// workers properly complete their turns.
 	enforcer ToolCallRecorder
 
-	// fabricService provides graph-based messaging for signal_ready
+	// fabricService provides graph-based messaging for fabric_join
 	fabricService *fabric.Service
 }
 
@@ -95,7 +95,7 @@ func (ws *WorkerServer) SetV2Adapter(adapter *adapter.V2Adapter) {
 
 // SetTurnEnforcer sets the turn completion enforcer for tracking tool calls.
 // When set, required tool calls (post_message, report_implementation_complete,
-// report_review_verdict, signal_ready) are recorded so the orchestrator can
+// report_review_verdict, fabric_join) are recorded so the orchestrator can
 // verify workers properly complete their turns.
 // The enforcer should implement ToolCallRecorder (handler.TurnCompletionTracker satisfies this).
 func (ws *WorkerServer) SetTurnEnforcer(enforcer ToolCallRecorder) {
@@ -105,7 +105,7 @@ func (ws *WorkerServer) SetTurnEnforcer(enforcer ToolCallRecorder) {
 // SetFabricService registers Fabric messaging tools with the worker MCP server.
 // This enables workers to use fabric_inbox, fabric_send, fabric_reply, etc.
 // The agentID is set to the worker's ID for proper message tracking.
-// Also stores the service reference for signal_ready to post to #system.
+// Also stores the service reference for fabric_join to post to #system.
 func (ws *WorkerServer) SetFabricService(svc *fabric.Service) {
 	ws.fabricService = svc
 	handlers := fabricmcp.NewHandlers(svc, ws.workerID)
@@ -118,6 +118,7 @@ func (ws *WorkerServer) SetFabricService(svc *fabric.Service) {
 func (ws *WorkerServer) registerFabricToolsWithEnforcement(h *fabricmcp.Handlers) {
 	// Tools that satisfy turn completion requirements
 	turnCompletionTools := map[string]bool{
+		"fabric_join":  true,
 		"fabric_send":  true,
 		"fabric_reply": true,
 		"fabric_ack":   true,
@@ -139,6 +140,8 @@ func (ws *WorkerServer) registerFabricToolsWithEnforcement(h *fabricmcp.Handlers
 		// Get the handler for this tool
 		var handler ToolHandler
 		switch tool.Name {
+		case "fabric_join":
+			handler = h.HandleJoin
 		case "fabric_inbox":
 			handler = h.HandleInbox
 		case "fabric_send":
@@ -180,19 +183,6 @@ func (ws *WorkerServer) registerFabricToolsWithEnforcement(h *fabricmcp.Handlers
 
 // registerTools registers all worker tools with the MCP server.
 func (ws *WorkerServer) registerTools() {
-	// NOTE: check_messages and post_message removed - use fabric_inbox/fabric_send instead
-
-	// signal_ready - Worker ready notification
-	ws.RegisterTool(Tool{
-		Name:        "signal_ready",
-		Description: "Signal that you are ready for task assignment. Call this once when you first boot up.",
-		InputSchema: &InputSchema{
-			Type:       "object",
-			Properties: map[string]*PropertySchema{},
-			Required:   []string{},
-		},
-	}, ws.handleSignalReady)
-
 	// report_implementation_complete - Signal implementation is done
 	ws.RegisterTool(Tool{
 		Name:        "report_implementation_complete",
@@ -284,31 +274,6 @@ type postAccountabilitySummaryArgs struct {
 // reportImplementationCompleteArgs holds arguments for report_implementation_complete tool.
 type reportImplementationCompleteArgs struct {
 	Summary string `json:"summary"`
-}
-
-// handleSignalReady signals the coordinator that this worker is ready for task assignment.
-// Posts a ready message to #system channel, which triggers a nudge to the coordinator
-// (who is auto-subscribed to #system with mode=all).
-func (ws *WorkerServer) handleSignalReady(_ context.Context, _ json.RawMessage) (*ToolCallResult, error) {
-	// Post ready message to #system channel via Fabric
-	if ws.fabricService != nil {
-		content := fmt.Sprintf("%s is ready for task assignment", ws.workerID)
-		_, err := ws.fabricService.SendMessage(fabric.SendMessageInput{
-			ChannelSlug: "system",
-			Content:     content,
-			CreatedBy:   ws.workerID,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to post ready message: %w", err)
-		}
-	}
-
-	// Record tool call for turn completion enforcement
-	if ws.enforcer != nil {
-		ws.enforcer.RecordToolCall(ws.workerID, "signal_ready")
-	}
-
-	return SuccessResult(fmt.Sprintf("Worker %s ready signal acknowledged", ws.workerID)), nil
 }
 
 // handleReportImplementationComplete signals that implementation is complete and ready for review.

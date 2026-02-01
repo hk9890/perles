@@ -11,11 +11,12 @@ import (
 
 // ProcessRegistrySessionProvider implements the SessionProvider interface
 // using the process.ProcessRegistry to look up process session information.
-// Supports both coordinator and worker processes with different clients.
+// Supports coordinator, worker, and observer processes with different clients.
 type ProcessRegistrySessionProvider struct {
 	registry          *process.ProcessRegistry
 	coordinatorClient client.HeadlessClient
 	workerClient      client.HeadlessClient
+	observerClient    client.HeadlessClient
 	workDir           string
 	port              int
 }
@@ -26,19 +27,26 @@ type ProcessRegistrySessionProvider struct {
 //   - registry: ProcessRegistry for looking up process sessions
 //   - coordinatorClient: HeadlessClient for coordinator MCP config format
 //   - workerClient: HeadlessClient for worker MCP config format
+//   - observerClient: HeadlessClient for observer MCP config format (falls back to workerClient if nil)
 //   - workDir: Working directory for processes
 //   - port: MCP server port for process connections
 func NewProcessRegistrySessionProvider(
 	registry *process.ProcessRegistry,
 	coordinatorClient client.HeadlessClient,
 	workerClient client.HeadlessClient,
+	observerClient client.HeadlessClient,
 	workDir string,
 	port int,
 ) *ProcessRegistrySessionProvider {
+	// Fall back to worker client if observer client not provided
+	if observerClient == nil {
+		observerClient = workerClient
+	}
 	return &ProcessRegistrySessionProvider{
 		registry:          registry,
 		coordinatorClient: coordinatorClient,
 		workerClient:      workerClient,
+		observerClient:    observerClient,
 		workDir:           workDir,
 		port:              port,
 	}
@@ -60,11 +68,16 @@ func (p *ProcessRegistrySessionProvider) GetProcessSessionID(processID string) (
 
 // GenerateProcessMCPConfig generates the appropriate MCP config JSON based on process role and client type.
 // For coordinator, generates coordinator MCP config.
+// For observer, generates observer MCP config.
 // For workers, generates worker MCP config with their ID.
 func (p *ProcessRegistrySessionProvider) GenerateProcessMCPConfig(processID string) (string, error) {
 	// Check if this is the coordinator
 	if processID == repository.CoordinatorID {
 		return p.generateCoordinatorMCPConfig()
+	}
+	// Check if this is the observer
+	if processID == repository.ObserverID {
+		return p.generateObserverMCPConfig()
 	}
 	return p.generateWorkerMCPConfig(processID)
 }
@@ -104,6 +117,25 @@ func (p *ProcessRegistrySessionProvider) generateWorkerMCPConfig(workerID string
 		return mcp.GenerateWorkerConfigOpenCode(p.port, workerID)
 	default:
 		return mcp.GenerateWorkerConfigHTTP(p.port, workerID)
+	}
+}
+
+// generateObserverMCPConfig generates the observer-specific MCP config.
+func (p *ProcessRegistrySessionProvider) generateObserverMCPConfig() (string, error) {
+	if p.observerClient == nil {
+		return mcp.GenerateObserverConfigHTTP(p.port)
+	}
+	switch p.observerClient.Type() {
+	case client.ClientAmp:
+		return mcp.GenerateObserverConfigAmp(p.port)
+	case client.ClientCodex:
+		return mcp.GenerateObserverConfigCodex(p.port), nil
+	case client.ClientGemini:
+		return mcp.GenerateObserverConfigGemini(p.port)
+	case client.ClientOpenCode:
+		return mcp.GenerateObserverConfigOpenCode(p.port)
+	default:
+		return mcp.GenerateObserverConfigHTTP(p.port)
 	}
 }
 

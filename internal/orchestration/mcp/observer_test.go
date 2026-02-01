@@ -51,7 +51,7 @@ func TestObserverServer_ReadOnlyTools(t *testing.T) {
 		"get_task_status",
 		"mark_task_complete",
 		"mark_task_failed",
-		"signal_ready",
+		"fabric_join",
 		"report_implementation_complete",
 		"report_review_verdict",
 		"fabric_unsubscribe",
@@ -337,7 +337,8 @@ func newTestFabricServiceForObserver() *fabric.Service {
 	depRepo := fabricrepo.NewMemoryDependencyRepository()
 	subRepo := fabricrepo.NewMemorySubscriptionRepository()
 	ackRepo := fabricrepo.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
-	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	participantRepo := fabricrepo.NewMemoryParticipantRepository()
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 	// Initialize session to create channels
 	_ = svc.InitSession("coordinator")
 	return svc

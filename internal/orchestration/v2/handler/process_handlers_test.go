@@ -496,7 +496,7 @@ func TestDeliverProcessQueuedHandler_ToolCallsFromPreviousTurnAreCleared(t *test
 
 	// Simulate tool calls from previous turn
 	enforcer.RecordToolCall("worker-1", "fabric_send")
-	enforcer.RecordToolCall("worker-1", "signal_ready")
+	enforcer.RecordToolCall("worker-1", "fabric_join")
 
 	// Before delivery, tool calls exist - CheckTurnCompletion returns empty (compliant)
 	missingBefore := enforcer.CheckTurnCompletion("worker-1", repository.RoleWorker)
@@ -1627,7 +1627,7 @@ func TestProcessTurnCompleteHandler_ReminderMessageIncludesMissingToolNames(t *t
 	assert.Contains(t, entry.Content, "fabric_send")
 	assert.Contains(t, entry.Content, "report_implementation_complete")
 	assert.Contains(t, entry.Content, "report_review_verdict")
-	assert.Contains(t, entry.Content, "signal_ready")
+	assert.Contains(t, entry.Content, "fabric_join")
 }
 
 func TestProcessTurnCompleteHandler_WorksCorrectlyWhenEnforcerIsNil(t *testing.T) {
@@ -1666,8 +1666,8 @@ func TestProcessTurnCompleteHandler_EnforcementWithSignalReadyTool_NoReminder(t 
 	}
 	processRepo.AddProcess(worker)
 
-	// Worker called signal_ready (one of the required tools)
-	enforcer.RecordToolCall("worker-1", "signal_ready")
+	// Worker called fabric_join (one of the required tools)
+	enforcer.RecordToolCall("worker-1", "fabric_join")
 
 	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo,
 		handler.WithProcessTurnEnforcer(enforcer))
@@ -1677,7 +1677,7 @@ func TestProcessTurnCompleteHandler_EnforcementWithSignalReadyTool_NoReminder(t 
 
 	require.NoError(t, err)
 
-	// Verify no enforcement triggered - signal_ready satisfies requirement
+	// Verify no enforcement triggered - fabric_join satisfies requirement
 	turnResult := result.Data.(*handler.ProcessTurnCompleteResult)
 	assert.False(t, turnResult.EnforcementTriggered)
 	assert.Equal(t, repository.StatusReady, turnResult.NewStatus)
@@ -2310,7 +2310,7 @@ func TestRetireProcessHandler_CleanupDoesNotAffectOtherProcesses(t *testing.T) {
 	enforcer := handler.NewTurnCompletionTracker()
 	enforcer.RecordToolCall("worker-1", "fabric_send")
 	enforcer.MarkAsNewlySpawned("worker-1")
-	enforcer.RecordToolCall("worker-2", "signal_ready")
+	enforcer.RecordToolCall("worker-2", "fabric_join")
 	enforcer.MarkAsNewlySpawned("worker-2")
 
 	h := handler.NewRetireProcessHandler(processRepo, registry,
@@ -2331,7 +2331,7 @@ func TestRetireProcessHandler_CleanupDoesNotAffectOtherProcesses(t *testing.T) {
 	// Verify worker-2 state is preserved
 	assert.True(t, enforcer.IsNewlySpawned("worker-2"))
 	missingTools2 := enforcer.CheckTurnCompletion("worker-2", repository.RoleWorker)
-	assert.Empty(t, missingTools2) // signal_ready was recorded
+	assert.Empty(t, missingTools2) // fabric_join was recorded
 }
 
 func TestRetireProcessHandler_CleanupRemovesAllStateForProcess(t *testing.T) {
@@ -2350,7 +2350,7 @@ func TestRetireProcessHandler_CleanupRemovesAllStateForProcess(t *testing.T) {
 
 	// Record tool calls
 	enforcer.RecordToolCall("worker-1", "fabric_send")
-	enforcer.RecordToolCall("worker-1", "signal_ready")
+	enforcer.RecordToolCall("worker-1", "fabric_join")
 
 	// Mark as newly spawned
 	enforcer.MarkAsNewlySpawned("worker-1")

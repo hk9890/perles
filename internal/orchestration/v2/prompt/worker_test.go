@@ -136,8 +136,8 @@ func TestWorkerMCPInstructions_ContainsToolDescriptions(t *testing.T) {
 
 	require.Contains(t, instructions, "worker-1",
 		"Instructions should include worker ID")
-	require.Contains(t, instructions, "signal_ready",
-		"Instructions should mention signal_ready tool")
+	require.Contains(t, instructions, "fabric_join",
+		"Instructions should mention fabric_join tool")
 	require.Contains(t, instructions, "fabric_send",
 		"Instructions should mention fabric_send tool")
 	require.Contains(t, instructions, "report_implementation_complete",

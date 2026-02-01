@@ -45,15 +45,17 @@ type ProcessResumer interface {
 
 // ProcessSessionDeliverer implements the MessageDeliverer interface
 // by resuming process sessions with the message content.
-// Works for both coordinator and worker processes.
+// Works for coordinator, worker, and observer processes.
 type ProcessSessionDeliverer struct {
 	sessionProvider       SessionProvider
 	coordinatorClient     client.HeadlessClient
 	workerClient          client.HeadlessClient
+	observerClient        client.HeadlessClient
 	resumer               ProcessResumer
 	timeout               time.Duration
 	coordinatorExtensions map[string]any
 	workerExtensions      map[string]any
+	observerExtensions    map[string]any
 	beadsDir              string
 }
 
@@ -80,33 +82,49 @@ func WithBeadsDir(beadsDir string) ProcessSessionDelivererOption {
 //   - sessionProvider: provides session IDs and MCP config for processes
 //   - coordinatorClient: HeadlessClient for spawning/resuming coordinator sessions
 //   - workerClient: HeadlessClient for spawning/resuming worker sessions
+//   - observerClient: HeadlessClient for spawning/resuming observer sessions (falls back to workerClient if nil)
 //   - resumer: ProcessResumer for resuming processes (typically ProcessRegistry)
 //   - coordinatorExtensions: provider-specific configuration for coordinator
 //   - workerExtensions: provider-specific configuration for workers
+//   - observerExtensions: provider-specific configuration for observer (falls back to workerExtensions if nil)
 //   - opts: optional configuration
 func NewProcessSessionDeliverer(
 	sessionProvider SessionProvider,
 	coordinatorClient client.HeadlessClient,
 	workerClient client.HeadlessClient,
+	observerClient client.HeadlessClient,
 	resumer ProcessResumer,
 	coordinatorExtensions map[string]any,
 	workerExtensions map[string]any,
+	observerExtensions map[string]any,
 	opts ...ProcessSessionDelivererOption,
 ) *ProcessSessionDeliverer {
+	// Fall back to worker client/extensions if observer not provided
+	if observerClient == nil {
+		observerClient = workerClient
+	}
+	if observerExtensions == nil {
+		observerExtensions = workerExtensions
+	}
+
 	// Defensive shallow copies to prevent accidental mutation races
 	coordExtCopy := make(map[string]any, len(coordinatorExtensions))
 	maps.Copy(coordExtCopy, coordinatorExtensions)
 	workerExtCopy := make(map[string]any, len(workerExtensions))
 	maps.Copy(workerExtCopy, workerExtensions)
+	observerExtCopy := make(map[string]any, len(observerExtensions))
+	maps.Copy(observerExtCopy, observerExtensions)
 
 	d := &ProcessSessionDeliverer{
 		sessionProvider:       sessionProvider,
 		coordinatorClient:     coordinatorClient,
 		workerClient:          workerClient,
+		observerClient:        observerClient,
 		resumer:               resumer,
 		timeout:               DefaultDeliveryTimeout,
 		coordinatorExtensions: coordExtCopy,
 		workerExtensions:      workerExtCopy,
+		observerExtensions:    observerExtCopy,
 	}
 	for _, opt := range opts {
 		opt(d)
@@ -171,12 +189,17 @@ func (d *ProcessSessionDeliverer) Deliver(ctx context.Context, processID, conten
 	var aiClient client.HeadlessClient
 	var extensions map[string]any
 
-	if processID == repository.CoordinatorID {
-		log.Error(log.CatOrch, "is coordinator process", "processId", processID, "isCoord", true)
+	switch processID {
+	case repository.CoordinatorID:
+		log.Debug(log.CatOrch, "selecting coordinator client", "processId", processID)
 		aiClient = d.coordinatorClient
 		extensions = d.coordinatorExtensions
-	} else {
-		log.Error(log.CatOrch, "is coordinator process", "processId", processID, "isCoord", false)
+	case repository.ObserverID:
+		log.Debug(log.CatOrch, "selecting observer client", "processId", processID)
+		aiClient = d.observerClient
+		extensions = d.observerExtensions
+	default:
+		log.Debug(log.CatOrch, "selecting worker client", "processId", processID)
 		aiClient = d.workerClient
 		extensions = d.workerExtensions
 	}

@@ -607,7 +607,7 @@ export default function FabricPanel({ events, workflowId }: Props) {
                       onSend={handleChannelSend}
                       disabled={!isWorkflowActive}
                       disabledReason="This session has ended"
-                      agentIds={agents.map(a => a.id)}
+                      agentIds={['here', ...agents.map(a => a.id)]}
                     />
                   </div>
                 </>
@@ -744,7 +744,7 @@ export default function FabricPanel({ events, workflowId }: Props) {
               onSend={handleThreadReply}
               disabled={!isWorkflowActive}
               disabledReason="This session has ended"
-              agentIds={agents.map(a => a.id)}
+              agentIds={['here', ...agents.map(a => a.id)]}
             />
           </div>
         </aside>

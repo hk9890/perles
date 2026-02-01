@@ -19,8 +19,9 @@ func newTestHandlers(t *testing.T) (*Handlers, *fabric.Service) {
 	depRepo := repository.NewMemoryDependencyRepository()
 	subRepo := repository.NewMemorySubscriptionRepository()
 	ackRepo := repository.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+	participantRepo := repository.NewMemoryParticipantRepository()
 
-	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 	err := svc.InitSession("system")
 	require.NoError(t, err)
 
@@ -73,8 +74,9 @@ func TestHandlers_Inbox_IncludesObserverChannel(t *testing.T) {
 	depRepo := repository.NewMemoryDependencyRepository()
 	subRepo := repository.NewMemorySubscriptionRepository()
 	ackRepo := repository.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+	participantRepo := repository.NewMemoryParticipantRepository()
 
-	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 	err := svc.InitSession("system")
 	require.NoError(t, err)
 

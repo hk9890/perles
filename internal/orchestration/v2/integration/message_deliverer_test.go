@@ -160,9 +160,11 @@ func TestProcessSessionDeliverer_Deliver_Success(t *testing.T) {
 		sessionProvider,
 		mockClient, // coordinator client
 		mockClient, // worker client (same for this test)
+		mockClient, // observer client (same for this test)
 		mockResumer,
 		extensions, // coordinator extensions
 		extensions, // worker extensions
+		extensions, // observer extensions
 	)
 
 	// Execute
@@ -183,9 +185,9 @@ func TestProcessSessionDeliverer_Deliver_SessionNotFound(t *testing.T) {
 	mockClient := &mockHeadlessClient{}
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	// Execute
@@ -205,9 +207,9 @@ func TestProcessSessionDeliverer_Deliver_EmptySessionID(t *testing.T) {
 	mockClient := &mockHeadlessClient{}
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	// Execute
@@ -228,9 +230,9 @@ func TestProcessSessionDeliverer_Deliver_MCPConfigError(t *testing.T) {
 	mockClient := &mockHeadlessClient{}
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	// Execute
@@ -254,9 +256,9 @@ func TestProcessSessionDeliverer_Deliver_SpawnError(t *testing.T) {
 
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	// Execute
@@ -286,9 +288,9 @@ func TestProcessSessionDeliverer_Deliver_ResumeProcessError(t *testing.T) {
 
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		mockResumer,
-		nil, nil,
+		nil, nil, nil,
 	)
 
 	// Execute
@@ -316,9 +318,9 @@ func TestProcessSessionDeliverer_Deliver_ContextCancellation(t *testing.T) {
 	mockClient := &mockHeadlessClient{}
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 		WithDeliveryTimeout(100*time.Millisecond),
 	)
 
@@ -346,9 +348,9 @@ func TestProcessSessionDeliverer_Deliver_Timeout(t *testing.T) {
 	mockClient := &mockHeadlessClient{}
 	deliverer := NewProcessSessionDeliverer(
 		slowSessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		&mockProcessResumer{},
-		nil, nil,
+		nil, nil, nil,
 		WithDeliveryTimeout(10*time.Millisecond), // Very short timeout
 	)
 
@@ -367,9 +369,9 @@ func TestProcessSessionDeliverer_WithDeliveryTimeout(t *testing.T) {
 
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		nil, // resumer not used in this test
-		nil, nil,
+		nil, nil, nil,
 		WithDeliveryTimeout(5*time.Second),
 	)
 
@@ -427,9 +429,9 @@ func TestProcessSessionDeliverer_Deliver_PassesExtensions(t *testing.T) {
 	// Create deliverer with extensions
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		mockResumer,
-		testExtensions, testExtensions,
+		testExtensions, testExtensions, testExtensions,
 	)
 
 	// Execute
@@ -463,9 +465,9 @@ func TestProcessSessionDeliverer_Deliver_ExtensionsDefensiveCopy(t *testing.T) {
 	// Create deliverer
 	deliverer := NewProcessSessionDeliverer(
 		sessionProvider,
-		mockClient, mockClient,
+		mockClient, mockClient, mockClient,
 		mockResumer,
-		originalExtensions, originalExtensions,
+		originalExtensions, originalExtensions, originalExtensions,
 	)
 
 	// Mutate the original map AFTER creating deliverer

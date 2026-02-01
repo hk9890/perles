@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/zjrosen/perles/internal/orchestration/fabric"
+	fabricrepo "github.com/zjrosen/perles/internal/orchestration/fabric/repository"
 	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
@@ -282,6 +284,10 @@ func NewTestWorkerServer(t *testing.T, workerID string) *TestWorkerServerWrapper
 	)
 	ws.v2Adapter = v2Adapter
 
+	// Create Fabric service for fabric_join and other fabric tools
+	fabricService := createTestFabricService(t)
+	ws.SetFabricService(fabricService)
+
 	return &TestWorkerServerWrapper{
 		WorkerServer: ws,
 		V2Handler:    handler,
@@ -290,4 +296,23 @@ func NewTestWorkerServer(t *testing.T, workerID string) *TestWorkerServerWrapper
 			proc.Stop()
 		},
 	}
+}
+
+// createTestFabricService creates a minimal fabric service for testing.
+func createTestFabricService(t *testing.T) *fabric.Service {
+	t.Helper()
+
+	threads := fabricrepo.NewMemoryThreadRepository()
+	deps := fabricrepo.NewMemoryDependencyRepository()
+	subs := fabricrepo.NewMemorySubscriptionRepository()
+	acks := fabricrepo.NewMemoryAckRepository(deps, threads, subs)
+	participants := fabricrepo.NewMemoryParticipantRepository()
+
+	svc := fabric.NewService(threads, deps, subs, acks, participants)
+
+	// Initialize session to create channels
+	err := svc.InitSession("coordinator")
+	require.NoError(t, err, "Failed to initialize fabric session")
+
+	return svc
 }

@@ -14,8 +14,9 @@ func newTestService() *Service {
 	depRepo := repository.NewMemoryDependencyRepository()
 	subRepo := repository.NewMemorySubscriptionRepository()
 	ackRepo := repository.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+	participantRepo := repository.NewMemoryParticipantRepository()
 
-	return NewService(threadRepo, depRepo, subRepo, ackRepo)
+	return NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 }
 
 func TestService_InitSession(t *testing.T) {
@@ -29,11 +30,18 @@ func TestService_InitSession(t *testing.T) {
 	err := svc.InitSession("coordinator")
 	require.NoError(t, err)
 
-	// Should have created 6 channels (root, system, tasks, planning, general, observer)
-	require.Len(t, events, 6)
-	for _, e := range events {
-		require.Equal(t, EventChannelCreated, e.Type)
+	// Should have created 6 channels + 1 participant.joined (coordinator) + 1 message.posted (join message)
+	require.Len(t, events, 8)
+
+	// First 6 should be channel.created
+	for i := 0; i < 6; i++ {
+		require.Equal(t, EventChannelCreated, events[i].Type)
 	}
+	// Then participant.joined for coordinator
+	require.Equal(t, EventParticipantJoined, events[6].Type)
+	require.Equal(t, "coordinator", events[6].Participant.AgentID)
+	// Then message.posted for the join message
+	require.Equal(t, EventMessagePosted, events[7].Type)
 
 	// Verify channel IDs are set
 	require.NotEmpty(t, svc.GetChannelID(domain.SlugRoot))
@@ -733,7 +741,7 @@ func TestService_InitSession_Idempotent(t *testing.T) {
 	require.Equal(t, systemID, svc.GetChannelID(domain.SlugSystem))
 
 	// Verify only 6 channels exist (not 12)
-	threads, _, _, _ := svc.Repositories()
+	threads, _, _, _, _ := svc.Repositories()
 	allThreads, err := threads.List(repository.ListOptions{})
 	require.NoError(t, err)
 
@@ -749,12 +757,13 @@ func TestService_InitSession_Idempotent(t *testing.T) {
 func TestService_Repositories(t *testing.T) {
 	svc := newTestService()
 
-	threads, deps, subs, acks := svc.Repositories()
+	threads, deps, subs, acks, participants := svc.Repositories()
 
 	require.NotNil(t, threads)
 	require.NotNil(t, deps)
 	require.NotNil(t, subs)
 	require.NotNil(t, acks)
+	require.NotNil(t, participants)
 }
 
 func TestService_RestoreChannelIDs(t *testing.T) {
@@ -774,8 +783,8 @@ func TestService_RestoreChannelIDs(t *testing.T) {
 	require.NotEmpty(t, originalRootID)
 
 	// Create a new service with the same repositories (simulating restore)
-	threads, deps, subs, acks := svc.Repositories()
-	restoredSvc := NewService(threads, deps, subs, acks)
+	threads, deps, subs, acks, participants := svc.Repositories()
+	restoredSvc := NewService(threads, deps, subs, acks, participants)
 
 	// Before RestoreChannelIDs, channel IDs should be empty
 	require.Empty(t, restoredSvc.GetChannelID(domain.SlugRoot))

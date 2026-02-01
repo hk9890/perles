@@ -18,7 +18,7 @@ func GenericSystemPrompt(workerID string) string {
 4. Return to ready state for next task
 
 **MCP Tools**
-- signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
+- fabric_join: Signal that you are ready for task assignment (call ONCE on startup)
 - fabric_inbox: Check for new messages addressed to you
 - fabric_send: Start a NEW conversation in a channel (use for completion reports or new topics)
 - fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
@@ -70,7 +70,7 @@ func GenericIdlePrompt(workerID string) string {
 	return fmt.Sprintf(`You are %s. You are now in IDLE state waiting for task assignment.
 
 **YOUR ONLY ACTIONS:**
-1. Call signal_ready once
+1. Call fabric_join once
 2. Output a brief message: "Ready and waiting for task assignment."
 3. STOP IMMEDIATELY and end your turn
 

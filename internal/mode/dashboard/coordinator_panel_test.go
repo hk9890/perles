@@ -1728,11 +1728,12 @@ func TestCoordinatorPanel_ChannelIndicatorInView(t *testing.T) {
 func TestCoordinatorPanel_MentionProcesses_IncludesCoordinator(t *testing.T) {
 	panel := NewCoordinatorPanel(false, false, false, nil) // observer disabled to test just coordinator
 
-	// Check that coordinator is always in the mention list
-	require.Equal(t, 1, panel.mentionModel.ProcessCount()) // Just coordinator by default
+	// Check that @here and coordinator are always in the mention list
+	require.Equal(t, 2, panel.mentionModel.ProcessCount()) // @here + coordinator by default
 	ids := panel.mentionModel.ProcessIDs()
-	require.Len(t, ids, 1)
-	require.Equal(t, repository.CoordinatorID, ids[0])
+	require.Len(t, ids, 2)
+	require.Equal(t, "here", ids[0]) // @here broadcast first
+	require.Equal(t, repository.CoordinatorID, ids[1])
 }
 
 func TestCoordinatorPanel_MentionProcesses_UpdatesWithWorkers(t *testing.T) {
@@ -1748,13 +1749,14 @@ func TestCoordinatorPanel_MentionProcesses_UpdatesWithWorkers(t *testing.T) {
 
 	panel.SetWorkflow("wf-123", state)
 
-	// Should have coordinator + 2 workers
-	require.Equal(t, 3, panel.mentionModel.ProcessCount())
+	// Should have @here + coordinator + 2 workers
+	require.Equal(t, 4, panel.mentionModel.ProcessCount())
 	ids := panel.mentionModel.ProcessIDs()
-	require.Len(t, ids, 3)
-	require.Equal(t, repository.CoordinatorID, ids[0])
-	require.Equal(t, "worker-1", ids[1])
-	require.Equal(t, "worker-2", ids[2])
+	require.Len(t, ids, 4)
+	require.Equal(t, "here", ids[0]) // @here broadcast first
+	require.Equal(t, repository.CoordinatorID, ids[1])
+	require.Equal(t, "worker-1", ids[2])
+	require.Equal(t, "worker-2", ids[3])
 }
 
 func TestCoordinatorPanel_SubmitMsg_IncludesChannel(t *testing.T) {

@@ -621,7 +621,7 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 		if !turnCmd.Succeeded {
 			// Skip enforcement - process had an error
 		} else if h.enforcer.IsNewlySpawned(proc.ID) {
-			// Skip enforcement - startup turn (workers call signal_ready on first turn)
+			// Skip enforcement - startup turn (workers call fabric_join on first turn)
 		} else {
 			// Check tool calls
 			missingTools := h.enforcer.CheckTurnCompletion(proc.ID, proc.Role)
@@ -1179,7 +1179,7 @@ func (h *SpawnProcessHandler) handleSpawn(ctx context.Context, spawnCmd *command
 	_ = h.processRepo.Save(proc)
 
 	// Mark process as newly spawned for turn completion enforcement exemption.
-	// The first turn after spawn is exempt (workers call signal_ready).
+	// The first turn after spawn is exempt (workers call fabric_join).
 	if h.enforcer != nil {
 		h.enforcer.MarkAsNewlySpawned(processID)
 	}

@@ -2,6 +2,13 @@ package mcp
 
 import "time"
 
+// JoinResponse is the response for fabric_join.
+type JoinResponse struct {
+	AgentID string `json:"agent_id"`
+	Role    string `json:"role"`
+	Message string `json:"message"`
+}
+
 // InboxResponse is the response for fabric_inbox.
 type InboxResponse struct {
 	Channels     []ChannelInbox `json:"channels"`

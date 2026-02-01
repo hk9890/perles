@@ -63,7 +63,7 @@ func TestRecordToolCall_TracksMultipleProcesses(t *testing.T) {
 	tracker := handler.NewTurnCompletionTracker()
 
 	tracker.RecordToolCall("worker-1", "fabric_send")
-	tracker.RecordToolCall("worker-2", "signal_ready")
+	tracker.RecordToolCall("worker-2", "fabric_join")
 
 	// Both should be compliant
 	assert.Empty(t, tracker.CheckTurnCompletion("worker-1", repository.RoleWorker))
@@ -192,7 +192,7 @@ func TestCheckTurnCompletion_ReturnsMissingToolsForWorkers(t *testing.T) {
 	assert.Contains(t, missing, "fabric_send")
 	assert.Contains(t, missing, "report_implementation_complete")
 	assert.Contains(t, missing, "report_review_verdict")
-	assert.Contains(t, missing, "signal_ready")
+	assert.Contains(t, missing, "fabric_join")
 }
 
 func TestCheckTurnCompletion_ReturnsEmptySliceForCoordinators(t *testing.T) {
@@ -212,7 +212,7 @@ func TestCheckTurnCompletion_ReturnsEmptyWhenAnyRequiredToolCalled(t *testing.T)
 		{"fabric_send", "fabric_send"},
 		{"report_implementation_complete", "report_implementation_complete"},
 		{"report_review_verdict", "report_review_verdict"},
-		{"signal_ready", "signal_ready"},
+		{"fabric_join", "fabric_join"},
 	}
 
 	for _, tc := range testCases {
@@ -329,7 +329,7 @@ func TestGetReminderMessage_ContainsInstructions(t *testing.T) {
 	// Should contain helpful instructions
 	assert.Contains(t, message, "report_implementation_complete")
 	assert.Contains(t, message, "fabric_send")
-	assert.Contains(t, message, "signal_ready")
+	assert.Contains(t, message, "fabric_join")
 }
 
 // ===========================================================================
@@ -493,7 +493,7 @@ func TestRequiredTools_ContainsExpectedTools(t *testing.T) {
 	assert.Contains(t, handler.RequiredTools, "fabric_ack")
 	assert.Contains(t, handler.RequiredTools, "report_implementation_complete")
 	assert.Contains(t, handler.RequiredTools, "report_review_verdict")
-	assert.Contains(t, handler.RequiredTools, "signal_ready")
+	assert.Contains(t, handler.RequiredTools, "fabric_join")
 	assert.Len(t, handler.RequiredTools, 6)
 }
 

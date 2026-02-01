@@ -55,7 +55,7 @@ func TestGenericSystemPrompt_ContainsMCPTools(t *testing.T) {
 	prompt := GenericSystemPrompt("worker-1")
 
 	requiredTools := []string{
-		"signal_ready",
+		"fabric_join",
 		"fabric_inbox",
 		"fabric_send",
 		"report_implementation_complete",
@@ -76,7 +76,7 @@ func TestGenericIdlePrompt_ContainsIdleInstructions(t *testing.T) {
 	require.Contains(t, prompt, "IDLE",
 		"GenericIdlePrompt should mention IDLE state")
 
-	// Should mention signal_ready
-	require.Contains(t, prompt, "signal_ready",
-		"GenericIdlePrompt should mention signal_ready")
+	// Should mention fabric_join
+	require.Contains(t, prompt, "fabric_join",
+		"GenericIdlePrompt should mention fabric_join")
 }

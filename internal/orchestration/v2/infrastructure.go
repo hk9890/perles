@@ -179,6 +179,13 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	}
 	workerExtensions := cfg.AgentProviders.Worker().Extensions()
 
+	// Get observer client and extensions (Observer() falls back to worker if not set)
+	observerClient, err := cfg.AgentProviders.Observer().Client()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get observer client: %w", err)
+	}
+	observerExtensions := cfg.AgentProviders.Observer().Extensions()
+
 	// Create repositories
 	taskRepo := repository.NewMemoryTaskRepository()
 	queueRepo := repository.NewMemoryQueueRepository(repository.DefaultQueueMaxSize)
@@ -190,7 +197,10 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 	fabricDeps := fabricrepo.NewMemoryDependencyRepository()
 	fabricSubs := fabricrepo.NewMemorySubscriptionRepository()
 	fabricAcks := fabricrepo.NewMemoryAckRepository(fabricDeps, fabricThreads, fabricSubs)
-	fabricService := fabric.NewService(fabricThreads, fabricDeps, fabricSubs, fabricAcks)
+	fabricParticipants := fabricrepo.NewMemoryParticipantRepository()
+	// Wire participant repo to ack repo for @here inbox expansion
+	fabricAcks.SetParticipantRepository(fabricParticipants)
+	fabricService := fabric.NewService(fabricThreads, fabricDeps, fabricSubs, fabricAcks, fabricParticipants)
 
 	// Create event bus for v2 command events (TUI subscribes via GetV2EventBus())
 	eventBus := pubsub.NewBroker[any]()
@@ -238,8 +248,10 @@ func NewInfrastructure(cfg InfrastructureConfig) (*Infrastructure, error) {
 		turnEnforcer,
 		coordinatorClient,
 		workerClient,
+		observerClient,
 		coordinatorExtensions,
 		workerExtensions,
+		observerExtensions,
 		beadsExec,
 		cfg.Port,
 		eventBus,
@@ -351,8 +363,10 @@ func registerHandlers(
 	turnEnforcer handler.TurnCompletionEnforcer,
 	coordinatorClient client.HeadlessClient,
 	workerClient client.HeadlessClient,
+	observerClient client.HeadlessClient,
 	coordinatorExtensions map[string]any,
 	workerExtensions map[string]any,
+	observerExtensions map[string]any,
 	beadsExec appbeads.IssueExecutor,
 	port int,
 	eventBus *pubsub.Broker[any],
@@ -437,16 +451,18 @@ func registerHandlers(
 	})
 
 	// MessageDeliverer for delivering messages to processes via session resume
-	// Uses role-based client selection (coordinator vs worker)
-	sessionProvider := handler.NewProcessRegistrySessionProvider(processRegistry, coordinatorClient, workerClient, workDir, port)
+	// Uses role-based client selection (coordinator vs worker vs observer)
+	sessionProvider := handler.NewProcessRegistrySessionProvider(processRegistry, coordinatorClient, workerClient, observerClient, workDir, port)
 
 	messageDeliverer := integration.NewProcessSessionDeliverer(
 		sessionProvider,
 		coordinatorClient,
 		workerClient,
+		observerClient,
 		processRegistry,
 		coordinatorExtensions,
 		workerExtensions,
+		observerExtensions,
 		integration.WithBeadsDir(beadsDir),
 	)
 

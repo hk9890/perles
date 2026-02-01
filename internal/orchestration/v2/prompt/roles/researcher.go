@@ -57,7 +57,7 @@ When reporting findings, structure your response clearly:
 - **Recommendations**: Suggestions for implementation (if applicable)
 
 **MCP Tools**
-- signal_ready: Signal that you are ready for task assignment (call ONCE on startup)
+- fabric_join: Signal that you are ready for task assignment (call ONCE on startup)
 - fabric_inbox: Check for new messages addressed to you
 - fabric_send: Start a NEW conversation in a channel (use for research reports or new topics)
 - fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
@@ -92,7 +92,7 @@ func ResearcherIdlePrompt(workerID string) string {
 **YOUR SPECIALIZATION:** Codebase exploration, documentation, and analysis.
 
 **YOUR ONLY ACTIONS:**
-1. Call signal_ready once
+1. Call fabric_join once
 2. Output a brief message: "Researcher ready for research assignment."
 3. STOP IMMEDIATELY and end your turn
 

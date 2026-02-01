@@ -17,9 +17,10 @@ type MemoryAckRepository struct {
 	byThread map[string][]string // threadID -> list of ack keys
 
 	// Dependencies for GetUnacked
-	depRepo    DependencyRepository
-	threadRepo ThreadRepository
-	subRepo    SubscriptionRepository
+	depRepo         DependencyRepository
+	threadRepo      ThreadRepository
+	subRepo         SubscriptionRepository
+	participantRepo ParticipantRepository
 }
 
 // NewMemoryAckRepository creates a new in-memory ack repository.
@@ -32,6 +33,14 @@ func NewMemoryAckRepository(depRepo DependencyRepository, threadRepo ThreadRepos
 		threadRepo: threadRepo,
 		subRepo:    subRepo,
 	}
+}
+
+// SetParticipantRepository sets the participant repository for @here expansion.
+// This is optional - if not set, @here mentions won't be expanded in GetUnacked.
+func (r *MemoryAckRepository) SetParticipantRepository(repo ParticipantRepository) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.participantRepo = repo
 }
 
 // Ack marks message threads as acknowledged by an agent.
@@ -108,14 +117,16 @@ func (r *MemoryAckRepository) GetUnacked(agentID string) (map[string]UnackedSumm
 
 		// Determine if agent should see this message
 		if channelID != "" {
-			// Top-level message: show if agent is mentioned, participant, or subscribed
-			shouldShow := msg.HasMention(agentID) || msg.IsParticipant(agentID) || r.isSubscribed(agentID, channelID)
+			// Top-level message: show if agent is mentioned, participant, subscribed,
+			// or if @here was used and agent is a fabric participant
+			shouldShow := msg.HasMention(agentID) || msg.IsParticipant(agentID) || r.isSubscribed(agentID, channelID) || r.isHereMentionTarget(msg, agentID)
 			if !shouldShow {
 				continue
 			}
 		} else {
-			// Reply: show if mentioned or participant in root thread
-			shouldShow := msg.HasMention(agentID) || r.isParticipantInThread(agentID, msg.ID)
+			// Reply: show if mentioned, participant in root thread,
+			// or if @here was used and agent is a fabric participant
+			shouldShow := msg.HasMention(agentID) || r.isParticipantInThread(agentID, msg.ID) || r.isHereMentionTarget(msg, agentID)
 			if !shouldShow {
 				continue
 			}
@@ -226,6 +237,20 @@ func (r *MemoryAckRepository) isSubscribed(agentID, channelID string) bool {
 		return false
 	}
 	return true
+}
+
+// isHereMentionTarget checks if the message has @here and the agent is a fabric participant.
+// @here is a broadcast mention that should be visible to all registered participants.
+func (r *MemoryAckRepository) isHereMentionTarget(msg domain.Thread, agentID string) bool {
+	if r.participantRepo == nil {
+		return false
+	}
+	if !msg.HasMention(domain.MentionHere) {
+		return false
+	}
+	// Check if agent is a registered fabric participant
+	participant, err := r.participantRepo.Get(agentID)
+	return err == nil && participant != nil
 }
 
 var _ AckRepository = (*MemoryAckRepository)(nil)

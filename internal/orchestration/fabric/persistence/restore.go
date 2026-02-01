@@ -66,6 +66,7 @@ func LoadPersistedEvents(sessionDir string) ([]PersistedEvent, error) {
 // - Dependencies (graph edges)
 // - Subscriptions
 // - Acks
+// - Participants
 //
 // Note: This creates new entities directly in repositories without triggering
 // new events, which is appropriate for restoration.
@@ -75,9 +76,10 @@ func RestoreFabricState(
 	deps repository.DependencyRepository,
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
+	participants repository.ParticipantRepository,
 ) error {
 	for _, pe := range events {
-		if err := replayEvent(pe, threads, deps, subs, acks); err != nil {
+		if err := replayEvent(pe, threads, deps, subs, acks, participants); err != nil {
 			// Log warning but continue - don't fail on one bad event
 			// This provides resilience against corrupted events
 			continue
@@ -93,6 +95,7 @@ func replayEvent(
 	deps repository.DependencyRepository,
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
+	participants repository.ParticipantRepository,
 ) error {
 	event := pe.Event
 
@@ -120,6 +123,12 @@ func replayEvent(
 
 	case fabric.EventChannelArchived:
 		return replayChannelArchived(event, threads)
+
+	case fabric.EventParticipantJoined:
+		return replayParticipantJoined(event, participants)
+
+	case fabric.EventParticipantLeft:
+		return replayParticipantLeft(event, participants)
 
 	default:
 		// Unknown event type - skip
@@ -255,6 +264,26 @@ func replayChannelArchived(event fabric.Event, threads repository.ThreadReposito
 	return nil
 }
 
+// replayParticipantJoined restores a participant from a join event.
+func replayParticipantJoined(event fabric.Event, participants repository.ParticipantRepository) error {
+	if event.Participant == nil {
+		return fmt.Errorf("participant joined event has no participant")
+	}
+
+	_, _ = participants.Join(event.Participant.AgentID, event.Participant.Role)
+	return nil
+}
+
+// replayParticipantLeft removes a participant from the registry.
+func replayParticipantLeft(event fabric.Event, participants repository.ParticipantRepository) error {
+	if event.AgentID == "" {
+		return fmt.Errorf("participant left event has no agent ID")
+	}
+
+	_ = participants.Leave(event.AgentID)
+	return nil
+}
+
 // RestoreFabricService is a convenience function that loads events from disk
 // and restores state into the provided repositories.
 // Returns the channel IDs for the fixed channels (root, system, tasks, planning, general).
@@ -264,13 +293,14 @@ func RestoreFabricService(
 	deps repository.DependencyRepository,
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
+	participants repository.ParticipantRepository,
 ) (channelIDs map[string]string, err error) {
 	events, err := LoadPersistedEvents(sessionDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading persisted events: %w", err)
 	}
 
-	if err := RestoreFabricState(events, threads, deps, subs, acks); err != nil {
+	if err := RestoreFabricState(events, threads, deps, subs, acks, participants); err != nil {
 		return nil, fmt.Errorf("restoring fabric state: %w", err)
 	}
 

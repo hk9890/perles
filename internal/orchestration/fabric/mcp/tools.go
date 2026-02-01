@@ -40,6 +40,7 @@ type PropertySchema struct {
 // FabricTools returns the MCP tool definitions for Fabric messaging.
 func FabricTools() []Tool {
 	return []Tool{
+		ToolFabricJoin,
 		ToolFabricInbox,
 		ToolFabricSend,
 		ToolFabricReply,
@@ -50,6 +51,26 @@ func FabricTools() []Tool {
 		ToolFabricHistory,
 		ToolFabricReadThread,
 	}
+}
+
+// ToolFabricJoin registers the agent as a participant in the fabric.
+var ToolFabricJoin = Tool{
+	Name:        "fabric_join",
+	Description: "Join the fabric messaging system and signal that you are ready for task assignment. Call this once when you first boot up. This registers you as a participant so you can receive @here mentions.",
+	InputSchema: &InputSchema{
+		Type:       "object",
+		Properties: map[string]*PropertySchema{},
+		Required:   []string{},
+	},
+	OutputSchema: &OutputSchema{
+		Type: "object",
+		Properties: map[string]*PropertySchema{
+			"agent_id": {Type: "string", Description: "The registered agent ID"},
+			"role":     {Type: "string", Description: "The participant role (worker, coordinator, observer)"},
+			"message":  {Type: "string", Description: "Confirmation message"},
+		},
+		Required: []string{"agent_id", "role", "message"},
+	},
 }
 
 // ToolFabricInbox gets unacked messages for the current agent grouped by channel.

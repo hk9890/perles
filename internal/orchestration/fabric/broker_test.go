@@ -753,3 +753,172 @@ func TestBroker_OtherChannels_NotificationsWork(t *testing.T) {
 	assert.Equal(t, "worker-1", sendCmd.ProcessID)
 	assert.Contains(t, sendCmd.Content, "#tasks")
 }
+
+func TestBroker_HereMention_RequiresParticipantRegistry(t *testing.T) {
+	// Test that @here does NOT work when no participant registry is configured.
+	// Agents must join via fabric_join to receive @here broadcasts.
+	subs := repository.NewMemorySubscriptionRepository()
+	submitter := &mockCommandSubmitter{}
+
+	channelID := "channel-tasks"
+	slugLookup := &mockSlugLookup{slugs: map[string]string{channelID: "tasks"}}
+
+	broker := NewBroker(BrokerConfig{
+		CmdSubmitter:  submitter,
+		Subscriptions: subs,
+		// Participants NOT set - @here should not work
+		Debounce:   10 * time.Millisecond,
+		SlugLookup: slugLookup,
+	})
+
+	// Subscribe agents with ModeNone - they should NOT get notifications
+	// (ModeAll would trigger regardless of @here, obscuring the test)
+	_, err := subs.Subscribe(channelID, "worker-1", domain.ModeNone)
+	require.NoError(t, err)
+	_, err = subs.Subscribe(channelID, "worker-2", domain.ModeNone)
+	require.NoError(t, err)
+	_, err = subs.Subscribe(channelID, "coordinator", domain.ModeNone)
+	require.NoError(t, err)
+
+	broker.Start()
+	defer broker.Stop()
+
+	// Send message with @here mention from worker-1
+	event := Event{
+		Type:      EventMessagePosted,
+		ChannelID: channelID,
+		Thread: &domain.Thread{
+			ID:        "msg-1",
+			Type:      domain.ThreadMessage,
+			CreatedBy: "worker-1",
+			Mentions:  []string{domain.MentionHere},
+		},
+		Mentions: []string{domain.MentionHere},
+	}
+	broker.HandleEvent(event)
+
+	// Wait for debounce
+	time.Sleep(50 * time.Millisecond)
+
+	cmds := submitter.getCommands()
+	// @here should NOT notify anyone when participant registry is not configured
+	// (with ModeNone subscriptions and no participant registry, no one gets notified)
+	require.Len(t, cmds, 0, "@here should not work without participant registry")
+}
+
+func TestBroker_HereMention_ObserverChannelSuppressed(t *testing.T) {
+	subs := repository.NewMemorySubscriptionRepository()
+	submitter := &mockCommandSubmitter{}
+
+	channelID := "channel-observer"
+	slugLookup := &mockSlugLookup{slugs: map[string]string{channelID: domain.SlugObserver}}
+
+	broker := NewBroker(BrokerConfig{
+		CmdSubmitter:  submitter,
+		Subscriptions: subs,
+		Debounce:      10 * time.Millisecond,
+		SlugLookup:    slugLookup,
+	})
+
+	// Subscribe coordinator and observer to the channel
+	_, err := subs.Subscribe(channelID, "COORDINATOR", domain.ModeAll)
+	require.NoError(t, err)
+	_, err = subs.Subscribe(channelID, "OBSERVER", domain.ModeAll)
+	require.NoError(t, err)
+
+	broker.Start()
+	defer broker.Stop()
+
+	// Send @here from user - should only notify OBSERVER, not coordinator
+	event := Event{
+		Type:      EventMessagePosted,
+		ChannelID: channelID,
+		Thread: &domain.Thread{
+			ID:        "msg-1",
+			Type:      domain.ThreadMessage,
+			CreatedBy: "user",
+			Mentions:  []string{domain.MentionHere},
+		},
+		Mentions: []string{domain.MentionHere},
+	}
+	broker.HandleEvent(event)
+
+	time.Sleep(50 * time.Millisecond)
+
+	cmds := submitter.getCommands()
+	require.Len(t, cmds, 1, "@here in #observer should only notify OBSERVER")
+
+	sendCmd, ok := cmds[0].(*command.SendToProcessCommand)
+	require.True(t, ok)
+	assert.Equal(t, "OBSERVER", sendCmd.ProcessID)
+}
+
+func TestBroker_HereMention_UsesParticipantRegistry(t *testing.T) {
+	subs := repository.NewMemorySubscriptionRepository()
+	participants := repository.NewMemoryParticipantRepository()
+	submitter := &mockCommandSubmitter{}
+
+	channelID := "channel-general"
+	slugLookup := &mockSlugLookup{slugs: map[string]string{channelID: "general"}}
+
+	broker := NewBroker(BrokerConfig{
+		CmdSubmitter:  submitter,
+		Subscriptions: subs,
+		Participants:  participants,
+		Debounce:      10 * time.Millisecond,
+		SlugLookup:    slugLookup,
+	})
+
+	// Subscribe agents with ModeMentions (won't get notified unless mentioned)
+	_, err := subs.Subscribe(channelID, "worker-1", domain.ModeMentions)
+	require.NoError(t, err)
+	_, err = subs.Subscribe(channelID, "worker-2", domain.ModeMentions)
+	require.NoError(t, err)
+	_, err = subs.Subscribe(channelID, "worker-3", domain.ModeMentions)
+	require.NoError(t, err)
+
+	// Only register some as participants (simulating they called fabric_join)
+	_, err = participants.Join("worker-1", domain.RoleWorker)
+	require.NoError(t, err)
+	_, err = participants.Join("worker-2", domain.RoleWorker)
+	require.NoError(t, err)
+	_, err = participants.Join("coordinator", domain.RoleCoordinator)
+	require.NoError(t, err)
+	// worker-3 is subscribed but NOT a participant (never called fabric_join)
+
+	broker.Start()
+	defer broker.Stop()
+
+	// Send @here from coordinator
+	event := Event{
+		Type:      EventMessagePosted,
+		ChannelID: channelID,
+		Thread: &domain.Thread{
+			ID:        "msg-1",
+			Type:      domain.ThreadMessage,
+			CreatedBy: "coordinator",
+			Mentions:  []string{domain.MentionHere},
+		},
+		Mentions: []string{domain.MentionHere},
+	}
+	broker.HandleEvent(event)
+
+	time.Sleep(50 * time.Millisecond)
+
+	cmds := submitter.getCommands()
+	// Should notify worker-1 and worker-2 (participants, excluding sender)
+	// worker-3 is NOT notified because they're not a participant
+	require.Len(t, cmds, 2, "@here should only notify participants")
+
+	notified := make(map[string]bool)
+	for _, cmd := range cmds {
+		sendCmd, ok := cmd.(*command.SendToProcessCommand)
+		require.True(t, ok)
+		notified[sendCmd.ProcessID] = true
+	}
+
+	assert.True(t, notified["worker-1"], "worker-1 (participant) should be notified")
+	assert.True(t, notified["worker-2"], "worker-2 (participant) should be notified")
+	assert.False(t, notified["worker-3"], "worker-3 (not participant) should NOT be notified")
+	assert.False(t, notified["coordinator"], "coordinator (sender) should NOT be notified")
+}

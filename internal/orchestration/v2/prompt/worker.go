@@ -8,7 +8,7 @@ func WorkerMCPInstructions(workerID string) string {
 	return fmt.Sprintf(`MCP server for %s - a worker agent in the Perles orchestration system.
 
 Available tools:
-- signal_ready: Signal readiness for task assignment (call once on startup)
+- fabric_join: Signal readiness for task assignment (call once on startup)
 - fabric_inbox: Check for unread messages addressed to you
 - fabric_send: Start NEW conversation in a channel (#general, #planning, #tasks, #system)
 - fabric_reply: Reply to an EXISTING message thread (use the message_id from the message you're responding to)

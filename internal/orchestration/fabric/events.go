@@ -10,14 +10,16 @@ import (
 type EventType string
 
 const (
-	EventChannelCreated  EventType = "channel.created"
-	EventChannelArchived EventType = "channel.archived"
-	EventMessagePosted   EventType = "message.posted"
-	EventReplyPosted     EventType = "reply.posted"
-	EventArtifactAdded   EventType = "artifact.added"
-	EventSubscribed      EventType = "subscribed"
-	EventUnsubscribed    EventType = "unsubscribed"
-	EventAcked           EventType = "acked"
+	EventChannelCreated    EventType = "channel.created"
+	EventChannelArchived   EventType = "channel.archived"
+	EventMessagePosted     EventType = "message.posted"
+	EventReplyPosted       EventType = "reply.posted"
+	EventArtifactAdded     EventType = "artifact.added"
+	EventSubscribed        EventType = "subscribed"
+	EventUnsubscribed      EventType = "unsubscribed"
+	EventAcked             EventType = "acked"
+	EventParticipantJoined EventType = "participant.joined"
+	EventParticipantLeft   EventType = "participant.left"
 )
 
 // Event is published when something happens in Fabric.
@@ -37,6 +39,7 @@ type Event struct {
 	// Payloads (at most one is set)
 	Thread       *domain.Thread       `json:"thread,omitempty"`
 	Subscription *domain.Subscription `json:"subscription,omitempty"`
+	Participant  *domain.Participant  `json:"participant,omitempty"`
 	Mentions     []string             `json:"mentions,omitempty"`
 	Participants []string             `json:"participants,omitempty"` // Parent thread participants for reply events
 }
@@ -129,5 +132,24 @@ func NewChannelArchivedEvent(channelID, channelSlug string) Event {
 		Timestamp:   time.Now(),
 		ChannelID:   channelID,
 		ChannelSlug: channelSlug,
+	}
+}
+
+// NewParticipantJoinedEvent creates an event for a participant joining.
+func NewParticipantJoinedEvent(participant *domain.Participant) Event {
+	return Event{
+		Type:        EventParticipantJoined,
+		Timestamp:   time.Now(),
+		AgentID:     participant.AgentID,
+		Participant: participant,
+	}
+}
+
+// NewParticipantLeftEvent creates an event for a participant leaving.
+func NewParticipantLeftEvent(agentID string) Event {
+	return Event{
+		Type:      EventParticipantLeft,
+		Timestamp: time.Now(),
+		AgentID:   agentID,
 	}
 }

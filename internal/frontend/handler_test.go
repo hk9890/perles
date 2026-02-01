@@ -533,8 +533,9 @@ func newTestFabricService(t *testing.T) *fabric.Service {
 	depRepo := repository.NewMemoryDependencyRepository()
 	subRepo := repository.NewMemorySubscriptionRepository()
 	ackRepo := repository.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
+	participantRepo := repository.NewMemoryParticipantRepository()
 
-	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 	err := svc.InitSession("coordinator")
 	require.NoError(t, err)
 	return svc

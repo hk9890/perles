@@ -428,6 +428,7 @@ func (s *defaultSupervisor) AllocateResources(ctx context.Context, inst *Workflo
 		fabricBroker = fabric.NewBroker(fabric.BrokerConfig{
 			CmdSubmitter:  infra.Core.CmdSubmitter,
 			Subscriptions: infra.Core.FabricService.SubscriptionRepository(),
+			Participants:  infra.Core.FabricService.ParticipantRepository(),
 			SlugLookup:    infra.Core.FabricService,
 		})
 
@@ -812,10 +813,10 @@ func (s *defaultSupervisor) restoreFabricState(inst *WorkflowInstance) error {
 	}
 
 	// Get repositories from FabricService
-	threads, deps, subs, acks := inst.Infrastructure.Core.FabricService.Repositories()
+	threads, deps, subs, acks, participants := inst.Infrastructure.Core.FabricService.Repositories()
 
 	// Replay events to restore state
-	if err := fabricpersist.RestoreFabricState(events, threads, deps, subs, acks); err != nil {
+	if err := fabricpersist.RestoreFabricState(events, threads, deps, subs, acks, participants); err != nil {
 		return fmt.Errorf("restoring fabric state: %w", err)
 	}
 

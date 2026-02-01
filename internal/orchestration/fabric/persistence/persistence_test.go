@@ -139,6 +139,7 @@ func TestRestoreFabricState(t *testing.T) {
 	deps := repository.NewMemoryDependencyRepository()
 	subs := repository.NewMemorySubscriptionRepository()
 	acks := repository.NewMemoryAckRepository(deps, threads, subs)
+	participants := repository.NewMemoryParticipantRepository()
 
 	// Create persisted events
 	now := time.Now()
@@ -213,7 +214,7 @@ func TestRestoreFabricState(t *testing.T) {
 	}
 
 	// Restore state
-	err := RestoreFabricState(events, threads, deps, subs, acks)
+	err := RestoreFabricState(events, threads, deps, subs, acks, participants)
 	require.NoError(t, err)
 
 	// Verify channels restored
@@ -285,8 +286,9 @@ func TestRestoreFabricService(t *testing.T) {
 	deps := repository.NewMemoryDependencyRepository()
 	subs := repository.NewMemorySubscriptionRepository()
 	acks := repository.NewMemoryAckRepository(deps, threads, subs)
+	participants := repository.NewMemoryParticipantRepository()
 
-	channelIDs, err := RestoreFabricService(tmpDir, threads, deps, subs, acks)
+	channelIDs, err := RestoreFabricService(tmpDir, threads, deps, subs, acks, participants)
 	require.NoError(t, err)
 
 	// Verify channel IDs returned

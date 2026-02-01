@@ -20,6 +20,7 @@ type Service struct {
 	dependencies  repository.DependencyRepository
 	subscriptions repository.SubscriptionRepository
 	acks          repository.AckRepository
+	participants  repository.ParticipantRepository
 
 	// Channel IDs for the fixed structure
 	rootID     string
@@ -39,12 +40,14 @@ func NewService(
 	deps repository.DependencyRepository,
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
+	participants repository.ParticipantRepository,
 ) *Service {
 	return &Service{
 		threads:       threads,
 		dependencies:  deps,
 		subscriptions: subs,
 		acks:          acks,
+		participants:  participants,
 	}
 }
 
@@ -129,6 +132,15 @@ func (s *Service) InitSession(createdBy string) error {
 		}
 	}
 
+	// Auto-register coordinator as a participant
+	// This ensures coordinator is in the participant registry for @here mentions
+	// Use s.Join() to emit the ParticipantJoinedEvent for persistence/restoration
+	if s.participants != nil {
+		if _, err := s.Join(createdBy, domain.RoleCoordinator); err != nil {
+			return fmt.Errorf("register coordinator as participant: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -178,8 +190,61 @@ func (s *Service) Repositories() (
 	deps repository.DependencyRepository,
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
+	participants repository.ParticipantRepository,
 ) {
-	return s.threads, s.dependencies, s.subscriptions, s.acks
+	return s.threads, s.dependencies, s.subscriptions, s.acks, s.participants
+}
+
+// ParticipantRepository returns the participant repository for external use (e.g., FabricBroker).
+func (s *Service) ParticipantRepository() repository.ParticipantRepository {
+	return s.participants
+}
+
+// Join registers an agent as a participant in the fabric and posts a join message to #system.
+// This is idempotent - calling Join for an already-joined agent updates their JoinedAt.
+func (s *Service) Join(agentID string, role domain.ParticipantRole) (*domain.Participant, error) {
+	if s.participants == nil {
+		return nil, fmt.Errorf("participant repository not configured")
+	}
+
+	p, err := s.participants.Join(agentID, role)
+	if err != nil {
+		return nil, fmt.Errorf("join participant: %w", err)
+	}
+
+	// Emit event for persistence/restoration
+	s.emit(NewParticipantJoinedEvent(p))
+
+	// Post join message to #system channel (best-effort, don't fail if it errors)
+	content := fmt.Sprintf("%s has joined as %s", agentID, role)
+	_, _ = s.SendMessage(SendMessageInput{
+		ChannelSlug: domain.SlugSystem,
+		Content:     content,
+		CreatedBy:   agentID,
+	})
+
+	return p, nil
+}
+
+// Leave removes an agent from the participant registry.
+func (s *Service) Leave(agentID string) error {
+	if s.participants == nil {
+		return nil
+	}
+	if err := s.participants.Leave(agentID); err != nil {
+		return err
+	}
+	// Emit event for persistence/restoration
+	s.emit(NewParticipantLeftEvent(agentID))
+	return nil
+}
+
+// ListParticipants returns all active participants in the fabric.
+func (s *Service) ListParticipants() ([]domain.Participant, error) {
+	if s.participants == nil {
+		return nil, nil
+	}
+	return s.participants.List()
 }
 
 // GetChannel returns a channel by slug.

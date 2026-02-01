@@ -60,6 +60,11 @@ type ChannelSlugLookup interface {
 	GetChannelSlug(channelID string) string
 }
 
+// ParticipantLister provides access to active fabric participants.
+type ParticipantLister interface {
+	List() ([]domain.Participant, error)
+}
+
 // Broker accumulates @mention notifications and sends consolidated nudges
 // to agents after a debounce window. It listens to Fabric events and respects
 // subscription modes (all/mentions/none).
@@ -68,6 +73,7 @@ type Broker struct {
 	clock         Clock
 	cmdSubmitter  process.CommandSubmitter
 	subscriptions repository.SubscriptionRepository
+	participants  ParticipantLister
 	slugLookup    ChannelSlugLookup
 
 	mu      sync.Mutex
@@ -95,6 +101,10 @@ type BrokerConfig struct {
 	// Required.
 	Subscriptions repository.SubscriptionRepository
 
+	// Participants provides the list of active fabric participants for @here.
+	// Optional - if nil, @here falls back to channel subscribers.
+	Participants ParticipantLister
+
 	// SlugLookup resolves channel IDs to slugs for notification messages.
 	// Optional - falls back to "channel" if nil.
 	SlugLookup ChannelSlugLookup
@@ -121,6 +131,7 @@ func NewBroker(cfg BrokerConfig) *Broker {
 		clock:         clock,
 		cmdSubmitter:  cfg.CmdSubmitter,
 		subscriptions: cfg.Subscriptions,
+		participants:  cfg.Participants,
 		slugLookup:    cfg.SlugLookup,
 		pending:       make(map[string]*pendingNudge),
 		eventCh:       make(chan Event, 100),
@@ -263,10 +274,31 @@ func (b *Broker) handleEvent(event Event) {
 		}
 	}
 
+	// Check for @here broadcast mention - notify all fabric participants
+	// @here only works when agents have joined via fabric_join
+	if containsMention(mentions, domain.MentionHere) && b.participants != nil {
+		participants, err := b.participants.List()
+		if err == nil {
+			for _, p := range participants {
+				if p.AgentID == sender {
+					continue
+				}
+				if isSuppressed && !isChannelOwner(channelSlug, p.AgentID) {
+					continue
+				}
+				b.addPending(p.AgentID, channelSlug, sender)
+			}
+		}
+	}
+
 	// Also notify anyone @mentioned who isn't subscribed (explicit mention always notifies)
 	// Skip for suppressed channels unless they're the channel owner
+	// Skip @here since it's handled above
 	for _, mentionedID := range mentions {
 		if mentionedID == sender {
+			continue
+		}
+		if mentionedID == domain.MentionHere {
 			continue
 		}
 		if isSuppressed && !isChannelOwner(channelSlug, mentionedID) {

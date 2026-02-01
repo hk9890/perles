@@ -102,16 +102,37 @@ func (m *mockMessageStore) Append(from, to, content string, msgType message.Mess
 	return &entry, nil
 }
 
-// TestWorkerServer_RegistersAllTools verifies all 4 worker tools are registered.
+// TestWorkerServer_RegistersAllTools verifies all worker tools are registered.
+// Note: fabric_join and other fabric tools are registered via SetFabricService.
 func TestWorkerServer_RegistersAllTools(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1")
 
-	expectedTools := []string{
-		"signal_ready",
+	// Set up fabric service to register fabric tools (including fabric_join)
+	fabricService := createTestFabricServiceForWorkerTest(t)
+	ws.SetFabricService(fabricService)
+
+	// Worker-specific tools
+	workerTools := []string{
 		"report_implementation_complete",
 		"report_review_verdict",
 		"post_accountability_summary",
 	}
+
+	// Fabric tools (registered via SetFabricService)
+	fabricTools := []string{
+		"fabric_join",
+		"fabric_inbox",
+		"fabric_send",
+		"fabric_reply",
+		"fabric_ack",
+		"fabric_subscribe",
+		"fabric_unsubscribe",
+		"fabric_attach",
+		"fabric_history",
+		"fabric_read_thread",
+	}
+
+	expectedTools := append(workerTools, fabricTools...)
 
 	for _, toolName := range expectedTools {
 		_, ok := ws.tools[toolName]
@@ -121,6 +142,25 @@ func TestWorkerServer_RegistersAllTools(t *testing.T) {
 	}
 
 	require.Equal(t, len(expectedTools), len(ws.tools), "Tool count mismatch")
+}
+
+// createTestFabricServiceForWorkerTest creates a minimal fabric service for testing.
+func createTestFabricServiceForWorkerTest(t *testing.T) *fabric.Service {
+	t.Helper()
+
+	threads := fabricrepo.NewMemoryThreadRepository()
+	deps := fabricrepo.NewMemoryDependencyRepository()
+	subs := fabricrepo.NewMemorySubscriptionRepository()
+	acks := fabricrepo.NewMemoryAckRepository(deps, threads, subs)
+	participants := fabricrepo.NewMemoryParticipantRepository()
+
+	svc := fabric.NewService(threads, deps, subs, acks, participants)
+
+	// Initialize session to create channels
+	err := svc.InitSession("coordinator")
+	require.NoError(t, err, "Failed to initialize fabric session")
+
+	return svc
 }
 
 // TestWorkerServer_ToolSchemas verifies tool schemas are valid.
@@ -158,36 +198,39 @@ func TestWorkerServer_DifferentWorkerIDs(t *testing.T) {
 	require.Equal(t, "WORKER.2", ws2.workerID, "Worker 2 ID mismatch")
 }
 
-// TestWorkerServer_SignalReadyValidation tests signal_ready with v2 adapter.
-// In v2 architecture, signal_ready posts to the v2 adapter's message log (if configured).
-func TestWorkerServer_SignalReadyValidation(t *testing.T) {
+// TestWorkerServer_FabricJoinValidation tests fabric_join with v2 adapter.
+// In v2 architecture, fabric_join posts to the v2 adapter's message log (if configured).
+func TestWorkerServer_FabricJoinValidation(t *testing.T) {
 	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
-	handler := tws.handlers["signal_ready"]
+	handler := tws.handlers["fabric_join"]
 
-	// signal_ready always returns success
+	// fabric_join always returns success
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
-	require.NoError(t, err, "signal_ready should not error")
-	require.Contains(t, result.Content[0].Text, "ready signal acknowledged", "Result should confirm signal")
+	require.NoError(t, err, "fabric_join should not error")
+	require.Contains(t, result.Content[0].Text, "joined fabric as worker", "Result should confirm join")
 }
 
-// TestWorkerServer_SignalReadyHappyPath tests successful ready signaling with v2.
-// In v2 architecture, signal_ready posts via Fabric, not the worker's message store.
-func TestWorkerServer_SignalReadyHappyPath(t *testing.T) {
+// TestWorkerServer_FabricJoinHappyPath tests successful ready signaling with v2.
+// In v2 architecture, fabric_join posts via Fabric, not the worker's message store.
+func TestWorkerServer_FabricJoinHappyPath(t *testing.T) {
 	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
-	handler := tws.handlers["signal_ready"]
+	handler := tws.handlers["fabric_join"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
 
 	// Verify success result
-	require.Contains(t, result.Content[0].Text, "ready signal acknowledged", "Result should confirm signal")
+	require.Contains(t, result.Content[0].Text, "joined fabric as worker", "Result should confirm join")
 }
 
 // TestWorkerServer_ToolDescriptionsAreHelpful verifies tool descriptions are informative.
 func TestWorkerServer_ToolDescriptionsAreHelpful(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1")
+	// Set up fabric service to register fabric tools
+	fabricService := createTestFabricServiceForWorkerTest(t)
+	ws.SetFabricService(fabricService)
 
 	tests := []struct {
 		toolName      string
@@ -195,7 +238,7 @@ func TestWorkerServer_ToolDescriptionsAreHelpful(t *testing.T) {
 		descMinLength int
 	}{
 		{
-			toolName:      "signal_ready",
+			toolName:      "fabric_join",
 			mustContain:   []string{"ready", "task", "assignment"},
 			descMinLength: 30,
 		},
@@ -221,21 +264,24 @@ func TestWorkerServer_InstructionsContainToolNames(t *testing.T) {
 	instructions := strings.ToLower(ws.instructions)
 
 	// Phase 3 Fabric migration: instructions now reference fabric_* tools instead of legacy tools
-	toolNames := []string{"fabric_inbox", "fabric_send", "fabric_reply", "signal_ready"}
+	toolNames := []string{"fabric_inbox", "fabric_send", "fabric_reply", "fabric_join"}
 	for _, name := range toolNames {
 		require.Contains(t, instructions, name, "Instructions should mention %q", name)
 	}
 }
 
-// TestWorkerServer_SignalReadySchema verifies signal_ready tool schema.
-func TestWorkerServer_SignalReadySchema(t *testing.T) {
+// TestWorkerServer_FabricJoinSchema verifies fabric_join tool schema.
+func TestWorkerServer_FabricJoinSchema(t *testing.T) {
 	ws := NewWorkerServer("WORKER.1")
+	// Set up fabric service to register fabric tools
+	fabricService := createTestFabricServiceForWorkerTest(t)
+	ws.SetFabricService(fabricService)
 
-	tool, ok := ws.tools["signal_ready"]
-	require.True(t, ok, "signal_ready tool not registered")
+	tool, ok := ws.tools["fabric_join"]
+	require.True(t, ok, "fabric_join tool not registered")
 
-	require.Empty(t, tool.InputSchema.Required, "signal_ready should have 0 required parameters")
-	require.Empty(t, tool.InputSchema.Properties, "signal_ready should have 0 properties")
+	require.Empty(t, tool.InputSchema.Required, "fabric_join should have 0 required parameters")
+	require.Empty(t, tool.InputSchema.Properties, "fabric_join should have 0 properties")
 }
 
 // TestWorkerServer_ReportImplementationComplete_SubmitsCommand tests command submission in v2.
@@ -1207,14 +1253,14 @@ func TestWorkerServer_SetTurnEnforcer(t *testing.T) {
 	require.NotNil(t, ws.enforcer, "enforcer should be set")
 }
 
-// TestWorkerServer_SignalReady_RecordsToolCall tests that signal_ready records tool call.
-func TestWorkerServer_SignalReady_RecordsToolCall(t *testing.T) {
+// TestWorkerServer_FabricJoin_RecordsToolCall tests that fabric_join records tool call.
+func TestWorkerServer_FabricJoin_RecordsToolCall(t *testing.T) {
 	recorder := newMockToolCallRecorder()
 
 	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	tws.SetTurnEnforcer(recorder)
-	handler := tws.handlers["signal_ready"]
+	handler := tws.handlers["fabric_join"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Unexpected error")
@@ -1224,15 +1270,15 @@ func TestWorkerServer_SignalReady_RecordsToolCall(t *testing.T) {
 	calls := recorder.GetCalls()
 	require.Len(t, calls, 1, "Expected 1 recorder call")
 	require.Equal(t, "WORKER.1", calls[0].ProcessID, "Expected worker ID")
-	require.Equal(t, "signal_ready", calls[0].ToolName, "Expected tool name 'signal_ready'")
+	require.Equal(t, "fabric_join", calls[0].ToolName, "Expected tool name 'fabric_join'")
 }
 
-// TestWorkerServer_SignalReady_NilEnforcer tests that signal_ready works when enforcer is nil.
-func TestWorkerServer_SignalReady_NilEnforcer(t *testing.T) {
+// TestWorkerServer_FabricJoin_NilEnforcer tests that fabric_join works when enforcer is nil.
+func TestWorkerServer_FabricJoin_NilEnforcer(t *testing.T) {
 	tws := NewTestWorkerServer(t, "WORKER.1")
 	defer tws.Close()
 	// Don't set enforcer - leave it nil
-	handler := tws.handlers["signal_ready"]
+	handler := tws.handlers["fabric_join"]
 
 	result, err := handler(context.Background(), json.RawMessage(`{}`))
 	require.NoError(t, err, "Should not panic with nil enforcer")
@@ -1371,7 +1417,8 @@ func newTestFabricService() *fabric.Service {
 	depRepo := fabricrepo.NewMemoryDependencyRepository()
 	subRepo := fabricrepo.NewMemorySubscriptionRepository()
 	ackRepo := fabricrepo.NewMemoryAckRepository(depRepo, threadRepo, subRepo)
-	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo)
+	participantRepo := fabricrepo.NewMemoryParticipantRepository()
+	svc := fabric.NewService(threadRepo, depRepo, subRepo, ackRepo, participantRepo)
 	// Initialize session to create channels
 	_ = svc.InitSession("coordinator")
 	return svc

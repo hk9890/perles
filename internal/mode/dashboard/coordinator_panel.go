@@ -629,7 +629,9 @@ func (p *CoordinatorPanel) IsThreadPickerActive() bool {
 
 // updateMentionProcesses updates the list of mentionable processes.
 func (p *CoordinatorPanel) updateMentionProcesses() {
-	processes := make([]mention.Process, 0, 2+len(p.workerIDs))
+	processes := make([]mention.Process, 0, 3+len(p.workerIDs))
+	// @here broadcasts to all fabric participants
+	processes = append(processes, mention.Process{ID: "here", Role: "Broadcast"})
 	// Always include coordinator
 	processes = append(processes, mention.Process{ID: repository.CoordinatorID, Role: "Coordinator"})
 	// Include observer if enabled
