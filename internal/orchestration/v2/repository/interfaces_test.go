@@ -379,3 +379,36 @@ func TestRoleObserver_Alias(t *testing.T) {
 	// Verify RoleObserver alias works correctly
 	assert.Equal(t, "observer", string(RoleObserver))
 }
+
+// ===========================================================================
+// Process.IsObserver() Tests
+// ===========================================================================
+
+func TestIsObserver_ReturnsTrue_ForObserverRole(t *testing.T) {
+	proc := &Process{
+		ID:   ObserverID,
+		Role: RoleObserver,
+	}
+
+	assert.True(t, proc.IsObserver())
+}
+
+func TestIsObserver_ReturnsFalse_ForOtherRoles(t *testing.T) {
+	tests := []struct {
+		name string
+		role ProcessRole
+	}{
+		{"Coordinator", RoleCoordinator},
+		{"Worker", RoleWorker},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proc := &Process{
+				ID:   "test-process",
+				Role: tt.role,
+			}
+			assert.False(t, proc.IsObserver())
+		})
+	}
+}

@@ -115,6 +115,11 @@ func (p *Process) IsWorker() bool {
 	return p.Role == RoleWorker
 }
 
+// IsObserver returns true if this is the observer process.
+func (p *Process) IsObserver() bool {
+	return p.Role == RoleObserver
+}
+
 // IsActive returns true if the process can receive messages.
 // Only Ready and Working processes are active.
 func (p *Process) IsActive() bool {

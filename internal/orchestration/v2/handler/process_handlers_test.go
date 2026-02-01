@@ -1186,6 +1186,133 @@ func TestProcessTurnCompleteHandler_WorkerContextExceeded_StillWorks(t *testing.
 }
 
 // ===========================================================================
+// ProcessTurnCompleteHandler Observer Context Exhaustion Tests
+// ===========================================================================
+
+func TestProcessTurnCompleteHandler_ObserverContextExceeded_EmitsAutoRefreshEvent(t *testing.T) {
+	// Tests that ProcessAutoRefreshRequired event is emitted for observer
+	processRepo, queueRepo := setupProcessRepos()
+
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+
+	// Verify ProcessAutoRefreshRequired event was emitted
+	require.NotEmpty(t, result.Events)
+	foundAutoRefresh := false
+	for _, evt := range result.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessAutoRefreshRequired {
+			foundAutoRefresh = true
+			assert.Equal(t, repository.ObserverID, pe.ProcessID)
+			assert.Equal(t, events.RoleObserver, pe.Role)
+			assert.Equal(t, events.ProcessStatusFailed, pe.Status)
+		}
+	}
+	assert.True(t, foundAutoRefresh, "ProcessAutoRefreshRequired event should be emitted")
+}
+
+func TestProcessTurnCompleteHandler_ObserverContextExceeded_ReturnsReplaceCommandAsFollowUp(t *testing.T) {
+	// Tests that ReplaceProcessCommand is returned as follow-up command for observer
+	processRepo, queueRepo := setupProcessRepos()
+
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify ReplaceProcessCommand is returned as follow-up command
+	require.Len(t, result.FollowUp, 1, "should have one follow-up command")
+	replaceCmd, ok := result.FollowUp[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "should be ReplaceProcessCommand")
+	assert.Equal(t, repository.ObserverID, replaceCmd.ProcessID)
+	assert.Equal(t, "context_exceeded_auto_refresh", replaceCmd.Reason)
+}
+
+func TestProcessTurnCompleteHandler_ObserverContextExceeded_PropagatesTraceID(t *testing.T) {
+	// Tests that TraceID is propagated to ReplaceProcessCommand for observer
+	processRepo, queueRepo := setupProcessRepos()
+
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+	cmd.SetTraceID("trace-observer-123")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+
+	// Verify TraceID is propagated to replace command
+	require.Len(t, result.FollowUp, 1)
+	replaceCmd := result.FollowUp[0].(*command.ReplaceProcessCommand)
+	assert.Equal(t, "trace-observer-123", replaceCmd.TraceID())
+}
+
+func TestProcessTurnCompleteHandler_ObserverContextExceeded_MarksStatusFailed(t *testing.T) {
+	// Tests that observer is marked as StatusFailed on context exhaustion
+	processRepo, queueRepo := setupProcessRepos()
+
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	h := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+
+	contextErr := &process.ContextExceededError{}
+	cmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify observer is marked as Failed
+	turnResult := result.Data.(*handler.ProcessTurnCompleteResult)
+	assert.Equal(t, repository.StatusFailed, turnResult.NewStatus)
+	assert.False(t, turnResult.QueuedDelivery, "should not queue delivery for observer")
+	assert.False(t, turnResult.WasNoOp, "should not be no-op")
+
+	// Verify observer in repo is updated
+	savedObserver, err := processRepo.Get(repository.ObserverID)
+	require.NoError(t, err)
+	assert.Equal(t, repository.StatusFailed, savedObserver.Status)
+}
+
+// ===========================================================================
 // ProcessTurnCompleteHandler Turn Enforcement Tests
 // ===========================================================================
 
@@ -2995,6 +3122,69 @@ func TestReplaceProcessHandler_WorkflowProviderError_UsesStandardPrompt(t *testi
 	assert.Equal(t, expectedPrompt, call.InitialPromptOverride)
 }
 
+// ===========================================================================
+// SessionDirProvider Option Tests
+// ===========================================================================
+
+// mockSessionDirProvider is a mock implementation of SessionDirProvider for testing.
+type mockSessionDirProvider struct {
+	sessionDir string
+}
+
+func (m *mockSessionDirProvider) GetSessionDir() string {
+	return m.sessionDir
+}
+
+func TestWithSessionDirProvider_SetsProvider(t *testing.T) {
+	// Test: verify option sets the provider on handler
+	processRepo, _ := setupProcessRepos()
+
+	provider := &mockSessionDirProvider{sessionDir: "/test/session/dir"}
+
+	h := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithSessionDirProvider(provider),
+	)
+
+	// The handler should have the provider set.
+	// We can verify this indirectly since the field is unexported,
+	// but since the option pattern is simple and there's no side-effect
+	// we can only test that it doesn't panic and the handler is usable.
+	assert.NotNil(t, h)
+}
+
+func TestWithSessionDirProvider_Nil_NoError(t *testing.T) {
+	// Test: verify nil provider doesn't cause panic
+	processRepo, _ := setupProcessRepos()
+
+	// Passing nil should not panic
+	h := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithSessionDirProvider(nil),
+	)
+
+	// Handler should be created successfully
+	assert.NotNil(t, h)
+
+	// Handler should still be usable for non-observer operations
+	coord := &repository.Process{
+		ID:     repository.CoordinatorID,
+		Role:   repository.RoleCoordinator,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(coord)
+
+	spawner := &mockProcessSpawner{}
+	h = handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		handler.WithSessionDirProvider(nil),
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.CoordinatorID, "user_requested")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+}
+
 // statusCapturingSpawner captures the process status during spawn for testing
 type statusCapturingSpawner struct {
 	processRepo    *repository.MemoryProcessRepository
@@ -3018,6 +3208,370 @@ type mockProcessSpawnerWithProcess struct {
 
 func (m *mockProcessSpawnerWithProcess) SpawnProcess(ctx context.Context, id string, role repository.ProcessRole, opts handler.SpawnOptions) (*process.Process, error) {
 	return m.returnProcess, nil
+}
+
+// ===========================================================================
+// ReplaceProcessHandler Observer Tests
+// ===========================================================================
+
+func TestReplaceObserver_SpawnBeforeRetirePattern(t *testing.T) {
+	// Test: verify spawn happens before old observer is stopped
+	// We verify this by using a spawner that captures the observer status when called
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+
+	var statusDuringSpawn repository.ProcessStatus
+
+	// Custom spawner that captures status during spawn
+	customSpawner := &statusCapturingSpawner{
+		processRepo:    processRepo,
+		processID:      repository.ObserverID,
+		capturedStatus: &statusDuringSpawn,
+	}
+
+	obs := &repository.Process{
+		ID:     repository.ObserverID,
+		Role:   repository.RoleObserver,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(obs)
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry,
+		handler.WithReplaceSpawner(customSpawner),
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.ObserverID, "context_exceeded_auto_refresh")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify StatusRetiring was set when spawn was called (spawn-before-retire pattern)
+	assert.Equal(t, repository.StatusRetiring, statusDuringSpawn)
+
+	// Verify new observer is Ready
+	newObs, _ := processRepo.Get(repository.ObserverID)
+	assert.Equal(t, repository.StatusReady, newObs.Status)
+
+	// Verify events emitted
+	require.Len(t, result.Events, 2)
+	retiredEvent := result.Events[0].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessStatusChange, retiredEvent.Type)
+	assert.Equal(t, events.ProcessStatusRetired, retiredEvent.Status)
+	assert.Equal(t, events.RoleObserver, retiredEvent.Role)
+
+	spawnedEvent := result.Events[1].(events.ProcessEvent)
+	assert.Equal(t, events.ProcessSpawned, spawnedEvent.Type)
+	assert.Equal(t, events.RoleObserver, spawnedEvent.Role)
+}
+
+func TestReplaceObserver_RestoresOldOnSpawnFailure(t *testing.T) {
+	// Test: verify old observer is restored to Ready if spawn fails
+	// This is the critical safety test: spawn fails, old observer recovers
+	processRepo, _ := setupProcessRepos()
+	registry := process.NewProcessRegistry()
+	spawner := &mockProcessSpawner{
+		spawnErr: errors.New("spawn failed"),
+	}
+
+	obs := &repository.Process{
+		ID:     repository.ObserverID,
+		Role:   repository.RoleObserver,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(obs)
+
+	h := handler.NewReplaceProcessHandler(processRepo, registry,
+		handler.WithReplaceSpawner(spawner),
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.ObserverID, "context_exceeded")
+	result, err := h.Handle(context.Background(), cmd)
+
+	// Should return error
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "failed to spawn new observer")
+
+	// Critical: Old observer should be restored to StatusReady
+	restoredObs, _ := processRepo.Get(repository.ObserverID)
+	assert.Equal(t, repository.StatusReady, restoredObs.Status)
+}
+
+func TestReplaceObserver_UsesResumePrompt(t *testing.T) {
+	// Test: verify resume prompt is passed to spawner with session directory
+	processRepo, _ := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+	sessionDirProvider := &mockSessionDirProvider{sessionDir: "/test/sessions/workflow-123"}
+
+	obs := &repository.Process{
+		ID:     repository.ObserverID,
+		Role:   repository.RoleObserver,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(obs)
+
+	h := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		handler.WithSessionDirProvider(sessionDirProvider),
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.ObserverID, "context_exceeded_auto_refresh")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify spawner was called with observer role
+	require.Len(t, spawner.spawnCalls, 1)
+	assert.Equal(t, repository.ObserverID, spawner.spawnCalls[0].ID)
+	assert.Equal(t, repository.RoleObserver, spawner.spawnCalls[0].Role)
+
+	// Verify the resume prompt was passed and contains the session directory
+	assert.NotEmpty(t, spawner.spawnCalls[0].InitialPromptOverride)
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "/test/sessions/workflow-123")
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "OBSERVER CONTEXT REFRESH")
+}
+
+func TestReplaceObserver_FallbackPrompt_WhenNoSessionDir(t *testing.T) {
+	// Test: verify fallback when sessionDirProvider is nil or returns empty
+	processRepo, _ := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+
+	obs := &repository.Process{
+		ID:     repository.ObserverID,
+		Role:   repository.RoleObserver,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(obs)
+
+	// Test with nil sessionDirProvider
+	h := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		// No session dir provider
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.ObserverID, "context_exceeded_auto_refresh")
+	result, err := h.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// Verify spawner was called
+	require.Len(t, spawner.spawnCalls, 1)
+
+	// Verify the resume prompt was still passed (fallback prompt)
+	assert.NotEmpty(t, spawner.spawnCalls[0].InitialPromptOverride)
+	// The prompt should still contain the recovery instructions
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "OBSERVER CONTEXT REFRESH")
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "fabric_history")
+}
+
+// ===========================================================================
+// Observer Replacement Integration Tests
+// ===========================================================================
+// These tests verify end-to-end Observer replacement flow from context exhaustion
+// detection through new observer spawning with resume prompt.
+
+func TestObserverReplacement_EndToEnd(t *testing.T) {
+	// Integration test: Full flow from context exhaustion to new observer
+	// This tests the complete chain:
+	// 1. ProcessTurnCompleteHandler detects context exhaustion
+	// 2. Creates ReplaceProcessCommand as follow-up
+	// 3. ReplaceProcessHandler spawns new observer with resume prompt
+	// 4. Old observer marked Retired, new observer Ready
+
+	// Setup repositories
+	processRepo, queueRepo := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+	sessionDirProvider := &mockSessionDirProvider{sessionDir: "/test/sessions/workflow-e2e"}
+
+	// Create observer in Working status (about to complete turn with error)
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	// Step 1: Process turn complete with context exhaustion
+	turnCompleteHandler := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+	contextErr := &process.ContextExceededError{}
+	turnCmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+
+	turnResult, err := turnCompleteHandler.Handle(context.Background(), turnCmd)
+	require.NoError(t, err)
+	require.True(t, turnResult.Success)
+
+	// Verify turn complete handler created a ReplaceProcessCommand
+	require.Len(t, turnResult.FollowUp, 1, "should have ReplaceProcessCommand as follow-up")
+	replaceCmd, ok := turnResult.FollowUp[0].(*command.ReplaceProcessCommand)
+	require.True(t, ok, "follow-up should be ReplaceProcessCommand")
+	assert.Equal(t, repository.ObserverID, replaceCmd.ProcessID)
+	assert.Equal(t, "context_exceeded_auto_refresh", replaceCmd.Reason)
+
+	// Verify observer is now Failed (intermediate state)
+	failedObs, err := processRepo.Get(repository.ObserverID)
+	require.NoError(t, err)
+	assert.Equal(t, repository.StatusFailed, failedObs.Status)
+
+	// Step 2: Execute the ReplaceProcessCommand
+	replaceHandler := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		handler.WithSessionDirProvider(sessionDirProvider),
+	)
+
+	replaceResult, err := replaceHandler.Handle(context.Background(), replaceCmd)
+	require.NoError(t, err)
+	require.True(t, replaceResult.Success)
+
+	// Verify new observer was spawned with correct parameters
+	require.Len(t, spawner.spawnCalls, 1)
+	assert.Equal(t, repository.ObserverID, spawner.spawnCalls[0].ID)
+	assert.Equal(t, repository.RoleObserver, spawner.spawnCalls[0].Role)
+
+	// Verify resume prompt was passed (not idle prompt)
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "OBSERVER CONTEXT REFRESH")
+	assert.Contains(t, spawner.spawnCalls[0].InitialPromptOverride, "/test/sessions/workflow-e2e")
+
+	// Verify result data
+	resultData := replaceResult.Data.(*handler.ReplaceProcessResult)
+	assert.Equal(t, repository.ObserverID, resultData.OldProcessID)
+	assert.Equal(t, repository.ObserverID, resultData.NewProcessID)
+	assert.Equal(t, repository.RoleObserver, resultData.Role)
+
+	// Verify new observer is Ready
+	newObs, err := processRepo.Get(repository.ObserverID)
+	require.NoError(t, err)
+	assert.Equal(t, repository.StatusReady, newObs.Status)
+}
+
+func TestObserverReplacement_EventSequence(t *testing.T) {
+	// Integration test: Verify events are emitted in correct order
+	// Expected sequence:
+	// 1. ProcessAutoRefreshRequired (from turn complete - for TUI notification)
+	// 2. ProcessStatusChange (old observer → Retired)
+	// 3. ProcessSpawned (new observer)
+
+	// Setup repositories
+	processRepo, queueRepo := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+	sessionDirProvider := &mockSessionDirProvider{sessionDir: "/test/sessions/events"}
+
+	observer := &repository.Process{
+		ID:               repository.ObserverID,
+		Role:             repository.RoleObserver,
+		Status:           repository.StatusWorking,
+		HasCompletedTurn: true,
+	}
+	processRepo.AddProcess(observer)
+
+	// Phase 1: Turn complete - should emit ProcessAutoRefreshRequired
+	turnCompleteHandler := handler.NewProcessTurnCompleteHandler(processRepo, queueRepo)
+	contextErr := &process.ContextExceededError{}
+	turnCmd := command.NewProcessTurnCompleteCommand(repository.ObserverID, false, nil, contextErr)
+
+	turnResult, err := turnCompleteHandler.Handle(context.Background(), turnCmd)
+	require.NoError(t, err)
+
+	// Verify ProcessAutoRefreshRequired was emitted
+	require.NotEmpty(t, turnResult.Events)
+	var foundAutoRefresh bool
+	for _, evt := range turnResult.Events {
+		if pe, ok := evt.(events.ProcessEvent); ok && pe.Type == events.ProcessAutoRefreshRequired {
+			foundAutoRefresh = true
+			assert.Equal(t, repository.ObserverID, pe.ProcessID)
+			assert.Equal(t, events.RoleObserver, pe.Role)
+			assert.Equal(t, events.ProcessStatusFailed, pe.Status)
+		}
+	}
+	assert.True(t, foundAutoRefresh, "ProcessAutoRefreshRequired event should be emitted")
+
+	// Phase 2: Execute replace command - should emit status change and spawned events
+	replaceCmd := turnResult.FollowUp[0].(*command.ReplaceProcessCommand)
+	replaceHandler := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		handler.WithSessionDirProvider(sessionDirProvider),
+	)
+
+	replaceResult, err := replaceHandler.Handle(context.Background(), replaceCmd)
+	require.NoError(t, err)
+
+	// Verify replace handler emitted 2 events in correct order
+	require.Len(t, replaceResult.Events, 2, "should have 2 events from replace handler")
+
+	// Event 1: ProcessStatusChange (old observer retired)
+	retiredEvent, ok := replaceResult.Events[0].(events.ProcessEvent)
+	require.True(t, ok, "first event should be ProcessEvent")
+	assert.Equal(t, events.ProcessStatusChange, retiredEvent.Type)
+	assert.Equal(t, events.ProcessStatusRetired, retiredEvent.Status)
+	assert.Equal(t, events.RoleObserver, retiredEvent.Role)
+
+	// Event 2: ProcessSpawned (new observer)
+	spawnedEvent, ok := replaceResult.Events[1].(events.ProcessEvent)
+	require.True(t, ok, "second event should be ProcessEvent")
+	assert.Equal(t, events.ProcessSpawned, spawnedEvent.Type)
+	assert.Equal(t, repository.ObserverID, spawnedEvent.ProcessID)
+	assert.Equal(t, events.RoleObserver, spawnedEvent.Role)
+}
+
+func TestObserverReplacement_NotesFilePreserved(t *testing.T) {
+	// Integration test: Verify resume prompt instructs NOT to recreate notes file
+	// The Observer's accumulated context is in notes file - it must NOT be recreated.
+	// Resume prompt should:
+	// - Reference the existing notes file path
+	// - Instruct reading (not creating) the notes file
+	// - NOT contain "Create your session notes file"
+
+	processRepo, _ := setupProcessRepos()
+	spawner := &mockProcessSpawner{}
+	sessionDir := "/test/sessions/workflow-notes"
+	sessionDirProvider := &mockSessionDirProvider{sessionDir: sessionDir}
+
+	observer := &repository.Process{
+		ID:     repository.ObserverID,
+		Role:   repository.RoleObserver,
+		Status: repository.StatusReady,
+	}
+	processRepo.AddProcess(observer)
+
+	replaceHandler := handler.NewReplaceProcessHandler(processRepo, nil,
+		handler.WithReplaceSpawner(spawner),
+		handler.WithSessionDirProvider(sessionDirProvider),
+	)
+
+	cmd := command.NewReplaceProcessCommand(command.SourceInternal, repository.ObserverID, "context_exceeded_auto_refresh")
+	result, err := replaceHandler.Handle(context.Background(), cmd)
+
+	require.NoError(t, err)
+	require.True(t, result.Success)
+	require.Len(t, spawner.spawnCalls, 1)
+
+	resumePrompt := spawner.spawnCalls[0].InitialPromptOverride
+
+	// Verify notes file path is included in resume prompt
+	expectedNotesPath := sessionDir + "/observer/observer_notes.md"
+	assert.Contains(t, resumePrompt, expectedNotesPath,
+		"resume prompt should contain the full notes file path")
+
+	// Verify prompt instructs reading the existing notes file
+	assert.Contains(t, resumePrompt, "Read your observer notes",
+		"resume prompt should instruct reading notes")
+
+	// Verify prompt does NOT instruct creating a new notes file
+	assert.NotContains(t, resumePrompt, "Create your session notes file",
+		"resume prompt should NOT instruct creating notes file")
+
+	// Verify prompt does NOT instruct re-attaching (one-time on startup)
+	assert.NotContains(t, resumePrompt, "Attach the notes file",
+		"resume prompt should NOT instruct re-attaching notes file")
+
+	// Verify prompt contains DO NOT instructions for file preservation
+	assert.Contains(t, resumePrompt, "Do NOT",
+		"resume prompt should have explicit DO NOT instructions")
+	assert.Contains(t, resumePrompt, "Create a new notes file",
+		"resume prompt should explicitly say don't create new notes file")
 }
 
 // ===========================================================================

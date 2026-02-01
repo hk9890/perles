@@ -20,6 +20,7 @@ import (
 	"github.com/zjrosen/perles/internal/orchestration/v2/command"
 	"github.com/zjrosen/perles/internal/orchestration/v2/process"
 	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
+	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
 	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
 	"github.com/zjrosen/perles/internal/orchestration/workflow"
 	"github.com/zjrosen/perles/internal/sound"
@@ -570,6 +571,54 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			replaceCmd := command.NewReplaceProcessCommand(
 				command.SourceInternal,
 				repository.CoordinatorID,
+				"context_exceeded_auto_refresh",
+			)
+			if turnCmd.TraceID() != "" {
+				replaceCmd.SetTraceID(turnCmd.TraceID())
+			}
+
+			result := &ProcessTurnCompleteResult{
+				ProcessID:      proc.ID,
+				NewStatus:      repository.StatusFailed,
+				QueuedDelivery: false,
+				WasNoOp:        false,
+			}
+
+			return SuccessWithEventsAndFollowUp(result, []any{autoRefreshEvent}, []command.Command{replaceCmd}), nil
+		}
+	}
+
+	// ===========================================================================
+	// Observer Context Exceeded Error Handling
+	// ===========================================================================
+	// When the observer's context window is exhausted, we automatically trigger
+	// replacement. This enables uninterrupted monitoring sessions.
+	if turnCmd.Error != nil && proc.Role == repository.RoleObserver {
+		var contextExceededError *process.ContextExceededError
+		if errors.As(turnCmd.Error, &contextExceededError) {
+			// Mark observer as Failed
+			proc.Status = repository.StatusFailed
+			proc.LastActivityAt = time.Now()
+
+			if err := h.processRepo.Save(proc); err != nil {
+				return nil, fmt.Errorf("failed to save observer: %w", err)
+			}
+
+			// Play sound to alert user
+			h.soundService.Play("deny", "observer_out_of_context")
+
+			// Emit ProcessAutoRefreshRequired event for TUI notification
+			autoRefreshEvent := events.ProcessEvent{
+				Type:      events.ProcessAutoRefreshRequired,
+				ProcessID: proc.ID,
+				Role:      proc.Role, // RoleObserver - allows TUI to differentiate if needed
+				Status:    events.ProcessStatusFailed,
+			}
+
+			// Create ReplaceProcessCommand to trigger automatic observer replacement
+			replaceCmd := command.NewReplaceProcessCommand(
+				command.SourceInternal,
+				repository.ObserverID,
 				"context_exceeded_auto_refresh",
 			)
 			if turnCmd.TraceID() != "" {
@@ -1229,6 +1278,13 @@ type WorkflowStateProvider interface {
 	GetActiveWorkflowState() (*workflow.WorkflowState, error)
 }
 
+// SessionDirProvider provides the session directory path.
+// Implementations must be thread-safe.
+type SessionDirProvider interface {
+	// GetSessionDir returns the session directory path.
+	GetSessionDir() string
+}
+
 // ReplaceProcessHandler handles CmdReplaceProcess commands.
 // This is one of the two handlers with role-specific branching:
 // - Coordinator: context window refresh with handoff prompt
@@ -1238,6 +1294,7 @@ type ReplaceProcessHandler struct {
 	registry              *process.ProcessRegistry
 	spawner               UnifiedProcessSpawner
 	workflowStateProvider WorkflowStateProvider
+	sessionDirProvider    SessionDirProvider
 }
 
 // ReplaceProcessHandlerOption configures ReplaceProcessHandler.
@@ -1257,6 +1314,14 @@ func WithReplaceSpawner(spawner UnifiedProcessSpawner) ReplaceProcessHandlerOpti
 func WithWorkflowStateProvider(provider WorkflowStateProvider) ReplaceProcessHandlerOption {
 	return func(h *ReplaceProcessHandler) {
 		h.workflowStateProvider = provider
+	}
+}
+
+// WithSessionDirProvider sets the session directory provider for the handler.
+// This is required for Observer replacement to build the resume prompt.
+func WithSessionDirProvider(p SessionDirProvider) ReplaceProcessHandlerOption {
+	return func(h *ReplaceProcessHandler) {
+		h.sessionDirProvider = p
 	}
 }
 
@@ -1292,6 +1357,9 @@ func (h *ReplaceProcessHandler) Handle(ctx context.Context, cmd command.Command)
 
 	if proc.IsCoordinator() {
 		return h.replaceCoordinator(ctx, proc)
+	}
+	if proc.IsObserver() {
+		return h.replaceObserver(ctx, proc)
 	}
 	return h.replaceWorker(ctx, proc, replaceCmd.Reason)
 }
@@ -1404,6 +1472,136 @@ func (h *ReplaceProcessHandler) replaceCoordinator(ctx context.Context, proc *re
 		OldProcessID: proc.ID,
 		NewProcessID: repository.CoordinatorID,
 		Role:         repository.RoleCoordinator,
+	}
+
+	return SuccessWithEvents(result, resultEvents...), nil
+}
+
+// replaceObserver handles Observer replacement following spawn-before-retire pattern.
+// This ensures reliability: if spawn fails, the old observer is restored.
+//
+// Unlike coordinators which have workflow state to preserve, and workers which are stateless,
+// the Observer has accumulated observation context in its notes file. The replacement Observer
+// receives a resume prompt that instructs it to:
+// - Read the existing notes file for context recovery
+// - Check fabric inbox for messages since refresh
+// - Re-subscribe to all channels (subscriptions don't persist)
+// - Resume passive observation
+//
+// === SPAWN-BEFORE-RETIRE PATTERN ===
+// Step 1: Mark old observer as Retiring (still in repo, prevents confusion)
+// Step 2: Build ObserverResumePrompt with session directory
+// Step 3: Spawn new observer with resume prompt
+// Step 4: If spawn fails, restore old observer to StatusReady
+// Step 5: Stop old observer headless process
+// Step 6: Mark old observer as Retired
+// Step 7: Update registry (unregister old, register new)
+// Step 8: Save new observer as Ready
+// Step 9: Emit ProcessSpawned event
+func (h *ReplaceProcessHandler) replaceObserver(ctx context.Context, proc *repository.Process) (*command.CommandResult, error) {
+	// Step 1: Mark old observer as Retiring (not Retired yet)
+	// This intermediate state signals that the observer should reject new messages
+	// but is still active until replacement succeeds.
+	proc.Status = repository.StatusRetiring
+	if err := h.processRepo.Save(proc); err != nil {
+		return nil, fmt.Errorf("failed to mark observer as retiring: %w", err)
+	}
+
+	// Step 2: Build ObserverResumePrompt with session directory
+	// Get session directory for resume prompt
+	sessionDir := ""
+	if h.sessionDirProvider != nil {
+		sessionDir = h.sessionDirProvider.GetSessionDir()
+	}
+
+	// Build resume prompt - ObserverResumePrompt handles the session directory in its output
+	var resumePrompt string
+	if sessionDir != "" {
+		resumePrompt = roles.ObserverResumePrompt(sessionDir)
+	} else {
+		// Fallback: use generic prompt that instructs fabric_history recovery
+		// The ObserverResumePrompt already handles this case via the fallback text in the prompt
+		resumePrompt = roles.ObserverResumePrompt("")
+	}
+
+	// Step 3: Spawn new observer FIRST (before stopping old)
+	var newLiveProcess *process.Process
+	if h.spawner != nil {
+		opts := SpawnOptions{
+			InitialPromptOverride: resumePrompt,
+		}
+		var err error
+		newLiveProcess, err = h.spawner.SpawnProcess(ctx, repository.ObserverID, repository.RoleObserver, opts)
+		if err != nil {
+			// Step 4: Spawn failed - restore old observer to StatusReady
+			// This is the key safety feature: old observer remains operational
+			proc.Status = repository.StatusReady
+			if saveErr := h.processRepo.Save(proc); saveErr != nil {
+				log.Warn(log.CatOrch, "Failed to restore observer status after spawn failure",
+					"processID", proc.ID, "saveError", saveErr, "spawnError", err)
+			}
+			return nil, fmt.Errorf("failed to spawn new observer: %w", err)
+		}
+	}
+
+	// Step 5: Stop old observer process
+	if h.registry != nil {
+		oldProcess := h.registry.Get(proc.ID)
+		if oldProcess != nil {
+			oldProcess.Stop()
+		}
+	}
+
+	// Step 6: Mark old observer as Retired
+	proc.Status = repository.StatusRetired
+	proc.RetiredAt = time.Now()
+	if err := h.processRepo.Save(proc); err != nil {
+		return nil, fmt.Errorf("failed to retire old observer: %w", err)
+	}
+
+	// Step 7: Update registry (unregister old, register new)
+	if h.registry != nil && newLiveProcess != nil {
+		h.registry.Unregister(proc.ID)
+		h.registry.Register(newLiveProcess)
+	}
+
+	// Step 8: Create and save new observer entity as Ready
+	newProc := &repository.Process{
+		ID:             repository.ObserverID,
+		Role:           repository.RoleObserver,
+		Status:         repository.StatusReady,
+		CreatedAt:      time.Now(),
+		LastActivityAt: time.Now(),
+	}
+	if err := h.processRepo.Save(newProc); err != nil {
+		return nil, fmt.Errorf("failed to save new observer: %w", err)
+	}
+
+	// Step 9: Emit events
+	var resultEvents []any
+
+	// Old observer retired
+	retiredEvent := events.ProcessEvent{
+		Type:      events.ProcessStatusChange,
+		ProcessID: proc.ID,
+		Role:      events.RoleObserver,
+		Status:    events.ProcessStatusRetired,
+	}
+	resultEvents = append(resultEvents, retiredEvent)
+
+	// New observer spawned
+	spawnedEvent := events.ProcessEvent{
+		Type:      events.ProcessSpawned,
+		ProcessID: repository.ObserverID,
+		Role:      events.RoleObserver,
+		Status:    newProc.Status,
+	}
+	resultEvents = append(resultEvents, spawnedEvent)
+
+	result := &ReplaceProcessResult{
+		OldProcessID: proc.ID,
+		NewProcessID: repository.ObserverID,
+		Role:         repository.RoleObserver,
 	}
 
 	return SuccessWithEvents(result, resultEvents...), nil

@@ -39,6 +39,17 @@ func (a *eventBusAdapter) Publish(eventType string, payload any) {
 	a.broker.Publish(pubsub.EventType(eventType), payload)
 }
 
+// sessionDirProvider implements handler.SessionDirProvider.
+// It wraps a static session directory path.
+type sessionDirProvider struct {
+	sessionDir string
+}
+
+// GetSessionDir returns the session directory path.
+func (p *sessionDirProvider) GetSessionDir() string {
+	return p.sessionDir
+}
+
 // InfrastructureConfig holds configuration for creating V2 infrastructure.
 type InfrastructureConfig struct {
 	// Port is the MCP server port for process communication.
@@ -460,7 +471,8 @@ func registerHandlers(
 	cmdProcessor.RegisterHandler(command.CmdReplaceProcess,
 		handler.NewReplaceProcessHandler(processRepo, processRegistry,
 			handler.WithReplaceSpawner(processSpawner),
-			handler.WithWorkflowStateProvider(workflowStateProvider)))
+			handler.WithWorkflowStateProvider(workflowStateProvider),
+			handler.WithSessionDirProvider(&sessionDirProvider{sessionDir: sessionDir})))
 	cmdProcessor.RegisterHandler(command.CmdPauseProcess,
 		handler.NewPauseProcessHandler(processRepo,
 			handler.WithPauseRegistry(processRegistry)))

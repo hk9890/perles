@@ -206,11 +206,16 @@ func (s *UnifiedProcessSpawnerImpl) SpawnProcess(ctx context.Context, id string,
 			return nil, fmt.Errorf("failed to generate observer MCP config: %w", err)
 		}
 
-		// Observer uses fixed prompts - no overrides supported
 		systemPrompt := roles.ObserverSystemPrompt()
 		initialPrompt := roles.ObserverIdlePrompt()
 
+		// Allow prompt override for context exhaustion recovery
+		if opts.InitialPromptOverride != "" {
+			initialPrompt = opts.InitialPromptOverride
+		}
+
 		// Replace {{SESSION_DIR}} placeholder in Observer prompt
+		// This occurs after override so both default and override prompts get substituted
 		initialPrompt = strings.ReplaceAll(initialPrompt, "{{SESSION_DIR}}", s.sessionDir)
 
 		cfg = client.Config{

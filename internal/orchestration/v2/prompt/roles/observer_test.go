@@ -264,3 +264,89 @@ func TestObserverSystemPrompt_NoExtraWhitespace(t *testing.T) {
 	require.LessOrEqual(t, trailing, 1,
 		"ObserverSystemPrompt should not have more than 1 trailing newline")
 }
+
+// ============================================================================
+// Observer Resume Prompt Tests (Context Exhaustion Recovery)
+// ============================================================================
+
+// TestObserverResumePrompt_IncludesSessionPath verifies the prompt contains
+// the provided session path for reading observer notes.
+func TestObserverResumePrompt_IncludesSessionPath(t *testing.T) {
+	sessionDir := "/home/user/.perles/sessions/test-project/2026-01-31/abc123"
+	prompt := ObserverResumePrompt(sessionDir)
+
+	// Verify session path appears in the notes file path
+	require.Contains(t, prompt, sessionDir+"/observer/observer_notes.md",
+		"ObserverResumePrompt should contain full path to observer_notes.md")
+
+	// Verify the prompt identifies as a context refresh
+	require.Contains(t, prompt, "OBSERVER CONTEXT REFRESH",
+		"ObserverResumePrompt should identify as context refresh")
+}
+
+// TestObserverResumePrompt_IncludesRecoverySteps verifies the prompt includes
+// inbox check and notes continuation reminder.
+func TestObserverResumePrompt_IncludesRecoverySteps(t *testing.T) {
+	sessionDir := "/test/session"
+	prompt := ObserverResumePrompt(sessionDir)
+
+	// Verify inbox check instruction
+	require.Contains(t, prompt, "fabric_inbox()",
+		"ObserverResumePrompt should instruct checking fabric_inbox")
+
+	// Verify notes continuation reminder
+	require.Contains(t, prompt, "Continue taking notes",
+		"ObserverResumePrompt should remind to continue taking notes")
+	require.Contains(t, prompt, sessionDir+"/observer/observer_notes.md",
+		"ObserverResumePrompt should include notes file path in continuation reminder")
+	require.Contains(t, prompt, "Append new observations",
+		"ObserverResumePrompt should instruct appending to notes")
+}
+
+// TestObserverResumePrompt_NoChannelResubscription verifies the prompt does NOT
+// include channel resubscription instructions since subscriptions persist.
+func TestObserverResumePrompt_NoChannelResubscription(t *testing.T) {
+	prompt := ObserverResumePrompt("/test/session")
+
+	// Verify NO resubscription instructions (subscriptions persist)
+	require.NotContains(t, prompt, "Re-subscribe to all channels",
+		"ObserverResumePrompt should NOT instruct re-subscribing to channels")
+	require.NotContains(t, prompt, `fabric_subscribe(channel="observer"`,
+		"ObserverResumePrompt should NOT contain observer subscription command")
+	require.NotContains(t, prompt, `fabric_subscribe(channel="system"`,
+		"ObserverResumePrompt should NOT contain system subscription command")
+	require.NotContains(t, prompt, `fabric_subscribe(channel="tasks"`,
+		"ObserverResumePrompt should NOT contain tasks subscription command")
+
+	// Verify DO NOT section includes "Re-subscribe to channels"
+	require.Contains(t, prompt, "Re-subscribe to channels (subscriptions persist",
+		"ObserverResumePrompt should explain in DO NOT section that subscriptions persist")
+}
+
+// TestObserverResumePrompt_IncludesFallbackForMissingNotes verifies the prompt
+// mentions fabric_history as fallback when notes file doesn't exist.
+func TestObserverResumePrompt_IncludesFallbackForMissingNotes(t *testing.T) {
+	prompt := ObserverResumePrompt("/test/session")
+
+	// Verify fallback instruction for missing notes
+	require.Contains(t, prompt, "If this file doesn't exist",
+		"ObserverResumePrompt should acknowledge notes file may not exist")
+	require.Contains(t, prompt, "fabric_history",
+		"ObserverResumePrompt should mention fabric_history as fallback")
+
+	// Verify it does NOT instruct creating new notes file
+	require.NotContains(t, prompt, "Create your session notes file",
+		"ObserverResumePrompt should NOT instruct creating new notes file")
+
+	// Verify it does NOT instruct re-attaching
+	require.NotContains(t, prompt, "Attach the notes file",
+		"ObserverResumePrompt should NOT instruct re-attaching notes file")
+
+	// Verify the "DO NOT" section exists with correct guidance
+	require.Contains(t, prompt, "DO NOT:",
+		"ObserverResumePrompt should have DO NOT section")
+	require.Contains(t, prompt, "Create a new notes file",
+		"ObserverResumePrompt should explicitly prohibit creating new notes")
+	require.Contains(t, prompt, "Re-attach the notes file",
+		"ObserverResumePrompt should explicitly prohibit re-attaching")
+}

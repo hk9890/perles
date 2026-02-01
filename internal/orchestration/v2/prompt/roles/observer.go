@@ -126,3 +126,44 @@ func ObserverIdlePrompt() string {
 
 You will be notified when users send messages to #observer. Until then, observe silently.`
 }
+
+// ObserverResumePrompt returns the continuation prompt for an Observer that was
+// auto-refreshed due to context exhaustion. Unlike ObserverIdlePrompt, this:
+// - Does NOT create notes file (already exists)
+// - Does NOT attach file to channel (already attached)
+// - Does NOT re-subscribe to channels (subscriptions persist across refresh)
+// - DOES instruct reading existing notes for context recovery
+// - DOES remind to continue taking notes
+func ObserverResumePrompt(sessionDir string) string {
+	return `[OBSERVER CONTEXT REFRESH]
+
+Your context window was exhausted, so you've been automatically refreshed.
+You are continuing observation of an ongoing workflow.
+
+**CRITICAL: Your previous state is preserved. Do NOT recreate files or re-attach artifacts.**
+
+**RECOVERY STEPS:**
+
+1. **Read your observer notes** to restore accumulated context:
+   - Path: ` + sessionDir + `/observer/observer_notes.md
+   - This contains your observations up to the point of context exhaustion
+   - **If this file doesn't exist**, use ` + "`fabric_history`" + ` on all channels to rebuild context
+
+2. **Check your fabric inbox** for messages since refresh:
+   - ` + "`fabric_inbox()`" + ` to see unread messages
+
+3. **Continue taking notes** in your observer notes file:
+   - Path: ` + sessionDir + `/observer/observer_notes.md
+   - Append new observations (don't overwrite existing content)
+   - Your notes persist across context refreshes
+
+4. **Resume passive observation** - continue your role as silent observer
+
+**DO NOT:**
+- Create a new notes file (use the existing one)
+- Re-attach the notes file to #observer (already attached)
+- Re-subscribe to channels (subscriptions persist across refresh)
+- Announce your refresh to other agents
+
+Resume silent observation. Only respond to users in #observer channel.`
+}

@@ -710,3 +710,85 @@ func TestUnifiedSpawner_SessionDirConfig(t *testing.T) {
 	// Verify the spawner stored the sessionDir
 	assert.Equal(t, sessionDir, spawner.sessionDir)
 }
+
+func TestUnifiedSpawner_RespectsObserverPromptOverride(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		CoordinatorClient: mockClient,
+		WorkerClient:      mockClient,
+		ObserverClient:    mockClient,
+		WorkDir:           "/test/workdir",
+		Port:              8080,
+		Submitter:         submitter,
+		EventBus:          eventBus,
+	})
+
+	customPrompt := "Custom observer resume prompt for context recovery"
+	opts := SpawnOptions{
+		InitialPromptOverride: customPrompt,
+	}
+
+	proc, err := spawner.SpawnProcess(context.Background(), "observer", repository.RoleObserver, opts)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify the prompt override was used
+	assert.Equal(t, customPrompt, capturedConfig.Prompt)
+	// System prompt should still be the default observer system prompt
+	assert.Contains(t, capturedConfig.SystemPrompt, "Observer")
+
+	// Cleanup
+	proc.Stop()
+}
+
+func TestUnifiedSpawner_ObserverPromptOverride_SessionDirReplaced(t *testing.T) {
+	var capturedConfig client.Config
+	mockClient := mock.NewClient()
+	mockClient.SpawnFunc = func(ctx context.Context, cfg client.Config) (client.HeadlessProcess, error) {
+		capturedConfig = cfg
+		return mock.NewProcess(), nil
+	}
+
+	eventBus := pubsub.NewBroker[any]()
+	submitter := &mockCommandSubmitter{}
+
+	sessionDir := "/home/user/.perles/sessions/myapp/2026-01-30/abc123"
+	spawner := NewUnifiedProcessSpawner(UnifiedSpawnerConfig{
+		CoordinatorClient: mockClient,
+		WorkerClient:      mockClient,
+		ObserverClient:    mockClient,
+		WorkDir:           "/test/workdir",
+		Port:              8080,
+		Submitter:         submitter,
+		EventBus:          eventBus,
+		SessionDir:        sessionDir,
+	})
+
+	// Use a prompt containing the placeholder to verify replacement occurs
+	overridePrompt := "Observer resuming. Read notes from {{SESSION_DIR}}/observer/notes.md"
+	opts := SpawnOptions{
+		InitialPromptOverride: overridePrompt,
+	}
+
+	proc, err := spawner.SpawnProcess(context.Background(), "observer", repository.RoleObserver, opts)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+
+	// Verify {{SESSION_DIR}} was replaced in the override prompt
+	expectedPrompt := "Observer resuming. Read notes from /home/user/.perles/sessions/myapp/2026-01-30/abc123/observer/notes.md"
+	assert.Equal(t, expectedPrompt, capturedConfig.Prompt)
+	// Ensure no unreplaced placeholders remain
+	assert.NotContains(t, capturedConfig.Prompt, "{{SESSION_DIR}}")
+
+	// Cleanup
+	proc.Stop()
+}
