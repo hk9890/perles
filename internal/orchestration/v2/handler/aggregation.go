@@ -72,13 +72,9 @@ func (h *GenerateAccountabilitySummaryHandler) Handle(ctx context.Context, cmd c
 
 	// Step 5: If worker is Working, just emit queue changed event
 	if proc.Status == repository.StatusWorking {
-		event := events.ProcessEvent{
-			Type:       events.ProcessQueueChanged,
-			ProcessID:  proc.ID,
-			Role:       proc.Role,
-			Status:     proc.Status,
-			QueueCount: queue.Size(),
-		}
+		event := events.NewProcessEvent(events.ProcessQueueChanged, proc.ID, proc.Role).
+			WithStatus(proc.Status).
+			WithQueueCount(queue.Size())
 		return SuccessWithEvents(result, event), nil
 	}
 

@@ -1016,7 +1016,7 @@ func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 			Role:       string(event.Role),
 			Content:    event.Output,
 			IsToolCall: isToolCall,
-			Timestamp:  &now,
+			Timestamp:  now,
 		}
 		if err := s.WriteCoordinatorMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator message", "error", err)
@@ -1029,11 +1029,15 @@ func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 		}
 
 	case events.ProcessIncoming:
-		// User input - role is "user"
+		// Use Sender for the role (e.g., "user", "coordinator") when available
+		role := event.Sender
+		if role == "" {
+			role = string(event.Role)
+		}
 		msg := chatrender.Message{
-			Role:      "user",
+			Role:      role,
 			Content:   event.Message,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteCoordinatorMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator incoming message", "error", err)
@@ -1054,7 +1058,7 @@ func (s *Session) handleCoordinatorProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      "system",
 			Content:   "Error: " + errMsg,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteCoordinatorMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write coordinator error message", "error", err)
@@ -1077,7 +1081,7 @@ func (s *Session) handleObserverProcessEvent(event events.ProcessEvent) {
 			Role:       string(event.Role),
 			Content:    event.Output,
 			IsToolCall: isToolCall,
-			Timestamp:  &now,
+			Timestamp:  now,
 		}
 		if err := s.WriteObserverMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write observer message", "error", err)
@@ -1088,7 +1092,7 @@ func (s *Session) handleObserverProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      event.Sender,
 			Content:   event.Message,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteObserverMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write observer incoming message", "error", err)
@@ -1109,7 +1113,7 @@ func (s *Session) handleObserverProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      "system",
 			Content:   "Error: " + errMsg,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteObserverMessage(msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write observer error message", "error", err)
@@ -1203,7 +1207,7 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      "system",
 			Content:   "Worker spawned",
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write worker spawn message", "error", err, "workerID", workerID)
@@ -1216,7 +1220,7 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 			Role:       "assistant",
 			Content:    event.Output,
 			IsToolCall: isToolCall,
-			Timestamp:  &now,
+			Timestamp:  now,
 		}
 		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write worker output message", "error", err, "workerID", workerID)
@@ -1256,7 +1260,7 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      role,
 			Content:   event.Message,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write worker incoming message", "error", err, "workerID", workerID)
@@ -1271,7 +1275,7 @@ func (s *Session) handleProcessEvent(event events.ProcessEvent) {
 		msg := chatrender.Message{
 			Role:      "system",
 			Content:   "Error: " + errMsg,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		if err := s.WriteWorkerMessage(workerID, msg); err != nil {
 			log.Warn(log.CatOrch, "Session: failed to write worker error message", "error", err, "workerID", workerID)

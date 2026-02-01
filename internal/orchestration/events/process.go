@@ -1,6 +1,8 @@
 package events
 
 import (
+	"time"
+
 	"github.com/zjrosen/perles/internal/orchestration/metrics"
 )
 
@@ -93,6 +95,8 @@ type ProcessEvent struct {
 	ProcessID string
 	// Role indicates whether this is from coordinator or worker.
 	Role ProcessRole
+	// Timestamp is when the event was created.
+	Timestamp time.Time
 	// Output contains the message text for output events.
 	Output string
 	// Delta indicates this is a streaming chunk that should be accumulated
@@ -163,4 +167,84 @@ func (s ProcessStatus) IsDone() bool {
 // IsActive returns true if the process can receive tasks or is working.
 func (s ProcessStatus) IsActive() bool {
 	return s == ProcessStatusReady || s == ProcessStatusWorking
+}
+
+// NewProcessEvent creates a ProcessEvent with the current timestamp.
+// This is the preferred way to create events as it ensures timestamps are always set.
+// Use the builder methods (WithOutput, WithSender, etc.) to set additional fields.
+func NewProcessEvent(eventType ProcessEventType, processID string, role ProcessRole) ProcessEvent {
+	return ProcessEvent{
+		Type:      eventType,
+		ProcessID: processID,
+		Role:      role,
+		Timestamp: time.Now(),
+	}
+}
+
+// Builder methods for ProcessEvent - each returns the modified event for chaining.
+
+// WithOutput sets the Output field and returns the event.
+func (e ProcessEvent) WithOutput(output string) ProcessEvent {
+	e.Output = output
+	return e
+}
+
+// WithDelta sets the Delta field and returns the event.
+func (e ProcessEvent) WithDelta(delta bool) ProcessEvent {
+	e.Delta = delta
+	return e
+}
+
+// WithStatus sets the Status field and returns the event.
+func (e ProcessEvent) WithStatus(status ProcessStatus) ProcessEvent {
+	e.Status = status
+	return e
+}
+
+// WithPhase sets the Phase field and returns the event.
+func (e ProcessEvent) WithPhase(phase ProcessPhase) ProcessEvent {
+	e.Phase = &phase
+	return e
+}
+
+// WithTaskID sets the TaskID field and returns the event.
+func (e ProcessEvent) WithTaskID(taskID string) ProcessEvent {
+	e.TaskID = taskID
+	return e
+}
+
+// WithMetrics sets the Metrics field and returns the event.
+func (e ProcessEvent) WithMetrics(metrics *metrics.TokenMetrics) ProcessEvent {
+	e.Metrics = metrics
+	return e
+}
+
+// WithMessage sets the Message field and returns the event.
+func (e ProcessEvent) WithMessage(message string) ProcessEvent {
+	e.Message = message
+	return e
+}
+
+// WithSender sets the Sender field and returns the event.
+func (e ProcessEvent) WithSender(sender string) ProcessEvent {
+	e.Sender = sender
+	return e
+}
+
+// WithError sets the Error field and returns the event.
+func (e ProcessEvent) WithError(err error) ProcessEvent {
+	e.Error = err
+	return e
+}
+
+// WithRawJSON sets the RawJSON field and returns the event.
+func (e ProcessEvent) WithRawJSON(rawJSON []byte) ProcessEvent {
+	e.RawJSON = rawJSON
+	return e
+}
+
+// WithQueueCount sets the QueueCount field and returns the event.
+func (e ProcessEvent) WithQueueCount(count int) ProcessEvent {
+	e.QueueCount = count
+	return e
 }

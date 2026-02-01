@@ -112,11 +112,7 @@ func (h *SignalWorkflowCompleteHandler) Handle(ctx context.Context, cmd command.
 
 	// 3. Build ProcessWorkflowComplete event
 	// Always emit event (including on duplicate calls) for audit trail
-	event := events.ProcessEvent{
-		Type:      events.ProcessWorkflowComplete,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-	}
+	event := events.NewProcessEvent(events.ProcessWorkflowComplete, "coordinator", events.RoleCoordinator)
 
 	result := &SignalWorkflowCompleteResult{
 		Status:      workflowCmd.Status,

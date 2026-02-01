@@ -61,13 +61,9 @@ func (h *NotifyUserHandler) Handle(_ context.Context, cmd command.Command) (*com
 	h.soundService.Play("notification", "user_notification")
 
 	// 3. Build ProcessUserNotification event
-	event := events.ProcessEvent{
-		Type:      events.ProcessUserNotification,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Output:    notifyCmd.Message,
-		TaskID:    notifyCmd.TaskID,
-	}
+	event := events.NewProcessEvent(events.ProcessUserNotification, "coordinator", events.RoleCoordinator).
+		WithOutput(notifyCmd.Message).
+		WithTaskID(notifyCmd.TaskID)
 
 	result := &NotifyUserResult{
 		Message: notifyCmd.Message,

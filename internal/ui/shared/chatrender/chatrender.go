@@ -40,14 +40,20 @@ var (
 	// ToolCallStyle is for tool call display (muted).
 	ToolCallStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "#999999", Dark: "#666666"})
+
+	// TimestampColor is the muted color for HH:MM timestamps.
+	TimestampColor = lipgloss.AdaptiveColor{Light: "#666666", Dark: "#696969"}
+
+	// TimestampStyle is the style for HH:MM timestamps in chat headers.
+	TimestampStyle = lipgloss.NewStyle().Foreground(TimestampColor)
 )
 
 // Message represents a single message in chat history.
 type Message struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	IsToolCall bool       `json:"is_tool_call,omitempty"`
-	Timestamp  *time.Time `json:"ts,omitempty"`
+	Role       string    `json:"role"`
+	Content    string    `json:"content"`
+	IsToolCall bool      `json:"is_tool_call,omitempty"`
+	Timestamp  time.Time `json:"ts"`
 }
 
 // RenderConfig configures how chat messages are rendered.

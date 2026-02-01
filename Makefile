@@ -70,6 +70,7 @@ test-update:
 		./internal/ui/shared/overlay/... \
 		./internal/ui/shared/picker/... \
 		./internal/ui/shared/table/... \
+		./internal/ui/shared/selection/... \
 		./internal/ui/shared/toaster/... \
 		./internal/ui/shared/vimtextarea/... \
 		./internal/ui/styles/... \

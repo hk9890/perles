@@ -97,13 +97,9 @@ func (h *StopWorkerHandler) Handle(ctx context.Context, cmd command.Command) (*c
 			ProcessID:    proc.ID,
 			PhaseWarning: true,
 			WasNoOp:      true,
-		}, events.ProcessEvent{
-			Type:      events.ProcessOutput,
-			ProcessID: proc.ID,
-			Role:      proc.Role,
-			Output:    "Warning: Worker is in Committing phase. Use --force to terminate during commit, or wait for commit to complete.",
-			TaskID:    proc.TaskID,
-		}), nil
+		}, events.NewProcessEvent(events.ProcessOutput, proc.ID, proc.Role).
+			WithOutput("Warning: Worker is in Committing phase. Use --force to terminate during commit, or wait for commit to complete.").
+			WithTaskID(proc.TaskID)), nil
 	}
 
 	// Get live process from registry
@@ -233,24 +229,16 @@ func (h *StopWorkerHandler) updateRepositoryAndCleanupWithResult(proc *repositor
 	var resultEvents []any
 
 	// Emit ProcessStatusChange event
-	statusEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusStopped,
-		TaskID:    oldTaskID, // Include old task ID for reference
-	}
+	statusEvent := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusStopped).
+		WithTaskID(oldTaskID) // Include old task ID for reference
 	resultEvents = append(resultEvents, statusEvent)
 
 	// If we drained messages, emit ProcessQueueChanged so TUI updates the queue badge
 	if drainedCount > 0 {
-		queueEvent := events.ProcessEvent{
-			Type:       events.ProcessQueueChanged,
-			ProcessID:  proc.ID,
-			Role:       proc.Role,
-			Status:     events.ProcessStatusStopped,
-			QueueCount: 0, // Queue is now empty
-		}
+		queueEvent := events.NewProcessEvent(events.ProcessQueueChanged, proc.ID, proc.Role).
+			WithStatus(events.ProcessStatusStopped).
+			WithQueueCount(0) // Queue is now empty
 		resultEvents = append(resultEvents, queueEvent)
 	}
 

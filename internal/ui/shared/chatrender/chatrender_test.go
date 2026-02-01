@@ -14,7 +14,7 @@ func TestChatMessage_JSONRoundTrip(t *testing.T) {
 		Role:       "assistant",
 		Content:    "Hello, world!",
 		IsToolCall: true,
-		Timestamp:  &ts,
+		Timestamp:  ts,
 	}
 
 	// Marshal to JSON
@@ -39,12 +39,12 @@ func TestChatMessage_JSONRoundTrip(t *testing.T) {
 	require.Equal(t, original.Role, decoded.Role)
 	require.Equal(t, original.Content, decoded.Content)
 	require.Equal(t, original.IsToolCall, decoded.IsToolCall)
-	require.NotNil(t, decoded.Timestamp)
-	require.True(t, original.Timestamp.Equal(*decoded.Timestamp))
+	require.False(t, decoded.Timestamp.IsZero())
+	require.True(t, original.Timestamp.Equal(decoded.Timestamp))
 }
 
 func TestChatMessage_OmitEmpty(t *testing.T) {
-	t.Run("nil timestamp omitted", func(t *testing.T) {
+	t.Run("zero timestamp included in JSON", func(t *testing.T) {
 		msg := Message{
 			Role:    "user",
 			Content: "Test message",
@@ -53,11 +53,11 @@ func TestChatMessage_OmitEmpty(t *testing.T) {
 		data, err := json.Marshal(msg)
 		require.NoError(t, err)
 
-		// Verify ts field is NOT present in JSON
+		// Verify ts field IS present in JSON (time.Time always serializes)
 		var jsonMap map[string]any
 		err = json.Unmarshal(data, &jsonMap)
 		require.NoError(t, err)
-		require.NotContains(t, jsonMap, "ts", "nil timestamp should be omitted")
+		require.Contains(t, jsonMap, "ts", "timestamp field should always be present")
 	})
 
 	t.Run("false IsToolCall omitted", func(t *testing.T) {
@@ -95,12 +95,12 @@ func TestChatMessage_OmitEmpty(t *testing.T) {
 		require.Equal(t, true, jsonMap["is_tool_call"])
 	})
 
-	t.Run("non-nil timestamp included", func(t *testing.T) {
+	t.Run("non-zero timestamp included", func(t *testing.T) {
 		ts := time.Date(2026, 1, 11, 15, 30, 0, 0, time.UTC)
 		msg := Message{
 			Role:      "assistant",
 			Content:   "Message with timestamp",
-			Timestamp: &ts,
+			Timestamp: ts,
 		}
 
 		data, err := json.Marshal(msg)
@@ -110,7 +110,7 @@ func TestChatMessage_OmitEmpty(t *testing.T) {
 		var jsonMap map[string]any
 		err = json.Unmarshal(data, &jsonMap)
 		require.NoError(t, err)
-		require.Contains(t, jsonMap, "ts", "non-nil timestamp should be present")
+		require.Contains(t, jsonMap, "ts", "non-zero timestamp should be present")
 	})
 }
 
@@ -126,7 +126,7 @@ func TestChatMessage_BackwardCompatibility(t *testing.T) {
 		require.Equal(t, "user", msg.Role)
 		require.Equal(t, "Test message", msg.Content)
 		require.False(t, msg.IsToolCall)
-		require.Nil(t, msg.Timestamp)
+		require.True(t, msg.Timestamp.IsZero())
 	})
 
 	t.Run("unmarshal legacy JSON without ts field", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestChatMessage_BackwardCompatibility(t *testing.T) {
 		require.Equal(t, "assistant", msg.Role)
 		require.Equal(t, "Hello", msg.Content)
 		require.False(t, msg.IsToolCall)
-		require.Nil(t, msg.Timestamp)
+		require.True(t, msg.Timestamp.IsZero())
 	})
 
 	t.Run("unmarshal legacy JSON without is_tool_call field", func(t *testing.T) {

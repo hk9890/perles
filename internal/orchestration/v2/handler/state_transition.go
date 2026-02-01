@@ -184,13 +184,11 @@ func (h *ReportCompleteHandler) Handle(ctx context.Context, cmd command.Command)
 	}
 
 	// 8. Return with ProcessEvent
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		TaskID:    task.TaskID,
-		Status:    events.ProcessStatusReady,
-		Phase:     proc.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithTaskID(task.TaskID).
+		WithStatus(events.ProcessStatusReady)
+	if proc.Phase != nil {
+		event = event.WithPhase(*proc.Phase)
 	}
 
 	result := &ReportCompleteResult{
@@ -392,13 +390,11 @@ func (h *ReportVerdictHandler) handleVerdict(_ context.Context, verdictCmd *comm
 		}
 
 		// Emit implementer status change event
-		implEvent := events.ProcessEvent{
-			Type:      events.ProcessStatusChange,
-			ProcessID: implementer.ID,
-			Role:      implementer.Role,
-			TaskID:    task.TaskID,
-			Status:    implementer.Status,
-			Phase:     implementer.Phase,
+		implEvent := events.NewProcessEvent(events.ProcessStatusChange, implementer.ID, implementer.Role).
+			WithTaskID(task.TaskID).
+			WithStatus(implementer.Status)
+		if implementer.Phase != nil {
+			implEvent = implEvent.WithPhase(*implementer.Phase)
 		}
 		resultEvents = append(resultEvents, implEvent)
 	}
@@ -431,13 +427,11 @@ func (h *ReportVerdictHandler) handleVerdict(_ context.Context, verdictCmd *comm
 	}
 
 	// Emit reviewer status change event
-	reviewerEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: reviewer.ID,
-		Role:      reviewer.Role,
-		TaskID:    task.TaskID,
-		Status:    events.ProcessStatusReady,
-		Phase:     reviewer.Phase,
+	reviewerEvent := events.NewProcessEvent(events.ProcessStatusChange, reviewer.ID, reviewer.Role).
+		WithTaskID(task.TaskID).
+		WithStatus(events.ProcessStatusReady)
+	if reviewer.Phase != nil {
+		reviewerEvent = reviewerEvent.WithPhase(*reviewer.Phase)
 	}
 	resultEvents = append(resultEvents, reviewerEvent)
 
@@ -547,12 +541,10 @@ func (h *TransitionPhaseHandler) Handle(ctx context.Context, cmd command.Command
 	}
 
 	// 6. Emit status change event
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    proc.Status,
-		Phase:     proc.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithStatus(proc.Status)
+	if proc.Phase != nil {
+		event = event.WithPhase(*proc.Phase)
 	}
 
 	result := &TransitionPhaseResult{

@@ -131,11 +131,7 @@ func TestCrossWorkflowEventBus_EventsWrappedWithContext(t *testing.T) {
 	ch := bus.Subscribe(ctx)
 
 	// Publish an event to the workflow's internal event bus
-	processEvent := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleCoordinator,
-		ProcessID: "coord-1",
-	}
+	processEvent := events.NewProcessEvent(events.ProcessSpawned, "coord-1", events.RoleCoordinator)
 	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, processEvent)
 
 	// Receive the wrapped event
@@ -175,16 +171,8 @@ func TestCrossWorkflowEventBus_MultipleWorkflows(t *testing.T) {
 	ch := bus.Subscribe(ctx)
 
 	// Publish events from both workflows
-	inst1.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleCoordinator,
-		ProcessID: "coord-1",
-	})
-	inst2.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
+	inst1.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "coord-1", events.RoleCoordinator))
+	inst2.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
 
 	// Collect events
 	receivedEvents := make([]ControlPlaneEvent, 0, 2)
@@ -391,12 +379,9 @@ func TestCrossWorkflowEventBus_DetachDuringEventFlow(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 100; i++ {
-			inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-				Type:      events.ProcessOutput,
-				Role:      events.RoleCoordinator,
-				ProcessID: "coord-1",
-				Output:    "event " + string(rune('0'+i%10)),
-			})
+			inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent,
+				events.NewProcessEvent(events.ProcessOutput, "coord-1", events.RoleCoordinator).
+					WithOutput("event "+string(rune('0'+i%10))))
 			time.Sleep(time.Millisecond)
 		}
 	}()
@@ -508,31 +493,18 @@ func TestCrossWorkflowEventBus_EventClassification(t *testing.T) {
 		expectedType EventType
 	}{
 		{
-			name: "CoordinatorSpawned",
-			event: events.ProcessEvent{
-				Type:      events.ProcessSpawned,
-				Role:      events.RoleCoordinator,
-				ProcessID: "coord-1",
-			},
+			name:         "CoordinatorSpawned",
+			event:        events.NewProcessEvent(events.ProcessSpawned, "coord-1", events.RoleCoordinator),
 			expectedType: EventCoordinatorSpawned,
 		},
 		{
-			name: "WorkerSpawned",
-			event: events.ProcessEvent{
-				Type:      events.ProcessSpawned,
-				Role:      events.RoleWorker,
-				ProcessID: "worker-1",
-			},
+			name:         "WorkerSpawned",
+			event:        events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker),
 			expectedType: EventWorkerSpawned,
 		},
 		{
-			name: "WorkerOutput",
-			event: events.ProcessEvent{
-				Type:      events.ProcessOutput,
-				Role:      events.RoleWorker,
-				ProcessID: "worker-1",
-				Output:    "implementing...",
-			},
+			name:         "WorkerOutput",
+			event:        events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).WithOutput("implementing..."),
 			expectedType: EventWorkerOutput,
 		},
 	}
@@ -566,11 +538,7 @@ func TestCrossWorkflowEventBus_ActiveWorkerCount(t *testing.T) {
 	ch := bus.Subscribe(ctx)
 
 	// Spawn first worker
-	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
+	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
 	select {
 	case <-ch:
 	case <-ctx.Done():
@@ -579,11 +547,7 @@ func TestCrossWorkflowEventBus_ActiveWorkerCount(t *testing.T) {
 	require.Equal(t, 1, inst.ActiveWorkers, "ActiveWorkers should be 1 after first spawn")
 
 	// Spawn second worker
-	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-2",
-	})
+	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-2", events.RoleWorker))
 	select {
 	case <-ch:
 	case <-ctx.Done():
@@ -592,12 +556,9 @@ func TestCrossWorkflowEventBus_ActiveWorkerCount(t *testing.T) {
 	require.Equal(t, 2, inst.ActiveWorkers, "ActiveWorkers should be 2 after second spawn")
 
 	// Retire first worker
-	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Status:    events.ProcessStatusRetired,
-	})
+	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent,
+		events.NewProcessEvent(events.ProcessStatusChange, "worker-1", events.RoleWorker).
+			WithStatus(events.ProcessStatusRetired))
 	select {
 	case <-ch:
 	case <-ctx.Done():
@@ -606,12 +567,9 @@ func TestCrossWorkflowEventBus_ActiveWorkerCount(t *testing.T) {
 	require.Equal(t, 1, inst.ActiveWorkers, "ActiveWorkers should be 1 after retire")
 
 	// Retire second worker
-	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-2",
-		Status:    events.ProcessStatusRetired,
-	})
+	inst.Infrastructure.Core.EventBus.Publish(pubsub.UpdatedEvent,
+		events.NewProcessEvent(events.ProcessStatusChange, "worker-2", events.RoleWorker).
+			WithStatus(events.ProcessStatusRetired))
 	select {
 	case <-ch:
 	case <-ctx.Done():

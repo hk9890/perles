@@ -703,6 +703,7 @@ func (vc *ChatVirtualContent) updatePreviousToolCallPrefix() {
 // It checks the cache first using key {messageIndex, lineIndex, width}.
 // On cache hit, returns the cached string.
 // On cache miss, renders based on LineType and stores in cache.
+// If ShowLeftBorder is enabled in config, prepends a colored left border to each line.
 func (vc *ChatVirtualContent) RenderLine(index int) string {
 	if index < 0 || index >= len(vc.lines) {
 		return ""
@@ -737,6 +738,13 @@ func (vc *ChatVirtualContent) RenderLine(index int) string {
 		rendered = line.PlainText
 	}
 
+	// Add left border (color matches sender role) - skip blank lines for visual separation
+	if line.LineType != LineTypeBlank && line.MessageIndex < len(vc.messages) {
+		borderColor := vc.getBorderColorForMessage(line.MessageIndex)
+		leftBorder := lipgloss.NewStyle().Foreground(borderColor).Render("│")
+		rendered = leftBorder + " " + rendered
+	}
+
 	// Store in cache
 	vc.cache.Put(key, rendered)
 
@@ -744,6 +752,7 @@ func (vc *ChatVirtualContent) RenderLine(index int) string {
 }
 
 // renderRoleLine renders a role line with appropriate styling.
+// If ShowTimestamps is enabled and the message has a timestamp, prepends HH:MM.
 func (vc *ChatVirtualContent) renderRoleLine(line ChatVirtualLine) string {
 	// Determine color based on role label
 	var style lipgloss.Style
@@ -760,7 +769,18 @@ func (vc *ChatVirtualContent) renderRoleLine(line ChatVirtualLine) string {
 		style = RoleStyle.Foreground(vc.cfg.AgentColor)
 	}
 
-	return style.Render(line.PlainText)
+	roleText := style.Render(line.PlainText)
+
+	// Prepend timestamp if available
+	if line.MessageIndex < len(vc.messages) {
+		msg := vc.messages[line.MessageIndex]
+		if !msg.Timestamp.IsZero() {
+			timestamp := TimestampStyle.Render(msg.Timestamp.Format("15:04"))
+			return timestamp + " " + roleText
+		}
+	}
+
+	return roleText
 }
 
 // renderContentLine renders a content line.
@@ -781,6 +801,29 @@ func (vc *ChatVirtualContent) renderContentLine(line ChatVirtualLine) string {
 // renderToolCallLine renders a tool call line with muted styling and prefix.
 func (vc *ChatVirtualContent) renderToolCallLine(line ChatVirtualLine) string {
 	return ToolCallStyle.Render(line.PlainText)
+}
+
+// getBorderColorForMessage returns the appropriate border color based on the message's role.
+// This ensures the left border matches the sender's role color (user=orange, coordinator=teal, etc.).
+func (vc *ChatVirtualContent) getBorderColorForMessage(messageIndex int) lipgloss.AdaptiveColor {
+	if messageIndex >= len(vc.messages) {
+		return vc.cfg.AgentColor
+	}
+
+	msg := vc.messages[messageIndex]
+	switch msg.Role {
+	case "user":
+		return UserColor
+	case "system":
+		return SystemColor
+	case "coordinator":
+		return CoordinatorColor
+	case "observer":
+		return ObserverColor
+	default:
+		// Use agent color from config (handles "assistant" and custom roles)
+		return vc.cfg.AgentColor
+	}
 }
 
 // SetWidth updates the render width and clears the cache if width changed.

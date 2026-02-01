@@ -157,3 +157,56 @@ func TestIsObserver_False(t *testing.T) {
 		})
 	}
 }
+
+func TestNewProcessEvent_SetsTimestamp(t *testing.T) {
+	event := NewProcessEvent(ProcessOutput, "test-id", RoleCoordinator)
+
+	require.Equal(t, ProcessOutput, event.Type)
+	require.Equal(t, "test-id", event.ProcessID)
+	require.Equal(t, RoleCoordinator, event.Role)
+	require.False(t, event.Timestamp.IsZero(), "Timestamp should be set")
+}
+
+func TestProcessEvent_BuilderPattern(t *testing.T) {
+	t.Run("WithOutput", func(t *testing.T) {
+		event := NewProcessEvent(ProcessOutput, "id", RoleWorker).
+			WithOutput("Hello world")
+		require.Equal(t, "Hello world", event.Output)
+		require.False(t, event.Timestamp.IsZero())
+	})
+
+	t.Run("WithSender", func(t *testing.T) {
+		event := NewProcessEvent(ProcessIncoming, "id", RoleCoordinator).
+			WithSender("user").
+			WithMessage("Test message")
+		require.Equal(t, "user", event.Sender)
+		require.Equal(t, "Test message", event.Message)
+	})
+
+	t.Run("WithStatus", func(t *testing.T) {
+		event := NewProcessEvent(ProcessStatusChange, "id", RoleWorker).
+			WithStatus(ProcessStatusWorking)
+		require.Equal(t, ProcessStatusWorking, event.Status)
+	})
+
+	t.Run("WithQueueCount", func(t *testing.T) {
+		event := NewProcessEvent(ProcessQueueChanged, "id", RoleCoordinator).
+			WithStatus(ProcessStatusWorking).
+			WithQueueCount(5)
+		require.Equal(t, 5, event.QueueCount)
+	})
+
+	t.Run("chaining multiple builders", func(t *testing.T) {
+		event := NewProcessEvent(ProcessOutput, "worker-1", RoleWorker).
+			WithOutput("Working...").
+			WithDelta(true).
+			WithStatus(ProcessStatusWorking).
+			WithTaskID("task-123")
+
+		require.Equal(t, "Working...", event.Output)
+		require.True(t, event.Delta)
+		require.Equal(t, ProcessStatusWorking, event.Status)
+		require.Equal(t, "task-123", event.TaskID)
+		require.False(t, event.Timestamp.IsZero())
+	})
+}

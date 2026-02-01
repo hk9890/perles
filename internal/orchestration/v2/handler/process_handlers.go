@@ -189,13 +189,9 @@ func (h *SendToProcessHandler) handleWithSpan(_ context.Context, sendCmd *comman
 	// If process is Working, just emit queue changed event - delivery happens when turn completes
 	if proc.Status == repository.StatusWorking {
 		result.Queued = true
-		event := events.ProcessEvent{
-			Type:       events.ProcessQueueChanged,
-			ProcessID:  proc.ID,
-			Role:       proc.Role,
-			Status:     proc.Status,
-			QueueCount: queue.Size(),
-		}
+		event := events.NewProcessEvent(events.ProcessQueueChanged, proc.ID, proc.Role).
+			WithStatus(proc.Status).
+			WithQueueCount(queue.Size())
 		return SuccessWithEvents(result, event), nil
 	}
 
@@ -341,34 +337,22 @@ func (h *DeliverProcessQueuedHandler) Handle(ctx context.Context, cmd command.Co
 	var resultEvents []any
 
 	// Emit ProcessWorking event
-	workingEvent := events.ProcessEvent{
-		Type:      events.ProcessWorking,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusWorking,
-		TaskID:    proc.TaskID,
-	}
+	workingEvent := events.NewProcessEvent(events.ProcessWorking, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusWorking).
+		WithTaskID(proc.TaskID)
 	resultEvents = append(resultEvents, workingEvent)
 
 	// Emit ProcessIncoming event with the message
-	incomingEvent := events.ProcessEvent{
-		Type:      events.ProcessIncoming,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Message:   entry.Content,
-		Sender:    string(entry.Sender),
-		TaskID:    proc.TaskID,
-	}
+	incomingEvent := events.NewProcessEvent(events.ProcessIncoming, proc.ID, proc.Role).
+		WithMessage(entry.Content).
+		WithSender(string(entry.Sender)).
+		WithTaskID(proc.TaskID)
 	resultEvents = append(resultEvents, incomingEvent)
 
 	// Emit ProcessQueueChanged event so TUI updates the queue badge
-	queueChangedEvent := events.ProcessEvent{
-		Type:       events.ProcessQueueChanged,
-		ProcessID:  proc.ID,
-		Role:       proc.Role,
-		Status:     proc.Status,
-		QueueCount: queue.Size(),
-	}
+	queueChangedEvent := events.NewProcessEvent(events.ProcessQueueChanged, proc.ID, proc.Role).
+		WithStatus(proc.Status).
+		WithQueueCount(queue.Size())
 	resultEvents = append(resultEvents, queueChangedEvent)
 
 	result := &DeliverProcessQueuedResult{
@@ -560,12 +544,8 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			h.soundService.Play("deny", "coordinator_out_of_context")
 
 			// Emit ProcessAutoRefreshRequired event for TUI notification
-			autoRefreshEvent := events.ProcessEvent{
-				Type:      events.ProcessAutoRefreshRequired,
-				ProcessID: proc.ID,
-				Role:      proc.Role,
-				Status:    events.ProcessStatusFailed,
-			}
+			autoRefreshEvent := events.NewProcessEvent(events.ProcessAutoRefreshRequired, proc.ID, proc.Role).
+				WithStatus(events.ProcessStatusFailed)
 
 			// Create ReplaceProcessCommand to trigger automatic coordinator replacement
 			replaceCmd := command.NewReplaceProcessCommand(
@@ -608,12 +588,8 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			h.soundService.Play("deny", "observer_out_of_context")
 
 			// Emit ProcessAutoRefreshRequired event for TUI notification
-			autoRefreshEvent := events.ProcessEvent{
-				Type:      events.ProcessAutoRefreshRequired,
-				ProcessID: proc.ID,
-				Role:      proc.Role, // RoleObserver - allows TUI to differentiate if needed
-				Status:    events.ProcessStatusFailed,
-			}
+			autoRefreshEvent := events.NewProcessEvent(events.ProcessAutoRefreshRequired, proc.ID, proc.Role).
+				WithStatus(events.ProcessStatusFailed)
 
 			// Create ReplaceProcessCommand to trigger automatic observer replacement
 			replaceCmd := command.NewReplaceProcessCommand(
@@ -721,13 +697,9 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			evErr = fmt.Errorf("process %s first turn failed; exited before establishing a session", proc.ID)
 		}
 
-		errorEvent := events.ProcessEvent{
-			Type:      events.ProcessError,
-			ProcessID: proc.ID,
-			Role:      proc.Role,
-			Status:    events.ProcessStatusFailed,
-			Error:     evErr,
-		}
+		errorEvent := events.NewProcessEvent(events.ProcessError, proc.ID, proc.Role).
+			WithStatus(events.ProcessStatusFailed).
+			WithError(evErr)
 
 		result := &ProcessTurnCompleteResult{
 			ProcessID: proc.ID,
@@ -798,16 +770,12 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 			evErr = fmt.Errorf("process %s turn failed after initial success", proc.ID)
 		}
 
-		errorEvent := events.ProcessEvent{
-			Type:      events.ProcessError,
-			ProcessID: proc.ID,
-			Role:      proc.Role,
-			// We change the status to Ready since this is not the first turn failure
-			// During the first turn if an error occurred there would be no session id
-			// to continue the conversation from
-			Status: events.ProcessStatusReady,
-			Error:  evErr,
-		}
+		// We change the status to Ready since this is not the first turn failure
+		// During the first turn if an error occurred there would be no session id
+		// to continue the conversation from
+		errorEvent := events.NewProcessEvent(events.ProcessError, proc.ID, proc.Role).
+			WithStatus(events.ProcessStatusReady).
+			WithError(evErr)
 
 		result := &ProcessTurnCompleteResult{
 			ProcessID: proc.ID,
@@ -834,13 +802,9 @@ func (h *ProcessTurnCompleteHandler) Handle(ctx context.Context, cmd command.Com
 		return nil, fmt.Errorf("failed to save process: %w", err)
 	}
 
-	readyEvent := events.ProcessEvent{
-		Type:      events.ProcessReady,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusReady,
-		TaskID:    proc.TaskID,
-	}
+	readyEvent := events.NewProcessEvent(events.ProcessReady, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusReady).
+		WithTaskID(proc.TaskID)
 
 	// Check for queued messages - same logic for both roles
 	var followUps []command.Command
@@ -957,13 +921,9 @@ func (h *RetireProcessHandler) Handle(ctx context.Context, cmd command.Command) 
 	}
 
 	// Emit ProcessStatusChange event
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusRetired,
-		TaskID:    proc.TaskID,
-	}
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusRetired).
+		WithTaskID(proc.TaskID)
 
 	result := &RetireProcessResult{
 		ProcessID: proc.ID,
@@ -1225,12 +1185,8 @@ func (h *SpawnProcessHandler) handleSpawn(ctx context.Context, spawnCmd *command
 	}
 
 	// Emit ProcessSpawned event
-	event := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		ProcessID: processID,
-		Role:      spawnCmd.Role,
-		Status:    proc.Status,
-	}
+	event := events.NewProcessEvent(events.ProcessSpawned, processID, spawnCmd.Role).
+		WithStatus(proc.Status)
 
 	result := &SpawnProcessResult{
 		ProcessID: processID,
@@ -1451,21 +1407,13 @@ func (h *ReplaceProcessHandler) replaceCoordinator(ctx context.Context, proc *re
 	var resultEvents []any
 
 	// Old coordinator retired
-	retiredEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      events.RoleCoordinator,
-		Status:    events.ProcessStatusRetired,
-	}
+	retiredEvent := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, events.RoleCoordinator).
+		WithStatus(events.ProcessStatusRetired)
 	resultEvents = append(resultEvents, retiredEvent)
 
 	// New coordinator spawned
-	spawnedEvent := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		ProcessID: repository.CoordinatorID,
-		Role:      events.RoleCoordinator,
-		Status:    newProc.Status,
-	}
+	spawnedEvent := events.NewProcessEvent(events.ProcessSpawned, repository.CoordinatorID, events.RoleCoordinator).
+		WithStatus(newProc.Status)
 	resultEvents = append(resultEvents, spawnedEvent)
 
 	result := &ReplaceProcessResult{
@@ -1581,21 +1529,13 @@ func (h *ReplaceProcessHandler) replaceObserver(ctx context.Context, proc *repos
 	var resultEvents []any
 
 	// Old observer retired
-	retiredEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      events.RoleObserver,
-		Status:    events.ProcessStatusRetired,
-	}
+	retiredEvent := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, events.RoleObserver).
+		WithStatus(events.ProcessStatusRetired)
 	resultEvents = append(resultEvents, retiredEvent)
 
 	// New observer spawned
-	spawnedEvent := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		ProcessID: repository.ObserverID,
-		Role:      events.RoleObserver,
-		Status:    newProc.Status,
-	}
+	spawnedEvent := events.NewProcessEvent(events.ProcessSpawned, repository.ObserverID, events.RoleObserver).
+		WithStatus(newProc.Status)
 	resultEvents = append(resultEvents, spawnedEvent)
 
 	result := &ReplaceProcessResult{
@@ -1677,22 +1617,14 @@ func (h *ReplaceProcessHandler) replaceWorker(ctx context.Context, proc *reposit
 	var resultEvents []any
 
 	// Old worker retired
-	retiredEvent := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      events.RoleWorker,
-		Status:    events.ProcessStatusRetired,
-		TaskID:    proc.TaskID,
-	}
+	retiredEvent := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, events.RoleWorker).
+		WithStatus(events.ProcessStatusRetired).
+		WithTaskID(proc.TaskID)
 	resultEvents = append(resultEvents, retiredEvent)
 
 	// New worker spawned
-	spawnedEvent := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		ProcessID: newWorkerID,
-		Role:      events.RoleWorker,
-		Status:    newProc.Status,
-	}
+	spawnedEvent := events.NewProcessEvent(events.ProcessSpawned, newWorkerID, events.RoleWorker).
+		WithStatus(newProc.Status)
 	resultEvents = append(resultEvents, spawnedEvent)
 
 	result := &ReplaceProcessResult{
@@ -1811,13 +1743,9 @@ func (h *PauseProcessHandler) Handle(ctx context.Context, cmd command.Command) (
 	}
 
 	// Emit ProcessStatusChange event
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusPaused,
-		TaskID:    proc.TaskID,
-	}
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusPaused).
+		WithTaskID(proc.TaskID)
 
 	result := &PauseProcessResult{
 		ProcessID: proc.ID,
@@ -1897,13 +1825,9 @@ func (h *ResumeProcessHandler) Handle(ctx context.Context, cmd command.Command) 
 	}
 
 	// Emit ProcessStatusChange event
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		Status:    events.ProcessStatusReady,
-		TaskID:    proc.TaskID,
-	}
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithStatus(events.ProcessStatusReady).
+		WithTaskID(proc.TaskID)
 
 	// Check for queued messages - trigger drain if pending
 	var followUps []command.Command

@@ -22,11 +22,6 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
 )
 
-// phasePtr is a helper to create *ProcessPhase from ProcessPhase constants.
-func phasePtr(p events.ProcessPhase) *events.ProcessPhase {
-	return &p
-}
-
 func TestStatus_String(t *testing.T) {
 	tests := []struct {
 		status   Status
@@ -1209,7 +1204,7 @@ func TestSession_WriteCoordinatorMessage(t *testing.T) {
 	msg1 := chatrender.Message{
 		Role:      "assistant",
 		Content:   "Hello, I'm starting work.",
-		Timestamp: &ts1,
+		Timestamp: ts1,
 	}
 	err = session.WriteCoordinatorMessage(msg1)
 	require.NoError(t, err)
@@ -1219,7 +1214,7 @@ func TestSession_WriteCoordinatorMessage(t *testing.T) {
 		Role:       "assistant",
 		Content:    "🔧 Read(file.go)",
 		IsToolCall: true,
-		Timestamp:  &ts2,
+		Timestamp:  ts2,
 	}
 	err = session.WriteCoordinatorMessage(msg2)
 	require.NoError(t, err)
@@ -1271,7 +1266,7 @@ func TestSession_WriteCoordinatorMessage_AfterClose(t *testing.T) {
 	msg := chatrender.Message{
 		Role:      "assistant",
 		Content:   "should fail",
-		Timestamp: &ts,
+		Timestamp: ts,
 	}
 	err = session.WriteCoordinatorMessage(msg)
 	require.Error(t, err)
@@ -1295,7 +1290,7 @@ func TestSession_WriteWorkerMessage(t *testing.T) {
 	msg1 := chatrender.Message{
 		Role:      "assistant",
 		Content:   "Starting task implementation...",
-		Timestamp: &ts1,
+		Timestamp: ts1,
 	}
 	err = session.WriteWorkerMessage("worker-1", msg1)
 	require.NoError(t, err)
@@ -1304,7 +1299,7 @@ func TestSession_WriteWorkerMessage(t *testing.T) {
 	msg2 := chatrender.Message{
 		Role:      "assistant",
 		Content:   "Ready for task assignment",
-		Timestamp: &ts2,
+		Timestamp: ts2,
 	}
 	err = session.WriteWorkerMessage("worker-2", msg2)
 	require.NoError(t, err)
@@ -1314,7 +1309,7 @@ func TestSession_WriteWorkerMessage(t *testing.T) {
 	msg3 := chatrender.Message{
 		Role:      "assistant",
 		Content:   "Task completed",
-		Timestamp: &ts3,
+		Timestamp: ts3,
 	}
 	err = session.WriteWorkerMessage("worker-1", msg3)
 	require.NoError(t, err)
@@ -1374,7 +1369,7 @@ func TestSession_WriteWorkerMessage_LazyCreation(t *testing.T) {
 	msg := chatrender.Message{
 		Role:      "assistant",
 		Content:   "Hello from worker-3",
-		Timestamp: &ts,
+		Timestamp: ts,
 	}
 	err = session.WriteWorkerMessage("worker-3", msg)
 	require.NoError(t, err)
@@ -1703,14 +1698,14 @@ func TestSession_Close(t *testing.T) {
 	err = session.WriteCoordinatorMessage(chatrender.Message{
 		Role:      "assistant",
 		Content:   "Starting...",
-		Timestamp: &ts,
+		Timestamp: ts,
 	})
 	require.NoError(t, err)
 
 	err = session.WriteWorkerMessage("worker-1", chatrender.Message{
 		Role:      "assistant",
 		Content:   "Working...",
-		Timestamp: &ts,
+		Timestamp: ts,
 	})
 	require.NoError(t, err)
 
@@ -1748,7 +1743,7 @@ func TestSession_Close_FlushesBuffers(t *testing.T) {
 		err = session.WriteCoordinatorMessage(chatrender.Message{
 			Role:      "assistant",
 			Content:   "Event",
-			Timestamp: &ts,
+			Timestamp: ts,
 		})
 		require.NoError(t, err)
 	}
@@ -1780,7 +1775,7 @@ func TestSession_Close_FlushesMessagesJSONL(t *testing.T) {
 		msg := chatrender.Message{
 			Role:      "assistant",
 			Content:   fmt.Sprintf("Message %d", i),
-			Timestamp: &ts,
+			Timestamp: ts,
 		}
 		err = session.WriteCoordinatorMessage(msg)
 		require.NoError(t, err)
@@ -1966,24 +1961,17 @@ func TestSession_CoordinatorSubscriber(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish a coordinator output event (equivalent to CoordinatorChat)
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:    events.ProcessOutput,
-		Role:    events.RoleCoordinator,
-		Output:  "Starting orchestration session...",
-		RawJSON: []byte(`{"type":"chat","content":"Starting orchestration session..."}`),
-	})
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).
+		WithOutput("Starting orchestration session...").
+		WithRawJSON([]byte(`{"type":"chat","content":"Starting orchestration session..."}`)))
 
 	// Publish a token usage event
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   100,
 			OutputTokens: 50,
 			TotalCostUSD: 0.05,
-		},
-	})
+		}))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -2033,29 +2021,17 @@ func TestSession_WorkerSubscriber(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish worker spawned event
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
 
 	// Publish worker output event
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Output:    "Starting implementation...",
-		RawJSON:   []byte(`{"type":"output","content":"Starting implementation..."}`),
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).
+		WithOutput("Starting implementation...").
+		WithRawJSON([]byte(`{"type":"output","content":"Starting implementation..."}`)))
 
 	// Publish worker status change (retired)
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Status:    events.ProcessStatusRetired,
-		Phase:     phasePtr(events.ProcessPhaseIdle),
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessStatusChange, "worker-1", events.RoleWorker).
+		WithStatus(events.ProcessStatusRetired).
+		WithPhase(events.ProcessPhaseIdle))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -2294,12 +2270,8 @@ func TestSession_HighThroughput(t *testing.T) {
 	// This tests that under normal operation (< 100 events/sec) no events are dropped
 	const eventCount = 100
 	for i := 0; i < eventCount; i++ {
-		processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-			Type:      events.ProcessOutput,
-			Role:      events.RoleWorker,
-			ProcessID: "worker-1",
-			Output:    fmt.Sprintf("Event %d", i),
-		})
+		processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).
+			WithOutput(fmt.Sprintf("Event %d", i)))
 		// Small delay to allow subscriber to process (simulates realistic event rate)
 		if i%10 == 0 {
 			time.Sleep(time.Millisecond)
@@ -2357,38 +2329,26 @@ func TestSession_TokenUsageAggregation(t *testing.T) {
 	session.addWorker("worker-2", now, "/project")
 
 	// Publish multiple token usage events from coordinator and workers
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   100,
 			OutputTokens: 50,
 			TotalCostUSD: 0.01,
-		},
-	})
+		}))
 
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "worker-1", events.RoleWorker).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   200,
 			OutputTokens: 75,
 			TotalCostUSD: 0.02,
-		},
-	})
+		}))
 
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-2",
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "worker-2", events.RoleWorker).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   300,
 			OutputTokens: 100,
 			TotalCostUSD: 0.03,
-		},
-	})
+		}))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -2431,46 +2391,22 @@ func TestSession_WorkerMetadataUpdates(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Spawn multiple workers
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-2",
-	})
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-3",
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-2", events.RoleWorker))
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-3", events.RoleWorker))
 
 	// Status changes
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Status:    events.ProcessStatusWorking,
-		Phase:     phasePtr(events.ProcessPhaseImplementing),
-	})
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-2",
-		Status:    events.ProcessStatusWorking,
-		Phase:     phasePtr(events.ProcessPhaseReviewing),
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessStatusChange, "worker-1", events.RoleWorker).
+		WithStatus(events.ProcessStatusWorking).
+		WithPhase(events.ProcessPhaseImplementing))
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessStatusChange, "worker-2", events.RoleWorker).
+		WithStatus(events.ProcessStatusWorking).
+		WithPhase(events.ProcessPhaseReviewing))
 
 	// Retire one worker
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-		Status:    events.ProcessStatusRetired,
-		Phase:     phasePtr(events.ProcessPhaseIdle),
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessStatusChange, "worker-1", events.RoleWorker).
+		WithStatus(events.ProcessStatusRetired).
+		WithPhase(events.ProcessPhaseIdle))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -2537,11 +2473,7 @@ func TestSession_LateCoordinatorAttach(t *testing.T) {
 	require.Equal(t, 1, msgBroker.SubscriberCount())
 
 	// Publish some worker events before v2EventBus is attached
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
 
 	// Step 2: Later, attach v2EventBus (handles both coordinator and worker events)
 	v2EventBus := pubsub.NewBroker[any]()
@@ -2556,11 +2488,8 @@ func TestSession_LateCoordinatorAttach(t *testing.T) {
 	require.Equal(t, 1, v2EventBus.SubscriberCount())
 
 	// Publish coordinator events after attachment (via ProcessEvent with RoleCoordinator)
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:   events.ProcessOutput,
-		Role:   events.RoleCoordinator,
-		Output: "First coordinator message",
-	})
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).
+		WithOutput("First coordinator message"))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -2718,18 +2647,11 @@ func TestSession_AllFourBrokersFromAllBrokers(t *testing.T) {
 	timestamp := time.Now()
 
 	// Coordinator event (via v2EventBus as ProcessEvent)
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:   events.ProcessOutput,
-		Role:   events.RoleCoordinator,
-		Output: "Orchestration started",
-	})
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).
+		WithOutput("Orchestration started"))
 
 	// Worker event
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker))
 
 	// Message event
 	msgBroker.Publish(pubsub.UpdatedEvent, message.Event{
@@ -3616,12 +3538,8 @@ func TestSession_HandleCoordinatorProcessEvent_Output(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a coordinator output event
-	event := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Output:    "Hello, I'm the coordinator starting work.",
-	}
+	event := events.NewProcessEvent(events.ProcessOutput, "coordinator", events.RoleCoordinator).
+		WithOutput("Hello, I'm the coordinator starting work.")
 	session.handleCoordinatorProcessEvent(event)
 
 	// Close to flush buffers
@@ -3655,13 +3573,9 @@ func TestSession_HandleCoordinatorProcessEvent_Incoming(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a user input event to coordinator
-	event := events.ProcessEvent{
-		Type:      events.ProcessIncoming,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Message:   "Please start work on the epic.",
-		Sender:    "user",
-	}
+	event := events.NewProcessEvent(events.ProcessIncoming, "coordinator", events.RoleCoordinator).
+		WithMessage("Please start work on the epic.").
+		WithSender("user")
 	session.handleCoordinatorProcessEvent(event)
 
 	// Close to flush buffers
@@ -3693,12 +3607,8 @@ func TestSession_HandleCoordinatorProcessEvent_Error(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate an error event
-	event := events.ProcessEvent{
-		Type:      events.ProcessError,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Error:     fmt.Errorf("connection timeout"),
-	}
+	event := events.NewProcessEvent(events.ProcessError, "coordinator", events.RoleCoordinator).
+		WithError(fmt.Errorf("connection timeout"))
 	session.handleCoordinatorProcessEvent(event)
 
 	// Close to flush buffers
@@ -3730,12 +3640,8 @@ func TestSession_HandleCoordinatorProcessEvent_ToolCall(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a tool call output (detected by 🔧 prefix)
-	event := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Output:    "🔧 Read(file.go)",
-	}
+	event := events.NewProcessEvent(events.ProcessOutput, "coordinator", events.RoleCoordinator).
+		WithOutput("🔧 Read(file.go)")
 	session.handleCoordinatorProcessEvent(event)
 
 	// Close to flush buffers
@@ -3768,16 +3674,12 @@ func TestSession_HandleCoordinatorProcessEvent_TokenUsage(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a token usage event
-	event := events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Metrics: &metrics.TokenMetrics{
+	event := events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   1000,
 			OutputTokens: 500,
 			TotalCostUSD: 0.05,
-		},
-	}
+		})
 	session.handleCoordinatorProcessEvent(event)
 
 	// Close to flush buffers
@@ -3806,12 +3708,8 @@ func TestSession_HandleProcessEvent_WorkerOutput(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a worker output event
-	event := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Output:    "Starting implementation of task...",
-	}
+	event := events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).
+		WithOutput("Starting implementation of task...")
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -3844,13 +3742,9 @@ func TestSession_HandleProcessEvent_WorkerIncoming(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate an incoming message from coordinator to worker
-	event := events.ProcessEvent{
-		Type:      events.ProcessIncoming,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Message:   "Please work on task ms-123.",
-		Sender:    "coordinator",
-	}
+	event := events.NewProcessEvent(events.ProcessIncoming, "worker-1", events.RoleWorker).
+		WithMessage("Please work on task ms-123.").
+		WithSender("coordinator")
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -3882,13 +3776,9 @@ func TestSession_HandleProcessEvent_WorkerIncoming_DefaultRole(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate an incoming message with empty Sender (should default to "coordinator")
-	event := events.ProcessEvent{
-		Type:      events.ProcessIncoming,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Message:   "Work on this task.",
-		Sender:    "", // Empty - should default to "coordinator"
-	}
+	event := events.NewProcessEvent(events.ProcessIncoming, "worker-1", events.RoleWorker).
+		WithMessage("Work on this task.")
+	// Sender not set - should default to "coordinator"
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -3919,12 +3809,8 @@ func TestSession_HandleProcessEvent_WorkerError(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a worker error event
-	event := events.ProcessEvent{
-		Type:      events.ProcessError,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Error:     fmt.Errorf("task failed: test compilation error"),
-	}
+	event := events.NewProcessEvent(events.ProcessError, "worker-1", events.RoleWorker).
+		WithError(fmt.Errorf("task failed: test compilation error"))
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -3956,12 +3842,8 @@ func TestSession_HandleProcessEvent_WorkerToolCall(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a worker tool call output (detected by 🔧 prefix)
-	event := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Output:    "🔧 Edit(session.go)",
-	}
+	event := events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).
+		WithOutput("🔧 Edit(session.go)")
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -3994,11 +3876,7 @@ func TestSession_HandleProcessEvent_WorkerSpawned(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close(StatusCompleted) })
 
 	// Simulate a worker spawned event
-	event := events.ProcessEvent{
-		Type:      events.ProcessSpawned,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-	}
+	event := events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker)
 	session.handleProcessEvent(event)
 
 	// Close to flush buffers
@@ -4414,7 +4292,7 @@ func TestReopen_OpensFilesInAppendMode(t *testing.T) {
 	initialMsg := chatrender.Message{
 		Role:      "user",
 		Content:   "Initial message",
-		Timestamp: &now,
+		Timestamp: now,
 	}
 	err = origSess.WriteCoordinatorMessage(initialMsg)
 	require.NoError(t, err)
@@ -4435,7 +4313,7 @@ func TestReopen_OpensFilesInAppendMode(t *testing.T) {
 	newMsg := chatrender.Message{
 		Role:      "assistant",
 		Content:   "New message after reopen",
-		Timestamp: &now,
+		Timestamp: now,
 	}
 	err = sess.WriteCoordinatorMessage(newMsg)
 	require.NoError(t, err)
@@ -4566,11 +4444,11 @@ func TestReopen_ThenWriteMessages(t *testing.T) {
 	now := time.Now()
 	origSess.addWorker("worker-1", now, "/project")
 
-	msg1 := chatrender.Message{Role: "user", Content: "User question", Timestamp: &now}
+	msg1 := chatrender.Message{Role: "user", Content: "User question", Timestamp: now}
 	err = origSess.WriteCoordinatorMessage(msg1)
 	require.NoError(t, err)
 
-	msg2 := chatrender.Message{Role: "assistant", Content: "Initial response", Timestamp: &now}
+	msg2 := chatrender.Message{Role: "assistant", Content: "Initial response", Timestamp: now}
 	err = origSess.WriteCoordinatorMessage(msg2)
 	require.NoError(t, err)
 
@@ -4603,11 +4481,11 @@ func TestReopen_ThenWriteMessages(t *testing.T) {
 	require.Equal(t, "test-app", sess.applicationName)
 
 	// Phase 3: Write new content
-	msg3 := chatrender.Message{Role: "user", Content: "Follow-up question", Timestamp: &now}
+	msg3 := chatrender.Message{Role: "user", Content: "Follow-up question", Timestamp: now}
 	err = sess.WriteCoordinatorMessage(msg3)
 	require.NoError(t, err)
 
-	msg4 := chatrender.Message{Role: "assistant", Content: "Continued response", Timestamp: &now}
+	msg4 := chatrender.Message{Role: "assistant", Content: "Continued response", Timestamp: now}
 	err = sess.WriteCoordinatorMessage(msg4)
 	require.NoError(t, err)
 

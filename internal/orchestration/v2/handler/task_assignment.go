@@ -235,13 +235,11 @@ func (h *AssignTaskHandler) handleAssign(_ context.Context, assignCmd *command.A
 
 	// 11. Return with ProcessEvent and follow-up
 	// Note: We emit the phase change event, but status change happens in delivery
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: proc.ID,
-		Role:      proc.Role,
-		TaskID:    assignCmd.TaskID,
-		Status:    proc.Status, // Still Ready at this point
-		Phase:     proc.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, proc.ID, proc.Role).
+		WithTaskID(assignCmd.TaskID).
+		WithStatus(proc.Status) // Still Ready at this point
+	if proc.Phase != nil {
+		event = event.WithPhase(*proc.Phase)
 	}
 
 	result := &AssignTaskResult{
@@ -376,13 +374,11 @@ func (h *AssignReviewHandler) Handle(ctx context.Context, cmd command.Command) (
 	deliverCmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, reviewCmd.ReviewerID)
 
 	// 9. Return with ProcessEvent and follow-up
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: reviewer.ID,
-		Role:      reviewer.Role,
-		TaskID:    reviewCmd.TaskID,
-		Status:    reviewer.Status, // Still Ready at this point
-		Phase:     reviewer.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, reviewer.ID, reviewer.Role).
+		WithTaskID(reviewCmd.TaskID).
+		WithStatus(reviewer.Status) // Still Ready at this point
+	if reviewer.Phase != nil {
+		event = event.WithPhase(*reviewer.Phase)
 	}
 
 	result := &AssignReviewResult{
@@ -498,13 +494,11 @@ func (h *ApproveCommitHandler) Handle(ctx context.Context, cmd command.Command) 
 	deliverCmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, approveCmd.ImplementerID)
 
 	// 8. Return with ProcessEvent and follow-up
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: implementer.ID,
-		Role:      implementer.Role,
-		TaskID:    approveCmd.TaskID,
-		Status:    implementer.Status,
-		Phase:     implementer.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, implementer.ID, implementer.Role).
+		WithTaskID(approveCmd.TaskID).
+		WithStatus(implementer.Status)
+	if implementer.Phase != nil {
+		event = event.WithPhase(*implementer.Phase)
 	}
 
 	result := &ApproveCommitResult{
@@ -618,13 +612,11 @@ func (h *AssignReviewFeedbackHandler) Handle(ctx context.Context, cmd command.Co
 	deliverCmd := command.NewDeliverProcessQueuedCommand(command.SourceInternal, feedbackCmd.ImplementerID)
 
 	// 8. Return with ProcessEvent and follow-up
-	event := events.ProcessEvent{
-		Type:      events.ProcessStatusChange,
-		ProcessID: implementer.ID,
-		Role:      implementer.Role,
-		TaskID:    feedbackCmd.TaskID,
-		Status:    implementer.Status,
-		Phase:     implementer.Phase,
+	event := events.NewProcessEvent(events.ProcessStatusChange, implementer.ID, implementer.Role).
+		WithTaskID(feedbackCmd.TaskID).
+		WithStatus(implementer.Status)
+	if implementer.Phase != nil {
+		event = event.WithPhase(*implementer.Phase)
 	}
 
 	result := &AssignReviewFeedbackResult{

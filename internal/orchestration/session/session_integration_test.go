@@ -73,17 +73,13 @@ func TestCostFlowEndToEnd_Claude(t *testing.T) {
 		if outputEvent.Type == client.EventAssistant && outputEvent.Usage != nil {
 			expectedOutputTokens += outputEvent.Usage.OutputTokens
 
-			v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-				Type:      events.ProcessTokenUsage,
-				ProcessID: "coordinator",
-				Role:      events.RoleCoordinator,
-				Metrics: &metrics.TokenMetrics{
+			v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+				WithMetrics(&metrics.TokenMetrics{
 					TokensUsed:   outputEvent.Usage.TokensUsed,
 					TotalTokens:  outputEvent.Usage.TotalTokens,
 					OutputTokens: outputEvent.Usage.OutputTokens,
 					TotalCostUSD: 0, // Cost comes from result events
-				},
-			})
+				}))
 		}
 
 		// Handle result events (contain cost info when Usage is nil)
@@ -93,15 +89,11 @@ func TestCostFlowEndToEnd_Claude(t *testing.T) {
 
 			// This simulates publishCostEvent() which is called when result event
 			// has TotalCostUSD > 0 and Usage == nil
-			v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-				Type:      events.ProcessTokenUsage,
-				ProcessID: "coordinator",
-				Role:      events.RoleCoordinator,
-				Metrics: &metrics.TokenMetrics{
+			v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+				WithMetrics(&metrics.TokenMetrics{
 					TurnCostUSD:  outputEvent.TotalCostUSD,
 					TotalCostUSD: outputEvent.TotalCostUSD,
-				},
-			})
+				}))
 		}
 	}
 
@@ -190,17 +182,13 @@ func TestCostFlowEndToEnd_Amp(t *testing.T) {
 		if outputEvent.Type == client.EventAssistant && outputEvent.Usage != nil {
 			expectedOutputTokens += outputEvent.Usage.OutputTokens
 
-			v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-				Type:      events.ProcessTokenUsage,
-				ProcessID: "coordinator",
-				Role:      events.RoleCoordinator,
-				Metrics: &metrics.TokenMetrics{
+			v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+				WithMetrics(&metrics.TokenMetrics{
 					TokensUsed:   outputEvent.Usage.TokensUsed,
 					TotalTokens:  outputEvent.Usage.TotalTokens,
 					OutputTokens: outputEvent.Usage.OutputTokens,
 					TotalCostUSD: 0, // Cost comes from result events
-				},
-			})
+				}))
 		}
 
 		// Handle result events (contain cost info)
@@ -209,15 +197,11 @@ func TestCostFlowEndToEnd_Amp(t *testing.T) {
 			expectedCost += outputEvent.TotalCostUSD
 
 			// This simulates publishCostEvent()
-			v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-				Type:      events.ProcessTokenUsage,
-				ProcessID: "coordinator",
-				Role:      events.RoleCoordinator,
-				Metrics: &metrics.TokenMetrics{
+			v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+				WithMetrics(&metrics.TokenMetrics{
 					TurnCostUSD:  outputEvent.TotalCostUSD,
 					TotalCostUSD: outputEvent.TotalCostUSD,
-				},
-			})
+				}))
 		}
 	}
 
@@ -289,40 +273,28 @@ func TestMultiProcessCostAggregation(t *testing.T) {
 	expectedTotalCost := coordinatorCost + worker1Cost + worker2Cost // 0.10
 
 	// Simulate coordinator token usage
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "coordinator",
-		Role:      events.RoleCoordinator,
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   10000,
 			OutputTokens: 500,
 			TotalCostUSD: coordinatorCost,
-		},
-	})
+		}))
 
 	// Simulate worker-1 token usage
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "worker-1",
-		Role:      events.RoleWorker,
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "worker-1", events.RoleWorker).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   8000,
 			OutputTokens: 300,
 			TotalCostUSD: worker1Cost,
-		},
-	})
+		}))
 
 	// Simulate worker-2 token usage
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: "worker-2",
-		Role:      events.RoleWorker,
-		Metrics: &metrics.TokenMetrics{
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "worker-2", events.RoleWorker).
+		WithMetrics(&metrics.TokenMetrics{
 			TokensUsed:   12000,
 			OutputTokens: 400,
 			TotalCostUSD: worker2Cost,
-		},
-	})
+		}))
 
 	// Give time for events to be processed
 	time.Sleep(50 * time.Millisecond)
@@ -390,16 +362,12 @@ func TestMultiProcessCostAggregation_MultiTurn(t *testing.T) {
 
 	// Publish each turn's cost
 	for i, cost := range turnCosts {
-		v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-			Type:      events.ProcessTokenUsage,
-			ProcessID: "coordinator",
-			Role:      events.RoleCoordinator,
-			Metrics: &metrics.TokenMetrics{
+		v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, "coordinator", events.RoleCoordinator).
+			WithMetrics(&metrics.TokenMetrics{
 				TokensUsed:   (i + 1) * 1000,
 				OutputTokens: 100,
 				TotalCostUSD: cost, // Turn cost, not cumulative!
-			},
-		})
+			}))
 	}
 
 	// Give time for events to be processed

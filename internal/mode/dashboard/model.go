@@ -1418,9 +1418,11 @@ func (m *Model) updateCachedUIState(event controlplane.ControlPlaneEvent) {
 		// Message delivered to coordinator - use sender from event
 		if payload, ok := event.Payload.(events.ProcessEvent); ok {
 			if payload.Message != "" {
+				ts := payload.Timestamp
 				uiState.CoordinatorMessages = append(uiState.CoordinatorMessages, chatrender.Message{
-					Role:    payload.Sender,
-					Content: payload.Message,
+					Role:      payload.Sender,
+					Content:   payload.Message,
+					Timestamp: ts,
 				})
 			}
 		}
@@ -1609,10 +1611,12 @@ func (m *Model) appendCoordinatorMessageToCache(state *WorkflowUIState, payload 
 		}
 	}
 
+	ts := payload.Timestamp
 	state.CoordinatorMessages = append(state.CoordinatorMessages, chatrender.Message{
 		Role:       "assistant",
 		Content:    payload.Output,
 		IsToolCall: isToolCall,
+		Timestamp:  ts,
 	})
 }
 
@@ -1635,10 +1639,12 @@ func (m *Model) appendObserverMessageToCache(state *WorkflowUIState, payload eve
 		}
 	}
 
+	ts := payload.Timestamp
 	state.ObserverMessages = append(state.ObserverMessages, chatrender.Message{
 		Role:       "assistant",
 		Content:    payload.Output,
 		IsToolCall: isToolCall,
+		Timestamp:  ts,
 	})
 }
 
@@ -1664,10 +1670,12 @@ func (m *Model) appendWorkerMessageToCache(state *WorkflowUIState, payload event
 		}
 	}
 
+	ts := payload.Timestamp
 	messages = append(messages, chatrender.Message{
 		Role:       "assistant",
 		Content:    payload.Output,
 		IsToolCall: isToolCall,
+		Timestamp:  ts,
 	})
 	state.WorkerMessages[workerID] = messages
 }

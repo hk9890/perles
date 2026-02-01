@@ -233,12 +233,8 @@ func TestHealthMonitor_EventBus_TriggersHeartbeatOnAnyEvent(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish a process event wrapped in ControlPlaneEvent
-	processEvent := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: "workflow-1",
-		Role:      events.RoleCoordinator,
-		Output:    "some output",
-	}
+	processEvent := events.NewProcessEvent(events.ProcessOutput, "workflow-1", events.RoleCoordinator).
+		WithOutput("some output")
 	cpEvent := ControlPlaneEvent{
 		WorkflowID: "workflow-1",
 		Payload:    processEvent,
@@ -503,11 +499,7 @@ func TestHealthMonitor_EventBus_WorkflowCompleteUntracksWorkflow(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Workflow complete should untrack the workflow (not just record progress)
-	processEvent := events.ProcessEvent{
-		Type:      events.ProcessWorkflowComplete,
-		ProcessID: string(workflowID),
-		Role:      events.RoleCoordinator,
-	}
+	processEvent := events.NewProcessEvent(events.ProcessWorkflowComplete, string(workflowID), events.RoleCoordinator)
 	cpEvent := ControlPlaneEvent{
 		WorkflowID: workflowID,
 		Payload:    processEvent,
@@ -554,41 +546,28 @@ func TestIsProgressEvent(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "worker output is progress",
-			event: events.ProcessEvent{
-				Type: events.ProcessOutput,
-				Role: events.RoleWorker,
-			},
+			name:     "worker output is progress",
+			event:    events.NewProcessEvent(events.ProcessOutput, "", events.RoleWorker),
 			expected: true,
 		},
 		{
-			name: "coordinator output is not progress",
-			event: events.ProcessEvent{
-				Type: events.ProcessOutput,
-				Role: events.RoleCoordinator,
-			},
+			name:     "coordinator output is not progress",
+			event:    events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator),
 			expected: false,
 		},
 		{
-			name: "status change is not progress",
-			event: events.ProcessEvent{
-				Type:   events.ProcessStatusChange,
-				Status: events.ProcessStatusWorking,
-			},
+			name:     "status change is not progress",
+			event:    events.NewProcessEvent(events.ProcessStatusChange, "", "").WithStatus(events.ProcessStatusWorking),
 			expected: false,
 		},
 		{
-			name: "spawned is not progress",
-			event: events.ProcessEvent{
-				Type: events.ProcessSpawned,
-			},
+			name:     "spawned is not progress",
+			event:    events.NewProcessEvent(events.ProcessSpawned, "", ""),
 			expected: false,
 		},
 		{
-			name: "error is not progress",
-			event: events.ProcessEvent{
-				Type: events.ProcessError,
-			},
+			name:     "error is not progress",
+			event:    events.NewProcessEvent(events.ProcessError, "", ""),
 			expected: false,
 		},
 	}
@@ -633,12 +612,8 @@ func TestHealthMonitor_EventBus_WorkerOutputResetsRecovery(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish worker output event - should reset recovery via RecordProgress
-	processEvent := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: string(workflowID),
-		Role:      events.RoleWorker,
-		Output:    "worker is doing work",
-	}
+	processEvent := events.NewProcessEvent(events.ProcessOutput, string(workflowID), events.RoleWorker).
+		WithOutput("worker is doing work")
 	cpEvent := ControlPlaneEvent{
 		WorkflowID: workflowID,
 		Payload:    processEvent,
@@ -685,12 +660,8 @@ func TestHealthMonitor_EventBus_CoordinatorOutputDoesNotResetRecovery(t *testing
 	time.Sleep(10 * time.Millisecond)
 
 	// Publish coordinator output event - should NOT reset recovery (only heartbeat)
-	processEvent := events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: string(workflowID),
-		Role:      events.RoleCoordinator,
-		Output:    "coordinator responding to nudge",
-	}
+	processEvent := events.NewProcessEvent(events.ProcessOutput, string(workflowID), events.RoleCoordinator).
+		WithOutput("coordinator responding to nudge")
 	cpEvent := ControlPlaneEvent{
 		WorkflowID: workflowID,
 		Payload:    processEvent,

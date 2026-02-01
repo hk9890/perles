@@ -1199,7 +1199,7 @@ func TestRenderLine_RoleType(t *testing.T) {
 }
 
 func TestRenderLine_ContentType(t *testing.T) {
-	t.Run("content line renders plain text", func(t *testing.T) {
+	t.Run("content line renders with left border", func(t *testing.T) {
 		cfg := RenderConfig{AgentLabel: "Coordinator"}
 		messages := []Message{
 			{Role: "user", Content: "Hello world"},
@@ -1208,7 +1208,8 @@ func TestRenderLine_ContentType(t *testing.T) {
 
 		// Line 1 is content
 		rendered := vc.RenderLine(1)
-		require.Equal(t, "Hello world", rendered, "Content line should render plain text")
+		require.Contains(t, rendered, "Hello world", "Content line should contain plain text")
+		require.Contains(t, rendered, "│", "Content line should have left border")
 	})
 }
 
@@ -1237,16 +1238,16 @@ func TestRenderLine_ToolCallType(t *testing.T) {
 }
 
 func TestRenderLine_BlankType(t *testing.T) {
-	t.Run("blank line renders empty string", func(t *testing.T) {
+	t.Run("blank line renders empty for visual separation", func(t *testing.T) {
 		cfg := RenderConfig{AgentLabel: "Coordinator"}
 		messages := []Message{
 			{Role: "user", Content: "Hello"},
 		}
 		vc := NewChatVirtualContentWithMessages(messages, 80, cfg)
 
-		// Line 2 is blank
+		// Line 2 is blank - should be empty (no border) for visual separation between messages
 		rendered := vc.RenderLine(2)
-		require.Equal(t, "", rendered, "Blank line should render empty string")
+		require.Equal(t, "", rendered, "Blank line should be empty for visual separation")
 	})
 }
 

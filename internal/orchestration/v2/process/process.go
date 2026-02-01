@@ -435,15 +435,11 @@ func (p *Process) publishOutputEvent(text string, rawJSON []byte, delta bool) {
 
 	// Use unified ProcessEvent for both coordinator and workers
 	// Subscribers filter by Role field
-	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessOutput,
-		ProcessID: p.ID,
-		Role:      p.Role,
-		Output:    text,
-		Delta:     delta,
-		TaskID:    p.GetTaskID(),
-		RawJSON:   rawJSON,
-	})
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, p.ID, p.Role).
+		WithOutput(text).
+		WithDelta(delta).
+		WithTaskID(p.GetTaskID()).
+		WithRawJSON(rawJSON))
 }
 
 // publishTokenUsageEvent publishes a token usage event.
@@ -452,13 +448,9 @@ func (p *Process) publishTokenUsageEvent(m *metrics.TokenMetrics) {
 		return
 	}
 
-	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: p.ID,
-		Role:      p.Role,
-		TaskID:    p.GetTaskID(),
-		Metrics:   m,
-	})
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, p.ID, p.Role).
+		WithTaskID(p.GetTaskID()).
+		WithMetrics(m))
 }
 
 // publishErrorEvent publishes an error event.
@@ -467,13 +459,9 @@ func (p *Process) publishErrorEvent(err error) {
 		return
 	}
 
-	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessError,
-		ProcessID: p.ID,
-		Role:      p.Role,
-		TaskID:    p.GetTaskID(),
-		Error:     err,
-	})
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessError, p.ID, p.Role).
+		WithTaskID(p.GetTaskID()).
+		WithError(err))
 }
 
 // addTurnCost adds the turn cost to the cumulative total thread-safely.
@@ -495,17 +483,13 @@ func (p *Process) publishCostEvent(turnCost float64) {
 		return
 	}
 
-	p.eventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-		Type:      events.ProcessTokenUsage,
-		ProcessID: p.ID,
-		Role:      p.Role,
-		TaskID:    p.GetTaskID(),
-		Metrics: &metrics.TokenMetrics{
+	p.eventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessTokenUsage, p.ID, p.Role).
+		WithTaskID(p.GetTaskID()).
+		WithMetrics(&metrics.TokenMetrics{
 			TurnCostUSD:   turnCost,
 			TotalCostUSD:  turnCost, // Turn cost for this event (session accumulates)
 			LastUpdatedAt: time.Now(),
-		},
-	})
+		}))
 }
 
 // setSessionID updates the session ID thread-safely.

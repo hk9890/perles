@@ -30,10 +30,10 @@ func TestIntegration_ProcessEventFlow(t *testing.T) {
 	// Simulate coordinator publishing events via v2EventBus
 	testMetrics := &metrics.TokenMetrics{TokensUsed: 1500, TotalTokens: 200000}
 	testEvents := []events.ProcessEvent{
-		{Type: events.ProcessOutput, Role: events.RoleCoordinator, Output: "Starting epic execution"},
-		{Type: events.ProcessWorking, Role: events.RoleCoordinator},
-		{Type: events.ProcessTokenUsage, Role: events.RoleCoordinator, Metrics: testMetrics},
-		{Type: events.ProcessReady, Role: events.RoleCoordinator},
+		events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).WithOutput("Starting epic execution"),
+		events.NewProcessEvent(events.ProcessWorking, "", events.RoleCoordinator),
+		events.NewProcessEvent(events.ProcessTokenUsage, "", events.RoleCoordinator).WithMetrics(testMetrics),
+		events.NewProcessEvent(events.ProcessReady, "", events.RoleCoordinator),
 	}
 
 	// Publish events
@@ -75,11 +75,7 @@ func TestIntegration_MultipleSubscribers(t *testing.T) {
 	require.Equal(t, numSubscribers, broker.SubscriberCount())
 
 	// Publish a coordinator output event
-	testEvent := events.ProcessEvent{
-		Type:   events.ProcessOutput,
-		Role:   events.RoleCoordinator,
-		Output: "Hello from coordinator",
-	}
+	testEvent := events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).WithOutput("Hello from coordinator")
 	broker.Publish(pubsub.UpdatedEvent, testEvent)
 
 	// Verify all subscribers received the same event
@@ -111,11 +107,11 @@ func TestIntegration_ProcessEventForwarding(t *testing.T) {
 	// Simulate worker events
 	workerMetrics := &metrics.TokenMetrics{TokensUsed: 500, TotalTokens: 200000}
 	testEvents := []events.ProcessEvent{
-		{Type: events.ProcessSpawned, ProcessID: "worker-1", Role: events.RoleWorker, TaskID: "task-1"},
-		{Type: events.ProcessStatusChange, ProcessID: "worker-1", Role: events.RoleWorker, TaskID: "task-1"},
-		{Type: events.ProcessOutput, ProcessID: "worker-1", Role: events.RoleWorker, Output: "Starting task execution"},
-		{Type: events.ProcessTokenUsage, ProcessID: "worker-1", Role: events.RoleWorker, Metrics: workerMetrics},
-		{Type: events.ProcessIncoming, ProcessID: "worker-1", Role: events.RoleWorker, Message: "Message from coordinator"},
+		events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker).WithTaskID("task-1"),
+		events.NewProcessEvent(events.ProcessStatusChange, "worker-1", events.RoleWorker).WithTaskID("task-1"),
+		events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).WithOutput("Starting task execution"),
+		events.NewProcessEvent(events.ProcessTokenUsage, "worker-1", events.RoleWorker).WithMetrics(workerMetrics),
+		events.NewProcessEvent(events.ProcessIncoming, "worker-1", events.RoleWorker).WithMessage("Message from coordinator"),
 	}
 
 	// Publish events
@@ -161,8 +157,8 @@ func TestIntegration_CleanShutdown(t *testing.T) {
 	require.Equal(t, 2, v2EventBus.SubscriberCount())
 
 	// Publish some events to ensure goroutines are active
-	processBroker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessOutput, Role: events.RoleWorker})
-	v2EventBus.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessOutput, Role: events.RoleCoordinator})
+	processBroker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleWorker))
+	v2EventBus.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator))
 
 	// Drain channels
 	<-ch1
@@ -250,11 +246,7 @@ func TestIntegration_ConcurrentPublishSubscribe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for e := 0; e < numEvents; e++ {
-				broker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{
-					Type:   events.ProcessOutput,
-					Role:   events.RoleCoordinator,
-					Output: "test",
-				})
+				broker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessOutput, "", events.RoleCoordinator).WithOutput("test"))
 			}
 		}()
 	}
@@ -296,7 +288,7 @@ func TestIntegration_ContextCancellationCleanup(t *testing.T) {
 	require.False(t, ok, "ch1 should be closed after context cancellation")
 
 	// ch2 should still receive events
-	broker.Publish(pubsub.UpdatedEvent, events.ProcessEvent{Type: events.ProcessReady, Role: events.RoleCoordinator})
+	broker.Publish(pubsub.UpdatedEvent, events.NewProcessEvent(events.ProcessReady, "", events.RoleCoordinator))
 
 	select {
 	case event := <-ch2:

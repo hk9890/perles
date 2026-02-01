@@ -224,7 +224,8 @@ Diagnose using the following tools:
 
 Based on what you find:
 - If workers are still in "working" state → No action needed, they're actively processing
-- If waiting for user input or action → You MUST call the notify_user to alert the user, then end your turn
+- If waiting for user input or action → You MUST call the notify_user to alert the user, then end your turn. Even if your last action from a previous
+check was a notify_user tool call you MUST call the notify_user tool again so they are notified.
 - If workers are idle/stuck → if they were supposed to be working on a task investigate and determine if we need to send a message to a worker.
 
 If you are still unsure how to proceed then you MUST call the notify_user tool and summarize your findings so the user can help unblock you.`

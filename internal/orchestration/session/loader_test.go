@@ -47,9 +47,9 @@ func TestLoadCoordinatorMessages_HappyPath(t *testing.T) {
 
 	// Create test messages
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	msg1 := chatrender.Message{Role: "coordinator", Content: "Hello", Timestamp: &now}
-	msg2 := chatrender.Message{Role: "user", Content: "Hi there", Timestamp: &now}
-	msg3 := chatrender.Message{Role: "coordinator", Content: "🔧 spawn_worker", IsToolCall: true, Timestamp: &now}
+	msg1 := chatrender.Message{Role: "coordinator", Content: "Hello", Timestamp: now}
+	msg2 := chatrender.Message{Role: "user", Content: "Hi there", Timestamp: now}
+	msg3 := chatrender.Message{Role: "coordinator", Content: "🔧 spawn_worker", IsToolCall: true, Timestamp: now}
 
 	// Write messages to file
 	path := filepath.Join(dir, coordinatorDir, chatMessagesFile)
@@ -92,7 +92,7 @@ func TestLoadCoordinatorMessages_MalformedLines(t *testing.T) {
 	dir := createTestSessionDir(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	validMsg := chatrender.Message{Role: "coordinator", Content: "Valid message", Timestamp: &now}
+	validMsg := chatrender.Message{Role: "coordinator", Content: "Valid message", Timestamp: now}
 	validData, err := json.Marshal(validMsg)
 	require.NoError(t, err)
 
@@ -138,7 +138,7 @@ func TestLoadCoordinatorMessages_LargeLine(t *testing.T) {
 	// Create a message with content larger than typical buffer (but under 1MB limit)
 	largeContent := strings.Repeat("x", 100000) // 100KB of content
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	msg := chatrender.Message{Role: "coordinator", Content: largeContent, Timestamp: &now}
+	msg := chatrender.Message{Role: "coordinator", Content: largeContent, Timestamp: now}
 
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestLoadCoordinatorMessages_EmptyLinesSkipped(t *testing.T) {
 	dir := createTestSessionDir(t)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	msg := chatrender.Message{Role: "coordinator", Content: "Test", Timestamp: &now}
+	msg := chatrender.Message{Role: "coordinator", Content: "Test", Timestamp: now}
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
 
@@ -173,7 +173,7 @@ func TestLoadCoordinatorMessages_EmptyLinesSkipped(t *testing.T) {
 func TestLoadCoordinatorMessages_NilTimestamp(t *testing.T) {
 	dir := createTestSessionDir(t)
 
-	// Message without timestamp (nil)
+	// Message without timestamp (zero value)
 	msg := chatrender.Message{Role: "coordinator", Content: "No timestamp"}
 	data, err := json.Marshal(msg)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestLoadCoordinatorMessages_NilTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, messages, 1)
 	require.Equal(t, "No timestamp", messages[0].Content)
-	require.Nil(t, messages[0].Timestamp)
+	require.True(t, messages[0].Timestamp.IsZero(), "expected zero timestamp")
 }
 
 // --- LoadWorkerMessages Tests ---
@@ -198,8 +198,8 @@ func TestLoadWorkerMessages_HappyPath(t *testing.T) {
 	require.NoError(t, os.MkdirAll(workerDir, 0750))
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	msg1 := chatrender.Message{Role: "system", Content: "Worker spawned", Timestamp: &now}
-	msg2 := chatrender.Message{Role: "assistant", Content: "Working on task", Timestamp: &now}
+	msg1 := chatrender.Message{Role: "system", Content: "Worker spawned", Timestamp: now}
+	msg2 := chatrender.Message{Role: "assistant", Content: "Working on task", Timestamp: now}
 
 	path := filepath.Join(workerDir, chatMessagesFile)
 	lines := make([]string, 2)
@@ -234,7 +234,7 @@ func TestLoadWorkerMessages_MultipleWorkers(t *testing.T) {
 		msg := chatrender.Message{
 			Role:      "assistant",
 			Content:   "Message from " + workerID,
-			Timestamp: &now,
+			Timestamp: now,
 		}
 		data, err := json.Marshal(msg)
 		require.NoError(t, err)
@@ -702,7 +702,7 @@ func TestLoadResumableSession_FullLoad(t *testing.T) {
 	createResumableMetadata(t, dir, workers)
 
 	// Create coordinator messages
-	coordMsg := chatrender.Message{Role: "coordinator", Content: "Hello world", Timestamp: &now}
+	coordMsg := chatrender.Message{Role: "coordinator", Content: "Hello world", Timestamp: now}
 	coordData, err := json.Marshal(coordMsg)
 	require.NoError(t, err)
 	coordPath := filepath.Join(dir, coordinatorDir, chatMessagesFile)
@@ -712,7 +712,7 @@ func TestLoadResumableSession_FullLoad(t *testing.T) {
 	for _, w := range workers {
 		workerDir := filepath.Join(dir, workersDir, w.ID)
 		require.NoError(t, os.MkdirAll(workerDir, 0750))
-		workerMsg := chatrender.Message{Role: "assistant", Content: "Working on " + w.ID, Timestamp: &now}
+		workerMsg := chatrender.Message{Role: "assistant", Content: "Working on " + w.ID, Timestamp: now}
 		workerData, err := json.Marshal(workerMsg)
 		require.NoError(t, err)
 		workerPath := filepath.Join(workerDir, chatMessagesFile)
@@ -865,7 +865,7 @@ func TestLoadResumableSession_NoWorkers(t *testing.T) {
 
 	// Create coordinator messages
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	coordMsg := chatrender.Message{Role: "coordinator", Content: "Solo coordinator", Timestamp: &now}
+	coordMsg := chatrender.Message{Role: "coordinator", Content: "Solo coordinator", Timestamp: now}
 	coordData, err := json.Marshal(coordMsg)
 	require.NoError(t, err)
 	coordPath := filepath.Join(dir, coordinatorDir, chatMessagesFile)
@@ -934,9 +934,9 @@ func TestLoadResumableSession_RoundTrip(t *testing.T) {
 
 	// Write coordinator messages
 	coordMsgs := []chatrender.Message{
-		{Role: "system", Content: "Session started", Timestamp: &now},
-		{Role: "user", Content: "Do something", Timestamp: &now},
-		{Role: "coordinator", Content: "On it", Timestamp: &now},
+		{Role: "system", Content: "Session started", Timestamp: now},
+		{Role: "user", Content: "Do something", Timestamp: now},
+		{Role: "coordinator", Content: "On it", Timestamp: now},
 	}
 	coordPath := filepath.Join(dir, coordinatorDir, chatMessagesFile)
 	var coordLines []string
@@ -953,8 +953,8 @@ func TestLoadResumableSession_RoundTrip(t *testing.T) {
 		require.NoError(t, os.MkdirAll(workerDir, 0750))
 
 		workerMsgs := []chatrender.Message{
-			{Role: "system", Content: "Worker " + w.ID + " spawned", Timestamp: &now},
-			{Role: "assistant", Content: "Task done for " + w.ID, Timestamp: &now},
+			{Role: "system", Content: "Worker " + w.ID + " spawned", Timestamp: now},
+			{Role: "assistant", Content: "Task done for " + w.ID, Timestamp: now},
 		}
 		var workerLines []string
 		for _, msg := range workerMsgs {

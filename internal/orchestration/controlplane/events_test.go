@@ -65,21 +65,13 @@ func TestClassifyEvent_ProcessSpawned(t *testing.T) {
 		expected EventType
 	}{
 		{
-			name: "CoordinatorSpawned",
-			event: events.ProcessEvent{
-				Type:      events.ProcessSpawned,
-				Role:      events.RoleCoordinator,
-				ProcessID: "coord-1",
-			},
+			name:     "CoordinatorSpawned",
+			event:    events.NewProcessEvent(events.ProcessSpawned, "coord-1", events.RoleCoordinator),
 			expected: EventCoordinatorSpawned,
 		},
 		{
-			name: "WorkerSpawned",
-			event: events.ProcessEvent{
-				Type:      events.ProcessSpawned,
-				Role:      events.RoleWorker,
-				ProcessID: "worker-1",
-			},
+			name:     "WorkerSpawned",
+			event:    events.NewProcessEvent(events.ProcessSpawned, "worker-1", events.RoleWorker),
 			expected: EventWorkerSpawned,
 		},
 	}
@@ -99,23 +91,13 @@ func TestClassifyEvent_ProcessOutput(t *testing.T) {
 		expected EventType
 	}{
 		{
-			name: "CoordinatorOutput",
-			event: events.ProcessEvent{
-				Type:      events.ProcessOutput,
-				Role:      events.RoleCoordinator,
-				ProcessID: "coord-1",
-				Output:    "thinking...",
-			},
+			name:     "CoordinatorOutput",
+			event:    events.NewProcessEvent(events.ProcessOutput, "coord-1", events.RoleCoordinator).WithOutput("thinking..."),
 			expected: EventCoordinatorOutput,
 		},
 		{
-			name: "WorkerOutput",
-			event: events.ProcessEvent{
-				Type:      events.ProcessOutput,
-				Role:      events.RoleWorker,
-				ProcessID: "worker-1",
-				Output:    "implementing...",
-			},
+			name:     "WorkerOutput",
+			event:    events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).WithOutput("implementing..."),
 			expected: EventWorkerOutput,
 		},
 	}
@@ -130,22 +112,14 @@ func TestClassifyEvent_ProcessOutput(t *testing.T) {
 
 func TestClassifyEvent_TaskEvents(t *testing.T) {
 	// Worker error maps to task failed
-	event := events.ProcessEvent{
-		Type:      events.ProcessError,
-		Role:      events.RoleWorker,
-		ProcessID: "worker-1",
-	}
+	event := events.NewProcessEvent(events.ProcessError, "worker-1", events.RoleWorker)
 	result := ClassifyEvent(event)
 	require.Equal(t, EventTaskFailed, result)
 }
 
 func TestClassifyEvent_CoordinatorError(t *testing.T) {
 	// Coordinator errors should map to coordinator output so TUI displays them
-	event := events.ProcessEvent{
-		Type:      events.ProcessError,
-		Role:      events.RoleCoordinator,
-		ProcessID: "coordinator",
-	}
+	event := events.NewProcessEvent(events.ProcessError, "coordinator", events.RoleCoordinator)
 	result := ClassifyEvent(event)
 	require.Equal(t, EventCoordinatorOutput, result)
 }
@@ -164,11 +138,8 @@ func TestClassifyEvent_UnknownEvents(t *testing.T) {
 			event: nil,
 		},
 		{
-			name: "UnknownEventType",
-			event: events.ProcessEvent{
-				Type: events.ProcessEventType("unknown_type"), // Truly unknown event type
-				Role: events.RoleWorker,
-			},
+			name:  "UnknownEventType",
+			event: events.NewProcessEvent(events.ProcessEventType("unknown_type"), "", events.RoleWorker),
 		},
 	}
 
@@ -187,39 +158,23 @@ func TestClassifyEvent_StatusChange(t *testing.T) {
 		expected EventType
 	}{
 		{
-			name: "CoordinatorRetired",
-			event: events.ProcessEvent{
-				Type:   events.ProcessStatusChange,
-				Role:   events.RoleCoordinator,
-				Status: events.ProcessStatusRetired,
-			},
+			name:     "CoordinatorRetired",
+			event:    events.NewProcessEvent(events.ProcessStatusChange, "", events.RoleCoordinator).WithStatus(events.ProcessStatusRetired),
 			expected: EventCoordinatorReplaced,
 		},
 		{
-			name: "WorkerRetired",
-			event: events.ProcessEvent{
-				Type:   events.ProcessStatusChange,
-				Role:   events.RoleWorker,
-				Status: events.ProcessStatusRetired,
-			},
+			name:     "WorkerRetired",
+			event:    events.NewProcessEvent(events.ProcessStatusChange, "", events.RoleWorker).WithStatus(events.ProcessStatusRetired),
 			expected: EventWorkerRetired,
 		},
 		{
-			name: "CoordinatorWorkingStatus",
-			event: events.ProcessEvent{
-				Type:   events.ProcessStatusChange,
-				Role:   events.RoleCoordinator,
-				Status: events.ProcessStatusWorking,
-			},
+			name:     "CoordinatorWorkingStatus",
+			event:    events.NewProcessEvent(events.ProcessStatusChange, "", events.RoleCoordinator).WithStatus(events.ProcessStatusWorking),
 			expected: EventCoordinatorOutput,
 		},
 		{
-			name: "WorkerWorkingStatus",
-			event: events.ProcessEvent{
-				Type:   events.ProcessStatusChange,
-				Role:   events.RoleWorker,
-				Status: events.ProcessStatusWorking,
-			},
+			name:     "WorkerWorkingStatus",
+			event:    events.NewProcessEvent(events.ProcessStatusChange, "", events.RoleWorker).WithStatus(events.ProcessStatusWorking),
 			expected: EventWorkerOutput,
 		},
 	}
@@ -233,10 +188,7 @@ func TestClassifyEvent_StatusChange(t *testing.T) {
 }
 
 func TestClassifyEvent_WorkflowComplete(t *testing.T) {
-	event := events.ProcessEvent{
-		Type: events.ProcessWorkflowComplete,
-		Role: events.RoleCoordinator,
-	}
+	event := events.NewProcessEvent(events.ProcessWorkflowComplete, "", events.RoleCoordinator)
 	result := ClassifyEvent(event)
 	require.Equal(t, EventWorkflowCompleted, result)
 }
@@ -922,12 +874,8 @@ func TestClassifyEvent_OtherTypes_Unchanged(t *testing.T) {
 		expected EventType
 	}{
 		{
-			name: "ProcessEventStillWorks",
-			event: events.ProcessEvent{
-				Type:      events.ProcessSpawned,
-				Role:      events.RoleCoordinator,
-				ProcessID: "coord-1",
-			},
+			name:     "ProcessEventStillWorks",
+			event:    events.NewProcessEvent(events.ProcessSpawned, "coord-1", events.RoleCoordinator),
 			expected: EventCoordinatorSpawned,
 		},
 		{
@@ -947,21 +895,13 @@ func TestClassifyEvent_OtherTypes_Unchanged(t *testing.T) {
 			expected: EventUnknown,
 		},
 		{
-			name: "WorkerEventStillWorks",
-			event: events.ProcessEvent{
-				Type:      events.ProcessOutput,
-				Role:      events.RoleWorker,
-				ProcessID: "worker-1",
-				Output:    "implementing...",
-			},
+			name:     "WorkerEventStillWorks",
+			event:    events.NewProcessEvent(events.ProcessOutput, "worker-1", events.RoleWorker).WithOutput("implementing..."),
 			expected: EventWorkerOutput,
 		},
 		{
-			name: "WorkflowCompleteStillWorks",
-			event: events.ProcessEvent{
-				Type: events.ProcessWorkflowComplete,
-				Role: events.RoleCoordinator,
-			},
+			name:     "WorkflowCompleteStillWorks",
+			event:    events.NewProcessEvent(events.ProcessWorkflowComplete, "", events.RoleCoordinator),
 			expected: EventWorkflowCompleted,
 		},
 	}
