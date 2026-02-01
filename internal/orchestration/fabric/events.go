@@ -20,6 +20,8 @@ const (
 	EventAcked             EventType = "acked"
 	EventParticipantJoined EventType = "participant.joined"
 	EventParticipantLeft   EventType = "participant.left"
+	EventReactionAdded     EventType = "reaction.added"
+	EventReactionRemoved   EventType = "reaction.removed"
 )
 
 // Event is published when something happens in Fabric.
@@ -40,6 +42,7 @@ type Event struct {
 	Thread       *domain.Thread       `json:"thread,omitempty"`
 	Subscription *domain.Subscription `json:"subscription,omitempty"`
 	Participant  *domain.Participant  `json:"participant,omitempty"`
+	Reaction     *domain.Reaction     `json:"reaction,omitempty"`
 	Mentions     []string             `json:"mentions,omitempty"`
 	Participants []string             `json:"participants,omitempty"` // Parent thread participants for reply events
 }
@@ -151,5 +154,29 @@ func NewParticipantLeftEvent(agentID string) Event {
 		Type:      EventParticipantLeft,
 		Timestamp: time.Now(),
 		AgentID:   agentID,
+	}
+}
+
+// NewReactionAddedEvent creates an event for a reaction being added.
+func NewReactionAddedEvent(reaction *domain.Reaction, channelID, channelSlug string) Event {
+	return Event{
+		Type:        EventReactionAdded,
+		Timestamp:   time.Now(),
+		ChannelID:   channelID,
+		ChannelSlug: channelSlug,
+		AgentID:     reaction.AgentID,
+		Reaction:    reaction,
+	}
+}
+
+// NewReactionRemovedEvent creates an event for a reaction being removed.
+func NewReactionRemovedEvent(reaction *domain.Reaction, channelID, channelSlug string) Event {
+	return Event{
+		Type:        EventReactionRemoved,
+		Timestamp:   time.Now(),
+		ChannelID:   channelID,
+		ChannelSlug: channelSlug,
+		AgentID:     reaction.AgentID,
+		Reaction:    reaction,
 	}
 }

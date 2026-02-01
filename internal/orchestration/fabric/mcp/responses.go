@@ -124,3 +124,19 @@ type ThreadArtifact struct {
 	CreatedAt time.Time `json:"created_at"`
 	Preview   string    `json:"preview,omitempty"`
 }
+
+// ReactResponse is the response for fabric_react.
+type ReactResponse struct {
+	Success   bool              `json:"success"`
+	MessageID string            `json:"message_id"`
+	Emoji     string            `json:"emoji"`
+	Action    string            `json:"action"`
+	Reactions []ReactionSummary `json:"reactions"`
+}
+
+// ReactionSummary is a summary of reactions for a single emoji.
+type ReactionSummary struct {
+	Emoji    string   `json:"emoji"`
+	Count    int      `json:"count"`
+	AgentIDs []string `json:"agent_ids"`
+}

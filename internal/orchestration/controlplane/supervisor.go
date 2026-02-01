@@ -814,9 +814,10 @@ func (s *defaultSupervisor) restoreFabricState(inst *WorkflowInstance) error {
 
 	// Get repositories from FabricService
 	threads, deps, subs, acks, participants := inst.Infrastructure.Core.FabricService.Repositories()
+	reactions := inst.Infrastructure.Core.FabricService.ReactionRepository()
 
 	// Replay events to restore state
-	if err := fabricpersist.RestoreFabricState(events, threads, deps, subs, acks, participants); err != nil {
+	if err := fabricpersist.RestoreFabricState(events, threads, deps, subs, acks, participants, reactions); err != nil {
 		return fmt.Errorf("restoring fabric state: %w", err)
 	}
 

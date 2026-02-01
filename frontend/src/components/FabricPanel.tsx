@@ -4,6 +4,8 @@ import { hashColor } from '../utils/colors'
 import ChatInput from './ChatInput'
 import Markdown from './Markdown'
 import Toast from './Toast'
+import ReactionBar from './ReactionBar'
+import ReactionTooltip from './ReactionTooltip'
 import './FabricPanel.css'
 
 interface Props {
@@ -47,6 +49,18 @@ interface Artifact {
   storageUri: string
   createdBy: string
   createdAt: string
+}
+
+interface Reaction {
+  threadId: string
+  agentId: string
+  emoji: string
+}
+
+interface ReactionSummary {
+  emoji: string
+  count: number
+  agentIds: string[]
 }
 
 function getInitialSidebarTab(): 'events' | 'messages' {
@@ -96,11 +110,12 @@ export default function FabricPanel({ events, workflowId }: Props) {
     window.history.replaceState({}, '', url.toString())
   }
 
-  // Extract channels, messages, and artifacts from events
-  const { channels, messages, artifacts } = useMemo(() => {
+  // Extract channels, messages, artifacts, and reactions from events
+  const { channels, messages, artifacts, reactions } = useMemo(() => {
     const channelMap = new Map<string, Channel>()
     const messageList: Message[] = []
     const artifactList: Artifact[] = []
+    const reactionList: Reaction[] = []
 
     for (const event of events) {
       const e = event.event
@@ -149,6 +164,26 @@ export default function FabricPanel({ events, workflowId }: Props) {
           createdAt: e.thread.created_at || event.timestamp,
         })
       }
+
+      if (e.type === 'reaction.added' && e.reaction) {
+        reactionList.push({
+          threadId: e.reaction.thread_id,
+          agentId: e.reaction.agent_id,
+          emoji: e.reaction.emoji,
+        })
+      }
+
+      if (e.type === 'reaction.removed' && e.reaction) {
+        // Remove the reaction from the list
+        const idx = reactionList.findIndex(
+          r => r.threadId === e.reaction!.thread_id &&
+               r.agentId === e.reaction!.agent_id &&
+               r.emoji === e.reaction!.emoji
+        )
+        if (idx !== -1) {
+          reactionList.splice(idx, 1)
+        }
+      }
     }
 
     const sortedChannels = Array.from(channelMap.values()).sort((a, b) => {
@@ -161,8 +196,34 @@ export default function FabricPanel({ events, workflowId }: Props) {
       return a.slug.localeCompare(b.slug)
     })
 
-    return { channels: sortedChannels, messages: messageList, artifacts: artifactList }
+    return { channels: sortedChannels, messages: messageList, artifacts: artifactList, reactions: reactionList }
   }, [events])
+
+  // Helper to get reaction summaries for a message
+  const getReactionSummaries = useCallback((messageId: string): ReactionSummary[] => {
+    const messageReactions = reactions.filter(r => r.threadId === messageId)
+    const emojiMap = new Map<string, string[]>()
+    
+    for (const reaction of messageReactions) {
+      const agents = emojiMap.get(reaction.emoji) || []
+      agents.push(reaction.agentId)
+      emojiMap.set(reaction.emoji, agents)
+    }
+    
+    return Array.from(emojiMap.entries()).map(([emoji, agentIds]) => ({
+      emoji,
+      count: agentIds.length,
+      agentIds,
+    }))
+  }, [reactions])
+
+  // Helper to format reaction tooltip content
+  const formatReactionNames = (summary: ReactionSummary): string => {
+    const names = summary.agentIds.map(id => id === 'user' ? 'You' : id)
+    if (names.length === 1) return names[0]
+    if (names.length === 2) return `${names[0]} and ${names[1]}`
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+  }
 
   // Group messages into threads using parent_id
   const threads = useMemo(() => {
@@ -363,6 +424,36 @@ export default function FabricPanel({ events, workflowId }: Props) {
     }
   }, [workflowId, selectedThread, toast])
 
+  // Handle adding/removing a reaction
+  const handleReact = useCallback(async (messageId: string, emoji: string, remove: boolean) => {
+    if (!workflowId) {
+      throw new Error('No active workflow')
+    }
+    try {
+      const res = await fetch('/api/fabric/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflowId,
+          messageId,
+          emoji,
+          remove,
+        })
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        const errorMessage = data.error || 'Failed to react'
+        setToast({ message: errorMessage, type: 'error' })
+        throw new Error(errorMessage)
+      }
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        setToast({ message: 'Network error. Please try again.', type: 'error' })
+      }
+      throw error
+    }
+  }, [workflowId])
+
   const formatTime = (ts: string) => {
     const date = new Date(ts)
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -550,11 +641,22 @@ export default function FabricPanel({ events, workflowId }: Props) {
                         <p>No messages in this channel</p>
                       </div>
                     ) : (
-                      threads.map((thread) => (
+                      threads.map((thread) => {
+                        const msgReactions = getReactionSummaries(thread.parentMessage.id)
+                        return (
                         <div
                           key={thread.parentMessage.id}
                           className={`message-item ${selectedThread?.parentMessage.id === thread.parentMessage.id ? 'selected' : ''}`}
                         >
+                          {/* Hover reaction bar */}
+                          {isWorkflowActive && (
+                            <ReactionBar
+                              messageId={thread.parentMessage.id}
+                              reactions={msgReactions}
+                              onReact={(emoji, remove) => handleReact(thread.parentMessage.id, emoji, remove)}
+                            />
+                          )}
+
                           <div className="message-avatar" style={{ background: getAgentColor(thread.parentMessage.createdBy) }}>
                             {thread.parentMessage.createdBy.charAt(0).toUpperCase()}
                           </div>
@@ -568,6 +670,31 @@ export default function FabricPanel({ events, workflowId }: Props) {
                             <div className="message-content">
                               {thread.parentMessage.content}
                             </div>
+
+                            {/* Reactions */}
+                            {msgReactions.length > 0 && (
+                              <div className="message-reactions">
+                                {msgReactions.map((summary) => {
+                                  const userReacted = summary.agentIds.includes('user')
+                                  return (
+                                    <ReactionTooltip
+                                      key={summary.emoji}
+                                      emoji={summary.emoji}
+                                      names={formatReactionNames(summary)}
+                                    >
+                                      <button
+                                        className={`reaction-badge clickable ${userReacted ? 'user-reacted' : ''}`}
+                                        onClick={() => isWorkflowActive && handleReact(thread.parentMessage.id, summary.emoji, userReacted)}
+                                        disabled={!isWorkflowActive}
+                                      >
+                                        <span className="reaction-emoji">{summary.emoji}</span>
+                                        <span className="reaction-count">{summary.count}</span>
+                                      </button>
+                                    </ReactionTooltip>
+                                  )
+                                })}
+                              </div>
+                            )}
 
                             {/* Reply indicator */}
                             {thread.replies.length > 0 && (
@@ -596,7 +723,8 @@ export default function FabricPanel({ events, workflowId }: Props) {
                             )}
                           </div>
                         </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
 
@@ -686,22 +814,60 @@ export default function FabricPanel({ events, workflowId }: Props) {
 
           <div className="thread-content">
             {/* Parent message */}
-            <div className="thread-message parent">
-              <div className="message-avatar" style={{ background: getAgentColor(selectedThread.parentMessage.createdBy) }}>
-                {selectedThread.parentMessage.createdBy.charAt(0).toUpperCase()}
-              </div>
-              <div className="message-body">
-                <div className="message-header">
-                  <span className="message-author" style={{ color: getAgentColor(selectedThread.parentMessage.createdBy) }}>
-                    {selectedThread.parentMessage.createdBy}
-                  </span>
-                  <span className="message-time">{formatTime(selectedThread.parentMessage.timestamp)}</span>
+            {(() => {
+              const parentReactions = getReactionSummaries(selectedThread.parentMessage.id)
+              return (
+                <div className="thread-message parent">
+                  {/* Hover reaction bar */}
+                  {isWorkflowActive && (
+                    <ReactionBar
+                      messageId={selectedThread.parentMessage.id}
+                      reactions={parentReactions}
+                      onReact={(emoji, remove) => handleReact(selectedThread.parentMessage.id, emoji, remove)}
+                    />
+                  )}
+
+                  <div className="message-avatar" style={{ background: getAgentColor(selectedThread.parentMessage.createdBy) }}>
+                    {selectedThread.parentMessage.createdBy.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="message-body">
+                    <div className="message-header">
+                      <span className="message-author" style={{ color: getAgentColor(selectedThread.parentMessage.createdBy) }}>
+                        {selectedThread.parentMessage.createdBy}
+                      </span>
+                      <span className="message-time">{formatTime(selectedThread.parentMessage.timestamp)}</span>
+                    </div>
+                    <div className="message-content">
+                      {selectedThread.parentMessage.content}
+                    </div>
+                    {/* Parent message reactions */}
+                    {parentReactions.length > 0 && (
+                      <div className="message-reactions">
+                        {parentReactions.map((summary) => {
+                          const userReacted = summary.agentIds.includes('user')
+                          return (
+                            <ReactionTooltip
+                              key={summary.emoji}
+                              emoji={summary.emoji}
+                              names={formatReactionNames(summary)}
+                            >
+                              <button
+                                className={`reaction-badge clickable ${userReacted ? 'user-reacted' : ''}`}
+                                onClick={() => isWorkflowActive && handleReact(selectedThread.parentMessage.id, summary.emoji, userReacted)}
+                                disabled={!isWorkflowActive}
+                              >
+                                <span className="reaction-emoji">{summary.emoji}</span>
+                                <span className="reaction-count">{summary.count}</span>
+                              </button>
+                            </ReactionTooltip>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="message-content">
-                  {selectedThread.parentMessage.content}
-                </div>
-              </div>
-            </div>
+              )
+            })()}
 
             {/* Reply count divider */}
             <div className="thread-divider">
@@ -709,31 +875,67 @@ export default function FabricPanel({ events, workflowId }: Props) {
             </div>
 
             {/* Replies */}
-            {selectedThread.replies.map((reply) => (
-              <div key={reply.id} className="thread-message reply">
-                <div className="message-avatar" style={{ background: getAgentColor(reply.createdBy) }}>
-                  {reply.createdBy.charAt(0).toUpperCase()}
-                </div>
-                <div className="message-body">
-                  <div className="message-header">
-                    <span className="message-author" style={{ color: getAgentColor(reply.createdBy) }}>
-                      {reply.createdBy}
-                    </span>
-                    <span className="message-time">{formatTime(reply.timestamp)}</span>
-                  </div>
-                  <div className="message-content">
-                    {reply.content}
-                  </div>
-                  {reply.mentions.length > 0 && (
-                    <div className="message-mentions">
-                      {reply.mentions.map((m, i) => (
-                        <span key={i} className="mention">@{m}</span>
-                      ))}
-                    </div>
+            {selectedThread.replies.map((reply) => {
+              const replyReactions = getReactionSummaries(reply.id)
+              return (
+                <div key={reply.id} className="thread-message reply">
+                  {/* Hover reaction bar */}
+                  {isWorkflowActive && (
+                    <ReactionBar
+                      messageId={reply.id}
+                      reactions={replyReactions}
+                      onReact={(emoji, remove) => handleReact(reply.id, emoji, remove)}
+                    />
                   )}
+
+                  <div className="message-avatar" style={{ background: getAgentColor(reply.createdBy) }}>
+                    {reply.createdBy.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="message-body">
+                    <div className="message-header">
+                      <span className="message-author" style={{ color: getAgentColor(reply.createdBy) }}>
+                        {reply.createdBy}
+                      </span>
+                      <span className="message-time">{formatTime(reply.timestamp)}</span>
+                    </div>
+                    <div className="message-content">
+                      {reply.content}
+                    </div>
+                    {reply.mentions.length > 0 && (
+                      <div className="message-mentions">
+                        {reply.mentions.map((m, i) => (
+                          <span key={i} className="mention">@{m}</span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Reply reactions */}
+                    {replyReactions.length > 0 && (
+                      <div className="message-reactions">
+                        {replyReactions.map((summary) => {
+                          const userReacted = summary.agentIds.includes('user')
+                          return (
+                            <ReactionTooltip
+                              key={summary.emoji}
+                              emoji={summary.emoji}
+                              names={formatReactionNames(summary)}
+                            >
+                              <button
+                                className={`reaction-badge clickable ${userReacted ? 'user-reacted' : ''}`}
+                                onClick={() => isWorkflowActive && handleReact(reply.id, summary.emoji, userReacted)}
+                                disabled={!isWorkflowActive}
+                              >
+                                <span className="reaction-emoji">{summary.emoji}</span>
+                                <span className="reaction-count">{summary.count}</span>
+                              </button>
+                            </ReactionTooltip>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="thread-input-container">

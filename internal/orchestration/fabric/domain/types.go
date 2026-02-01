@@ -181,6 +181,26 @@ func (a *Ack) Key() string {
 	return a.ThreadID + ":" + a.AgentID
 }
 
+// Reaction represents an emoji reaction to a message thread.
+type Reaction struct {
+	ThreadID  string    `json:"thread_id"`
+	AgentID   string    `json:"agent_id"`
+	Emoji     string    `json:"emoji"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Key returns a unique identifier for this reaction (one reaction per agent per emoji per thread).
+func (r *Reaction) Key() string {
+	return r.ThreadID + ":" + r.AgentID + ":" + r.Emoji
+}
+
+// ReactionSummary aggregates reactions for a single emoji on a thread.
+type ReactionSummary struct {
+	Emoji    string   `json:"emoji"`
+	Count    int      `json:"count"`
+	AgentIDs []string `json:"agent_ids"`
+}
+
 // FixedChannels returns the channel definitions for a new session.
 func FixedChannels() []Thread {
 	return []Thread{

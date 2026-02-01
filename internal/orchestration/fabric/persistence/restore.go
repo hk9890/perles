@@ -67,6 +67,7 @@ func LoadPersistedEvents(sessionDir string) ([]PersistedEvent, error) {
 // - Subscriptions
 // - Acks
 // - Participants
+// - Reactions
 //
 // Note: This creates new entities directly in repositories without triggering
 // new events, which is appropriate for restoration.
@@ -77,9 +78,10 @@ func RestoreFabricState(
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
 	participants repository.ParticipantRepository,
+	reactions repository.ReactionRepository,
 ) error {
 	for _, pe := range events {
-		if err := replayEvent(pe, threads, deps, subs, acks, participants); err != nil {
+		if err := replayEvent(pe, threads, deps, subs, acks, participants, reactions); err != nil {
 			// Log warning but continue - don't fail on one bad event
 			// This provides resilience against corrupted events
 			continue
@@ -96,6 +98,7 @@ func replayEvent(
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
 	participants repository.ParticipantRepository,
+	reactions repository.ReactionRepository,
 ) error {
 	event := pe.Event
 
@@ -129,6 +132,12 @@ func replayEvent(
 
 	case fabric.EventParticipantLeft:
 		return replayParticipantLeft(event, participants)
+
+	case fabric.EventReactionAdded:
+		return replayReactionAdded(event, reactions)
+
+	case fabric.EventReactionRemoved:
+		return replayReactionRemoved(event, reactions)
 
 	default:
 		// Unknown event type - skip
@@ -284,6 +293,32 @@ func replayParticipantLeft(event fabric.Event, participants repository.Participa
 	return nil
 }
 
+// replayReactionAdded restores a reaction from an add event.
+func replayReactionAdded(event fabric.Event, reactions repository.ReactionRepository) error {
+	if reactions == nil {
+		return nil // Reactions not configured
+	}
+	if event.Reaction == nil {
+		return fmt.Errorf("reaction added event has no reaction")
+	}
+
+	_, _ = reactions.Add(event.Reaction.ThreadID, event.Reaction.AgentID, event.Reaction.Emoji)
+	return nil
+}
+
+// replayReactionRemoved removes a reaction from an event.
+func replayReactionRemoved(event fabric.Event, reactions repository.ReactionRepository) error {
+	if reactions == nil {
+		return nil // Reactions not configured
+	}
+	if event.Reaction == nil {
+		return fmt.Errorf("reaction removed event has no reaction")
+	}
+
+	_ = reactions.Remove(event.Reaction.ThreadID, event.Reaction.AgentID, event.Reaction.Emoji)
+	return nil
+}
+
 // RestoreFabricService is a convenience function that loads events from disk
 // and restores state into the provided repositories.
 // Returns the channel IDs for the fixed channels (root, system, tasks, planning, general).
@@ -294,13 +329,14 @@ func RestoreFabricService(
 	subs repository.SubscriptionRepository,
 	acks repository.AckRepository,
 	participants repository.ParticipantRepository,
+	reactions repository.ReactionRepository,
 ) (channelIDs map[string]string, err error) {
 	events, err := LoadPersistedEvents(sessionDir)
 	if err != nil {
 		return nil, fmt.Errorf("loading persisted events: %w", err)
 	}
 
-	if err := RestoreFabricState(events, threads, deps, subs, acks, participants); err != nil {
+	if err := RestoreFabricState(events, threads, deps, subs, acks, participants, reactions); err != nil {
 		return nil, fmt.Errorf("restoring fabric state: %w", err)
 	}
 

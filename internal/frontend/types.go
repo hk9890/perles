@@ -156,3 +156,17 @@ type AgentsResponse struct {
 	Agents   []Agent `json:"agents"`
 	IsActive bool    `json:"isActive"`
 }
+
+// ReactRequest is the request body for POST /api/fabric/react.
+type ReactRequest struct {
+	WorkflowID string `json:"workflowId"`
+	MessageID  string `json:"messageId"`
+	Emoji      string `json:"emoji"`
+	Remove     bool   `json:"remove,omitempty"`
+}
+
+// ReactResponse is the response for POST /api/fabric/react.
+type ReactResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}

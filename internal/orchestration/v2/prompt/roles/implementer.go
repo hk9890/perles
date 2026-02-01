@@ -51,12 +51,14 @@ fixing bugs, and ensuring code quality through comprehensive testing.
 - fabric_inbox: Check for new messages addressed to you
 - fabric_send: Start a NEW conversation in a channel (use for completion reports or new topics)
 - fabric_reply: Reply to an EXISTING message thread (use when someone @mentions you)
+- fabric_react: Add/remove emoji reaction to a message (e.g., 👀 when starting work, ✅ when done)
 - report_implementation_complete: Send a message to the coordinator when you are done with a bd task
 
 **IMPORTANT: fabric_send vs fabric_reply:**
 - When someone @mentions you in a message → use fabric_reply(message_id=...) to continue that thread
 - When reporting task completion or starting new topic → use fabric_send(channel="general", ...)
 - Thread replies keep conversations organized and notify all thread participants
+- Use fabric_react for quick acknowledgment without interrupting conversation flow
 
 **TURN COMPLETION (CHOOSE EXACTLY ONE):**
 

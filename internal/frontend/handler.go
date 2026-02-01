@@ -60,6 +60,7 @@ func (h *Handler) RegisterAPIRoutes(mux *http.ServeMux) {
 	// Fabric messaging endpoints
 	mux.HandleFunc("POST /api/fabric/send-message", h.SendMessage)
 	mux.HandleFunc("POST /api/fabric/reply", h.Reply)
+	mux.HandleFunc("POST /api/fabric/react", h.React)
 	mux.HandleFunc("GET /api/fabric/agents", h.ListAgents)
 
 	// File content endpoint for artifacts
@@ -584,6 +585,54 @@ func (h *Handler) Reply(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusCreated, SendMessageResponse{
 		Success:   true,
 		MessageID: reply.ID,
+	})
+}
+
+// React adds or removes a reaction on a message.
+// POST /api/fabric/react
+func (h *Handler) React(w http.ResponseWriter, r *http.Request) {
+	var req ReactRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON body", err.Error())
+		return
+	}
+
+	// Validate required fields
+	if req.MessageID == "" {
+		h.writeError(w, http.StatusBadRequest, "validation_error", "messageId is required", "")
+		return
+	}
+	if req.Emoji == "" {
+		h.writeError(w, http.StatusBadRequest, "validation_error", "emoji is required", "")
+		return
+	}
+
+	// Get workflow and fabric service
+	fabricSvc, err := h.getFabricService(r.Context(), req.WorkflowID)
+	if err != nil {
+		if errors.Is(err, controlplane.ErrWorkflowNotFound) {
+			h.writeError(w, http.StatusNotFound, "not_found", "Workflow not found", req.WorkflowID)
+			return
+		}
+		h.writeError(w, http.StatusServiceUnavailable, "service_unavailable", "Fabric service unavailable", err.Error())
+		return
+	}
+
+	// Add or remove reaction
+	if req.Remove {
+		if err := fabricSvc.RemoveReaction(req.MessageID, "user", req.Emoji); err != nil {
+			h.writeError(w, http.StatusInternalServerError, "react_failed", "Failed to remove reaction", err.Error())
+			return
+		}
+	} else {
+		if _, err := fabricSvc.AddReaction(req.MessageID, "user", req.Emoji); err != nil {
+			h.writeError(w, http.StatusInternalServerError, "react_failed", "Failed to add reaction", err.Error())
+			return
+		}
+	}
+
+	h.writeJSON(w, http.StatusOK, ReactResponse{
+		Success: true,
 	})
 }
 

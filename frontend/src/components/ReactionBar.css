@@ -1,0 +1,212 @@
+/* Reaction Bar - Hover toolbar for adding reactions */
+
+.reaction-bar {
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border-color, #363646);
+  border-radius: 8px;
+  padding: 4px 6px;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.message-item:hover .reaction-bar,
+.thread-message:hover .reaction-bar {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Keep visible when picker is open */
+.reaction-bar:has(.reaction-picker) {
+  opacity: 1;
+  visibility: visible;
+}
+
+.reaction-bar-quick {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.reaction-bar-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.1s ease, transform 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+}
+
+.reaction-bar-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary, #2a2a3a);
+  transform: scale(1.1);
+}
+
+.reaction-bar-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.reaction-bar-btn.active {
+  background: var(--accent-blue, #58a6ff);
+  background: rgba(88, 166, 255, 0.2);
+}
+
+.reaction-bar-btn.active:hover:not(:disabled) {
+  background: rgba(88, 166, 255, 0.3);
+}
+
+.reaction-bar-btn.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.reaction-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.picker-toggle {
+  border-left: 1px solid var(--border-color, #363646);
+  margin-left: 4px;
+  padding-left: 8px;
+}
+
+.picker-icon {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary, #a9a9c0);
+}
+
+.picker-toggle:hover .picker-icon {
+  color: var(--text-primary, #e0e0e0);
+}
+
+/* Emoji Picker Popover */
+.reaction-picker {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border-color, #363646);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  min-width: 280px;
+}
+
+.reaction-picker-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #363646);
+  margin-bottom: 8px;
+  overflow-x: auto;
+}
+
+.picker-tab {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary, #a9a9c0);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.picker-tab:hover {
+  background: var(--bg-tertiary, #2a2a3a);
+  color: var(--text-primary, #e0e0e0);
+}
+
+.picker-tab.active {
+  background: var(--accent-blue, #58a6ff);
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--accent-blue, #58a6ff);
+}
+
+.reaction-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.picker-emoji {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+
+.picker-emoji:hover:not(:disabled) {
+  background: var(--bg-tertiary, #2a2a3a);
+  transform: scale(1.15);
+}
+
+.picker-emoji:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.picker-emoji.active {
+  background: rgba(88, 166, 255, 0.2);
+}
+
+.picker-emoji.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Scrollbar styling for emoji grid */
+.reaction-picker-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.reaction-picker-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.reaction-picker-grid::-webkit-scrollbar-thumb {
+  background: var(--border-color, #363646);
+  border-radius: 3px;
+}
+
+.reaction-picker-grid::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #6b6b80);
+}
+
+/* Make existing reaction badges clickable */
+.reaction-badge.clickable {
+  cursor: pointer;
+}
+
+.reaction-badge.clickable:hover {
+  transform: scale(1.05);
+}
+
+.reaction-badge.clickable.user-reacted {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: var(--accent-blue, #58a6ff);
+}

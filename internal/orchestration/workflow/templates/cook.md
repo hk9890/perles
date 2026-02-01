@@ -692,6 +692,7 @@ Coordinator: signal_workflow_complete(
 | Tool | Parameters | Purpose |
 |------|------------|---------|
 | `fabric_send` | `channel`, `content` | Send clarifications or additional context with @mentions (NOT for state changes) |
+| `fabric_react` | `message_id`, `emoji`, `remove` (optional) | Add/remove emoji reaction to a message (e.g., 👍 to acknowledge) |
 
 ### Worker MCP Tools
 
@@ -703,6 +704,7 @@ Coordinator: signal_workflow_complete(
 | `fabric_reply` | `message_id`, `content` | Reply to a message you received (use this for responses) |
 | `fabric_send` | `channel`, `content` | Start NEW conversation (only for new topics, not responses) |
 | `fabric_inbox` | none | Check for new messages |
+| `fabric_react` | `message_id`, `emoji`, `remove` (optional) | Add/remove emoji reaction (e.g., 👀 when starting work, ✅ when done) |
 
 ### BD Commands
 

@@ -140,6 +140,7 @@ func TestRestoreFabricState(t *testing.T) {
 	subs := repository.NewMemorySubscriptionRepository()
 	acks := repository.NewMemoryAckRepository(deps, threads, subs)
 	participants := repository.NewMemoryParticipantRepository()
+	reactions := repository.NewInMemoryReactionRepository()
 
 	// Create persisted events
 	now := time.Now()
@@ -214,7 +215,7 @@ func TestRestoreFabricState(t *testing.T) {
 	}
 
 	// Restore state
-	err := RestoreFabricState(events, threads, deps, subs, acks, participants)
+	err := RestoreFabricState(events, threads, deps, subs, acks, participants, reactions)
 	require.NoError(t, err)
 
 	// Verify channels restored
@@ -246,6 +247,187 @@ func TestRestoreFabricState(t *testing.T) {
 	require.Len(t, agentSubs, 1)
 	require.Equal(t, "ch-general", agentSubs[0].ChannelID)
 	require.Equal(t, domain.ModeAll, agentSubs[0].Mode)
+}
+
+func TestRestoreFabricState_Reactions(t *testing.T) {
+	// Create repositories
+	threads := repository.NewMemoryThreadRepository()
+	deps := repository.NewMemoryDependencyRepository()
+	subs := repository.NewMemorySubscriptionRepository()
+	acks := repository.NewMemoryAckRepository(deps, threads, subs)
+	participants := repository.NewMemoryParticipantRepository()
+	reactions := repository.NewInMemoryReactionRepository()
+
+	now := time.Now()
+
+	// Create events including a message and reactions
+	events := []PersistedEvent{
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventChannelCreated,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				Thread: &domain.Thread{
+					ID:        "ch-general",
+					Type:      domain.ThreadChannel,
+					Slug:      "general",
+					Title:     "General",
+					CreatedAt: now,
+					CreatedBy: "SYSTEM",
+				},
+			},
+		},
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventMessagePosted,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				Thread: &domain.Thread{
+					ID:        "msg-1",
+					Type:      domain.ThreadMessage,
+					Content:   "Hello world",
+					Kind:      string(domain.KindInfo),
+					CreatedAt: now,
+					CreatedBy: "COORDINATOR",
+				},
+			},
+		},
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventReactionAdded,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				AgentID:   "worker-1",
+				Reaction: &domain.Reaction{
+					ThreadID:  "msg-1",
+					AgentID:   "worker-1",
+					Emoji:     "👍",
+					CreatedAt: now,
+				},
+			},
+		},
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventReactionAdded,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				AgentID:   "worker-2",
+				Reaction: &domain.Reaction{
+					ThreadID:  "msg-1",
+					AgentID:   "worker-2",
+					Emoji:     "👍",
+					CreatedAt: now,
+				},
+			},
+		},
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventReactionAdded,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				AgentID:   "coordinator",
+				Reaction: &domain.Reaction{
+					ThreadID:  "msg-1",
+					AgentID:   "coordinator",
+					Emoji:     "✅",
+					CreatedAt: now,
+				},
+			},
+		},
+	}
+
+	// Restore state
+	err := RestoreFabricState(events, threads, deps, subs, acks, participants, reactions)
+	require.NoError(t, err)
+
+	// Verify reactions restored
+	reactionList, err := reactions.ListForThread("msg-1")
+	require.NoError(t, err)
+	require.Len(t, reactionList, 3)
+
+	// Verify reaction summary
+	summary, err := reactions.GetSummary("msg-1")
+	require.NoError(t, err)
+	require.Len(t, summary, 2) // 👍 and ✅
+
+	// Find the 👍 summary
+	var thumbsUp *domain.ReactionSummary
+	for i := range summary {
+		if summary[i].Emoji == "👍" {
+			thumbsUp = &summary[i]
+			break
+		}
+	}
+	require.NotNil(t, thumbsUp)
+	require.Equal(t, 2, thumbsUp.Count)
+	require.Contains(t, thumbsUp.AgentIDs, "worker-1")
+	require.Contains(t, thumbsUp.AgentIDs, "worker-2")
+}
+
+func TestRestoreFabricState_ReactionRemoved(t *testing.T) {
+	// Create repositories
+	threads := repository.NewMemoryThreadRepository()
+	deps := repository.NewMemoryDependencyRepository()
+	subs := repository.NewMemorySubscriptionRepository()
+	acks := repository.NewMemoryAckRepository(deps, threads, subs)
+	participants := repository.NewMemoryParticipantRepository()
+	reactions := repository.NewInMemoryReactionRepository()
+
+	now := time.Now()
+
+	// Create events: add reaction then remove it
+	events := []PersistedEvent{
+		{
+			Version:   currentVersion,
+			Timestamp: now,
+			Event: fabric.Event{
+				Type:      fabric.EventReactionAdded,
+				Timestamp: now,
+				ChannelID: "ch-general",
+				AgentID:   "worker-1",
+				Reaction: &domain.Reaction{
+					ThreadID:  "msg-1",
+					AgentID:   "worker-1",
+					Emoji:     "👍",
+					CreatedAt: now,
+				},
+			},
+		},
+		{
+			Version:   currentVersion,
+			Timestamp: now.Add(time.Second),
+			Event: fabric.Event{
+				Type:      fabric.EventReactionRemoved,
+				Timestamp: now.Add(time.Second),
+				ChannelID: "ch-general",
+				AgentID:   "worker-1",
+				Reaction: &domain.Reaction{
+					ThreadID: "msg-1",
+					AgentID:  "worker-1",
+					Emoji:    "👍",
+				},
+			},
+		},
+	}
+
+	// Restore state
+	err := RestoreFabricState(events, threads, deps, subs, acks, participants, reactions)
+	require.NoError(t, err)
+
+	// Verify reaction was removed
+	reactionList, err := reactions.ListForThread("msg-1")
+	require.NoError(t, err)
+	require.Len(t, reactionList, 0)
 }
 
 func TestRestoreFabricService(t *testing.T) {
@@ -287,8 +469,9 @@ func TestRestoreFabricService(t *testing.T) {
 	subs := repository.NewMemorySubscriptionRepository()
 	acks := repository.NewMemoryAckRepository(deps, threads, subs)
 	participants := repository.NewMemoryParticipantRepository()
+	reactions := repository.NewInMemoryReactionRepository()
 
-	channelIDs, err := RestoreFabricService(tmpDir, threads, deps, subs, acks, participants)
+	channelIDs, err := RestoreFabricService(tmpDir, threads, deps, subs, acks, participants, reactions)
 	require.NoError(t, err)
 
 	// Verify channel IDs returned

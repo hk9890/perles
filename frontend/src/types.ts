@@ -63,6 +63,12 @@ export interface FabricEvent {
       agent_id: string;
       mode: string;
     };
+    reaction?: {
+      thread_id: string;
+      agent_id: string;
+      emoji: string;
+      created_at: string;
+    };
     mentions?: string[];
   };
 }

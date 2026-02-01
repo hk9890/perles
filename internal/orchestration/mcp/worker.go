@@ -160,6 +160,8 @@ func (ws *WorkerServer) registerFabricToolsWithEnforcement(h *fabricmcp.Handlers
 			handler = h.HandleHistory
 		case "fabric_read_thread":
 			handler = h.HandleReadThread
+		case "fabric_react":
+			handler = h.HandleReact
 		}
 
 		if handler != nil {

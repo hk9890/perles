@@ -23,7 +23,7 @@ func TestObserverServer_ReadOnlyTools(t *testing.T) {
 	svc := newTestFabricService()
 	os.SetFabricService(svc)
 
-	// Expected tools: read-only fabric tools + restricted fabric_send + restricted fabric_reply + fabric_attach
+	// Expected tools: read-only fabric tools + restricted fabric_send + restricted fabric_reply + fabric_attach + fabric_react
 	expectedTools := []string{
 		"fabric_inbox",
 		"fabric_history",
@@ -33,6 +33,7 @@ func TestObserverServer_ReadOnlyTools(t *testing.T) {
 		"fabric_send",
 		"fabric_reply",
 		"fabric_attach",
+		"fabric_react",
 	}
 
 	// Verify expected tools are registered

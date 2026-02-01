@@ -95,10 +95,12 @@ func (os *ObserverServer) registerObserverFabricTools(h *fabricmcp.Handlers) {
 			handler = h.HandleReadThread
 		case "fabric_attach":
 			handler = h.HandleAttach
+		case "fabric_react":
+			handler = h.HandleReact
 		}
 
 		// Register read-only tools and restricted write tools
-		if handler != nil && (isReadOnly || tool.Name == "fabric_send" || tool.Name == "fabric_reply" || tool.Name == "fabric_attach") {
+		if handler != nil && (isReadOnly || tool.Name == "fabric_send" || tool.Name == "fabric_reply" || tool.Name == "fabric_attach" || tool.Name == "fabric_react") {
 			os.RegisterTool(mcpTool, handler)
 		}
 	}

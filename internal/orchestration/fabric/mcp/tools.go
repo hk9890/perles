@@ -50,6 +50,7 @@ func FabricTools() []Tool {
 		ToolFabricAttach,
 		ToolFabricHistory,
 		ToolFabricReadThread,
+		ToolFabricReact,
 	}
 }
 
@@ -401,5 +402,52 @@ var ToolFabricReadThread = Tool{
 			},
 		},
 		Required: []string{"message", "replies"},
+	},
+}
+
+// ToolFabricReact adds or removes an emoji reaction to a message.
+var ToolFabricReact = Tool{
+	Name:        "fabric_react",
+	Description: "Add or remove an emoji reaction to a message. Use to express acknowledgment, approval, or emotions without posting a reply.",
+	InputSchema: &InputSchema{
+		Type: "object",
+		Properties: map[string]*PropertySchema{
+			"message_id": {
+				Type:        "string",
+				Description: "ID of the message to react to",
+			},
+			"emoji": {
+				Type:        "string",
+				Description: "Emoji to add (e.g., '👍', '🎉', '❤️', '🚀')",
+			},
+			"action": {
+				Type:        "string",
+				Description: "Action to perform: 'add' (default) or 'remove'",
+				Enum:        []string{"add", "remove"},
+			},
+		},
+		Required: []string{"message_id", "emoji"},
+	},
+	OutputSchema: &OutputSchema{
+		Type: "object",
+		Properties: map[string]*PropertySchema{
+			"success":    {Type: "boolean", Description: "Whether the action succeeded"},
+			"message_id": {Type: "string", Description: "The message ID"},
+			"emoji":      {Type: "string", Description: "The emoji"},
+			"action":     {Type: "string", Description: "The action performed"},
+			"reactions": {
+				Type:        "array",
+				Description: "Current reactions on the message after the action",
+				Items: &PropertySchema{
+					Type: "object",
+					Properties: map[string]*PropertySchema{
+						"emoji":     {Type: "string", Description: "The emoji"},
+						"count":     {Type: "number", Description: "Number of this reaction"},
+						"agent_ids": {Type: "array", Description: "Agent IDs who reacted with this emoji"},
+					},
+				},
+			},
+		},
+		Required: []string{"success", "message_id", "emoji", "action"},
 	},
 }

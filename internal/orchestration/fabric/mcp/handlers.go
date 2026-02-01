@@ -57,6 +57,7 @@ func (h *Handlers) RegisterAll(server ToolRegistrar) {
 	server.RegisterTool(ToolFabricAttach, h.HandleAttach)
 	server.RegisterTool(ToolFabricHistory, h.HandleHistory)
 	server.RegisterTool(ToolFabricReadThread, h.HandleReadThread)
+	server.RegisterTool(ToolFabricReact, h.HandleReact)
 }
 
 // HandleJoin handles the fabric_join tool call.
@@ -557,6 +558,81 @@ func (h *Handlers) HandleReadThread(_ context.Context, rawArgs json.RawMessage) 
 
 	return types.StructuredResult(
 		fmt.Sprintf("Thread with %d replies, %d participants", len(response.Replies), len(response.Participants)),
+		response,
+	), nil
+}
+
+// reactArgs are arguments for fabric_react.
+type reactArgs struct {
+	MessageID string `json:"message_id"`
+	Emoji     string `json:"emoji"`
+	Action    string `json:"action,omitempty"`
+}
+
+// HandleReact handles the fabric_react tool call.
+func (h *Handlers) HandleReact(_ context.Context, rawArgs json.RawMessage) (*ToolCallResult, error) {
+	var args reactArgs
+	if err := json.Unmarshal(rawArgs, &args); err != nil {
+		return nil, fmt.Errorf("invalid arguments: %w", err)
+	}
+
+	if args.MessageID == "" {
+		return nil, fmt.Errorf("message_id is required")
+	}
+	if args.Emoji == "" {
+		return nil, fmt.Errorf("emoji is required")
+	}
+
+	action := args.Action
+	if action == "" {
+		action = "add"
+	}
+
+	var err error
+	switch action {
+	case "add":
+		_, err = h.service.AddReaction(args.MessageID, h.agentID, args.Emoji)
+	case "remove":
+		err = h.service.RemoveReaction(args.MessageID, h.agentID, args.Emoji)
+	default:
+		return nil, fmt.Errorf("invalid action: %s (must be 'add' or 'remove')", action)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("react: %w", err)
+	}
+
+	// Get current reactions for the message
+	summaries, err := h.service.GetReactions(args.MessageID)
+	if err != nil {
+		return nil, fmt.Errorf("get reactions: %w", err)
+	}
+
+	// Convert to response format
+	reactions := make([]ReactionSummary, len(summaries))
+	for i, s := range summaries {
+		reactions[i] = ReactionSummary{
+			Emoji:    s.Emoji,
+			Count:    s.Count,
+			AgentIDs: s.AgentIDs,
+		}
+	}
+
+	response := ReactResponse{
+		Success:   true,
+		MessageID: args.MessageID,
+		Emoji:     args.Emoji,
+		Action:    action,
+		Reactions: reactions,
+	}
+
+	actionVerb := "added"
+	if action == "remove" {
+		actionVerb = "removed"
+	}
+
+	return types.StructuredResult(
+		fmt.Sprintf("Reaction %s %s on message %s", args.Emoji, actionVerb, args.MessageID),
 		response,
 	), nil
 }

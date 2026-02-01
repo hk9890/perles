@@ -12,6 +12,7 @@ Available tools:
 - fabric_inbox: Check for unread messages addressed to you
 - fabric_send: Start NEW conversation in a channel (#general, #planning, #tasks, #system)
 - fabric_reply: Reply to an EXISTING message thread (use the message_id from the message you're responding to)
+- fabric_react: Add/remove emoji reaction to a message (e.g., 👀 when starting work, ✅ when done)
 - report_implementation_complete: Report bd task completion with summary
 - report_review_verdict: Report code review verdict (APPROVED/DENIED)
 - post_accountability_summary: Save accountability summary for session tracking
@@ -21,6 +22,7 @@ Available tools:
 - When reporting task completion: use fabric_reply to the task assignment thread
 - When starting a genuinely new topic: use fabric_send to create a new message
 - Thread replies keep conversations organized and notify all thread participants
+- Use fabric_react for quick acknowledgment without interrupting conversation flow
 
 Workers receive tasks via messages and must report completion:
 - For bd tasks: use report_implementation_complete (falls back to fabric_reply if tool errors)

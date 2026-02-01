@@ -21,6 +21,7 @@ type Service struct {
 	subscriptions repository.SubscriptionRepository
 	acks          repository.AckRepository
 	participants  repository.ParticipantRepository
+	reactions     repository.ReactionRepository
 
 	// Channel IDs for the fixed structure
 	rootID     string
@@ -48,6 +49,7 @@ func NewService(
 		subscriptions: subs,
 		acks:          acks,
 		participants:  participants,
+		reactions:     repository.NewInMemoryReactionRepository(),
 	}
 }
 
@@ -767,6 +769,60 @@ func (s *Service) findChannelForMessage(messageID string) string {
 		return ""
 	}
 	return deps[0].DependsOnID
+}
+
+// AddReaction adds an emoji reaction to a message.
+func (s *Service) AddReaction(threadID, agentID, emoji string) (*domain.Reaction, error) {
+	// Verify thread exists
+	thread, err := s.threads.Get(threadID)
+	if err != nil {
+		return nil, fmt.Errorf("get thread: %w", err)
+	}
+	if thread.Type != domain.ThreadMessage {
+		return nil, fmt.Errorf("can only react to messages, got %s", thread.Type)
+	}
+
+	reaction, err := s.reactions.Add(threadID, agentID, emoji)
+	if err != nil {
+		return nil, fmt.Errorf("add reaction: %w", err)
+	}
+
+	// Find channel for event
+	channelID := s.findChannelForMessage(threadID)
+	channelSlug := s.GetChannelSlug(channelID)
+
+	s.emit(NewReactionAddedEvent(reaction, channelID, channelSlug))
+	return reaction, nil
+}
+
+// RemoveReaction removes an emoji reaction from a message.
+func (s *Service) RemoveReaction(threadID, agentID, emoji string) error {
+	reaction := &domain.Reaction{
+		ThreadID: threadID,
+		AgentID:  agentID,
+		Emoji:    emoji,
+	}
+
+	if err := s.reactions.Remove(threadID, agentID, emoji); err != nil {
+		return fmt.Errorf("remove reaction: %w", err)
+	}
+
+	// Find channel for event
+	channelID := s.findChannelForMessage(threadID)
+	channelSlug := s.GetChannelSlug(channelID)
+
+	s.emit(NewReactionRemovedEvent(reaction, channelID, channelSlug))
+	return nil
+}
+
+// GetReactions returns aggregated reaction summaries for a thread.
+func (s *Service) GetReactions(threadID string) ([]domain.ReactionSummary, error) {
+	return s.reactions.GetSummary(threadID)
+}
+
+// ReactionRepository returns the reaction repository for external use (e.g., persistence).
+func (s *Service) ReactionRepository() repository.ReactionRepository {
+	return s.reactions
 }
 
 // mentionPattern matches @agent-id or @AGENT.ID patterns.

@@ -130,6 +130,7 @@ func TestWorkerServer_RegistersAllTools(t *testing.T) {
 		"fabric_attach",
 		"fabric_history",
 		"fabric_read_thread",
+		"fabric_react",
 	}
 
 	expectedTools := append(workerTools, fabricTools...)

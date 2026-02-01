@@ -55,6 +55,7 @@ Read-only tools (use freely):
 Restricted write tools:
 - fabric_send: Send messages ONLY to #observer channel
 - fabric_reply: Reply ONLY to messages in #observer channel
+- fabric_react: Add/remove emoji reactions to messages in any channel (for acknowledgment)
 
 Note: You are automatically subscribed to all channels on startup. Do NOT use fabric_subscribe.
 

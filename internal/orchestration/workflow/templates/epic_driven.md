@@ -37,6 +37,7 @@ The epic will define specific roles and responsibilities for each worker.
 |------|---------|-------------|
 | `spawn_worker(role, instructions)` | Create a new worker | When you need additional workers beyond initial pool |
 | `fabric_send(channel, content)` | Send message with @mentions | For non-bd work, clarifications, or additional context (e.g., "@worker-1 please clarify...") |
+| `fabric_react(message_id, emoji, remove)` | Add/remove emoji reaction | Quick acknowledgment (👍), signal attention (👀), mark complete (✅) |
 | `retire_worker(worker_id, reason)` | Retire a worker | When worker is no longer needed or context is stale |
 | `query_worker_state(worker_id, task_id)` | Check worker/task state | Before assignments to verify availability |
 
