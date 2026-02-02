@@ -1,0 +1,57 @@
+registry:
+  - namespace: "workflow"
+    key: "joke-contest"
+    version: "v1"
+    name: "Joke Contest"
+    description: "Test workflow where two workers write jokes in parallel, then a third worker judges and picks a winner"
+    epic_template: "v1-joke-contest-epic.md"
+    path: ""
+    labels:
+      - "category:meta"
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # ARGUMENTS: User-configurable parameters
+    # ═══════════════════════════════════════════════════════════════════════
+    arguments:
+      - key: "theme"
+        label: "Joke Theme"
+        description: "Optional theme or topic for the jokes (e.g., programming, animals, food)"
+        type: "text"
+        required: false
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # NODES: Workflow tasks (DAG structure)
+    # ═══════════════════════════════════════════════════════════════════════
+    # Phase 1: Two jokers write jokes in parallel (no dependencies)
+    # Phase 2: Judge reads both jokes and picks a winner
+    # ═══════════════════════════════════════════════════════════════════════
+    nodes:
+      # Phase 1: Parallel joke writing
+      - key: "joke-1"
+        name: "Joker 1 - Write Joke"
+        template: "v1-joke-contest-joke-1.md"
+        assignee: "worker-1"
+        # No after - starts immediately
+
+      - key: "joke-2"
+        name: "Joker 2 - Write Joke"
+        template: "v1-joke-contest-joke-2.md"
+        assignee: "worker-2"
+        # No after - runs in parallel with joke-1
+
+      # Phase 2: Judge picks winner
+      - key: "review"
+        name: "Human Review"
+        template: "v1-human-review.md"
+        assignee: "human"
+        after:
+          - "joke-1"
+          - "joke-2"
+
+      # Phase 2: Judge picks winner
+      - key: "judge"
+        name: "Judge - Pick Winner"
+        template: "v1-joke-contest-judge.md"
+        assignee: "worker-3"
+        after:
+          - "review"
