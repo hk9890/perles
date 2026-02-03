@@ -64,6 +64,20 @@ func TestInsertTextCommand_ExecuteMultiLine(t *testing.T) {
 	require.Equal(t, 3, m.cursorCol)
 }
 
+func TestInsertTextCommand_Execute_NormalizesCRLF(t *testing.T) {
+	m := newTestModelWithContent("hello world")
+	m.cursorCol = 5
+
+	cmd := &InsertTextCommand{row: 0, col: 5, text: "\r\nfoo\r\nbar"}
+	err := cmd.Execute(m)
+
+	require.Equal(t, Executed, err)
+	require.Len(t, m.content, 3)
+	require.Equal(t, "hello", m.content[0])
+	require.Equal(t, "foo", m.content[1])
+	require.Equal(t, "bar world", m.content[2])
+}
+
 // TestInsertTextCommand_Undo verifies removing inserted text
 func TestInsertTextCommand_Undo(t *testing.T) {
 	m := newTestModelWithContent("hello")

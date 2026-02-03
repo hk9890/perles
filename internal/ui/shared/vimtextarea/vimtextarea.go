@@ -847,6 +847,8 @@ func (m Model) Lines() []string {
 // SetValue sets the content from a string, splitting on newlines.
 // If in visual mode, clears visual mode since content change invalidates anchor.
 func (m *Model) SetValue(s string) {
+	s = normalizeNewlines(s)
+
 	// Clear visual mode if active - content change invalidates anchor
 	if m.InVisualMode() {
 		m.mode = ModeNormal

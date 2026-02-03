@@ -23,6 +23,9 @@ type InsertTextCommand struct {
 
 // Execute inserts text at the stored position.
 func (c *InsertTextCommand) Execute(m *Model) ExecuteResult {
+	// Normalize line endings to avoid stray carriage returns in pasted text.
+	c.text = normalizeNewlines(c.text)
+
 	// Handle CharLimit before inserting
 	text := c.text
 	if m.config.CharLimit > 0 {
