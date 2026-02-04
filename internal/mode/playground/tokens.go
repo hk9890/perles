@@ -94,6 +94,10 @@ func GetTokenColor(token styles.ColorToken) string {
 		return styles.StatusInProgressColor.Dark
 	case styles.TokenIssueClosed:
 		return styles.StatusClosedColor.Dark
+	case styles.TokenIssueDeferred:
+		return styles.StatusDeferredColor.Dark
+	case styles.TokenIssueBlocked:
+		return styles.StatusBlockedColor.Dark
 
 	// Issue priority
 	case styles.TokenPriorityCritical:
@@ -246,6 +250,8 @@ func GetTokenCategories() []TokenCategory {
 				styles.TokenIssueOpen,
 				styles.TokenIssueInProgress,
 				styles.TokenIssueClosed,
+				styles.TokenIssueDeferred,
+				styles.TokenIssueBlocked,
 			},
 		},
 		{

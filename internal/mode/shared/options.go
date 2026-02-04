@@ -23,5 +23,7 @@ func StatusOptions() []picker.Option {
 		{Label: "Open", Value: string(beads.StatusOpen), Color: styles.StatusOpenColor},
 		{Label: "In Progress", Value: string(beads.StatusInProgress), Color: styles.StatusInProgressColor},
 		{Label: "Closed", Value: string(beads.StatusClosed), Color: styles.StatusClosedColor},
+		{Label: "Deferred", Value: string(beads.StatusDeferred), Color: styles.StatusDeferredColor},
+		{Label: "Blocked", Value: string(beads.StatusBlocked), Color: styles.StatusBlockedColor},
 	}
 }

@@ -57,7 +57,9 @@ const (
 	// Issue status
 	TokenIssueOpen       ColorToken = "issue.status.open" //nolint:gosec // UI color token, not credentials
 	TokenIssueInProgress ColorToken = "issue.status.in_progress"
-	TokenIssueClosed     ColorToken = "issue.status.closed" //nolint:gosec // UI color token, not credentials
+	TokenIssueClosed     ColorToken = "issue.status.closed"   //nolint:gosec // UI color token, not credentials
+	TokenIssueDeferred   ColorToken = "issue.status.deferred" //nolint:gosec // UI color token, not credentials
+	TokenIssueBlocked    ColorToken = "issue.status.blocked"  //nolint:gosec // UI color token, not credentials
 
 	// Issue priority
 	TokenPriorityCritical ColorToken = "priority.critical"
@@ -149,6 +151,8 @@ func AllTokens() []ColorToken {
 		TokenIssueOpen,
 		TokenIssueInProgress,
 		TokenIssueClosed,
+		TokenIssueDeferred,
+		TokenIssueBlocked,
 
 		// Issue priority
 		TokenPriorityCritical,

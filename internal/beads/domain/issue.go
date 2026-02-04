@@ -9,6 +9,8 @@ const (
 	StatusOpen       Status = "open"
 	StatusInProgress Status = "in_progress"
 	StatusClosed     Status = "closed"
+	StatusDeferred   Status = "deferred"
+	StatusBlocked    Status = "blocked"
 )
 
 // Priority levels (0-4, lower is more urgent).

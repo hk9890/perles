@@ -52,6 +52,11 @@ const (
 	fieldCount
 )
 
+const (
+	leftPanelWidth  = 80 // Form panel
+	rightPanelWidth = 55 // Preview panel
+)
+
 // SaveMsg is sent when the user saves the editor.
 type SaveMsg struct {
 	ColumnIndex int
@@ -270,8 +275,6 @@ func (m Model) SetSize(width, height int) Model {
 	m.height = height
 
 	// Calculate input width based on fixed left panel width
-	// leftPanelWidth=75, sectionWidth=75-2=73, innerWidth=73-4 (borders)=69
-	const leftPanelWidth = 75
 	inputWidth := max(leftPanelWidth-6, 20) // Account for borders and padding
 	m.nameInput.Width = inputWidth
 	m.queryInput.SetSize(inputWidth, 5) // Height of 5 allows multi-line queries
@@ -689,11 +692,6 @@ func (m Model) hasColorWarning() bool {
 // View renders the full-screen editor with split layout.
 func (m Model) View() string {
 	// Fixed panel widths for consistent layout
-	const (
-		rightPanelWidth = 55 // Preview panel - fixed width
-		leftPanelWidth  = 75 // Form panel - fixed width
-	)
-
 	// Total content width
 	contentWidth := leftPanelWidth + 1 + rightPanelWidth // +1 for divider
 	leftWidth := leftPanelWidth
@@ -845,8 +843,7 @@ func (m Model) renderConfigForm(width int) string {
 
 	// Actions (Save and Delete on same line) - no border, standalone buttons
 	// Delete is always enabled in edit mode - last column deletion returns to empty state
-	deleteEnabled := true
-	actionRow := m.renderActionRowHorizontal(deleteEnabled)
+	actionRow := m.renderActionRowHorizontal(true)
 	sections = append(sections, actionRow)
 
 	// Section: Query Help (expanded with all fields and operators)

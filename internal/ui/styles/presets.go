@@ -76,6 +76,8 @@ var DefaultPreset = Preset{
 		TokenIssueOpen:       "#73F59F",
 		TokenIssueInProgress: "#54A0FF",
 		TokenIssueClosed:     "#BBBBBB",
+		TokenIssueDeferred:   "#B07CC6",
+		TokenIssueBlocked:    "#FF8787",
 
 		// Issue priority
 		TokenPriorityCritical: "#FF8787",
@@ -172,6 +174,8 @@ var CatppuccinMochaPreset = Preset{
 		TokenIssueOpen:       "#A6E3A1", // green
 		TokenIssueInProgress: "#89B4FA", // blue
 		TokenIssueClosed:     "#6C7086", // overlay0
+		TokenIssueDeferred:   "#CBA6F7", // mauve
+		TokenIssueBlocked:    "#F38BA8", // red
 
 		// Issue priority
 		TokenPriorityCritical: "#F38BA8", // red
@@ -268,6 +272,8 @@ var CatppuccinLattePreset = Preset{
 		TokenIssueOpen:       "#40A02B", // green
 		TokenIssueInProgress: "#1E66F5", // blue
 		TokenIssueClosed:     "#9CA0B0", // overlay0
+		TokenIssueDeferred:   "#8839EF", // mauve
+		TokenIssueBlocked:    "#D20F39", // red
 
 		// Issue priority
 		TokenPriorityCritical: "#D20F39", // red
@@ -364,6 +370,8 @@ var DraculaPreset = Preset{
 		TokenIssueOpen:       "#50FA7B", // green
 		TokenIssueInProgress: "#8BE9FD", // cyan
 		TokenIssueClosed:     "#6272A4", // comment
+		TokenIssueDeferred:   "#BD93F9", // purple
+		TokenIssueBlocked:    "#FF5555", // red
 
 		// Issue priority
 		TokenPriorityCritical: "#FF5555", // red
@@ -464,6 +472,8 @@ var NordPreset = Preset{
 		TokenIssueOpen:       "#A3BE8C", // aurora green
 		TokenIssueInProgress: "#88C0D0", // frost 2
 		TokenIssueClosed:     "#4C566A", // polar night 4
+		TokenIssueDeferred:   "#B48EAD", // aurora purple
+		TokenIssueBlocked:    "#BF616A", // aurora red
 
 		// Issue priority
 		TokenPriorityCritical: "#BF616A", // aurora red
@@ -561,6 +571,8 @@ var HighContrastPreset = Preset{
 		TokenIssueOpen:       "#00FF00", // green
 		TokenIssueInProgress: "#00FFFF", // cyan
 		TokenIssueClosed:     "#808080", // gray (only muted color - closed is inactive)
+		TokenIssueDeferred:   "#FF00FF", // magenta
+		TokenIssueBlocked:    "#FF0000", // red
 
 		// Issue priority - distinct colors from red to gray
 		TokenPriorityCritical: "#FF0000", // red
@@ -656,6 +668,8 @@ var GruvboxPreset = Preset{
 		TokenIssueOpen:       "#B8BB26", // green
 		TokenIssueInProgress: "#83A598", // blue
 		TokenIssueClosed:     "#928374", // gray
+		TokenIssueDeferred:   "#D3869B", // purple
+		TokenIssueBlocked:    "#FB4934", // red
 
 		// Issue priority
 		TokenPriorityCritical: "#FB4934", // red bright

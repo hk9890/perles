@@ -60,6 +60,7 @@ var ValidStatusValues = map[string]bool{
 	"in_progress": true,
 	"closed":      true,
 	"blocked":     true,
+	"deferred":    true,
 }
 
 // ValidPriorityValues are the valid values for the priority field.
@@ -220,7 +221,7 @@ func validateValue(field string, fieldType FieldType, value Value) error {
 			}
 		case "status":
 			if !ValidStatusValues[value.String] {
-				return fmt.Errorf("invalid value %q for field %q (valid: open, in_progress, closed, blocked)", value.String, field)
+				return fmt.Errorf("invalid value %q for field %q (valid: open, in_progress, closed, blocked, deferred)", value.String, field)
 			}
 		}
 

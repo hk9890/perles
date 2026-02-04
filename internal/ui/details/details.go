@@ -977,13 +977,17 @@ func getStatusStyle(s beads.Status) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
 	case beads.StatusClosed:
 		return lipgloss.NewStyle().Foreground(styles.StatusClosedColor)
+	case beads.StatusDeferred:
+		return lipgloss.NewStyle().Foreground(styles.StatusDeferredColor)
+	case beads.StatusBlocked:
+		return lipgloss.NewStyle().Foreground(styles.StatusBlockedColor)
 	default:
 		return lipgloss.NewStyle()
 	}
 }
 
 // renderStatusIndicator renders the status badge for dependency items.
-// Matches the tree view format: ○ (open), ● (in progress), ✓ (closed).
+// Matches the tree view format: ○ (open), ● (in progress), ✓ (closed), ⏸ (deferred), ⊘ (blocked).
 func renderStatusIndicator(status beads.Status) string {
 	switch status {
 	case beads.StatusClosed:
@@ -992,6 +996,12 @@ func renderStatusIndicator(status beads.Status) string {
 	case beads.StatusInProgress:
 		style := lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
 		return style.Render("●")
+	case beads.StatusDeferred:
+		style := lipgloss.NewStyle().Foreground(styles.StatusDeferredColor)
+		return style.Render("⏸")
+	case beads.StatusBlocked:
+		style := lipgloss.NewStyle().Foreground(styles.StatusBlockedColor)
+		return style.Render("⊘")
 	default:
 		style := lipgloss.NewStyle().Foreground(styles.StatusOpenColor)
 		return style.Render("○")
@@ -1007,6 +1017,10 @@ func formatStatus(s beads.Status) string {
 		return "In Progress"
 	case beads.StatusClosed:
 		return "Closed"
+	case beads.StatusBlocked:
+		return "Blocked"
+	case beads.StatusDeferred:
+		return "Deferred"
 	default:
 		return string(s)
 	}

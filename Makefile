@@ -31,7 +31,7 @@ daemon: build-go
 	./perles daemon -p 19999
 
 # Builds and starts the playground
-playground: build
+playground: build-go
 	./perles playground
 
 # Build and run the binary with the debug flag

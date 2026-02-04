@@ -195,6 +195,12 @@ func applyColors(colors map[ColorToken]string) {
 	if c, ok := colors[TokenIssueClosed]; ok {
 		StatusClosedColor = makeColor(c)
 	}
+	if c, ok := colors[TokenIssueDeferred]; ok {
+		StatusDeferredColor = makeColor(c)
+	}
+	if c, ok := colors[TokenIssueBlocked]; ok {
+		StatusBlockedColor = makeColor(c)
+	}
 
 	// Priority
 	if c, ok := colors[TokenPriorityCritical]; ok {

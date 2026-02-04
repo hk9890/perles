@@ -105,6 +105,8 @@ var (
 	StatusOpenColor       = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
 	StatusInProgressColor = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"}
 	StatusClosedColor     = lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#BBBBBB"}
+	StatusDeferredColor   = lipgloss.AdaptiveColor{Light: "#9B59B6", Dark: "#B07CC6"}
+	StatusBlockedColor    = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"}
 
 	// Issue priority colors
 	PriorityCriticalColor = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"}

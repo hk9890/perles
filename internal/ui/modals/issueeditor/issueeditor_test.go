@@ -103,11 +103,11 @@ func TestPriorityListOptions_SelectsCorrectPriority(t *testing.T) {
 func TestStatusListOptions_Returns3Options(t *testing.T) {
 	opts := statusListOptions(beads.StatusOpen)
 
-	require.Len(t, opts, 3, "expected 3 status options")
+	require.Len(t, opts, 5, "expected 5 status options")
 
 	// Verify labels and values
-	expectedLabels := []string{"Open", "In Progress", "Closed"}
-	expectedValues := []string{"open", "in_progress", "closed"}
+	expectedLabels := []string{"Open", "In Progress", "Closed", "Deferred", "Blocked"}
+	expectedValues := []string{"open", "in_progress", "closed", "deferred", "blocked"}
 
 	for i, opt := range opts {
 		require.Equal(t, expectedLabels[i], opt.Label, "expected label for option %d", i)
@@ -118,6 +118,8 @@ func TestStatusListOptions_Returns3Options(t *testing.T) {
 	require.True(t, opts[0].Selected, "expected Open to be selected")
 	require.False(t, opts[1].Selected, "expected In Progress to not be selected")
 	require.False(t, opts[2].Selected, "expected Closed to not be selected")
+	require.False(t, opts[3].Selected, "expected Deferred to not be selected")
+	require.False(t, opts[4].Selected, "expected Blocked to not be selected")
 }
 
 func TestStatusListOptions_SelectsCorrectStatus(t *testing.T) {
