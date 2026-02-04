@@ -294,11 +294,15 @@ func (b *Broker) handleEvent(event Event) {
 	// Also notify anyone @mentioned who isn't subscribed (explicit mention always notifies)
 	// Skip for suppressed channels unless they're the channel owner
 	// Skip @here since it's handled above
+	// Skip "user" since that's the human using the TUI, not a process
 	for _, mentionedID := range mentions {
 		if mentionedID == sender {
 			continue
 		}
 		if mentionedID == domain.MentionHere {
+			continue
+		}
+		if mentionedID == domain.AgentUser {
 			continue
 		}
 		if isSuppressed && !isChannelOwner(channelSlug, mentionedID) {
@@ -313,6 +317,14 @@ func (b *Broker) handleEvent(event Event) {
 	if event.Type == EventReplyPosted {
 		for _, participantID := range event.Participants {
 			if participantID == sender {
+				continue
+			}
+			// Skip @here - it's a broadcast token, not an actual agent
+			if participantID == domain.MentionHere {
+				continue
+			}
+			// Skip "user" - that's the human using the TUI, not a process
+			if participantID == domain.AgentUser {
 				continue
 			}
 			if isSuppressed && !isChannelOwner(channelSlug, participantID) {

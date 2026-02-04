@@ -54,10 +54,14 @@ const (
 	SlugObserver = "observer"
 )
 
-// Special mentions
+// Special mentions and agent IDs
 const (
 	// MentionHere is a broadcast mention that notifies all channel subscribers.
 	MentionHere = "here"
+
+	// AgentUser is the agent ID for the human user interacting via the TUI.
+	// This is not a process that can receive nudge messages.
+	AgentUser = "user"
 )
 
 // ParticipantRole identifies the role of a participant in the fabric.

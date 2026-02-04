@@ -322,10 +322,12 @@ func (s *Service) SendMessage(input SendMessageInput) (*domain.Thread, error) {
 	}
 
 	// Build initial participants: sender + all mentioned agents
+	// Exclude @here which is a broadcast token, not an actual agent
+	// Exclude "user" which is the human using the TUI, not a process
 	participants := make([]string, 0, 1+len(mentions))
 	participants = append(participants, input.CreatedBy)
 	for _, m := range mentions {
-		if m != input.CreatedBy {
+		if m != input.CreatedBy && m != domain.MentionHere && m != domain.AgentUser {
 			participants = append(participants, m)
 		}
 	}
@@ -425,9 +427,13 @@ func (s *Service) Reply(input ReplyInput) (*domain.Thread, error) {
 	}
 
 	// Add replier as participant to root thread (so they see future replies)
-	// Also add any newly mentioned agents
+	// Also add any newly mentioned agents (excluding special tokens that aren't processes)
 	root.AddParticipant(input.CreatedBy)
-	root.AddParticipants(mentions...)
+	for _, m := range mentions {
+		if m != domain.MentionHere && m != domain.AgentUser {
+			root.AddParticipant(m)
+		}
+	}
 	// Update is best-effort for participant notifications; reply already created successfully
 	_, _ = s.threads.Update(*root)
 
