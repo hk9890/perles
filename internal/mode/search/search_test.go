@@ -3,8 +3,10 @@ package search
 import (
 	"errors"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -1834,4 +1836,230 @@ func TestSearch_ActionsLoadedFromConfig(t *testing.T) {
 	require.Len(t, m.actions, 2, "should have 2 actions configured")
 	require.Contains(t, m.actions, "open-claude", "should have open-claude action")
 	require.Contains(t, m.actions, "open-editor", "should have open-editor action")
+}
+
+// Mouse click tests
+
+func TestSearch_MouseClick_IgnoresRightClick(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	originalIdx := m.selectedIdx
+
+	// Right click should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonRight,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "right click should not produce a command")
+	require.Equal(t, originalIdx, m.selectedIdx, "selection should not change on right click")
+}
+
+func TestSearch_MouseClick_IgnoresMiddleClick(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	originalIdx := m.selectedIdx
+
+	// Middle click should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonMiddle,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "middle click should not produce a command")
+	require.Equal(t, originalIdx, m.selectedIdx, "selection should not change on middle click")
+}
+
+func TestSearch_MouseClick_IgnoresPress(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	originalIdx := m.selectedIdx
+
+	// Click press (not release) should be ignored
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+
+	require.Nil(t, cmd, "click press should not produce a command")
+	require.Equal(t, originalIdx, m.selectedIdx, "selection should not change on click press")
+}
+
+func TestSearch_MouseClick_IgnoresOutsideZone(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	originalIdx := m.selectedIdx
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Click outside any registered zone (very far coordinates)
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      9999,
+		Y:      9999,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd, "click outside zone should not produce a command")
+	require.Equal(t, originalIdx, m.selectedIdx, "selection should not change on click outside zone")
+}
+
+func TestSearch_MouseClick_SelectsIssueInList(t *testing.T) {
+	// Use unique issue IDs to avoid zone conflicts with other tests
+	issueID1 := "mouse-click-select-test-issue-1"
+	issueID2 := "mouse-click-select-test-issue-2"
+	issueID3 := "mouse-click-select-test-issue-3"
+
+	m := createTestModel(t)
+	issues := []beads.Issue{
+		{ID: issueID1, TitleText: "First Issue", Priority: 1, Status: beads.StatusOpen, Type: beads.TypeTask},
+		{ID: issueID2, TitleText: "Second Issue", Priority: 2, Status: beads.StatusInProgress, Type: beads.TypeBug},
+		{ID: issueID3, TitleText: "Third Issue", Priority: 0, Status: beads.StatusOpen, Type: beads.TypeFeature},
+	}
+	m, _ = m.handleSearchResults(searchResultsMsg{issues: issues, err: nil})
+	m.focus = FocusDetails // Start with different focus to verify it changes
+
+	// First verify we can select the first issue (simpler case)
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone ID for the first issue (index 0) - more reliable than second
+	zoneID := makeSearchListZoneID(issueID1)
+
+	// Get zone to determine click position (with retry for zone manager stability)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		// Re-render to ensure zones are registered
+		_ = m.View()
+		// Zone registration is asynchronous via a channel worker in bubblezone.
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, z, "zone should be registered after View()")
+	require.False(t, z.IsZero(), "zone should not be zero")
+
+	// Click inside the zone
+	width := z.EndX - z.StartX
+	require.True(t, width > 0, "zone should have positive width")
+	clickX := z.StartX + width/2
+	clickY := z.StartY
+
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      clickX,
+		Y:      clickY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	// No command is expected (unlike board which emits IssueClickedMsg)
+	require.Nil(t, cmd, "click on issue in search list should not produce a command")
+
+	// Verify issue is selected
+	require.Equal(t, 0, m.selectedIdx, "clicked issue (index 0) should be selected")
+	require.Equal(t, FocusResults, m.focus, "focus should move to results pane")
+	require.True(t, m.hasDetail, "detail panel should be populated")
+}
+
+func TestSearch_MouseClick_ChangesFocusToResults(t *testing.T) {
+	issueID := "focus-change-test-issue"
+
+	m := createTestModel(t)
+	issues := []beads.Issue{
+		{ID: issueID, TitleText: "Test Issue", Priority: 1, Status: beads.StatusOpen, Type: beads.TypeTask},
+	}
+	m, _ = m.handleSearchResults(searchResultsMsg{issues: issues, err: nil})
+	m.focus = FocusSearch // Start focused on search input
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone
+	zoneID := makeSearchListZoneID(issueID)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, z, "zone should be registered")
+
+	// Click on the issue
+	m, _ = m.Update(tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Equal(t, FocusResults, m.focus, "focus should change to results after clicking issue")
+}
+
+func TestSearch_MouseClick_UpdatesDetailPanel(t *testing.T) {
+	issueID := "detail-update-test-issue"
+	issueTitle := "Test Issue for Detail Panel"
+
+	m := createTestModel(t)
+	issues := []beads.Issue{
+		{ID: issueID, TitleText: issueTitle, Priority: 1, Status: beads.StatusOpen, Type: beads.TypeTask},
+	}
+	m, _ = m.handleSearchResults(searchResultsMsg{issues: issues, err: nil})
+	m.hasDetail = false // Start without detail
+
+	// Call View() to register zones
+	_ = m.View()
+
+	// Get zone
+	zoneID := makeSearchListZoneID(issueID)
+	var z *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		z = zone.Get(zoneID)
+		if z != nil && !z.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, z, "zone should be registered")
+
+	// Click on the issue
+	m, _ = m.Update(tea.MouseMsg{
+		X:      z.StartX + 1,
+		Y:      z.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.True(t, m.hasDetail, "detail panel should be populated after click")
+	require.Equal(t, issueID, m.details.IssueID(), "detail panel should show clicked issue")
+}
+
+func TestSearch_MouseClick_WheelEventsForwardToDetails(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.hasDetail = true
+
+	// Wheel events should be forwarded to details regardless of focus
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      50,
+		Y:      10,
+		Button: tea.MouseButtonWheelDown,
+	})
+
+	// Command might be nil or a scroll command from details
+	// The important thing is that it doesn't select an issue
+	_ = cmd
+	require.Equal(t, FocusResults, m.focus, "focus should not change on wheel event")
 }

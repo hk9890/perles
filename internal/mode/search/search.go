@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	zone "github.com/lrstanley/bubblezone"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/bql"
@@ -600,6 +601,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.details, cmd = m.details.Update(mouseMsg)
 			return m, cmd
 		}
+
+		// Handle left-click release for issue selection
+		if mouseMsg.Button == tea.MouseButtonLeft && mouseMsg.Action == tea.MouseActionRelease {
+			return m.handleMouseClick(mouseMsg)
+		}
+
 		// Non-wheel events only forwarded when details focused
 		if m.focus == FocusDetails {
 			var cmd tea.Cmd
@@ -823,22 +830,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 // View renders the search mode.
 func (m Model) View() string {
 	// Handle overlays
+	// Note: Modal overlays internally call zone.Scan(), so we scan here for consistency
 	switch m.view {
 	case ViewHelp:
-		return m.help.Overlay(m.renderMainView())
+		return zone.Scan(m.help.Overlay(m.renderMainView()))
 	case ViewSaveAction:
-		return m.picker.Overlay(m.renderMainView())
+		return zone.Scan(m.picker.Overlay(m.renderMainView()))
 	case ViewSaveColumn:
-		return m.viewSelector.Overlay(m.renderMainView())
+		return zone.Scan(m.viewSelector.Overlay(m.renderMainView()))
 	case ViewNewView:
-		return m.newViewModal.Overlay(m.renderMainView())
+		return zone.Scan(m.newViewModal.Overlay(m.renderMainView()))
 	case ViewDeleteConfirm:
-		return m.modal.Overlay(m.renderMainView())
+		return zone.Scan(m.modal.Overlay(m.renderMainView()))
 	case ViewEditIssue:
-		return m.issueEditor.Overlay(m.renderMainView())
+		return zone.Scan(m.issueEditor.Overlay(m.renderMainView()))
 	}
 
-	return m.renderMainView()
+	return zone.Scan(m.renderMainView())
 }
 
 // handleKey processes keyboard input.
@@ -1352,6 +1360,42 @@ func (m Model) handleNavUp() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleMouseClick handles left-click release events on issues.
+func (m Model) handleMouseClick(msg tea.MouseMsg) (Model, tea.Cmd) {
+	switch m.subMode {
+	case mode.SubModeList:
+		// Check if click is within any registered issue zone in the results list
+		for i, issue := range m.results {
+			zoneID := makeSearchListZoneID(issue.ID)
+			if z := zone.Get(zoneID); z != nil && z.InBounds(msg) {
+				// Select the clicked issue
+				m.selectedIdx = i
+				m.resultsList.Select(i)
+				m.focus = FocusResults
+				m.updateDetailPanel()
+				return m, nil
+			}
+		}
+
+	case mode.SubModeTree:
+		// Check if click is within any registered issue zone in the tree
+		if m.tree != nil {
+			for _, issueID := range m.tree.VisibleIssueIDs() {
+				zoneID := makeSearchTreeZoneID(issueID)
+				if z := zone.Get(zoneID); z != nil && z.InBounds(msg) {
+					// Select the clicked issue in the tree
+					m.tree.SelectByIssueID(issueID)
+					m.focus = FocusResults
+					m.updateDetailFromTree()
+					return m, nil
+				}
+			}
+		}
+	}
+
+	return m, nil
+}
+
 // updateDetailPanel updates the detail panel with the currently selected issue.
 func (m *Model) updateDetailPanel() {
 	if m.selectedIdx >= 0 && m.selectedIdx < len(m.results) {
@@ -1718,6 +1762,9 @@ func (m Model) handleTreeLoaded(msg treeLoadedMsg) (Model, tea.Cmd) {
 	m.treeRoot = root
 	clock := m.services.Clock
 	m.tree = tree.New(msg.RootID, issueMap, dir, treeMode, clock)
+
+	// Enable zone marking for mouse click support
+	m.tree.SetZonePrefix(zoneSearchTreePrefix)
 
 	// Set tree size based on available space (must be done before restoring cursor)
 	leftWidth := m.width / 2
@@ -2234,6 +2281,23 @@ func (m Model) yankDetailsIssueID() (Model, tea.Cmd) {
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Copied: " + issueID, Style: toaster.StyleSuccess} }
 }
 
+// Zone ID prefixes for mouse click detection.
+// Search mode uses unique prefixes to avoid collisions with board zones.
+const (
+	zoneSearchListPrefix = "search:list:"
+	zoneSearchTreePrefix = "search:tree:"
+)
+
+// makeSearchListZoneID creates a zone ID for an issue in the search results list.
+func makeSearchListZoneID(issueID string) string {
+	return zoneSearchListPrefix + issueID
+}
+
+// makeSearchTreeZoneID creates a zone ID for an issue in the search tree.
+func makeSearchTreeZoneID(issueID string) string {
+	return zoneSearchTreePrefix + issueID
+}
+
 // issueItem wraps beads.Issue for the list component.
 type issueItem struct {
 	issue beads.Issue
@@ -2329,7 +2393,9 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 		rightRendered,
 	)
 
-	_, _ = fmt.Fprint(w, line)
+	// Wrap with zone mark for mouse click detection
+	zoneID := makeSearchListZoneID(issue.ID)
+	_, _ = fmt.Fprint(w, zone.Mark(zoneID, line))
 }
 
 // openDeleteConfirm opens the delete confirmation modal.
