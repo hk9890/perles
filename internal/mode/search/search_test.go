@@ -18,6 +18,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/details"
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
+	"github.com/zjrosen/perles/internal/ui/shared/editor"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 )
 
@@ -1413,6 +1414,242 @@ func TestSearch_IssueEditor_KeyDelegation(t *testing.T) {
 	_ = cmd
 }
 
+func TestSearch_IssueEditor_SaveMsg_UpdatesTitleWhenChanged(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Set up mock executor for title update
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateTitle("test-1", "New Title").Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	issue.TitleText = "Original Title"
+	m.results[0] = issue
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	require.NotNil(t, m.selectedIssue, "selectedIssue should be set")
+	require.Equal(t, "Original Title", m.selectedIssue.TitleText, "original title should be stored")
+
+	// Process SaveMsg with changed title
+	msg := issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Title:       "New Title",
+		Description: issue.DescriptionText,
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
+	require.NotNil(t, cmd, "expected batch command")
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
+
+	// Execute the batch command to trigger the mock calls
+	batchResult := cmd()
+	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
+		for _, subCmd := range batchMsg {
+			if subCmd != nil {
+				subCmd() // Execute each command in the batch
+			}
+		}
+	}
+	// The mock expectations will fail if UpdateTitle isn't called
+}
+
+func TestSearch_IssueEditor_SaveMsg_SkipsTitleUpdateWhenUnchanged(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Set up mock executor - UpdateTitle should NOT be called
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
+	// NOTE: No UpdateTitle expectation - it should NOT be called
+	m.services.BeadsExecutor = mockExecutor
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	issue.TitleText = "Same Title"
+	m.results[0] = issue
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	// Process SaveMsg with same title
+	msg := issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Title:       "Same Title", // Same as original
+		Description: issue.DescriptionText,
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
+	require.NotNil(t, cmd, "expected batch command")
+	// The mock would fail if UpdateTitle was unexpectedly called
+}
+
+func TestSearch_IssueEditor_SaveMsg_UpdatesDescriptionWhenChanged(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Set up mock executor for description update
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateDescription("test-1", "New Description").Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	issue.DescriptionText = "Original Description"
+	m.results[0] = issue
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	require.NotNil(t, m.selectedIssue, "selectedIssue should be set")
+	require.Equal(t, "Original Description", m.selectedIssue.DescriptionText, "original description should be stored")
+
+	// Process SaveMsg with changed description
+	msg := issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Title:       issue.TitleText,
+		Description: "New Description",
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
+	require.NotNil(t, cmd, "expected batch command")
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
+
+	// Execute the batch command to trigger the mock calls
+	batchResult := cmd()
+	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
+		for _, subCmd := range batchMsg {
+			if subCmd != nil {
+				subCmd() // Execute each command in the batch
+			}
+		}
+	}
+	// The mock expectations will fail if UpdateDescription isn't called
+}
+
+func TestSearch_IssueEditor_SaveMsg_SkipsDescriptionUpdateWhenUnchanged(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Set up mock executor - UpdateDescription should NOT be called
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
+	// NOTE: No UpdateDescription expectation - it should NOT be called
+	m.services.BeadsExecutor = mockExecutor
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	issue.DescriptionText = "Same Description"
+	m.results[0] = issue
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	// Process SaveMsg with same description
+	msg := issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Title:       issue.TitleText,
+		Description: "Same Description", // Same as original
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
+	require.NotNil(t, cmd, "expected batch command")
+	// The mock would fail if UpdateDescription was unexpectedly called
+}
+
+func TestSearch_IssueEditor_SaveMsg_ErrorHandlingShowsToast(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Set up mock executor that returns an error for title update
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
+	mockExecutor.EXPECT().UpdateTitle("test-1", "New Title").Return(errors.New("database error"))
+	m.services.BeadsExecutor = mockExecutor
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	issue.TitleText = "Original Title"
+	m.results[0] = issue
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	// Process SaveMsg with changed title
+	msg := issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Title:       "New Title",
+		Description: issue.DescriptionText,
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"updated"},
+	}
+	m, cmd := m.Update(msg)
+
+	require.NotNil(t, cmd, "expected batch command")
+
+	// Execute all commands in the batch and find the titleChangedMsg
+	batchResult := cmd()
+	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
+		for _, subCmd := range batchMsg {
+			if subCmd != nil {
+				result := subCmd()
+				if titleMsg, ok := result.(titleChangedMsg); ok {
+					// Handle the error message
+					_, toastCmd := m.Update(titleMsg)
+					require.NotNil(t, toastCmd, "expected toast command on error")
+
+					// Execute toast command to verify it produces a toast message
+					toastResult := toastCmd()
+					showToast, ok := toastResult.(mode.ShowToastMsg)
+					require.True(t, ok, "expected ShowToastMsg")
+					require.Contains(t, showToast.Message, "Error", "toast should contain error message")
+				}
+			}
+		}
+	}
+}
+
+func TestSearch_IssueEditor_CancelMsg_ClearsSelectedIssue(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Open editor (which sets selectedIssue)
+	issue := m.results[0]
+	openMsg := details.OpenEditMenuMsg{Issue: issue}
+	m, _ = m.Update(openMsg)
+
+	require.NotNil(t, m.selectedIssue, "selectedIssue should be set after opening editor")
+
+	// Process CancelMsg
+	cancelMsg := issueeditor.CancelMsg{}
+	m, cmd := m.Update(cancelMsg)
+
+	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after cancel")
+	require.Nil(t, cmd, "expected no command on cancel")
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after cancel")
+}
+
 // =============================================================================
 // Mouse Scroll Event Forwarding Tests
 // =============================================================================
@@ -2062,4 +2299,90 @@ func TestSearch_MouseClick_WheelEventsForwardToDetails(t *testing.T) {
 	// The important thing is that it doesn't select an issue
 	_ = cmd
 	require.Equal(t, FocusResults, m.focus, "focus should not change on wheel event")
+}
+
+// =============================================================================
+// Editor Message Routing Tests
+// =============================================================================
+
+func TestSearch_EditorExecMsg_ForwardedToIssueEditorWhenViewEditIssue(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+
+	// Open issue editor modal
+	m, _ = m.Update(details.OpenEditMenuMsg{Issue: issue})
+	require.Equal(t, ViewEditIssue, m.view, "should be in ViewEditIssue")
+
+	// Send an editor.ExecMsg - this would normally come from Ctrl+G in description field
+	// The message should be forwarded to the issueEditor, not intercepted here
+	execMsg := editor.ExecMsg{}
+	m, cmd := m.Update(execMsg)
+
+	// View should still be ViewEditIssue (modal stayed open)
+	require.Equal(t, ViewEditIssue, m.view, "view should still be ViewEditIssue after editor.ExecMsg")
+	// The command is forwarded to issueEditor which returns nil for an empty ExecMsg
+	_ = cmd
+}
+
+func TestSearch_EditorExecMsg_HandledByDetailsViewWhenEditingDescription(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Simulate being in details view editing mode (not the issueeditor modal)
+	m.editingDescriptionIssueID = "test-1"
+
+	// Send an editor.ExecMsg
+	execMsg := editor.ExecMsg{}
+	m, cmd := m.Update(execMsg)
+
+	// The command should be from ExecCmd() - it will be non-nil
+	// This tests that the existing editingDescriptionIssueID path still works
+	require.NotNil(t, cmd, "should return ExecCmd when editingDescriptionIssueID is set")
+}
+
+func TestSearch_EditorExecMsg_ReturnsNilWhenNotEditing(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Not in ViewEditIssue and editingDescriptionIssueID is empty
+	m.view = ViewSearch
+	m.editingDescriptionIssueID = ""
+
+	// Send an editor.ExecMsg
+	execMsg := editor.ExecMsg{}
+	m, cmd := m.Update(execMsg)
+
+	// Should return nil when not editing in any context
+	require.Nil(t, cmd, "should return nil when not in any editing context")
+}
+
+func TestSearch_EditorFinishedMsg_ForwardedToIssueEditorWhenViewEditIssue(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+
+	// Open issue editor modal
+	m, _ = m.Update(details.OpenEditMenuMsg{Issue: issue})
+	require.Equal(t, ViewEditIssue, m.view, "should be in ViewEditIssue")
+
+	// Send an editor.FinishedMsg with new content
+	finishedMsg := editor.FinishedMsg{Content: "new description content"}
+	m, cmd := m.Update(finishedMsg)
+
+	// View should still be ViewEditIssue (modal stayed open)
+	require.Equal(t, ViewEditIssue, m.view, "view should still be ViewEditIssue after editor.FinishedMsg")
+	// The result is forwarded to issueEditor for processing
+	_ = cmd
+}
+
+func TestSearch_EditorFinishedMsg_ReturnsNilWhenNotEditing(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	// Not in ViewEditIssue and editingDescriptionIssueID is empty
+	m.view = ViewSearch
+	m.editingDescriptionIssueID = ""
+
+	// Send an editor.FinishedMsg
+	finishedMsg := editor.FinishedMsg{Content: "some content"}
+	m, cmd := m.Update(finishedMsg)
+
+	// Should return nil when not in any editing context
+	require.Nil(t, cmd, "should return nil when not in any editing context")
 }

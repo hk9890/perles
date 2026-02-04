@@ -552,6 +552,26 @@ func (m Model) handleLabelsChanged(msg labelsChangedMsg) (Model, tea.Cmd) {
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Labels updated", Style: toaster.StyleSuccess} }
 }
 
+// handleTitleChanged processes title change results.
+func (m Model) handleTitleChanged(msg titleChangedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+		}
+	}
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Title updated", Style: toaster.StyleSuccess} }
+}
+
+// handleDescriptionChanged processes description change results.
+func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+		}
+	}
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
+}
+
 // handleActionExecuted processes user action execution results.
 // Shows an error toast if the action failed to start; otherwise silent.
 func (m Model) handleActionExecuted(msg shared.ActionExecutedMsg) (Model, tea.Cmd) {

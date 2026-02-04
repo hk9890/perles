@@ -23,10 +23,12 @@ type Model struct {
 
 // SaveMsg is sent when the user confirms issue changes.
 type SaveMsg struct {
-	IssueID  string
-	Priority beads.Priority
-	Status   beads.Status
-	Labels   []string
+	IssueID     string
+	Title       string
+	Description string
+	Priority    beads.Priority
+	Status      beads.Status
+	Labels      []string
 }
 
 // CancelMsg is sent when the user cancels the editor.
@@ -42,6 +44,15 @@ func New(issue beads.Issue) Model {
 			return issuebadge.RenderBadge(m.issue)
 		},
 		Fields: []formmodal.FieldConfig{
+			// Title field - first, gets initial focus
+			{
+				Key:          "title",
+				Type:         formmodal.FieldTypeText,
+				Label:        "Title",
+				Placeholder:  "Issue title...",
+				InitialValue: issue.TitleText,
+				MaxLength:    200,
+			},
 			{
 				Key:     "priority",
 				Type:    formmodal.FieldTypeSelect,
@@ -66,15 +77,28 @@ func New(issue beads.Issue) Model {
 				InputHint:        "Enter to add",
 				InputPlaceholder: "Enter label name...",
 			},
+			// Description field - last, larger field
+			{
+				Key:          "description",
+				Type:         formmodal.FieldTypeTextArea,
+				Label:        "Description",
+				Hint:         "Ctrl+G for editor",
+				Placeholder:  "Issue description...",
+				InitialValue: issue.DescriptionText,
+				VimEnabled:   true,
+				MaxHeight:    8,
+			},
 		},
 		SubmitLabel: "Save",
 		MinWidth:    52,
 		OnSubmit: func(values map[string]any) tea.Msg {
 			return SaveMsg{
-				IssueID:  m.issue.ID,
-				Priority: parsePriority(values["priority"].(string)),
-				Status:   beads.Status(values["status"].(string)),
-				Labels:   values["labels"].([]string),
+				IssueID:     m.issue.ID,
+				Title:       values["title"].(string),
+				Description: values["description"].(string),
+				Priority:    parsePriority(values["priority"].(string)),
+				Status:      beads.Status(values["status"].(string)),
+				Labels:      values["labels"].([]string),
 			}
 		},
 		OnCancel: func() tea.Msg { return CancelMsg{} },

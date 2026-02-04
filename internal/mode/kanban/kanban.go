@@ -19,6 +19,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/modals/help"
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
+	"github.com/zjrosen/perles/internal/ui/shared/editor"
 	"github.com/zjrosen/perles/internal/ui/shared/modal"
 	"github.com/zjrosen/perles/internal/ui/shared/picker"
 	"github.com/zjrosen/perles/internal/ui/shared/toaster"
@@ -68,6 +69,9 @@ type Model struct {
 	pendingDeleteColumn int          // Index of column to delete, -1 if none
 	deleteIssueIDs      []string     // IDs to delete (includes descendants for epics)
 	selectedIssue       *beads.Issue // Issue being deleted
+
+	// Edit operation state
+	editingIssue *beads.Issue // Issue being edited (for title/description comparison on save)
 
 	// Pending cursor restoration after refresh
 	pendingCursor *cursorState
@@ -217,6 +221,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case OpenEditMenuMsg:
+		issue := msg.Issue
+		m.editingIssue = &issue // Store for title/description comparison on save
 		m.issueEditor = issueeditor.New(msg.Issue).
 			SetSize(m.width, m.height)
 		m.view = ViewEditIssue
@@ -227,15 +233,26 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.pendingCursor = m.saveCursor()
 		m.loading = true
 		m.board = m.board.InvalidateViews()
-		return m, tea.Batch(
+		cmds := []tea.Cmd{
 			m.updatePriorityCmd(msg.IssueID, msg.Priority),
 			m.updateStatusCmd(msg.IssueID, msg.Status),
 			m.setLabelsCmd(msg.IssueID, msg.Labels),
 			m.board.LoadAllColumns(),
-		)
+		}
+		// Only update title if changed
+		if m.editingIssue != nil && msg.Title != m.editingIssue.TitleText {
+			cmds = append(cmds, m.updateIssueTitleCmd(msg.IssueID, msg.Title))
+		}
+		// Only update description if changed
+		if m.editingIssue != nil && msg.Description != m.editingIssue.DescriptionText {
+			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
+		}
+		m.editingIssue = nil // Clear after use
+		return m, tea.Batch(cmds...)
 
 	case issueeditor.CancelMsg:
 		m.view = ViewBoard
+		m.editingIssue = nil // Clear on cancel too
 		return m, nil
 
 	case details.DeleteIssueMsg:
@@ -246,6 +263,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case labelsChangedMsg:
 		return m.handleLabelsChanged(msg)
+
+	case titleChangedMsg:
+		return m.handleTitleChanged(msg)
+
+	case descriptionChangedMsg:
+		return m.handleDescriptionChanged(msg)
 
 	case shared.ActionExecutedMsg:
 		return m.handleActionExecuted(msg)
@@ -336,6 +359,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case modal.CancelMsg:
 		return m.handleModalCancel()
+
+	case editor.ExecMsg:
+		// Forward to issueeditor modal if open - this allows Ctrl+G external editor
+		// to work from the modal's description field. Without this check, the message
+		// would be intercepted here and lost.
+		if m.view == ViewEditIssue {
+			var cmd tea.Cmd
+			m.issueEditor, cmd = m.issueEditor.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
+	case editor.FinishedMsg:
+		// Forward to issueeditor modal if open - ensures editor results return
+		// to the modal's description field when editing via Ctrl+G.
+		if m.view == ViewEditIssue {
+			var cmd tea.Cmd
+			m.issueEditor, cmd = m.issueEditor.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -701,6 +745,20 @@ type labelsChangedMsg struct {
 	err     error
 }
 
+// titleChangedMsg signals completion of a title update.
+type titleChangedMsg struct {
+	issueID string
+	title   string
+	err     error
+}
+
+// descriptionChangedMsg signals completion of a description update.
+type descriptionChangedMsg struct {
+	issueID     string
+	description string
+	err         error
+}
+
 // pickerCancelledMsg is produced when any picker is cancelled.
 type pickerCancelledMsg struct{}
 
@@ -733,6 +791,22 @@ func (m Model) setLabelsCmd(issueID string, labels []string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.services.BeadsExecutor.SetLabels(issueID, labels)
 		return labelsChangedMsg{issueID: issueID, labels: labels, err: err}
+	}
+}
+
+// updateIssueTitleCmd creates a command to update an issue's title.
+func (m Model) updateIssueTitleCmd(issueID string, title string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.services.BeadsExecutor.UpdateTitle(issueID, title)
+		return titleChangedMsg{issueID: issueID, title: title, err: err}
+	}
+}
+
+// updateIssueDescriptionCmd creates a command to update an issue's description.
+func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.services.BeadsExecutor.UpdateDescription(issueID, description)
+		return descriptionChangedMsg{issueID: issueID, description: description, err: err}
 	}
 }
 

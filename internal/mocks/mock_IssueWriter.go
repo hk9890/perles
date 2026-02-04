@@ -560,6 +560,53 @@ func (_c *MockIssueWriter_UpdateStatus_Call) RunAndReturn(run func(string, domai
 	return _c
 }
 
+// UpdateTitle provides a mock function with given fields: issueID, title
+func (_m *MockIssueWriter) UpdateTitle(issueID string, title string) error {
+	ret := _m.Called(issueID, title)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateTitle")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(issueID, title)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockIssueWriter_UpdateTitle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateTitle'
+type MockIssueWriter_UpdateTitle_Call struct {
+	*mock.Call
+}
+
+// UpdateTitle is a helper method to define mock.On call
+//   - issueID string
+//   - title string
+func (_e *MockIssueWriter_Expecter) UpdateTitle(issueID interface{}, title interface{}) *MockIssueWriter_UpdateTitle_Call {
+	return &MockIssueWriter_UpdateTitle_Call{Call: _e.mock.On("UpdateTitle", issueID, title)}
+}
+
+func (_c *MockIssueWriter_UpdateTitle_Call) Run(run func(issueID string, title string)) *MockIssueWriter_UpdateTitle_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockIssueWriter_UpdateTitle_Call) Return(_a0 error) *MockIssueWriter_UpdateTitle_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockIssueWriter_UpdateTitle_Call) RunAndReturn(run func(string, string) error) *MockIssueWriter_UpdateTitle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateType provides a mock function with given fields: issueID, issueType
 func (_m *MockIssueWriter) UpdateType(issueID string, issueType domain.IssueType) error {
 	ret := _m.Called(issueID, issueType)

@@ -31,6 +31,19 @@ func testIssue(id string, labels []string, priority beads.Priority, status beads
 	}
 }
 
+// testIssueWithDescription creates a beads.Issue with title and description for testing.
+func testIssueWithDescription(id, title, description string, labels []string, priority beads.Priority, status beads.Status) beads.Issue {
+	return beads.Issue{
+		ID:              id,
+		TitleText:       title,
+		DescriptionText: description,
+		Type:            beads.TypeTask,
+		Labels:          labels,
+		Priority:        priority,
+		Status:          status,
+	}
+}
+
 func TestNew_InitializesFormModalWithCorrectFields(t *testing.T) {
 	labels := []string{"bug", "feature"}
 	issue := testIssue("test-123", labels, beads.PriorityHigh, beads.StatusOpen)
@@ -168,10 +181,12 @@ func TestSaveMsg_ContainsCorrectParsedValues(t *testing.T) {
 	m := New(issue)
 
 	// Navigate to submit button and press Enter
-	// Tab through Priority -> Status -> Labels -> Add Label input -> Submit button
+	// Tab through Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Description
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Submit button
 
 	// Press Enter to save
@@ -182,6 +197,8 @@ func TestSaveMsg_ContainsCorrectParsedValues(t *testing.T) {
 	saveMsg, ok := msg.(SaveMsg)
 	require.True(t, ok, "expected SaveMsg, got %T", msg)
 	require.Equal(t, "test-123", saveMsg.IssueID, "expected correct issue ID")
+	require.Equal(t, "Test Issue Title", saveMsg.Title, "expected correct title")
+	require.Equal(t, "", saveMsg.Description, "expected empty description")
 	require.Equal(t, beads.PriorityHigh, saveMsg.Priority, "expected Priority 1 (High)")
 	require.Equal(t, beads.StatusInProgress, saveMsg.Status, "expected Status in_progress")
 	require.Contains(t, saveMsg.Labels, "existing", "expected existing label")
@@ -301,13 +318,17 @@ func TestSaveMsg_PriorityChange(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityCritical, beads.StatusOpen)
 	m := New(issue)
 
+	// Tab to Priority field first (starts on Title)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
 	// Navigate down in priority list to P2 (Medium)
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P1
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}) // P2
 	// Press Space to confirm selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Status -> Labels -> Add Label input -> Submit
+	// Tab to Status -> Labels -> Add Label input -> Description -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -328,7 +349,8 @@ func TestSaveMsg_StatusChange(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
 	m := New(issue)
 
-	// Tab to Status field
+	// Tab to Status field (Title -> Priority -> Status)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
 	// Navigate down in status list to In Progress
@@ -336,7 +358,8 @@ func TestSaveMsg_StatusChange(t *testing.T) {
 	// Press Space to confirm selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Labels -> Add Label input -> Submit
+	// Tab to Labels -> Add Label input -> Description -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -356,14 +379,16 @@ func TestSaveMsg_LabelsToggle(t *testing.T) {
 	issue := testIssue("test-123", labels, beads.PriorityMedium, beads.StatusOpen)
 	m := New(issue)
 
-	// Tab to Status, then Labels
+	// Tab to Labels (Title -> Priority -> Status -> Labels)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
 
 	// Toggle off "bug" (first label) with space
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Add Label input -> Submit
+	// Tab to Add Label input -> Description -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
@@ -383,7 +408,8 @@ func TestSaveMsg_AddNewLabel(t *testing.T) {
 	issue := testIssue("test-123", []string{"existing"}, beads.PriorityMedium, beads.StatusOpen)
 	m := New(issue)
 
-	// Tab to Status, Labels, then Add Label input
+	// Tab to Add Label input (Title -> Priority -> Status -> Labels -> Add Label input)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
@@ -396,7 +422,8 @@ func TestSaveMsg_AddNewLabel(t *testing.T) {
 	// Press Enter to add the label
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Tab to Submit
+	// Tab to Description -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
 	// Save
@@ -408,6 +435,116 @@ func TestSaveMsg_AddNewLabel(t *testing.T) {
 	require.True(t, ok, "expected SaveMsg")
 	require.Contains(t, saveMsg.Labels, "existing", "expected existing label")
 	require.Contains(t, saveMsg.Labels, "new-label", "expected new label to be added")
+}
+
+// Tests for title and description fields
+
+func TestNew_InitializesTitleField(t *testing.T) {
+	issue := testIssueWithDescription("test-123", "My Custom Title", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	view := m.View()
+	require.Contains(t, view, "Title", "expected Title field label")
+	require.Contains(t, view, "My Custom Title", "expected title value in view")
+}
+
+func TestNew_InitializesDescriptionField(t *testing.T) {
+	issue := testIssueWithDescription("test-123", "Title", "This is the description", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	view := m.View()
+	require.Contains(t, view, "Description", "expected Description field label")
+	require.Contains(t, view, "This is the description", "expected description value in view")
+}
+
+func TestSaveMsg_ContainsTitleValue(t *testing.T) {
+	issue := testIssueWithDescription("test-123", "Original Title", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	// Tab through all fields to Submit button
+	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command")
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T", msg)
+	require.Equal(t, "Original Title", saveMsg.Title, "expected title from initial value")
+}
+
+func TestSaveMsg_ContainsDescriptionValue(t *testing.T) {
+	issue := testIssueWithDescription("test-123", "Title", "Original Description", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	// Tab through all fields to Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command")
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T", msg)
+	require.Equal(t, "Original Description", saveMsg.Description, "expected description from initial value")
+}
+
+func TestView_FieldOrder(t *testing.T) {
+	issue := testIssueWithDescription("test-123", "My Title", "My Description", []string{"label1"}, beads.PriorityHigh, beads.StatusOpen)
+	m := New(issue)
+	m = m.SetSize(80, 50)
+
+	view := m.View()
+
+	// Verify field order: Title -> Priority -> Status -> Labels -> Description
+	titleIdx := len(view) - len(view[findIndex(view, "Title"):])
+	priorityIdx := len(view) - len(view[findIndex(view, "Priority"):])
+	statusIdx := len(view) - len(view[findIndex(view, "Status"):])
+	labelsIdx := len(view) - len(view[findIndex(view, "Labels"):])
+	descriptionIdx := len(view) - len(view[findIndex(view, "Description"):])
+
+	require.Less(t, titleIdx, priorityIdx, "Title should come before Priority")
+	require.Less(t, priorityIdx, statusIdx, "Priority should come before Status")
+	require.Less(t, statusIdx, labelsIdx, "Status should come before Labels")
+	require.Less(t, labelsIdx, descriptionIdx, "Labels should come before Description")
+}
+
+// findIndex returns the index of the first occurrence of substr in s, or len(s) if not found.
+func findIndex(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return len(s)
+}
+
+func TestView_ContainsTitleField(t *testing.T) {
+	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+	view := m.View()
+
+	require.Contains(t, view, "Title", "expected Title field in view")
+}
+
+func TestView_ContainsDescriptionField(t *testing.T) {
+	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+	view := m.View()
+
+	require.Contains(t, view, "Description", "expected Description field in view")
+	require.Contains(t, view, "Ctrl+G for editor", "expected Ctrl+G hint in view")
 }
 
 // Golden tests for visual regression testing

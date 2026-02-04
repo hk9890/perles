@@ -638,6 +638,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case descriptionChangedMsg:
 		return m.handleDescriptionChanged(msg)
 
+	case titleChangedMsg:
+		return m.handleTitleChanged(msg)
+
 	case debounceSearchMsg:
 		// Only execute if version matches (not stale)
 		if msg.version == m.searchVersion {
@@ -753,6 +756,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.openDeleteConfirm(msg)
 
 	case details.OpenEditMenuMsg:
+		issue := msg.Issue
+		m.selectedIssue = &issue // Store for title/description comparison on save
 		m.issueEditor = issueeditor.New(msg.Issue).
 			SetSize(m.width, m.height)
 		m.view = ViewEditIssue
@@ -764,14 +769,29 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, editor.OpenCmd(msg.Description)
 
 	case editor.ExecMsg:
-		// Execute the external editor command
+		// Forward to issueeditor modal if open - this allows Ctrl+G external editor
+		// to work from the modal's description field. Without this check, the message
+		// would be intercepted here and lost when editingDescriptionIssueID is empty.
+		if m.view == ViewEditIssue {
+			var cmd tea.Cmd
+			m.issueEditor, cmd = m.issueEditor.Update(msg)
+			return m, cmd
+		}
+		// Execute the external editor command for details view
 		if m.editingDescriptionIssueID != "" {
 			return m, msg.ExecCmd()
 		}
 		return m, nil
 
 	case editor.FinishedMsg:
-		// Handle external editor result
+		// Forward to issueeditor modal if open - ensures editor results return
+		// to the modal's description field when editing via Ctrl+G.
+		if m.view == ViewEditIssue {
+			var cmd tea.Cmd
+			m.issueEditor, cmd = m.issueEditor.Update(msg)
+			return m, cmd
+		}
+		// Handle external editor result for details view
 		if m.editingDescriptionIssueID != "" {
 			issueID := m.editingDescriptionIssueID
 			m.editingDescriptionIssueID = "" // Clear state
@@ -804,14 +824,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case issueeditor.SaveMsg:
 		m.view = ViewSearch
-		return m, tea.Batch(
+		cmds := []tea.Cmd{
 			m.updatePriorityCmd(msg.IssueID, msg.Priority),
 			m.updateStatusCmd(msg.IssueID, msg.Status),
 			m.setLabelsCmd(msg.IssueID, msg.Labels),
-		)
+		}
+		// Only update title if changed
+		if m.selectedIssue != nil && msg.Title != m.selectedIssue.TitleText {
+			cmds = append(cmds, m.updateIssueTitleCmd(msg.IssueID, msg.Title))
+		}
+		// Only update description if changed
+		if m.selectedIssue != nil && msg.Description != m.selectedIssue.DescriptionText {
+			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
+		}
+		m.selectedIssue = nil // Clear after use
+		return m, tea.Batch(cmds...)
 
 	case issueeditor.CancelMsg:
 		m.view = ViewSearch
+		m.selectedIssue = nil // Clear on cancel too
 		return m, nil
 
 	case issueDeletedMsg:
@@ -2054,6 +2085,13 @@ type descriptionChangedMsg struct {
 	err         error
 }
 
+// titleChangedMsg signals completion of a title update.
+type titleChangedMsg struct {
+	issueID string
+	title   string
+	err     error
+}
+
 // saveActionExistingViewMsg is produced when "existing view" is selected in save action picker.
 type saveActionExistingViewMsg struct {
 	query string
@@ -2152,6 +2190,14 @@ func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea
 	}
 }
 
+// updateIssueTitleCmd creates a command to update an issue's title.
+func (m Model) updateIssueTitleCmd(issueID string, title string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.services.BeadsExecutor.UpdateTitle(issueID, title)
+		return titleChangedMsg{issueID: issueID, title: title, err: err}
+	}
+}
+
 // HandleDBChanged processes database change notifications from the app.
 // This is called by app.go when the centralized watcher detects changes.
 // The app handles re-subscription; this method just triggers the refresh.
@@ -2246,6 +2292,25 @@ func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.C
 	}
 
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
+}
+
+// handleTitleChanged processes title change results.
+func (m Model) handleTitleChanged(msg titleChangedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	// Update the issue in our results list
+	for i := range m.results {
+		if m.results[i].ID == msg.issueID {
+			m.results[i].TitleText = msg.title
+			break
+		}
+	}
+
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Title updated", Style: toaster.StyleSuccess} }
 }
 
 // yankIssueID copies the selected issue ID to clipboard.

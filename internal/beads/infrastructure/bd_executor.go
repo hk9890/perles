@@ -97,6 +97,20 @@ func (e *BDExecutor) UpdateType(issueID string, issueType domain.IssueType) erro
 	return nil
 }
 
+// UpdateTitle changes an issue's title via bd CLI.
+func (e *BDExecutor) UpdateTitle(issueID, title string) error {
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdateTitle completed", "issueID", issueID, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--title", title, "--json"); err != nil {
+		log.Error(log.CatBeads, "UpdateTitle failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
+}
+
 // UpdateDescription changes an issue's description via bd CLI.
 func (e *BDExecutor) UpdateDescription(issueID, description string) error {
 	start := time.Now()
