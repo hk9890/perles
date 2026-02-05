@@ -641,6 +641,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case titleChangedMsg:
 		return m.handleTitleChanged(msg)
 
+	case notesChangedMsg:
+		return m.handleNotesChanged(msg)
+
 	case debounceSearchMsg:
 		// Only execute if version matches (not stale)
 		if msg.version == m.searchVersion {
@@ -836,6 +839,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// Only update description if changed
 		if m.selectedIssue != nil && msg.Description != m.selectedIssue.DescriptionText {
 			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
+		}
+		// Only update notes if changed
+		if m.selectedIssue != nil && msg.Notes != m.selectedIssue.Notes {
+			cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
 		}
 		m.selectedIssue = nil // Clear after use
 		return m, tea.Batch(cmds...)
@@ -2092,6 +2099,13 @@ type titleChangedMsg struct {
 	err     error
 }
 
+// notesChangedMsg signals completion of a notes update.
+type notesChangedMsg struct {
+	issueID string
+	notes   string
+	err     error
+}
+
 // saveActionExistingViewMsg is produced when "existing view" is selected in save action picker.
 type saveActionExistingViewMsg struct {
 	query string
@@ -2195,6 +2209,14 @@ func (m Model) updateIssueTitleCmd(issueID string, title string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.services.BeadsExecutor.UpdateTitle(issueID, title)
 		return titleChangedMsg{issueID: issueID, title: title, err: err}
+	}
+}
+
+// updateIssueNotesCmd creates a command to update an issue's notes.
+func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.services.BeadsExecutor.UpdateNotes(issueID, notes)
+		return notesChangedMsg{issueID: issueID, notes: notes, err: err}
 	}
 }
 
@@ -2311,6 +2333,25 @@ func (m Model) handleTitleChanged(msg titleChangedMsg) (Model, tea.Cmd) {
 	}
 
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Title updated", Style: toaster.StyleSuccess} }
+}
+
+// handleNotesChanged processes notes change results.
+func (m Model) handleNotesChanged(msg notesChangedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	// Update the issue in our results list
+	for i := range m.results {
+		if m.results[i].ID == msg.issueID {
+			m.results[i].Notes = msg.notes
+			break
+		}
+	}
+
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Notes updated", Style: toaster.StyleSuccess} }
 }
 
 // yankIssueID copies the selected issue ID to clipboard.

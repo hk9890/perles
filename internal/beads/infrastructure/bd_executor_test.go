@@ -56,3 +56,24 @@ func TestBDExecutor_MethodSignatureConsistency(t *testing.T) {
 	require.NotNil(t, titleFunc, "UpdateTitle should have signature func(string, string) error")
 	require.NotNil(t, descFunc, "UpdateDescription should have signature func(string, string) error")
 }
+
+// TestBDExecutor_UpdateNotes_MethodExists verifies UpdateNotes exists with correct signature.
+func TestBDExecutor_UpdateNotes_MethodExists(t *testing.T) {
+	executor := NewBDExecutor("", "")
+
+	var updateNotesFunc func(issueID, notes string) error = executor.UpdateNotes
+
+	require.NotNil(t, updateNotesFunc, "UpdateNotes method should exist")
+}
+
+// TestBDExecutor_UpdateNotes_MethodSignatureConsistency verifies UpdateNotes has same signature as UpdateDescription.
+func TestBDExecutor_UpdateNotes_MethodSignatureConsistency(t *testing.T) {
+	executor := NewBDExecutor("", "")
+
+	// Both methods should have signature: func(string, string) error
+	var notesFunc func(string, string) error = executor.UpdateNotes
+	var descFunc func(string, string) error = executor.UpdateDescription
+
+	require.NotNil(t, notesFunc, "UpdateNotes should have signature func(string, string) error")
+	require.NotNil(t, descFunc, "UpdateDescription should have signature func(string, string) error")
+}

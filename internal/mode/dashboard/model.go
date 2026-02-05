@@ -123,7 +123,8 @@ type Model struct {
 	renameModalWfID controlplane.WorkflowID // Workflow ID to rename on confirm
 
 	// Issue editor modal state (nil when not showing)
-	issueEditor *issueeditor.Model
+	issueEditor  *issueeditor.Model
+	editingIssue *beads.Issue // Original issue being edited (for change detection)
 
 	// Filter state
 	filter FilterState
@@ -416,14 +417,21 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 			}
 		case issueeditor.SaveMsg:
 			m.issueEditor = nil
-			return m, tea.Batch(
+			cmds := []tea.Cmd{
 				m.updateIssueStatusCmd(msg.IssueID, msg.Status),
 				m.updateIssuePriorityCmd(msg.IssueID, msg.Priority),
 				m.updateIssueLabelsCmd(msg.IssueID, msg.Labels),
 				loadEpicTree(m.lastLoadedEpicID, m.services.Executor),
-			)
+			}
+			// Only update notes if changed
+			if m.editingIssue != nil && msg.Notes != m.editingIssue.Notes {
+				cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
+			}
+			m.editingIssue = nil // Clear after use
+			return m, tea.Batch(cmds...)
 		case issueeditor.CancelMsg:
 			m.issueEditor = nil
+			m.editingIssue = nil // Clear on cancel too
 			return m, nil
 		case tea.WindowSizeMsg:
 			m.width = msg.Width
@@ -466,6 +474,17 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 				return m, func() tea.Msg {
 					return mode.ShowToastMsg{
 						Message: fmt.Sprintf("Failed to update labels: %v", msg.err),
+						Style:   toaster.StyleError,
+					}
+				}
+			}
+			return m, nil
+		case issueNotesChangedMsg:
+			// Handle async result even when modal is open
+			if msg.err != nil {
+				return m, func() tea.Msg {
+					return mode.ShowToastMsg{
+						Message: fmt.Sprintf("Failed to update notes: %v", msg.err),
 						Style:   toaster.StyleError,
 					}
 				}
@@ -2003,6 +2022,13 @@ type issueLabelsChangedMsg struct {
 	err     error
 }
 
+// issueNotesChangedMsg is sent when an issue notes update completes.
+type issueNotesChangedMsg struct {
+	issueID string
+	notes   string
+	err     error
+}
+
 // SelectedWorkflow returns the currently selected workflow, or nil if none.
 // This uses the filtered workflow list when a filter is active.
 func (m Model) SelectedWorkflow() *controlplane.WorkflowInstance {
@@ -2086,6 +2112,19 @@ func (m Model) updateIssueLabelsCmd(issueID string, labels []string) tea.Cmd {
 			err = m.services.BeadsExecutor.SetLabels(issueID, labels)
 		}
 		return issueLabelsChangedMsg{issueID: issueID, labels: labels, err: err}
+	}
+}
+
+// updateIssueNotesCmd returns a command that updates an issue's notes.
+func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
+	return func() tea.Msg {
+		var err error
+		if m.services.BeadsExecutor == nil {
+			err = fmt.Errorf("beads executor unavailable")
+		} else {
+			err = m.services.BeadsExecutor.UpdateNotes(issueID, notes)
+		}
+		return issueNotesChangedMsg{issueID: issueID, notes: notes, err: err}
 	}
 }
 

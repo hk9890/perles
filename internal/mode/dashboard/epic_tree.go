@@ -253,7 +253,9 @@ func (m Model) handleEpicTreeKeysFocusTree(msg tea.KeyMsg) (mode.Controller, tea
 	if key.Matches(msg, keys.Component.EditAction) {
 		if m.epicTree != nil {
 			if node := m.epicTree.SelectedNode(); node != nil {
-				editor := issueeditor.New(node.Issue).SetSize(m.width, m.height)
+				issue := node.Issue
+				m.editingIssue = &issue // Store for comparison on save
+				editor := issueeditor.New(issue).SetSize(m.width, m.height)
 				m.issueEditor = &editor
 				return m, m.issueEditor.Init()
 			}
@@ -294,7 +296,9 @@ func (m Model) handleEpicTreeKeysFocusDetails(msg tea.KeyMsg) (mode.Controller, 
 		// Details panel shows the tree's selected issue, so use same source
 		if m.epicTree != nil {
 			if node := m.epicTree.SelectedNode(); node != nil {
-				editor := issueeditor.New(node.Issue).SetSize(m.width, m.height)
+				issue := node.Issue
+				m.editingIssue = &issue // Store for comparison on save
+				editor := issueeditor.New(issue).SetSize(m.width, m.height)
 				m.issueEditor = &editor
 				return m, m.issueEditor.Init()
 			}

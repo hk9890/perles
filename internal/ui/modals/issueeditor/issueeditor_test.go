@@ -44,6 +44,20 @@ func testIssueWithDescription(id, title, description string, labels []string, pr
 	}
 }
 
+// testIssueWithNotes creates a beads.Issue with title, description, and notes for testing.
+func testIssueWithNotes(id, title, description, notes string, labels []string, priority beads.Priority, status beads.Status) beads.Issue {
+	return beads.Issue{
+		ID:              id,
+		TitleText:       title,
+		DescriptionText: description,
+		Notes:           notes,
+		Type:            beads.TypeTask,
+		Labels:          labels,
+		Priority:        priority,
+		Status:          status,
+	}
+}
+
 func TestNew_InitializesFormModalWithCorrectFields(t *testing.T) {
 	labels := []string{"bug", "feature"}
 	issue := testIssue("test-123", labels, beads.PriorityHigh, beads.StatusOpen)
@@ -181,12 +195,13 @@ func TestSaveMsg_ContainsCorrectParsedValues(t *testing.T) {
 	m := New(issue)
 
 	// Navigate to submit button and press Enter
-	// Tab through Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Submit button
+	// Tab through Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit button
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Add Label input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Notes
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Submit button
 
 	// Press Enter to save
@@ -327,7 +342,8 @@ func TestSaveMsg_PriorityChange(t *testing.T) {
 	// Press Space to confirm selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Status -> Labels -> Add Label input -> Description -> Submit
+	// Tab to Status -> Labels -> Add Label input -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -358,7 +374,8 @@ func TestSaveMsg_StatusChange(t *testing.T) {
 	// Press Space to confirm selection
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Labels -> Add Label input -> Description -> Submit
+	// Tab to Labels -> Add Label input -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -387,7 +404,8 @@ func TestSaveMsg_LabelsToggle(t *testing.T) {
 	// Toggle off "bug" (first label) with space
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
 
-	// Tab to Add Label input -> Description -> Submit
+	// Tab to Add Label input -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -422,7 +440,8 @@ func TestSaveMsg_AddNewLabel(t *testing.T) {
 	// Press Enter to add the label
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	// Tab to Description -> Submit
+	// Tab to Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
@@ -462,12 +481,13 @@ func TestSaveMsg_ContainsTitleValue(t *testing.T) {
 	m := New(issue)
 
 	// Tab through all fields to Submit button
-	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Submit
+	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Notes
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -484,11 +504,13 @@ func TestSaveMsg_ContainsDescriptionValue(t *testing.T) {
 	m := New(issue)
 
 	// Tab through all fields to Submit button
+	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Notes
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -501,23 +523,25 @@ func TestSaveMsg_ContainsDescriptionValue(t *testing.T) {
 }
 
 func TestView_FieldOrder(t *testing.T) {
-	issue := testIssueWithDescription("test-123", "My Title", "My Description", []string{"label1"}, beads.PriorityHigh, beads.StatusOpen)
+	issue := testIssueWithNotes("test-123", "My Title", "My Description", "My Notes", []string{"label1"}, beads.PriorityHigh, beads.StatusOpen)
 	m := New(issue)
 	m = m.SetSize(80, 50)
 
 	view := m.View()
 
-	// Verify field order: Title -> Priority -> Status -> Labels -> Description
+	// Verify field order: Title -> Priority -> Status -> Labels -> Description -> Notes
 	titleIdx := len(view) - len(view[findIndex(view, "Title"):])
 	priorityIdx := len(view) - len(view[findIndex(view, "Priority"):])
 	statusIdx := len(view) - len(view[findIndex(view, "Status"):])
 	labelsIdx := len(view) - len(view[findIndex(view, "Labels"):])
 	descriptionIdx := len(view) - len(view[findIndex(view, "Description"):])
+	notesIdx := len(view) - len(view[findIndex(view, "Notes"):])
 
 	require.Less(t, titleIdx, priorityIdx, "Title should come before Priority")
 	require.Less(t, priorityIdx, statusIdx, "Priority should come before Status")
 	require.Less(t, statusIdx, labelsIdx, "Status should come before Labels")
 	require.Less(t, labelsIdx, descriptionIdx, "Labels should come before Description")
+	require.Less(t, descriptionIdx, notesIdx, "Description should come before Notes")
 }
 
 // findIndex returns the index of the first occurrence of substr in s, or len(s) if not found.
@@ -545,6 +569,113 @@ func TestView_ContainsDescriptionField(t *testing.T) {
 
 	require.Contains(t, view, "Description", "expected Description field in view")
 	require.Contains(t, view, "Ctrl+G for editor", "expected Ctrl+G hint in view")
+}
+
+// Tests for Notes field
+
+func TestNew_InitializesNotesField(t *testing.T) {
+	issue := testIssueWithNotes("test-123", "Title", "Description", "My notes here", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	view := m.View()
+	require.Contains(t, view, "Notes", "expected Notes field label")
+	require.Contains(t, view, "My notes here", "expected notes value in view")
+}
+
+func TestView_ContainsNotesField(t *testing.T) {
+	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+	view := m.View()
+
+	require.Contains(t, view, "Notes", "expected Notes field in view")
+	require.Contains(t, view, "Issue notes", "expected Internal notes hint in view")
+}
+
+func TestSaveMsg_ContainsNotesValue(t *testing.T) {
+	issue := testIssueWithNotes("test-123", "Title", "Description", "Original Notes", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	// Tab through all fields to Submit button
+	// Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Notes
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command")
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T", msg)
+	require.Equal(t, "Original Notes", saveMsg.Notes, "expected notes from initial value")
+}
+
+func TestIssueeditor_SaveMsg_IncludesNotes(t *testing.T) {
+	issue := testIssueWithNotes("test-123", "Title", "Desc", "Test notes content", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	// Tab through all fields to Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Notes
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Submit button
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command")
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T", msg)
+	require.Equal(t, "Test notes content", saveMsg.Notes, "notes field value should appear in SaveMsg")
+}
+
+func TestIssueeditor_NotesField_VimEnabled(t *testing.T) {
+	// VimEnabled starts in insert mode by default, so we can type directly
+	issue := testIssueWithNotes("test-123", "Title", "Desc", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	// Tab to Notes field (Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Add Label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Notes
+
+	// Type some text (VimEnabled starts in insert mode)
+	for _, r := range "vim mode works" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Press Esc to exit insert mode (verifies vim mode is active)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Tab to Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Save
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, cmd, "expected command")
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T", msg)
+	require.Equal(t, "vim mode works", saveMsg.Notes, "vim mode should allow typing in notes field")
+}
+
+func TestIssueeditor_EmptyNotes_DisplaysPlaceholder(t *testing.T) {
+	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+
+	view := m.View()
+	require.Contains(t, view, "Issue notes...", "expected placeholder for empty notes field")
 }
 
 // Golden tests for visual regression testing
@@ -583,4 +714,134 @@ func TestIssueEditor_View_ManyLabels_Golden(t *testing.T) {
 func stripZoneMarkers(s string) string {
 	zonePattern := regexp.MustCompile(`\x1b\[\d+z`)
 	return zonePattern.ReplaceAllString(s, "")
+}
+
+// Golden tests for two-column layout
+
+func TestIssueEditor_TwoColumn_120x40_Golden(t *testing.T) {
+	// Two-column layout is enabled when width >= 100
+	issue := testIssueWithNotes("test-layout", "Multi-Column Issue", "This description appears in column 1", "Internal notes here", []string{"bug", "feature"}, beads.PriorityHigh, beads.StatusOpen)
+	m := New(issue)
+	m = m.SetSize(120, 40) // Wide enough for two columns
+	view := stripZoneMarkers(m.View())
+
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestIssueEditor_SingleColumn_80x40_Golden(t *testing.T) {
+	// Single-column fallback when width < 100
+	issue := testIssueWithNotes("test-narrow", "Narrow Issue", "Description in single column", "Notes in single column", []string{"bug"}, beads.PriorityMedium, beads.StatusInProgress)
+	m := New(issue)
+	m = m.SetSize(80, 40) // Narrow: single column fallback
+	view := stripZoneMarkers(m.View())
+
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+// Tab order tests verify that Tab/Shift-Tab traverse fields in array order regardless of column
+
+func TestTabOrder_TraversesFieldsInArrayOrder(t *testing.T) {
+	// Tab order should be: title -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
+	issue := testIssueWithNotes("test-tab", "Tab Order Test", "Description", "Notes", []string{"label1"}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+	m = m.SetSize(120, 40) // Two-column mode
+
+	// Starting position: title field is focused
+
+	// Tab to priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to add label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to notes
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Tab to submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	// Save and verify we reached submit
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd, "expected command from submit button")
+	msg := cmd()
+	_, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg, got %T - Tab order may be incorrect", msg)
+}
+
+func TestShiftTabOrder_ReversesCorrectly(t *testing.T) {
+	// Shift-Tab from submit should go back through fields in reverse order
+	issue := testIssueWithNotes("test-shift-tab", "Shift-Tab Test", "Description", "Notes", []string{"label1"}, beads.PriorityMedium, beads.StatusOpen)
+	m := New(issue)
+	m = m.SetSize(120, 40) // Two-column mode
+
+	// Navigate to submit button first
+	for i := 0; i < 7; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+
+	// Now Shift-Tab should go back: notes -> description -> add-label -> labels -> status -> priority -> title
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to notes
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to description
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to add-label input
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to labels
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to status
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to title
+
+	// Type in title field to verify we're there
+	for _, r := range " modified" {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Tab forward to submit and save
+	for i := 0; i < 7; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	msg := cmd()
+	saveMsg, ok := msg.(SaveMsg)
+	require.True(t, ok, "expected SaveMsg")
+	require.Contains(t, saveMsg.Title, "modified", "title should have been modified via Shift-Tab navigation")
+}
+
+func TestTabOrder_ConsistentBetweenSingleAndTwoColumn(t *testing.T) {
+	// Tab order should be identical regardless of column layout mode
+	// Use labels to include the add-label input sub-focus in the tab cycle
+	issue := testIssueWithNotes("test-consistent", "Consistent Tab", "Desc", "Notes", []string{"label1"}, beads.PriorityLow, beads.StatusClosed)
+
+	// Test narrow width (single column)
+	mNarrow := New(issue)
+	mNarrow = mNarrow.SetSize(80, 40)
+
+	// Test wide width (two column)
+	mWide := New(issue)
+	mWide = mWide.SetSize(120, 40)
+
+	// Both should take the same number of tabs to reach submit
+	// title -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
+	tabsToSubmit := 7
+
+	// Navigate narrow version to submit
+	for i := 0; i < tabsToSubmit; i++ {
+		mNarrow, _ = mNarrow.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	_, cmdNarrow := mNarrow.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmdNarrow, "narrow: expected command at submit")
+	msgNarrow := cmdNarrow()
+	_, okNarrow := msgNarrow.(SaveMsg)
+	require.True(t, okNarrow, "narrow: expected SaveMsg at submit position")
+
+	// Navigate wide version to submit
+	for i := 0; i < tabsToSubmit; i++ {
+		mWide, _ = mWide.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	_, cmdWide := mWide.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmdWide, "wide: expected command at submit")
+	msgWide := cmdWide()
+	_, okWide := msgWide.(SaveMsg)
+	require.True(t, okWide, "wide: expected SaveMsg at submit position")
 }

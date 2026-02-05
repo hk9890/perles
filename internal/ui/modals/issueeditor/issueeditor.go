@@ -26,6 +26,7 @@ type SaveMsg struct {
 	IssueID     string
 	Title       string
 	Description string
+	Notes       string
 	Priority    beads.Priority
 	Status      beads.Status
 	Labels      []string
@@ -43,8 +44,11 @@ func New(issue beads.Issue) Model {
 		TitleContent: func(width int) string {
 			return issuebadge.RenderBadge(m.issue)
 		},
+		// Two-column layout: metadata (left), content (right)
+		Columns: []formmodal.ColumnConfig{{}, {}},
+		// ColumnGap and MinMultiColumnWidth use defaults (3 and 100)
 		Fields: []formmodal.FieldConfig{
-			// Title field - first, gets initial focus
+			// Column 0 (left/metadata): title, priority, status, labels
 			{
 				Key:          "title",
 				Type:         formmodal.FieldTypeText,
@@ -52,6 +56,7 @@ func New(issue beads.Issue) Model {
 				Placeholder:  "Issue title...",
 				InitialValue: issue.TitleText,
 				MaxLength:    200,
+				Column:       0,
 			},
 			{
 				Key:     "priority",
@@ -59,6 +64,7 @@ func New(issue beads.Issue) Model {
 				Label:   "Priority",
 				Hint:    "Space to toggle",
 				Options: priorityListOptions(issue.Priority),
+				Column:  0,
 			},
 			{
 				Key:     "status",
@@ -66,6 +72,7 @@ func New(issue beads.Issue) Model {
 				Label:   "Status",
 				Hint:    "Space to toggle",
 				Options: statusListOptions(issue.Status),
+				Column:  0,
 			},
 			{
 				Key:              "labels",
@@ -76,8 +83,9 @@ func New(issue beads.Issue) Model {
 				InputLabel:       "Add Label",
 				InputHint:        "Enter to add",
 				InputPlaceholder: "Enter label name...",
+				Column:           0,
 			},
-			// Description field - last, larger field
+			// Column 1 (right/content): description, notes
 			{
 				Key:          "description",
 				Type:         formmodal.FieldTypeTextArea,
@@ -87,6 +95,18 @@ func New(issue beads.Issue) Model {
 				InitialValue: issue.DescriptionText,
 				VimEnabled:   true,
 				MaxHeight:    8,
+				Column:       1,
+			},
+			{
+				Key:          "notes",
+				Type:         formmodal.FieldTypeTextArea,
+				Label:        "Notes",
+				Hint:         "Ctrl+G for editor",
+				Placeholder:  "Issue notes...",
+				InitialValue: issue.Notes,
+				VimEnabled:   true,
+				MaxHeight:    8,
+				Column:       1,
 			},
 		},
 		SubmitLabel: "Save",
@@ -96,6 +116,7 @@ func New(issue beads.Issue) Model {
 				IssueID:     m.issue.ID,
 				Title:       values["title"].(string),
 				Description: values["description"].(string),
+				Notes:       values["notes"].(string),
 				Priority:    parsePriority(values["priority"].(string)),
 				Status:      beads.Status(values["status"].(string)),
 				Labels:      values["labels"].([]string),

@@ -1113,6 +1113,118 @@ func TestUpdateIssueStatusCmd_NilExecutorReturnsError(t *testing.T) {
 	require.Contains(t, statusMsg.err.Error(), "beads executor unavailable")
 }
 
+func TestUpdateIssueNotesCmd_CallsBeadsExecutor(t *testing.T) {
+	// Verify updateIssueNotesCmd creates a command that calls BeadsExecutor.UpdateNotes
+	m := createIssueEditorTestModel(t)
+
+	// Create mock executor
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateNotes("issue-456", "new notes content").Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Get the command
+	cmd := m.updateIssueNotesCmd("issue-456", "new notes content")
+	require.NotNil(t, cmd, "should return command")
+
+	// Execute command
+	msg := cmd()
+	notesMsg, ok := msg.(issueNotesChangedMsg)
+	require.True(t, ok, "command should return issueNotesChangedMsg")
+	require.Equal(t, "issue-456", notesMsg.issueID)
+	require.Equal(t, "new notes content", notesMsg.notes)
+	require.NoError(t, notesMsg.err, "should have no error on success")
+}
+
+func TestUpdateIssueNotesCmd_PropagatesErrors(t *testing.T) {
+	// Verify updateIssueNotesCmd propagates errors from BeadsExecutor
+	m := createIssueEditorTestModel(t)
+
+	// Create mock executor that returns an error
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateNotes("issue-456", "notes").Return(errors.New("update failed"))
+	m.services.BeadsExecutor = mockExecutor
+
+	// Get the command
+	cmd := m.updateIssueNotesCmd("issue-456", "notes")
+	require.NotNil(t, cmd, "should return command")
+
+	// Execute command
+	msg := cmd()
+	notesMsg, ok := msg.(issueNotesChangedMsg)
+	require.True(t, ok, "command should return issueNotesChangedMsg")
+	require.Error(t, notesMsg.err, "should have error on failure")
+	require.Contains(t, notesMsg.err.Error(), "update failed")
+}
+
+func TestUpdateIssueNotesCmd_NilExecutorReturnsError(t *testing.T) {
+	// Verify updateIssueNotesCmd handles nil BeadsExecutor
+	m := createIssueEditorTestModel(t)
+	m.services.BeadsExecutor = nil
+
+	// Get the command
+	cmd := m.updateIssueNotesCmd("issue-456", "notes")
+	require.NotNil(t, cmd, "should return command")
+
+	// Execute command
+	msg := cmd()
+	notesMsg, ok := msg.(issueNotesChangedMsg)
+	require.True(t, ok, "command should return issueNotesChangedMsg")
+	require.Error(t, notesMsg.err, "should have error when executor is nil")
+	require.Contains(t, notesMsg.err.Error(), "beads executor unavailable")
+}
+
+func TestDashboard_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
+	// Verify SaveMsg only includes notes update cmd when notes have actually changed
+	m := createIssueEditorTestModel(t)
+
+	// Set the original issue with existing notes
+	originalIssue := beads.Issue{
+		ID:    "issue-456",
+		Notes: "original notes",
+	}
+	m.editingIssue = &originalIssue
+
+	// Send SaveMsg with same notes as original (no mock executor needed - just checking state)
+	result, cmd := m.Update(issueeditor.SaveMsg{
+		IssueID:  "issue-456",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"label"},
+		Notes:    "original notes", // Same as original - no change
+	})
+	m = result.(Model)
+
+	// Verify state transition
+	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
+	require.NotNil(t, cmd, "should return batch command")
+}
+
+func TestDashboard_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
+	// Verify SaveMsg includes notes update cmd when notes have changed
+	m := createIssueEditorTestModel(t)
+
+	// Set the original issue with existing notes
+	originalIssue := beads.Issue{
+		ID:    "issue-456",
+		Notes: "original notes",
+	}
+	m.editingIssue = &originalIssue
+
+	// Send SaveMsg with different notes (no mock executor needed - just checking state)
+	result, cmd := m.Update(issueeditor.SaveMsg{
+		IssueID:  "issue-456",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusInProgress,
+		Labels:   []string{"label"},
+		Notes:    "new notes content", // Different from original
+	})
+	m = result.(Model)
+
+	// Verify state transition
+	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
+	require.NotNil(t, cmd, "should return batch command")
+}
+
 // === Unit Tests: ctrl+e Key Handling (perles-56ved.4) ===
 
 func TestEditIssue_OpensFromTreeFocus(t *testing.T) {

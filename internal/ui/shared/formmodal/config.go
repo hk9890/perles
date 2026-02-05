@@ -223,6 +223,10 @@ type FieldConfig struct {
 	//	    return v == "true"
 	//	}
 	VisibleWhen func(values map[string]any) bool
+
+	// Column specifies which column this field belongs to (0-indexed).
+	// Default: 0 (first column). Fields are rendered in array order within each column.
+	Column int
 }
 
 // ListOption represents an item in a list or select field.
@@ -236,6 +240,11 @@ type ListOption struct {
 	Value    string                 // Programmatic value (returned in SubmitMsg)
 	Selected bool                   // Initially selected (for multi-select lists)
 	Color    lipgloss.TerminalColor // Optional color for the label
+}
+
+// ColumnConfig defines layout properties for a single column.
+type ColumnConfig struct {
+	MinWidth int // Minimum width before collapsing to single-column (0 = flexible)
 }
 
 // FormConfig defines the complete form modal configuration.
@@ -308,4 +317,16 @@ type FormConfig struct {
 	//	    return issuebadge.RenderBadge(issue)
 	//	}
 	TitleContent func(width int) string
+
+	// Columns defines the column layout. If nil or empty, single-column mode is used.
+	// Fields reference columns by index via FieldConfig.Column.
+	Columns []ColumnConfig
+
+	// ColumnGap is the spacing between columns (default: 3 characters, matching details.go).
+	ColumnGap int
+
+	// MinMultiColumnWidth is the minimum terminal width to use multi-column layout.
+	// Below this threshold, the form collapses to single-column mode.
+	// Default: 100 (matching details.go pattern).
+	MinMultiColumnWidth int
 }

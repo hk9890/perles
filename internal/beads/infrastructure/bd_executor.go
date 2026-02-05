@@ -125,6 +125,20 @@ func (e *BDExecutor) UpdateDescription(issueID, description string) error {
 	return nil
 }
 
+// UpdateNotes changes an issue's notes via bd CLI.
+func (e *BDExecutor) UpdateNotes(issueID, notes string) error {
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdateNotes completed", "issueID", issueID, "duration", time.Since(start))
+	}()
+
+	if _, err := e.runBeads("update", issueID, "--notes", notes, "--json"); err != nil {
+		log.Error(log.CatBeads, "UpdateNotes failed", "issueID", issueID, "error", err)
+		return err
+	}
+	return nil
+}
+
 // CloseIssue marks an issue as closed with a reason via bd CLI.
 func (e *BDExecutor) CloseIssue(issueID, reason string) error {
 	start := time.Now()

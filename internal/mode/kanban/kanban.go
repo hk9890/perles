@@ -247,6 +247,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if m.editingIssue != nil && msg.Description != m.editingIssue.DescriptionText {
 			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
 		}
+		// Only update notes if changed
+		if m.editingIssue != nil && msg.Notes != m.editingIssue.Notes {
+			cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
+		}
 		m.editingIssue = nil // Clear after use
 		return m, tea.Batch(cmds...)
 
@@ -269,6 +273,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case descriptionChangedMsg:
 		return m.handleDescriptionChanged(msg)
+
+	case notesChangedMsg:
+		return m.handleNotesChanged(msg)
 
 	case shared.ActionExecutedMsg:
 		return m.handleActionExecuted(msg)
@@ -759,6 +766,13 @@ type descriptionChangedMsg struct {
 	err         error
 }
 
+// notesChangedMsg signals completion of a notes update.
+type notesChangedMsg struct {
+	issueID string
+	notes   string
+	err     error
+}
+
 // pickerCancelledMsg is produced when any picker is cancelled.
 type pickerCancelledMsg struct{}
 
@@ -807,6 +821,14 @@ func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea
 	return func() tea.Msg {
 		err := m.services.BeadsExecutor.UpdateDescription(issueID, description)
 		return descriptionChangedMsg{issueID: issueID, description: description, err: err}
+	}
+}
+
+// updateIssueNotesCmd creates a command to update an issue's notes.
+func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.services.BeadsExecutor.UpdateNotes(issueID, notes)
+		return notesChangedMsg{issueID: issueID, notes: notes, err: err}
 	}
 }
 

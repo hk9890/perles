@@ -572,6 +572,16 @@ func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.C
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
 }
 
+// handleNotesChanged processes notes change results.
+func (m Model) handleNotesChanged(msg notesChangedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+		}
+	}
+	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Notes updated", Style: toaster.StyleSuccess} }
+}
+
 // handleActionExecuted processes user action execution results.
 // Shows an error toast if the action failed to start; otherwise silent.
 func (m Model) handleActionExecuted(msg shared.ActionExecutedMsg) (Model, tea.Cmd) {

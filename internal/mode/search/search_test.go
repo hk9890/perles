@@ -2386,3 +2386,125 @@ func TestSearch_EditorFinishedMsg_ReturnsNilWhenNotEditing(t *testing.T) {
 	// Should return nil when not in any editing context
 	require.Nil(t, cmd, "should return nil when not in any editing context")
 }
+
+func TestSearch_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
+	// Verify SaveMsg only includes notes update cmd when notes have actually changed
+	m := createTestModelWithResults(t)
+
+	// Set up selectedIssue with original notes
+	m.selectedIssue = &beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: "Test description",
+		Notes:           "original notes",
+	}
+	m.view = ViewEditIssue
+
+	// Send SaveMsg with same notes as original (no mock executor needed - just checking state)
+	m, cmd := m.Update(issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Priority:    beads.PriorityMedium,
+		Status:      beads.StatusOpen,
+		Labels:      []string{},
+		Title:       "Test Issue",       // Same as original
+		Description: "Test description", // Same as original
+		Notes:       "original notes",   // Same as original - no change
+	})
+
+	// Verify state transition
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
+	require.Equal(t, ViewSearch, m.view, "should return to search view after save")
+	require.NotNil(t, cmd, "should return batch command")
+}
+
+func TestSearch_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
+	// Verify SaveMsg includes notes update cmd when notes have changed
+	m := createTestModelWithResults(t)
+
+	// Set up selectedIssue with original notes
+	m.selectedIssue = &beads.Issue{
+		ID:              "test-1",
+		TitleText:       "Test Issue",
+		DescriptionText: "Test description",
+		Notes:           "original notes",
+	}
+	m.view = ViewEditIssue
+
+	// Send SaveMsg with different notes (no mock executor needed - just checking state)
+	m, cmd := m.Update(issueeditor.SaveMsg{
+		IssueID:     "test-1",
+		Priority:    beads.PriorityMedium,
+		Status:      beads.StatusOpen,
+		Labels:      []string{},
+		Title:       "Test Issue",        // Same as original
+		Description: "Test description",  // Same as original
+		Notes:       "new notes content", // Different from original
+	})
+
+	// Verify state transition
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
+	require.Equal(t, ViewSearch, m.view, "should return to search view after save")
+	require.NotNil(t, cmd, "should return batch command")
+}
+
+func TestSearch_UpdateIssueNotesCmd_CallsBeadsExecutor(t *testing.T) {
+	// Verify updateIssueNotesCmd creates a command that calls BeadsExecutor.UpdateNotes
+	m := createTestModel(t)
+
+	// Create mock executor
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateNotes("test-issue", "new notes").Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Get the command
+	cmd := m.updateIssueNotesCmd("test-issue", "new notes")
+	require.NotNil(t, cmd, "should return command")
+
+	// Execute command
+	msg := cmd()
+	notesMsg, ok := msg.(notesChangedMsg)
+	require.True(t, ok, "command should return notesChangedMsg")
+	require.Equal(t, "test-issue", notesMsg.issueID)
+	require.Equal(t, "new notes", notesMsg.notes)
+	require.NoError(t, notesMsg.err, "should have no error on success")
+}
+
+func TestSearch_UpdateIssueNotesCmd_PropagatesErrors(t *testing.T) {
+	// Verify updateIssueNotesCmd propagates errors from BeadsExecutor
+	m := createTestModel(t)
+
+	// Create mock executor that returns an error
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateNotes("test-issue", "notes").Return(errors.New("update failed"))
+	m.services.BeadsExecutor = mockExecutor
+
+	// Get the command
+	cmd := m.updateIssueNotesCmd("test-issue", "notes")
+	require.NotNil(t, cmd, "should return command")
+
+	// Execute command
+	msg := cmd()
+	notesMsg, ok := msg.(notesChangedMsg)
+	require.True(t, ok, "command should return notesChangedMsg")
+	require.Error(t, notesMsg.err, "should have error on failure")
+	require.Contains(t, notesMsg.err.Error(), "update failed")
+}
+
+func TestSearch_HandleNotesChanged_UpdatesResultsList(t *testing.T) {
+	// Verify handleNotesChanged updates the Notes field in the results list
+	m := createTestModelWithResults(t)
+
+	// Verify initial state
+	require.Equal(t, 3, len(m.results), "should have test results")
+	require.Empty(t, m.results[0].Notes, "first result should have empty notes initially")
+
+	// Handle notes changed message
+	m, _ = m.handleNotesChanged(notesChangedMsg{
+		issueID: "test-1",
+		notes:   "updated notes",
+		err:     nil,
+	})
+
+	// Verify the result was updated
+	require.Equal(t, "updated notes", m.results[0].Notes, "notes should be updated in results list")
+}

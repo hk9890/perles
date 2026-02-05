@@ -4944,3 +4944,314 @@ func TestEpicSearchRender_MoreIndicatorWhenOverflow(t *testing.T) {
 	// Should show "↓ more..." indicator
 	require.Contains(t, view, "↓ more...")
 }
+
+// --- Multi-Column Layout Tests ---
+
+func TestMultiColumn_RendersTwoColumns(t *testing.T) {
+	// Verify that multi-column layout renders fields side by side
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left Field 1", Column: 0},
+			{Key: "left2", Type: FieldTypeText, Label: "Left Field 2", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right Field 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}}, // Two columns
+		ColumnGap:           3,
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+	m := New(cfg).SetSize(120, 40) // Wide enough for multi-column
+
+	view := m.View()
+
+	// Both columns' fields should appear in the output
+	require.Contains(t, view, "Left Field 1")
+	require.Contains(t, view, "Left Field 2")
+	require.Contains(t, view, "Right Field 1")
+}
+
+func TestMultiColumn_CollapsesToSingleColumn(t *testing.T) {
+	// Verify that multi-column collapses to single column when width is too narrow
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left Field 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right Field 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+	m := New(cfg).SetSize(80, 40) // Too narrow for multi-column
+
+	// Should use single-column layout at width 80
+	require.False(t, m.useMultiColumnLayout(), "should use single-column at width 80")
+
+	// All fields should still appear (just vertically stacked)
+	view := m.View()
+	require.Contains(t, view, "Left Field 1")
+	require.Contains(t, view, "Right Field 1")
+}
+
+func TestMultiColumn_ExactlyAtThreshold(t *testing.T) {
+	// Verify correct behavior at width == 100 (exactly at threshold)
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left Field 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right Field 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100, // Threshold
+		MinWidth:            50,
+	}
+
+	// Test at exactly 100 - should use multi-column
+	m := New(cfg).SetSize(100, 40)
+	require.True(t, m.useMultiColumnLayout(), "should use multi-column at width == 100")
+}
+
+func TestMultiColumn_OnePixelBelowThreshold(t *testing.T) {
+	// Verify single-column at width == 99 (one below threshold)
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left Field 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right Field 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+
+	// Test at 99 - should use single-column
+	m := New(cfg).SetSize(99, 40)
+	require.False(t, m.useMultiColumnLayout(), "should use single-column at width == 99")
+}
+
+func TestMultiColumn_OnePixelAboveThreshold(t *testing.T) {
+	// Verify two-column at width == 101 (one above threshold)
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left Field 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right Field 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+
+	// Test at 101 - should use multi-column
+	m := New(cfg).SetSize(101, 40)
+	require.True(t, m.useMultiColumnLayout(), "should use multi-column at width == 101")
+}
+
+func TestMultiColumn_FieldGrouping(t *testing.T) {
+	// Verify that fields are correctly grouped by Column value
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "a", Type: FieldTypeText, Label: "A", Column: 0},
+			{Key: "b", Type: FieldTypeText, Label: "B", Column: 1},
+			{Key: "c", Type: FieldTypeText, Label: "C", Column: 0},
+			{Key: "d", Type: FieldTypeText, Label: "D", Column: 1},
+			{Key: "e", Type: FieldTypeText, Label: "E", Column: 0},
+		},
+		Columns:  []ColumnConfig{{}, {}},
+		MinWidth: 50,
+	}
+	m := New(cfg).SetSize(120, 40)
+
+	// Group fields
+	groups := m.groupFieldsByColumn()
+
+	require.Len(t, groups, 2, "should have 2 column groups")
+	require.Equal(t, []int{0, 2, 4}, groups[0], "column 0 should contain fields A, C, E")
+	require.Equal(t, []int{1, 3}, groups[1], "column 1 should contain fields B, D")
+}
+
+func TestMultiColumn_HeightPadding(t *testing.T) {
+	// Verify that shorter column is padded to match taller column height
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			// Column 0: 3 fields
+			{Key: "left1", Type: FieldTypeText, Label: "Left 1", Column: 0},
+			{Key: "left2", Type: FieldTypeText, Label: "Left 2", Column: 0},
+			{Key: "left3", Type: FieldTypeText, Label: "Left 3", Column: 0},
+			// Column 1: 1 field
+			{Key: "right1", Type: FieldTypeText, Label: "Right 1", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+	m := New(cfg).SetSize(120, 40)
+
+	// Should render without panic (height padding working)
+	view := m.View()
+	require.NotEmpty(t, view, "view should render")
+
+	// All fields should be present
+	require.Contains(t, view, "Left 1")
+	require.Contains(t, view, "Left 2")
+	require.Contains(t, view, "Left 3")
+	require.Contains(t, view, "Right 1")
+}
+
+func TestMultiColumn_NoColumnsConfigured_SingleColumn(t *testing.T) {
+	// Verify that empty Columns means single-column mode even when wide
+	cfg := FormConfig{
+		Title: "Single Column Form",
+		Fields: []FieldConfig{
+			{Key: "field1", Type: FieldTypeText, Label: "Field 1"},
+			{Key: "field2", Type: FieldTypeText, Label: "Field 2"},
+		},
+		// No Columns configured
+		MinWidth: 50,
+	}
+	m := New(cfg).SetSize(120, 40) // Wide terminal
+
+	require.False(t, m.useMultiColumnLayout(), "should use single-column when Columns is nil")
+}
+
+func TestMultiColumn_ColumnWidthCalculation(t *testing.T) {
+	// Verify that column widths are calculated correctly with gap
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right 1", Column: 1},
+		},
+		Columns:   []ColumnConfig{{}, {}},
+		ColumnGap: 3, // 3-char gap
+		MinWidth:  50,
+	}
+	m := New(cfg).SetSize(120, 40)
+
+	// With total width 100, gap of 3, two columns: (100-3)/2 = 48.5 -> 48 and 49
+	widths := m.calculateColumnWidths(100)
+	require.Len(t, widths, 2, "should have 2 column widths")
+
+	// Total should equal 100 - gap = 97, so 48 + 49 = 97
+	require.Equal(t, 97, widths[0]+widths[1], "column widths should sum to total - gap")
+}
+
+func TestMultiColumn_FocusNavigation_LinearOrder(t *testing.T) {
+	// Verify that Tab order traverses fields in array order, crossing columns
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left 1", Column: 0},
+			{Key: "left2", Type: FieldTypeText, Label: "Left 2", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right 1", Column: 1},
+			{Key: "right2", Type: FieldTypeText, Label: "Right 2", Column: 1},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		MinMultiColumnWidth: 100,
+		MinWidth:            50,
+	}
+	m := New(cfg).SetSize(120, 40)
+
+	// Start on first field
+	require.Equal(t, 0, m.focusedIndex, "should start on field 0 (left1)")
+
+	// Tab should go to next field in array order (left2)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex, "should be on field 1 (left2)")
+
+	// Tab to right1
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 2, m.focusedIndex, "should be on field 2 (right1)")
+
+	// Tab to right2
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 3, m.focusedIndex, "should be on field 3 (right2)")
+
+	// Tab to buttons
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, -1, m.focusedIndex, "should be on buttons")
+}
+
+func TestMultiColumn_ColumnGap_DefaultsTo3(t *testing.T) {
+	// Verify that ColumnGap defaults to 3 when set to 0
+	cfg := FormConfig{
+		Title: "Multi-Column Form",
+		Fields: []FieldConfig{
+			{Key: "left1", Type: FieldTypeText, Label: "Left 1", Column: 0},
+			{Key: "right1", Type: FieldTypeText, Label: "Right 1", Column: 1},
+		},
+		Columns:   []ColumnConfig{{}, {}},
+		ColumnGap: 0, // Should default to 3
+		MinWidth:  50,
+	}
+	m := New(cfg).SetSize(120, 40)
+
+	// Calculate widths - with default gap of 3
+	// Available: 100, minus gap 3 = 97, split between 2 cols = 48 and 49
+	widths := m.calculateColumnWidths(100)
+	require.Equal(t, 97, widths[0]+widths[1], "with default gap of 3, widths should sum to 97")
+}
+
+// --- Multi-Column Golden Tests ---
+
+func TestGolden_MultiColumn_TwoColumns_120x40(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Edit Issue",
+		Fields: []FieldConfig{
+			// Left column (metadata)
+			{Key: "title", Type: FieldTypeText, Label: "Title", Hint: "required", InitialValue: "Fix bug", Column: 0},
+			{Key: "priority", Type: FieldTypeSelect, Label: "Priority", Column: 0, Options: []ListOption{
+				{Label: "P0 - Critical", Value: "0"},
+				{Label: "P1 - High", Value: "1", Selected: true},
+				{Label: "P2 - Medium", Value: "2"},
+			}},
+			{Key: "status", Type: FieldTypeSelect, Label: "Status", Column: 0, Options: []ListOption{
+				{Label: "open", Value: "open", Selected: true},
+				{Label: "in_progress", Value: "in_progress"},
+				{Label: "closed", Value: "closed"},
+			}},
+			// Right column (content)
+			{Key: "description", Type: FieldTypeTextArea, Label: "Description", MaxHeight: 5, Column: 1, InitialValue: "This is a bug description\nwith multiple lines\nto test text area rendering."},
+			{Key: "notes", Type: FieldTypeTextArea, Label: "Notes", MaxHeight: 4, Column: 1, InitialValue: "Internal notes here."},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		ColumnGap:           3,
+		MinMultiColumnWidth: 100,
+		MinWidth:            80,
+		SubmitLabel:         "Save",
+	}
+	m := New(cfg).SetSize(120, 40)
+	compareGolden(t, "multicolumn_120x40", m.View())
+}
+
+func TestGolden_SingleColumn_80x40(t *testing.T) {
+	// Same config as above but rendered at 80 width (below threshold)
+	cfg := FormConfig{
+		Title: "Edit Issue",
+		Fields: []FieldConfig{
+			{Key: "title", Type: FieldTypeText, Label: "Title", Hint: "required", InitialValue: "Fix bug", Column: 0},
+			{Key: "priority", Type: FieldTypeSelect, Label: "Priority", Column: 0, Options: []ListOption{
+				{Label: "P0 - Critical", Value: "0"},
+				{Label: "P1 - High", Value: "1", Selected: true},
+				{Label: "P2 - Medium", Value: "2"},
+			}},
+			{Key: "status", Type: FieldTypeSelect, Label: "Status", Column: 0, Options: []ListOption{
+				{Label: "open", Value: "open", Selected: true},
+				{Label: "in_progress", Value: "in_progress"},
+				{Label: "closed", Value: "closed"},
+			}},
+			{Key: "description", Type: FieldTypeTextArea, Label: "Description", MaxHeight: 5, Column: 1, InitialValue: "This is a bug description\nwith multiple lines\nto test text area rendering."},
+			{Key: "notes", Type: FieldTypeTextArea, Label: "Notes", MaxHeight: 4, Column: 1, InitialValue: "Internal notes here."},
+		},
+		Columns:             []ColumnConfig{{}, {}},
+		ColumnGap:           3,
+		MinMultiColumnWidth: 100, // Above 80, so single-column
+		MinWidth:            50,
+		SubmitLabel:         "Save",
+	}
+	m := New(cfg).SetSize(80, 40) // Below threshold, should collapse to single-column
+	compareGolden(t, "singlecolumn_80x40", m.View())
+}

@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/zjrosen/perles/internal/ui/shared/overlay"
 	"github.com/zjrosen/perles/internal/ui/styles"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Zone ID prefixes for mouse click detection.
@@ -51,6 +50,26 @@ func (m *Model) View() string {
 	if width == 0 {
 		width = 50
 	}
+
+	// For multi-column layouts, use a larger width based on available space
+	if m.useMultiColumnLayout() {
+		// Calculate modal width: use ~80% of available width, capped reasonably
+		modalWidth := m.width * 80 / 100
+		// Ensure minimum width for two columns to be readable
+		minMultiColWidth := 80
+		if modalWidth < minMultiColWidth {
+			modalWidth = minMultiColWidth
+		}
+		// Cap at reasonable max for modal readability
+		maxModalWidth := 140
+		if modalWidth > maxModalWidth {
+			modalWidth = maxModalWidth
+		}
+		if modalWidth > width {
+			width = modalWidth
+		}
+	}
+
 	contentWidth := width // lipgloss Width sets content area; borders are added outside
 
 	// Title with bottom border
@@ -139,20 +158,14 @@ func (m *Model) View() string {
 
 // renderScrollableBody renders the fields with scrolling applied via viewport.
 func (m *Model) renderScrollableBody(contentWidth int, contentPadding lipgloss.Style) string {
-	// Render all visible fields
-	// Account for left padding (1 char) and right padding (1 char) for symmetry
-	fieldWidth := contentWidth - 2
-	var body strings.Builder
-	for i := range m.fields {
-		if !m.isFieldVisible(i) {
-			continue
-		}
-		fieldView := m.renderField(i, fieldWidth)
-		body.WriteString(contentPadding.Render(fieldView))
-		body.WriteString("\n\n")
-	}
+	var content string
 
-	content := body.String()
+	// Check if multi-column layout should be used
+	if m.useMultiColumnLayout() {
+		content = m.renderMultiColumnBody(contentWidth, contentPadding)
+	} else {
+		content = m.renderSingleColumnBody(contentWidth, contentPadding)
+	}
 
 	// If no size set, no scrolling - return content as-is
 	if m.height == 0 {
@@ -183,6 +196,117 @@ func (m *Model) renderScrollableBody(contentWidth int, contentPadding lipgloss.S
 	}
 
 	return strings.Join(visibleLines, "\n") + "\n\n"
+}
+
+// renderSingleColumnBody renders all visible fields in a single column.
+func (m *Model) renderSingleColumnBody(contentWidth int, contentPadding lipgloss.Style) string {
+	// Account for left padding (1 char) and right padding (1 char) for symmetry
+	fieldWidth := contentWidth - 2
+
+	var body strings.Builder
+	for i := range m.fields {
+		if !m.isFieldVisible(i) {
+			continue
+		}
+		fieldView := m.renderField(i, fieldWidth)
+		body.WriteString(contentPadding.Render(fieldView))
+		body.WriteString("\n\n")
+	}
+
+	return body.String()
+}
+
+// renderMultiColumnBody renders fields in multiple columns using lipgloss.JoinHorizontal.
+// Uses the details.go pattern for column joining and height padding.
+func (m *Model) renderMultiColumnBody(contentWidth int, contentPadding lipgloss.Style) string {
+	// Group fields by column
+	fieldsByColumn := m.groupFieldsByColumn()
+
+	// Calculate width for each column
+	// Account for left padding (1 char) in the total width calculation
+	colWidths := m.calculateColumnWidths(contentWidth - 2)
+
+	// Render each column
+	var renderedCols []string
+	var maxHeight int
+
+	for colIdx, indices := range fieldsByColumn {
+		colWidth := colWidths[colIdx]
+		colContent := m.renderColumnFields(indices, colWidth, lipgloss.NewStyle())
+
+		// Track max height across columns
+		colLines := strings.Split(strings.TrimSuffix(colContent, "\n"), "\n")
+		if len(colLines) > maxHeight {
+			maxHeight = len(colLines)
+		}
+
+		renderedCols = append(renderedCols, colContent)
+	}
+
+	// Pad shorter columns to match max height (pattern from details.go:388-403)
+	for i := range renderedCols {
+		colLines := strings.Split(strings.TrimSuffix(renderedCols[i], "\n"), "\n")
+		colWidth := colWidths[i]
+
+		// Pad each line to exact column width
+		for j, line := range colLines {
+			lineWidth := lipgloss.Width(line)
+			if lineWidth < colWidth {
+				colLines[j] = line + strings.Repeat(" ", colWidth-lineWidth)
+			}
+		}
+
+		// Pad height with empty lines of correct width
+		for len(colLines) < maxHeight {
+			colLines = append(colLines, strings.Repeat(" ", colWidth))
+		}
+
+		renderedCols[i] = strings.Join(colLines, "\n")
+	}
+
+	// Get column gap
+	gap := m.config.ColumnGap
+	if gap == 0 {
+		gap = 3 // default matching details.go
+	}
+
+	// Build gap string for each line
+	gapStr := strings.Repeat(" ", gap)
+
+	// Join columns horizontally with gap (pattern from details.go:366)
+	// We need to interleave the gap between columns
+	var result string
+	if len(renderedCols) > 0 {
+		result = renderedCols[0]
+		for i := 1; i < len(renderedCols); i++ {
+			// Split both columns into lines and join with gap
+			leftLines := strings.Split(result, "\n")
+			rightLines := strings.Split(renderedCols[i], "\n")
+
+			var joined []string
+			for j := 0; j < max(len(leftLines), len(rightLines)); j++ {
+				left := ""
+				right := ""
+				if j < len(leftLines) {
+					left = leftLines[j]
+				}
+				if j < len(rightLines) {
+					right = rightLines[j]
+				}
+				joined = append(joined, left+gapStr+right)
+			}
+			result = strings.Join(joined, "\n")
+		}
+	}
+
+	// Apply content padding to the joined result
+	lines := strings.Split(result, "\n")
+	var paddedLines []string
+	for _, line := range lines {
+		paddedLines = append(paddedLines, contentPadding.Render(line))
+	}
+
+	return strings.Join(paddedLines, "\n") + "\n\n"
 }
 
 // renderField renders a single field based on its type.
@@ -840,6 +964,92 @@ func (m Model) renderEpicSearchExpanded(fs *fieldState, fieldIndex int, width in
 		Focused:            focused,
 		FocusedBorderColor: styles.BorderHighlightFocusColor,
 	})
+}
+
+// useMultiColumnLayout returns true if multi-column layout should be used.
+// Multi-column is used when Columns is configured AND width >= MinMultiColumnWidth.
+func (m *Model) useMultiColumnLayout() bool {
+	if len(m.config.Columns) == 0 {
+		return false
+	}
+	minWidth := m.config.MinMultiColumnWidth
+	if minWidth == 0 {
+		minWidth = 100 // default from details.go pattern
+	}
+	return m.width >= minWidth
+}
+
+// groupFieldsByColumn groups visible field indices by their Column value.
+// Returns [][]int where outer index is column number.
+func (m *Model) groupFieldsByColumn() [][]int {
+	numCols := len(m.config.Columns)
+	if numCols == 0 {
+		numCols = 1
+	}
+
+	result := make([][]int, numCols)
+	for i := range result {
+		result[i] = []int{}
+	}
+
+	for i := range m.fields {
+		if !m.isFieldVisible(i) {
+			continue
+		}
+		col := m.fields[i].config.Column
+		// Clamp to valid column range
+		col = max(col, 0)
+		col = min(col, numCols-1)
+		result[col] = append(result[col], i)
+	}
+
+	return result
+}
+
+// calculateColumnWidths calculates width for each column with even distribution.
+// Total width is divided evenly among columns after accounting for gaps.
+func (m *Model) calculateColumnWidths(totalWidth int) []int {
+	numCols := len(m.config.Columns)
+	if numCols == 0 {
+		return []int{totalWidth}
+	}
+
+	gap := m.config.ColumnGap
+	if gap == 0 {
+		gap = 3 // default matching details.go
+	}
+
+	// Available width after accounting for gaps between columns
+	availableWidth := totalWidth - (numCols-1)*gap
+
+	// Distribute evenly
+	baseWidth := availableWidth / numCols
+	remainder := availableWidth % numCols
+
+	widths := make([]int, numCols)
+	for i := range widths {
+		widths[i] = baseWidth
+		// Distribute remainder to rightmost columns
+		if i >= numCols-remainder {
+			widths[i]++
+		}
+	}
+
+	return widths
+}
+
+// renderColumnFields renders fields for a single column.
+// Returns the rendered string for the column.
+func (m *Model) renderColumnFields(indices []int, width int, contentPadding lipgloss.Style) string {
+	var col strings.Builder
+
+	for _, i := range indices {
+		fieldView := m.renderField(i, width)
+		col.WriteString(contentPadding.Render(fieldView))
+		col.WriteString("\n\n")
+	}
+
+	return col.String()
 }
 
 // renderTextAreaField renders the vimtextarea field.

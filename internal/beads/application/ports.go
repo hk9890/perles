@@ -24,6 +24,7 @@ type IssueWriter interface {
 	UpdateType(issueID string, issueType domain.IssueType) error
 	UpdateTitle(issueID, title string) error
 	UpdateDescription(issueID, description string) error
+	UpdateNotes(issueID, notes string) error
 	CloseIssue(issueID, reason string) error
 	ReopenIssue(issueID string) error
 	SetLabels(issueID string, labels []string) error

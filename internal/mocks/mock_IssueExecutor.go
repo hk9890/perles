@@ -524,6 +524,53 @@ func (_c *MockIssueExecutor_UpdateDescription_Call) RunAndReturn(run func(string
 	return _c
 }
 
+// UpdateNotes provides a mock function with given fields: issueID, notes
+func (_m *MockIssueExecutor) UpdateNotes(issueID string, notes string) error {
+	ret := _m.Called(issueID, notes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateNotes")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string) error); ok {
+		r0 = rf(issueID, notes)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockIssueExecutor_UpdateNotes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateNotes'
+type MockIssueExecutor_UpdateNotes_Call struct {
+	*mock.Call
+}
+
+// UpdateNotes is a helper method to define mock.On call
+//   - issueID string
+//   - notes string
+func (_e *MockIssueExecutor_Expecter) UpdateNotes(issueID interface{}, notes interface{}) *MockIssueExecutor_UpdateNotes_Call {
+	return &MockIssueExecutor_UpdateNotes_Call{Call: _e.mock.On("UpdateNotes", issueID, notes)}
+}
+
+func (_c *MockIssueExecutor_UpdateNotes_Call) Run(run func(issueID string, notes string)) *MockIssueExecutor_UpdateNotes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockIssueExecutor_UpdateNotes_Call) Return(_a0 error) *MockIssueExecutor_UpdateNotes_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockIssueExecutor_UpdateNotes_Call) RunAndReturn(run func(string, string) error) *MockIssueExecutor_UpdateNotes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdatePriority provides a mock function with given fields: issueID, priority
 func (_m *MockIssueExecutor) UpdatePriority(issueID string, priority domain.Priority) error {
 	ret := _m.Called(issueID, priority)
