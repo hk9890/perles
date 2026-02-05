@@ -47,6 +47,14 @@ type fieldState struct {
 	searchFiltered []int           // Indices into listItems matching search
 	scrollOffset   int             // First visible item for scrolling
 	searchExpanded bool            // Whether search list is expanded (vs showing selected value)
+
+	// EpicSearch field state
+	epicSearchError    error  // Last query error
+	epicSelectedID     string // Selected epic ID (the actual value)
+	epicSelectedTitle  string // Selected epic title (for display)
+	epicQueryID        int    // For discarding stale results
+	epicSearchExpanded bool   // Whether search popup is expanded
+	epicHasLoaded      bool   // True after first query results received (prevents flash of "no results")
 }
 
 // listItem tracks selection state for list items.
@@ -182,6 +190,26 @@ func newFieldState(cfg FieldConfig) fieldState {
 			ta.SetValue(cfg.InitialValue)
 		}
 		fs.textArea = ta
+
+	case FieldTypeEpicSearch:
+		// Initialize search input for epic search
+		ti := textinput.New()
+		ti.Placeholder = cfg.SearchPlaceholder
+		if ti.Placeholder == "" {
+			ti.Placeholder = "Search epics..."
+		}
+		ti.Prompt = ""
+		ti.Width = 36
+		fs.searchInput = ti
+
+		// Initialize empty list items (populated by async queries)
+		fs.listItems = []listItem{}
+		fs.searchFiltered = []int{}
+
+		// Initialize pre-selected value if provided
+		if cfg.InitialValue != "" {
+			fs.epicSelectedID = cfg.InitialValue
+		}
 	}
 
 	return fs
@@ -243,6 +271,9 @@ func (fs *fieldState) value() any {
 
 	case FieldTypeTextArea:
 		return fs.textArea.Value()
+
+	case FieldTypeEpicSearch:
+		return fs.epicSelectedID
 	}
 	return nil
 }

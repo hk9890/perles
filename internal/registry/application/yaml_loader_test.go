@@ -1344,7 +1344,7 @@ registry:
 
 	_, err := LoadRegistryFromYAML(fs)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "must be text, number, textarea, select, or multi-select")
+	require.Contains(t, err.Error(), "must be text, number, textarea, select, multi-select, or epic-search")
 }
 
 func TestLoadRegistryFromYAML_Arguments_DuplicateKey(t *testing.T) {

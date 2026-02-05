@@ -79,10 +79,11 @@
 package formmodal
 
 import (
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/zjrosen/perles/internal/bql"
+	"github.com/zjrosen/perles/internal/ui/shared/modal"
 )
 
 // FieldType identifies the type of form field.
@@ -133,6 +134,14 @@ const (
 	// Supports Placeholder, MaxLength (char limit), MaxHeight, InitialValue.
 	// Returns the content as a string.
 	FieldTypeTextArea
+
+	// FieldTypeEpicSearch is a searchable epic selector with live BQL queries.
+	// Combines a search input with a dynamically populated list of epics.
+	// Executes BQL queries as the user types (debounced at 200ms by default).
+	// Navigate with arrow keys (not j/k which type in search), select with Enter.
+	// Supports EpicSearchExecutor (required), DebounceMs, SearchPlaceholder, MaxVisibleItems.
+	// Returns the selected epic's ID as a string.
+	FieldTypeEpicSearch
 )
 
 // FieldConfig defines a single form field.
@@ -196,6 +205,10 @@ type FieldConfig struct {
 	// TextArea field options (FieldTypeTextArea)
 	MaxHeight  int  // Max display height in lines (default: 3)
 	VimEnabled bool // Enable vim mode for textarea (default: false, starts in Insert mode)
+
+	// EpicSearch field options (FieldTypeEpicSearch)
+	EpicSearchExecutor bql.BQLExecutor // Required: injected for query execution
+	DebounceMs         int             // Debounce delay in milliseconds (default: 200ms)
 
 	// Conditional visibility
 	// VisibleWhen determines if this field is visible based on current form values.

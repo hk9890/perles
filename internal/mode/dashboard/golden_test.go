@@ -320,7 +320,7 @@ func TestDashboard_View_Golden_NewWorkflowModal(t *testing.T) {
 
 func TestNewWorkflowModal_View_Golden_LoadingSpinner(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 	modal = modal.SetSize(100, 40)
 
 	// Set modal to loading state with fixed spinner frame for reproducible output

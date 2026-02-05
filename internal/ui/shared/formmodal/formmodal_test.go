@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/stretchr/testify/require"
 
+	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/editor"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -4181,4 +4181,766 @@ func TestGolden_SetError(t *testing.T) {
 	m = m.SetError("create workflow: template \"v1-security-assessment.md\" not found")
 
 	compareGolden(t, "set_error", m.View())
+}
+
+// --- EpicSearch Field Tests ---
+
+func TestEpicSearchField_ConstantExists(t *testing.T) {
+	// FieldTypeEpicSearch should be a defined constant in the iota sequence
+	// Verify it's defined and distinct from other field types
+	require.NotEqual(t, FieldTypeText, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeColor, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeList, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeSelect, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeEditableList, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeToggle, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeSearchSelect, FieldTypeEpicSearch)
+	require.NotEqual(t, FieldTypeTextArea, FieldTypeEpicSearch)
+}
+
+func TestEpicSearchField_NewFieldState_InitializesSearchInput(t *testing.T) {
+	cfg := FieldConfig{
+		Key:               "epic",
+		Type:              FieldTypeEpicSearch,
+		Label:             "Epic",
+		SearchPlaceholder: "Find epic...",
+	}
+	fs := newFieldState(cfg)
+
+	// Search input should be initialized
+	require.Equal(t, "Find epic...", fs.searchInput.Placeholder)
+	require.Equal(t, "", fs.searchInput.Prompt)
+	require.Equal(t, 36, fs.searchInput.Width)
+
+	// List items should start empty (populated by async queries)
+	require.Empty(t, fs.listItems)
+	require.Empty(t, fs.searchFiltered)
+}
+
+func TestEpicSearchField_NewFieldState_DefaultPlaceholder(t *testing.T) {
+	cfg := FieldConfig{
+		Key:   "epic",
+		Type:  FieldTypeEpicSearch,
+		Label: "Epic",
+		// No SearchPlaceholder specified
+	}
+	fs := newFieldState(cfg)
+
+	// Should use default placeholder
+	require.Equal(t, "Search epics...", fs.searchInput.Placeholder)
+}
+
+func TestEpicSearchField_NewFieldState_InitialValue(t *testing.T) {
+	cfg := FieldConfig{
+		Key:          "epic",
+		Type:         FieldTypeEpicSearch,
+		Label:        "Epic",
+		InitialValue: "EPIC-123",
+	}
+	fs := newFieldState(cfg)
+
+	// epicSelectedID should be initialized from InitialValue
+	require.Equal(t, "EPIC-123", fs.epicSelectedID)
+}
+
+func TestEpicSearchField_Value_ReturnsEpicSelectedID(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:          "epic",
+				Type:         FieldTypeEpicSearch,
+				Label:        "Epic",
+				InitialValue: "EPIC-456",
+			},
+		},
+	}
+	m := New(cfg)
+
+	// value() should return epicSelectedID
+	values := getValues(m)
+	require.Equal(t, "EPIC-456", values["epic"])
+}
+
+func TestEpicSearchField_Value_EmptyWhenNoSelection(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "epic",
+				Type:  FieldTypeEpicSearch,
+				Label: "Epic",
+				// No InitialValue
+			},
+		},
+	}
+	m := New(cfg)
+
+	// value() should return empty string when nothing selected
+	values := getValues(m)
+	require.Equal(t, "", values["epic"])
+}
+
+func TestEpicSearchField_FieldConfig_DebounceMs(t *testing.T) {
+	cfg := FieldConfig{
+		Key:        "epic",
+		Type:       FieldTypeEpicSearch,
+		Label:      "Epic",
+		DebounceMs: 500,
+	}
+
+	// DebounceMs should be accessible from config
+	require.Equal(t, 500, cfg.DebounceMs)
+}
+
+func TestEpicSearchField_FieldConfig_EpicSearchExecutor(t *testing.T) {
+	// Create a mock executor
+	mockExecutor := &mockBQLExecutor{}
+
+	cfg := FieldConfig{
+		Key:                "epic",
+		Type:               FieldTypeEpicSearch,
+		Label:              "Epic",
+		EpicSearchExecutor: mockExecutor,
+	}
+
+	// EpicSearchExecutor should be accessible from config
+	require.NotNil(t, cfg.EpicSearchExecutor)
+	require.Equal(t, mockExecutor, cfg.EpicSearchExecutor)
+}
+
+// mockBQLExecutor is a minimal mock for testing EpicSearchExecutor field access
+type mockBQLExecutor struct {
+	executeFunc func(query string) ([]beads.Issue, error)
+}
+
+func (m *mockBQLExecutor) Execute(query string) ([]beads.Issue, error) {
+	if m.executeFunc != nil {
+		return m.executeFunc(query)
+	}
+	return nil, nil
+}
+
+// --- EpicSearch Field Tests ---
+
+func TestEpicSearchField_CtrlNNavigatesListDown(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+			{
+				Key:   "name",
+				Type:  FieldTypeText,
+				Label: "Name",
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results being populated
+	m.fields[0].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+		{label: "Epic 3", value: "epic-3"},
+	}
+	m.fields[0].searchFiltered = []int{0, 1, 2}
+	m.fields[0].listCursor = 0
+
+	// Press Ctrl+N (should move down in list, not to next field)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+
+	// Cursor should move within list
+	require.Equal(t, 1, m.fields[0].listCursor, "Ctrl+N should move cursor down in list")
+	require.Equal(t, 0, m.focusedIndex, "should stay on epic search field")
+}
+
+func TestEpicSearchField_CtrlPNavigatesListUp(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:   "name",
+				Type:  FieldTypeText,
+				Label: "Name",
+			},
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Move to epic search field (auto-expands when no selection)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Equal(t, 1, m.focusedIndex, "precondition: should be on epic search field")
+	require.True(t, m.fields[1].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results being populated
+	m.fields[1].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+		{label: "Epic 3", value: "epic-3"},
+	}
+	m.fields[1].searchFiltered = []int{0, 1, 2}
+	m.fields[1].listCursor = 2
+
+	// Press Ctrl+P (should move up in list, not to prev field)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+
+	// Cursor should move within list
+	require.Equal(t, 1, m.fields[1].listCursor, "Ctrl+P should move cursor up in list")
+	require.Equal(t, 1, m.focusedIndex, "should stay on epic search field")
+}
+
+func TestEpicSearchField_DownArrowNavigatesListWhenExpanded(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results
+	m.fields[0].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+	}
+	m.fields[0].searchFiltered = []int{0, 1}
+	m.fields[0].listCursor = 0
+
+	// Down arrow
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	require.Equal(t, 1, m.fields[0].listCursor, "Down arrow should move cursor down in list")
+}
+
+func TestEpicSearchField_UpArrowNavigatesListWhenExpanded(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results
+	m.fields[0].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+	}
+	m.fields[0].searchFiltered = []int{0, 1}
+	m.fields[0].listCursor = 1
+
+	// Up arrow
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+
+	require.Equal(t, 0, m.fields[0].listCursor, "Up arrow should move cursor up in list")
+}
+
+func TestEpicSearchField_TabClosesAndMovesToNext(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+			{
+				Key:   "name",
+				Type:  FieldTypeText,
+				Label: "Name",
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Tab should close popup AND move to next field
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+
+	require.False(t, m.fields[0].epicSearchExpanded, "Tab should collapse popup")
+	require.Equal(t, 1, m.focusedIndex, "Tab should move to next field")
+}
+
+func TestEpicSearchField_EscapeClosesWithoutSelecting(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results and position cursor
+	m.fields[0].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+	}
+	m.fields[0].searchFiltered = []int{0, 1}
+	m.fields[0].listCursor = 1
+
+	// Escape should collapse without selecting
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	require.False(t, m.fields[0].epicSearchExpanded, "Escape should collapse popup")
+	require.Nil(t, cmd, "Escape should not produce cancel command when collapsing")
+	require.Empty(t, m.fields[0].epicSelectedID, "Escape should not change selection")
+}
+
+func TestEpicSearchField_EnterSelectsAndCloses(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+
+	// Simulate results
+	m.fields[0].listItems = []listItem{
+		{label: "Epic 1", value: "epic-1"},
+		{label: "Epic 2", value: "epic-2"},
+	}
+	m.fields[0].searchFiltered = []int{0, 1}
+	m.fields[0].listCursor = 1 // Position on Epic 2
+
+	// Enter should select current item and collapse
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.False(t, m.fields[0].epicSearchExpanded, "Enter should collapse popup")
+	require.Equal(t, "epic-2", m.fields[0].epicSelectedID, "Enter should select current item")
+	require.Equal(t, "Epic 2", m.fields[0].epicSelectedTitle, "Enter should set selected title")
+}
+
+func TestEpicSearchField_DebounceResetsOnKeystroke(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+				DebounceMs:         200,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+	initialQueryID := m.fields[0].epicQueryID
+
+	// Type first character
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	afterFirstKeystroke := m.fields[0].epicQueryID
+
+	// Type second character (should increment queryID, resetting debounce)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	afterSecondKeystroke := m.fields[0].epicQueryID
+
+	require.Greater(t, afterFirstKeystroke, initialQueryID, "first keystroke should increment queryID")
+	require.Greater(t, afterSecondKeystroke, afterFirstKeystroke, "second keystroke should increment queryID again")
+}
+
+func TestEpicSearchField_StaleResultsDiscarded(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Field auto-expands on focus when no selection, type to trigger a query
+	require.True(t, m.fields[0].epicSearchExpanded, "precondition: should be expanded")
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	oldQueryID := m.fields[0].epicQueryID
+
+	// Type again to get new queryID
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	newQueryID := m.fields[0].epicQueryID
+
+	// Simulate stale result arriving (old queryID)
+	staleResult := epicSearchResultsMsg{
+		fieldIndex: 0,
+		issues: []beads.Issue{
+			{ID: "stale-epic", TitleText: "Stale Result"},
+		},
+		queryID: oldQueryID,
+	}
+	m, _ = m.Update(staleResult)
+
+	// List should not be updated with stale results
+	require.Empty(t, m.fields[0].listItems, "stale results should be discarded")
+
+	// Now send fresh result
+	freshResult := epicSearchResultsMsg{
+		fieldIndex: 0,
+		issues: []beads.Issue{
+			{ID: "fresh-epic", TitleText: "Fresh Result"},
+		},
+		queryID: newQueryID,
+	}
+	m, _ = m.Update(freshResult)
+
+	// List should be updated with fresh results
+	require.Len(t, m.fields[0].listItems, 1)
+	require.Equal(t, "fresh-epic", m.fields[0].listItems[0].value)
+}
+
+func TestEpicSearchField_ErrorStateManagedCorrectly(t *testing.T) {
+	mock := &mockBQLExecutor{}
+	cfg := FormConfig{
+		Title: "Test Form",
+		Fields: []FieldConfig{
+			{
+				Key:                "epic",
+				Type:               FieldTypeEpicSearch,
+				Label:              "Epic",
+				EpicSearchExecutor: mock,
+			},
+		},
+	}
+	m := New(cfg)
+
+	// Expand
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	currentQueryID := m.fields[0].epicQueryID
+
+	// Initially no error
+	require.Nil(t, m.fields[0].epicSearchError, "should have no error initially")
+
+	// Receive error result
+	errorResult := epicSearchResultsMsg{
+		fieldIndex: 0,
+		err:        errors.New("query failed"),
+		queryID:    currentQueryID,
+	}
+	m, _ = m.Update(errorResult)
+	require.NotNil(t, m.fields[0].epicSearchError, "error should be set")
+	require.Equal(t, "query failed", m.fields[0].epicSearchError.Error())
+
+	// Type again (should clear error)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	require.Nil(t, m.fields[0].epicSearchError, "error should be cleared on new keystroke")
+}
+
+func TestEpicSearchField_BuildEpicSearchQueryEscapesQuotes(t *testing.T) {
+	// Empty input
+	query := buildEpicSearchQuery("")
+	require.Equal(t, "type = epic and status != closed order by updated desc", query)
+
+	// Simple input
+	query = buildEpicSearchQuery("test")
+	require.Contains(t, query, `title ~ "test"`)
+	require.Contains(t, query, `description ~ "test"`)
+
+	// Input with quotes (should be escaped)
+	query = buildEpicSearchQuery(`test "quoted"`)
+	require.Contains(t, query, `title ~ "test \"quoted\""`)
+	require.Contains(t, query, `description ~ "test \"quoted\""`)
+}
+
+// --- EpicSearch Render Golden Tests ---
+
+func TestGolden_EpicSearchCollapsedWithSelection(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:          "epic",
+				Type:         FieldTypeEpicSearch,
+				Label:        "Epic",
+				Hint:         "Enter to search",
+				InitialValue: "EPIC-123", // Pre-set selection keeps it collapsed
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Set selected title (InitialValue only sets ID)
+	m.fields[0].epicSelectedTitle = "Implement user authentication flow"
+
+	compareGolden(t, "epic_search_collapsed_with_selection", m.View())
+}
+
+func TestGolden_EpicSearchAutoExpandedOnFocus(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:   "epic",
+				Type:  FieldTypeEpicSearch,
+				Label: "Epic",
+				Hint:  "Type to search",
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// No selection - field auto-expands on focus
+	require.True(t, m.fields[0].epicSearchExpanded, "should auto-expand when no selection")
+
+	compareGolden(t, "epic_search_auto_expanded_on_focus", m.View())
+}
+
+func TestGolden_EpicSearchExpandedWithResults(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:             "epic",
+				Type:            FieldTypeEpicSearch,
+				Label:           "Epic",
+				Hint:            "Enter to search",
+				MaxVisibleItems: 10,
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand the search
+	m.fields[0].epicSearchExpanded = true
+
+	// Populate with results
+	m.fields[0].listItems = []listItem{
+		{label: "Implement user authentication", value: "EPIC-1"},
+		{label: "Build payment processing", value: "EPIC-2"},
+		{label: "Create notification system", value: "EPIC-3"},
+	}
+	m.fields[0].listCursor = 0
+
+	compareGolden(t, "epic_search_expanded_with_results", m.View())
+}
+
+func TestGolden_EpicSearchExpandedWithError(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:   "epic",
+				Type:  FieldTypeEpicSearch,
+				Label: "Epic",
+				Hint:  "Enter to search",
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand the search and set error state
+	m.fields[0].epicSearchExpanded = true
+	m.fields[0].epicSearchError = errors.New("database connection failed")
+
+	compareGolden(t, "epic_search_expanded_with_error", m.View())
+}
+
+func TestGolden_EpicSearchExpandedNoEpics(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:   "epic",
+				Type:  FieldTypeEpicSearch,
+				Label: "Epic",
+				Hint:  "Enter to search",
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand the search - empty results with no query (after load completed)
+	m.fields[0].epicSearchExpanded = true
+	m.fields[0].epicHasLoaded = true
+	m.fields[0].listItems = []listItem{} // Empty
+
+	compareGolden(t, "epic_search_expanded_no_epics", m.View())
+}
+
+func TestGolden_EpicSearchExpandedNoMatches(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:   "epic",
+				Type:  FieldTypeEpicSearch,
+				Label: "Epic",
+				Hint:  "Enter to search",
+			},
+		},
+		SubmitLabel: "Create",
+		MinWidth:    50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand the search - empty results with a query (after load completed)
+	m.fields[0].epicSearchExpanded = true
+	m.fields[0].epicHasLoaded = true
+	m.fields[0].searchInput.SetValue("nonexistent")
+	m.fields[0].listItems = []listItem{} // Empty - no matches
+
+	compareGolden(t, "epic_search_expanded_no_matches", m.View())
+}
+
+// --- EpicSearch Render Unit Tests ---
+
+func TestEpicSearchRender_TitleTruncationAt40Chars(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:          "epic",
+				Type:         FieldTypeEpicSearch,
+				Label:        "Epic",
+				InitialValue: "EP-1", // Pre-set to keep collapsed
+			},
+		},
+		MinWidth: 50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Set title and ensure collapsed state for rendering test
+	m.fields[0].epicSelectedTitle = "This is a very long title that exceeds forty characters and should be truncated"
+	m.fields[0].epicSearchExpanded = false
+
+	view := m.View()
+	// The truncated title should be at most 40 chars (37 + "...")
+	// Full format is "{ID}: {truncated title}" so we check it doesn't show the full title
+	require.NotContains(t, view, "should be truncated")
+	require.Contains(t, view, "EP-1:")
+	require.Contains(t, view, "...")
+}
+
+func TestEpicSearchRender_CursorHighlighting(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:             "epic",
+				Type:            FieldTypeEpicSearch,
+				Label:           "Epic",
+				MaxVisibleItems: 10,
+			},
+		},
+		MinWidth: 50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand and populate with results
+	m.fields[0].epicSearchExpanded = true
+	m.fields[0].listItems = []listItem{
+		{label: "First Epic", value: "EPIC-1"},
+		{label: "Second Epic", value: "EPIC-2"},
+		{label: "Third Epic", value: "EPIC-3"},
+	}
+	m.fields[0].listCursor = 1 // Cursor on second item
+
+	view := m.View()
+	// All three items should be visible
+	require.Contains(t, view, "EPIC-1:")
+	require.Contains(t, view, "EPIC-2:")
+	require.Contains(t, view, "EPIC-3:")
+}
+
+func TestEpicSearchRender_MoreIndicatorWhenOverflow(t *testing.T) {
+	cfg := FormConfig{
+		Title: "Select Epic",
+		Fields: []FieldConfig{
+			{
+				Key:             "epic",
+				Type:            FieldTypeEpicSearch,
+				Label:           "Epic",
+				MaxVisibleItems: 2, // Show only 2 items
+			},
+		},
+		MinWidth: 50,
+	}
+	m := New(cfg).SetSize(80, 24)
+
+	// Expand and populate with more results than visible
+	m.fields[0].epicSearchExpanded = true
+	m.fields[0].listItems = []listItem{
+		{label: "First Epic", value: "EPIC-1"},
+		{label: "Second Epic", value: "EPIC-2"},
+		{label: "Third Epic", value: "EPIC-3"},
+		{label: "Fourth Epic", value: "EPIC-4"},
+	}
+	m.fields[0].listCursor = 0
+	m.fields[0].scrollOffset = 0
+
+	view := m.View()
+	// Should show "↓ more..." indicator
+	require.Contains(t, view, "↓ more...")
 }

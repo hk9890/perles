@@ -1,10 +1,13 @@
 package formmodal
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	zone "github.com/lrstanley/bubblezone"
 
+	beads "github.com/zjrosen/perles/internal/beads/domain"
 	"github.com/zjrosen/perles/internal/keys"
 	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
 	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
@@ -38,6 +41,21 @@ type SubmitMsg struct {
 
 // CancelMsg is sent when the form is cancelled (via Esc key or Cancel button).
 type CancelMsg struct{}
+
+// epicSearchResultsMsg carries results from an async epic search query.
+type epicSearchResultsMsg struct {
+	fieldIndex int           // Which field this result is for
+	issues     []beads.Issue // Query results
+	err        error         // Query error (nil on success)
+	queryID    int           // Version ID to detect stale results
+}
+
+// epicSearchDebounceMsg triggers execution of a debounced epic search query.
+type epicSearchDebounceMsg struct {
+	fieldIndex int    // Which field this is for
+	query      string // The search text
+	queryID    int    // Version ID to detect stale results
+}
 
 // Model is the form modal state.
 //
@@ -107,6 +125,14 @@ func New(cfg FormConfig) Model {
 		case FieldTypeSearchSelect:
 			// Start collapsed - don't focus search input yet
 			fs.searchExpanded = false
+		case FieldTypeEpicSearch:
+			// Auto-expand if no selection, otherwise stay collapsed
+			if fs.epicSelectedID == "" {
+				fs.epicSearchExpanded = true
+				fs.searchInput.Focus()
+			} else {
+				fs.epicSearchExpanded = false
+			}
 		}
 	} else {
 		// No visible fields, start on submit button
@@ -162,6 +188,47 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if fs.config.Type == FieldTypeTextArea {
 				m = m.nextField()
 				return m, m.blinkCmd()
+			}
+		}
+		return m, nil
+
+	case epicSearchDebounceMsg:
+		// Execute the debounced query if queryID still matches
+		if msg.fieldIndex >= 0 && msg.fieldIndex < len(m.fields) {
+			fs := &m.fields[msg.fieldIndex]
+			if fs.config.Type == FieldTypeEpicSearch && fs.epicQueryID == msg.queryID {
+				return m, m.executeEpicSearch(msg.fieldIndex, msg.query, msg.queryID)
+			}
+		}
+		return m, nil
+
+	case epicSearchResultsMsg:
+		// Update results if queryID still matches (discard stale results)
+		if msg.fieldIndex >= 0 && msg.fieldIndex < len(m.fields) {
+			fs := &m.fields[msg.fieldIndex]
+			if fs.config.Type == FieldTypeEpicSearch && fs.epicQueryID == msg.queryID {
+				if msg.err != nil {
+					fs.epicSearchError = msg.err
+					return m, nil
+				}
+				fs.epicSearchError = nil
+				fs.epicHasLoaded = true
+
+				// Update list items from results
+				fs.listItems = make([]listItem, len(msg.issues))
+				fs.searchFiltered = make([]int, len(msg.issues))
+				for i, issue := range msg.issues {
+					fs.listItems[i] = listItem{
+						label:   issue.TitleText,
+						subtext: issue.ID,
+						value:   issue.ID,
+					}
+					fs.searchFiltered[i] = i
+				}
+
+				// Reset cursor to first item
+				fs.listCursor = 0
+				fs.scrollOffset = 0
 			}
 		}
 		return m, nil
@@ -243,6 +310,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 				fs.searchInput.Blur()
 				return m, nil
 			}
+			// If an EpicSearch field is expanded, collapse it instead of closing modal
+			if fs.config.Type == FieldTypeEpicSearch && fs.epicSearchExpanded {
+				fs.epicSearchExpanded = false
+				fs.searchInput.Blur()
+				return m, nil
+			}
 			// If a TextArea field has vim enabled and is in Insert mode, let Esc switch to Normal mode
 			if fs.config.Type == FieldTypeTextArea && fs.config.VimEnabled && fs.textArea.Mode() == vimtextarea.ModeInsert {
 				var cmd tea.Cmd
@@ -270,6 +343,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd) {
 			return m.handleKeyForEditableList(msg, fs)
 		case FieldTypeSearchSelect:
 			return m.handleKeyForSearchSelect(msg, fs)
+		case FieldTypeEpicSearch:
+			return m.handleKeyForEpicSearch(msg, fs)
 		case FieldTypeTextArea:
 			return m.handleKeyForTextArea(msg, fs)
 		}
@@ -561,6 +636,9 @@ func (m Model) nextField() Model {
 		case FieldTypeSearchSelect:
 			fs.searchInput.Blur()
 			fs.searchExpanded = false // Collapse when leaving field
+		case FieldTypeEpicSearch:
+			fs.searchInput.Blur()
+			fs.epicSearchExpanded = false // Collapse when leaving field
 		}
 
 		// Find next visible field
@@ -634,6 +712,14 @@ func (m *Model) focusNextFieldByType() {
 	case FieldTypeSearchSelect:
 		// Start collapsed - user must press Enter to expand
 		fs.searchExpanded = false
+	case FieldTypeEpicSearch:
+		// Auto-expand if no selection, otherwise stay collapsed
+		if fs.epicSelectedID == "" {
+			fs.epicSearchExpanded = true
+			fs.searchInput.Focus()
+		} else {
+			fs.epicSearchExpanded = false
+		}
 	}
 }
 
@@ -653,6 +739,9 @@ func (m Model) prevField() Model {
 		case FieldTypeSearchSelect:
 			fs.searchInput.Blur()
 			fs.searchExpanded = false // Collapse when leaving field
+		case FieldTypeEpicSearch:
+			fs.searchInput.Blur()
+			fs.epicSearchExpanded = false // Collapse when leaving field
 		}
 
 		// Find previous visible field
@@ -710,10 +799,19 @@ func (m *Model) focusPrevFieldByType() {
 	case FieldTypeSearchSelect:
 		// Start collapsed - user must press Enter to expand
 		fs.searchExpanded = false
+	case FieldTypeEpicSearch:
+		// Auto-expand if no selection, otherwise stay collapsed
+		if fs.epicSelectedID == "" {
+			fs.epicSearchExpanded = true
+			fs.searchInput.Focus()
+		} else {
+			fs.epicSearchExpanded = false
+		}
 	}
 }
 
 // blinkCmd returns the blink command if the currently focused field is a text input.
+// For epic search fields that auto-expanded on focus, it also triggers the initial query.
 func (m Model) blinkCmd() tea.Cmd {
 	if m.focusedIndex >= 0 && m.focusedIndex < len(m.fields) {
 		fs := &m.fields[m.focusedIndex]
@@ -726,6 +824,27 @@ func (m Model) blinkCmd() tea.Cmd {
 			}
 		case FieldTypeSearchSelect:
 			if fs.searchExpanded {
+				return textinput.Blink
+			}
+		case FieldTypeEpicSearch:
+			if fs.epicSearchExpanded {
+				// If expanded with no results yet, trigger initial query
+				if len(fs.listItems) == 0 && fs.epicSearchError == nil {
+					fs.epicQueryID++
+					debounceMs := fs.config.DebounceMs
+					if debounceMs <= 0 {
+						debounceMs = 200
+					}
+					fieldIndex := m.focusedIndex
+					queryID := fs.epicQueryID
+					return tea.Batch(textinput.Blink, tea.Tick(time.Duration(debounceMs)*time.Millisecond, func(t time.Time) tea.Msg {
+						return epicSearchDebounceMsg{
+							fieldIndex: fieldIndex,
+							query:      "",
+							queryID:    queryID,
+						}
+					}))
+				}
 				return textinput.Blink
 			}
 		}
@@ -1016,6 +1135,197 @@ func (m Model) handleKeyForSearchSelect(msg tea.KeyMsg, fs *fieldState) (Model, 
 		m = m.updateSearchFilter(fs)
 		return m, cmd
 	}
+}
+
+// handleKeyForEpicSearch processes keyboard input for epic search fields.
+// The field has two states:
+//   - Collapsed (with selection): Shows selected epic, Enter clears selection and expands
+//   - Collapsed (no selection): Typing immediately expands and starts search
+//   - Expanded: Shows search input + results from BQL query, Enter selects and collapses
+//
+// Uses arrow keys (not j/k) for list navigation to avoid conflicts with typing.
+func (m Model) handleKeyForEpicSearch(msg tea.KeyMsg, fs *fieldState) (Model, tea.Cmd) {
+	// Handle collapsed state (showing selected value or placeholder)
+	if !fs.epicSearchExpanded {
+		switch {
+		case key.Matches(msg, keys.Component.Tab), msg.Type == tea.KeyDown, key.Matches(msg, keys.Component.Next), msg.String() == "j":
+			return m.nextField(), m.blinkCmd()
+		case key.Matches(msg, keys.Component.ShiftTab), msg.Type == tea.KeyUp, key.Matches(msg, keys.Component.Prev), msg.String() == "k":
+			return m.prevField(), m.blinkCmd()
+		case key.Matches(msg, keys.Common.Enter):
+			// Enter clears selection and expands to search
+			return m.expandEpicSearch(fs, "")
+		default:
+			// If no selection, typing immediately expands and starts search with that character
+			if fs.epicSelectedID == "" && msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+				return m.expandEpicSearch(fs, string(msg.Runes))
+			}
+		}
+		return m, nil
+	}
+
+	// Handle expanded state (search + results visible)
+	switch {
+	case key.Matches(msg, keys.Component.Tab):
+		// Tab collapses and moves to next field
+		fs.epicSearchExpanded = false
+		fs.searchInput.Blur()
+		return m.nextField(), m.blinkCmd()
+
+	case key.Matches(msg, keys.Component.ShiftTab):
+		// Shift+Tab collapses and moves to previous field
+		fs.epicSearchExpanded = false
+		fs.searchInput.Blur()
+		return m.prevField(), m.blinkCmd()
+
+	// Note: Escape is handled in handleKeyMsg before dispatch to collapse search
+
+	case msg.Type == tea.KeyDown, key.Matches(msg, keys.Component.Next):
+		// Arrow down or ctrl+n navigates list
+		if len(fs.searchFiltered) > 0 && fs.listCursor < len(fs.searchFiltered)-1 {
+			fs.listCursor++
+			m = m.ensureEpicSearchCursorVisible(fs)
+		}
+		return m, nil
+
+	case msg.Type == tea.KeyUp, key.Matches(msg, keys.Component.Prev):
+		// Arrow up or ctrl+p navigates list
+		if fs.listCursor > 0 {
+			fs.listCursor--
+			m = m.ensureEpicSearchCursorVisible(fs)
+		}
+		return m, nil
+
+	case key.Matches(msg, keys.Common.Enter):
+		// Enter selects current item and collapses
+		if len(fs.searchFiltered) > 0 && fs.listCursor < len(fs.searchFiltered) {
+			actualIdx := fs.searchFiltered[fs.listCursor]
+			if actualIdx < len(fs.listItems) {
+				fs.epicSelectedID = fs.listItems[actualIdx].value
+				fs.epicSelectedTitle = fs.listItems[actualIdx].label
+			}
+		}
+		// Collapse back to showing selected value
+		fs.epicSearchExpanded = false
+		fs.searchInput.Blur()
+		return m, nil
+
+	default:
+		// Forward all other keys to search input (including j/k for typing)
+		oldValue := fs.searchInput.Value()
+		var cmd tea.Cmd
+		fs.searchInput, cmd = fs.searchInput.Update(msg)
+		newValue := fs.searchInput.Value()
+
+		// If input changed, trigger debounced query
+		if oldValue != newValue {
+			fs.epicQueryID++
+			fs.epicSearchError = nil
+			debounceMs := fs.config.DebounceMs
+			if debounceMs <= 0 {
+				debounceMs = 200
+			}
+			return m, tea.Batch(cmd, tea.Tick(time.Duration(debounceMs)*time.Millisecond, func(t time.Time) tea.Msg {
+				return epicSearchDebounceMsg{
+					fieldIndex: m.focusedIndex,
+					query:      newValue,
+					queryID:    fs.epicQueryID,
+				}
+			}))
+		}
+		return m, cmd
+	}
+}
+
+// expandEpicSearch expands the epic search field and starts a search with optional initial text.
+func (m Model) expandEpicSearch(fs *fieldState, initialText string) (Model, tea.Cmd) {
+	fs.epicSearchExpanded = true
+	fs.epicSelectedID = ""
+	fs.epicSelectedTitle = ""
+	fs.searchInput.SetValue(initialText)
+	fs.searchInput.Focus()
+	fs.epicSearchError = nil
+	fs.epicHasLoaded = false
+	// Clear any previous results and trigger initial query
+	fs.listItems = []listItem{}
+	fs.searchFiltered = []int{}
+	fs.listCursor = 0
+	fs.scrollOffset = 0
+	// Start a debounced query
+	fs.epicQueryID++
+	debounceMs := fs.config.DebounceMs
+	if debounceMs <= 0 {
+		debounceMs = 200
+	}
+	return m, tea.Tick(time.Duration(debounceMs)*time.Millisecond, func(t time.Time) tea.Msg {
+		return epicSearchDebounceMsg{
+			fieldIndex: m.focusedIndex,
+			query:      initialText,
+			queryID:    fs.epicQueryID,
+		}
+	})
+}
+
+// buildEpicSearchQuery constructs a BQL query for searching epics.
+// Searches id, title, and description fields to support pasting epic IDs directly.
+func buildEpicSearchQuery(input string) string {
+	if input == "" {
+		return "type = epic and status != closed order by updated desc"
+	}
+	// Escape quotes in the input
+	escaped := strings.ReplaceAll(input, `"`, `\"`)
+	return fmt.Sprintf(`type = epic and status != closed and (id ~ "%s" or title ~ "%s" or description ~ "%s") order by updated desc`, escaped, escaped, escaped)
+}
+
+// executeEpicSearch creates a command that executes the BQL query asynchronously.
+func (m Model) executeEpicSearch(fieldIndex int, query string, queryID int) tea.Cmd {
+	if fieldIndex < 0 || fieldIndex >= len(m.fields) {
+		return nil
+	}
+	fs := &m.fields[fieldIndex]
+	if fs.config.EpicSearchExecutor == nil {
+		return func() tea.Msg {
+			return epicSearchResultsMsg{
+				fieldIndex: fieldIndex,
+				err:        fmt.Errorf("no BQL executor configured"),
+				queryID:    queryID,
+			}
+		}
+	}
+
+	executor := fs.config.EpicSearchExecutor
+	bqlQuery := buildEpicSearchQuery(query)
+
+	return func() tea.Msg {
+		issues, err := executor.Execute(bqlQuery)
+		return epicSearchResultsMsg{
+			fieldIndex: fieldIndex,
+			issues:     issues,
+			err:        err,
+			queryID:    queryID,
+		}
+	}
+}
+
+// ensureEpicSearchCursorVisible adjusts scroll offset to keep cursor in view.
+// Uses "cursor at bottom" scrolling: cursor moves to bottom of visible area first,
+// then list scrolls up keeping cursor at the bottom position.
+func (m Model) ensureEpicSearchCursorVisible(fs *fieldState) Model {
+	maxVisible := fs.config.MaxVisibleItems
+	if maxVisible <= 0 {
+		maxVisible = 10
+	}
+
+	// Scroll down: only when cursor goes PAST the last visible row
+	if fs.listCursor >= fs.scrollOffset+maxVisible {
+		fs.scrollOffset = fs.listCursor - maxVisible + 1
+	}
+	// Scroll up: when cursor goes above the first visible row
+	if fs.listCursor < fs.scrollOffset {
+		fs.scrollOffset = fs.listCursor
+	}
+
+	return m
 }
 
 // updateSearchFilter filters items based on current search text.

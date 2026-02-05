@@ -2030,6 +2030,7 @@ func (m Model) openNewWorkflowModal() (mode.Controller, tea.Cmd) {
 		m.controlPlane,
 		gitExec,
 		m.workflowCreator,
+		m.services.Executor, // BQL executor for epic search fields
 		m.vimMode,
 	).SetSize(m.width, m.height)
 	return m, m.newWorkflowModal.Init()

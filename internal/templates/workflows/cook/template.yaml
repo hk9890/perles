@@ -13,5 +13,5 @@ registry:
       - key: "epic_id"
         label: "Epic ID"
         description: "The epic ID to work on (e.g., perles-abc1)"
-        type: "text"
+        type: "epic-search"
         required: true

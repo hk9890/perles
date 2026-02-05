@@ -316,6 +316,10 @@ func (m Model) renderField(index int, width int) string {
 	case FieldTypeTextArea:
 		rendered = m.renderTextAreaField(fs, width, focused)
 		return zone.Mark(fieldZoneID, rendered)
+
+	case FieldTypeEpicSearch:
+		rendered = m.renderEpicSearchField(fs, index, width, focused)
+		return zone.Mark(fieldZoneID, rendered)
 	}
 
 	return ""
@@ -659,6 +663,170 @@ func (m Model) renderSearchSelectExpanded(fs *fieldState, fieldIndex int, width 
 
 		// "More" indicator if there are items below
 		if endIdx < len(fs.searchFiltered) {
+			moreStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+			rows = append(rows, moreStyle.Render(" ↓ more..."))
+		}
+	}
+
+	return styles.FormSection(styles.FormSectionConfig{
+		Content:            rows,
+		Width:              width,
+		TopLeft:            cfg.Label,
+		TopLeftHint:        cfg.Hint,
+		Focused:            focused,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	})
+}
+
+// renderEpicSearchField renders the epic search field.
+// Has two states:
+//   - Collapsed: Shows selected epic "{ID}: {truncated title}" or "(none selected)"
+//   - Expanded: Shows search input + dynamically loaded results with loading/error/empty states
+func (m Model) renderEpicSearchField(fs *fieldState, fieldIndex int, width int, focused bool) string {
+	// Collapsed state: show selected value
+	if !fs.epicSearchExpanded {
+		return m.renderEpicSearchCollapsed(fs, width, focused)
+	}
+
+	// Expanded state: show search + dynamic results
+	return m.renderEpicSearchExpanded(fs, fieldIndex, width, focused)
+}
+
+// renderEpicSearchCollapsed renders the collapsed state showing selected epic.
+func (m Model) renderEpicSearchCollapsed(fs *fieldState, width int, focused bool) string {
+	cfg := fs.config
+
+	// Calculate available width for label
+	// width = contentWidth (modal width - 2 for modal border)
+	// innerWidth = width - 2 for FormSection borders
+	innerWidth := width - 2
+	// Available for label: innerWidth - 1 (prefix space)
+	availableWidth := innerWidth - 1
+
+	// Build the display text
+	var displayText string
+	if fs.epicSelectedID != "" {
+		// Show "{ID}: {truncated title}" - truncate title to 40 chars max
+		const maxTitleLen = 40
+		title := fs.epicSelectedTitle
+		if len(title) > maxTitleLen {
+			title = title[:maxTitleLen-3] + "..."
+		}
+		fullText := fs.epicSelectedID + ": " + title
+		displayText = styles.TruncateString(fullText, availableWidth)
+	} else {
+		// Show placeholder text (styled as muted)
+		placeholder := fs.searchInput.Placeholder
+		if placeholder == "" {
+			placeholder = "Search epics..."
+		}
+		placeholderStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+		displayText = placeholderStyle.Render(placeholder)
+	}
+
+	return styles.FormSection(styles.FormSectionConfig{
+		Content:            []string{" " + displayText},
+		Width:              width,
+		TopLeft:            cfg.Label,
+		TopLeftHint:        cfg.Hint,
+		Focused:            focused,
+		FocusedBorderColor: styles.BorderHighlightFocusColor,
+	})
+}
+
+// renderEpicSearchExpanded renders the expanded state with search input and dynamic results.
+func (m Model) renderEpicSearchExpanded(fs *fieldState, fieldIndex int, width int, focused bool) string {
+	cfg := fs.config
+	maxVisible := cfg.MaxVisibleItems
+	if maxVisible <= 0 {
+		maxVisible = 10
+	}
+
+	// Divider spans full inner width (width - 2 for FormSection borders)
+	innerWidth := width - 2
+
+	// Search input row - set width to fill available space
+	// innerWidth - 1 (prefix space) - 1 (cursor padding)
+	fs.searchInput.Width = innerWidth - 2
+	searchRow := " " + fs.searchInput.View()
+
+	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
+	divider := dividerStyle.Render(strings.Repeat("─", innerWidth))
+
+	// Build content rows
+	var rows []string
+	rows = append(rows, searchRow)
+	rows = append(rows, divider)
+
+	// Handle error state
+	if fs.epicSearchError != nil {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(styles.StatusErrorColor)
+		rows = append(rows, errorStyle.Render(" Error: "+fs.epicSearchError.Error()))
+		hintStyle := lipgloss.NewStyle().
+			Foreground(styles.TextMutedColor).
+			Italic(true)
+		rows = append(rows, hintStyle.Render(" (type to retry)"))
+		return styles.FormSection(styles.FormSectionConfig{
+			Content:            rows,
+			Width:              width,
+			TopLeft:            cfg.Label,
+			TopLeftHint:        cfg.Hint,
+			Focused:            focused,
+			FocusedBorderColor: styles.BorderHighlightFocusColor,
+		})
+	}
+
+	// Handle empty states
+	if len(fs.listItems) == 0 {
+		loadingStyle := lipgloss.NewStyle().
+			Foreground(styles.TextMutedColor).
+			Italic(true)
+		if fs.epicHasLoaded {
+			// Show appropriate empty message after load completes
+			query := fs.searchInput.Value()
+			if query == "" {
+				rows = append(rows, loadingStyle.Render(" No epics found"))
+			} else {
+				rows = append(rows, loadingStyle.Render(" No matches for '"+query+"'"))
+			}
+		} else {
+			// Show loading placeholder before results arrive
+			rows = append(rows, loadingStyle.Render(" Loading..."))
+		}
+	} else {
+		// Render results list
+		endIdx := min(fs.scrollOffset+maxVisible, len(fs.listItems))
+		for i := fs.scrollOffset; i < endIdx; i++ {
+			item := fs.listItems[i]
+
+			// Highlight the cursor row (what user is about to select)
+			isCursorRow := focused && i == fs.listCursor
+
+			// Display: "{ID}: {truncated title}"
+			const maxTitleLen = 40
+			title := item.label
+			if len(title) > maxTitleLen {
+				title = title[:maxTitleLen-3] + "..."
+			}
+			displayLabel := item.value + ": " + title
+			displayLabel = styles.TruncateString(displayLabel, innerWidth-1)
+			labelRow := " " + displayLabel
+
+			// Always pad to full width so the entire row is clickable
+			if lipgloss.Width(labelRow) < innerWidth {
+				labelRow = labelRow + strings.Repeat(" ", innerWidth-lipgloss.Width(labelRow))
+			}
+			if isCursorRow {
+				cursorStyle := lipgloss.NewStyle().Background(styles.SelectionBackgroundColor)
+				labelRow = cursorStyle.Render(labelRow)
+			}
+			// Each row gets a unique zone ID
+			rows = append(rows, zone.Mark(makeItemRowZoneID(fieldIndex, i, 0), labelRow))
+		}
+
+		// "More" indicator if there are items below
+		if endIdx < len(fs.listItems) {
 			moreStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 			rows = append(rows, moreStyle.Render(" ↓ more..."))
 		}

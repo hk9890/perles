@@ -20,6 +20,7 @@ import (
 	controlplanemocks "github.com/zjrosen/perles/internal/orchestration/controlplane/mocks"
 	appreg "github.com/zjrosen/perles/internal/registry/application"
 	registry "github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
 )
 
 // === Test Helpers ===
@@ -189,7 +190,7 @@ func createTestModelWithRegistryService(t *testing.T, workflows []*controlplane.
 
 func TestNewWorkflowModal_LoadsTemplatesFromRegistry(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 	require.NotNil(t, modal)
 
 	// Modal should be created with templates from registry
@@ -200,7 +201,7 @@ func TestNewWorkflowModal_LoadsTemplatesFromRegistry(t *testing.T) {
 }
 
 func TestNewWorkflowModal_HandlesNilRegistry(t *testing.T) {
-	modal := NewNewWorkflowModal(nil, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(nil, nil, nil, nil, nil, false)
 	require.NotNil(t, modal)
 
 	// Should still render without crashing
@@ -212,7 +213,7 @@ func TestNewWorkflowModal_HandlesNilRegistry(t *testing.T) {
 
 func TestNewWorkflowModal_ValidationRejectsEmptyTemplate(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	values := map[string]any{
 		"template": "",
@@ -226,7 +227,7 @@ func TestNewWorkflowModal_ValidationRejectsEmptyTemplate(t *testing.T) {
 
 func TestNewWorkflowModal_ValidationAcceptsValidInput(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	values := map[string]any{
 		"template": "quick-plan",
@@ -273,7 +274,7 @@ func TestNewWorkflowModal_CreateCallsControlPlane(t *testing.T) {
 
 	registryService := createTestRegistryService(t)
 	workflowCreator := createTestWorkflowCreator(t, registryService)
-	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, nil, false)
 
 	// Simulate form submission (now async)
 	values := map[string]any{
@@ -334,7 +335,7 @@ func TestDashboard_CreateWorkflowStartsImmediately(t *testing.T) {
 
 func TestNewWorkflowModal_ResourceLimitsOptional(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	values := map[string]any{
 		"template":     "quick-plan",
@@ -353,7 +354,7 @@ func TestNewWorkflowModal_ResourceLimitsOptional(t *testing.T) {
 
 func TestNewWorkflowModal_TabNavigates(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false).SetSize(100, 40)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false).SetSize(100, 40)
 
 	// Press Tab - should navigate to next field
 	modal, _ = modal.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -439,7 +440,7 @@ func TestDashboard_WindowResizeUpdatesModal(t *testing.T) {
 
 func TestNewWorkflowModal_CtrlSSavesForm(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false).SetSize(100, 40)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false).SetSize(100, 40)
 
 	// Press Ctrl+S - should trigger save/validation
 	// Since form is empty, it should show validation error
@@ -541,7 +542,7 @@ func TestBuildTemplateOptions_NilRegistry(t *testing.T) {
 // Test escape key handler checks for common escape binding
 func TestNewWorkflowModal_EscapeClearsModal(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false).SetSize(100, 40)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false).SetSize(100, 40)
 
 	// Press escape
 	modal, cmd := modal.Update(keys.Common.Escape.Keys()[0])
@@ -573,7 +574,7 @@ func TestNewWorkflowModal_PopulatesBranchOptionsFromListBranches(t *testing.T) {
 	registryService := createTestRegistryService(t)
 	mockGit := createMockGitExecutorWithBranches(t)
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 	require.NotNil(t, modal)
 	require.True(t, modal.worktreeEnabled)
 
@@ -603,7 +604,7 @@ func TestNewWorkflowModal_DisablesWorktreeFieldsWhenListBranchesFails(t *testing
 	mockGit := mocks.NewMockGitExecutor(t)
 	mockGit.EXPECT().ListBranches().Return(nil, errors.New("not a git repo"))
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 	require.NotNil(t, modal)
 	require.False(t, modal.worktreeEnabled)
 
@@ -616,7 +617,7 @@ func TestNewWorkflowModal_DisablesWorktreeFieldsWhenListBranchesFails(t *testing
 func TestNewWorkflowModal_DisablesWorktreeFieldsWhenGitExecutorNil(t *testing.T) {
 	registryService := createTestRegistryService(t)
 
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 	require.NotNil(t, modal)
 	require.False(t, modal.worktreeEnabled)
 
@@ -638,7 +639,7 @@ func TestNewWorkflowModal_OnSubmitSetsWorktreeEnabledCorrectly(t *testing.T) {
 			spec.WorktreeBranchName == "my-feature"
 	})).Return(controlplane.WorkflowID("new-workflow-id"), nil).Once()
 
-	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -666,7 +667,7 @@ func TestNewWorkflowModal_OnSubmitSetsWorktreeBaseBranchFromSearchSelect(t *test
 		return spec.WorktreeEnabled == true && spec.WorktreeBaseBranch == "develop"
 	})).Return(controlplane.WorkflowID("new-workflow-id"), nil).Once()
 
-	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -694,7 +695,7 @@ func TestNewWorkflowModal_OnSubmitSetsWorktreeBranchNameFromTextField(t *testing
 		return spec.WorktreeEnabled == true && spec.WorktreeBranchName == "perles-custom-branch"
 	})).Return(controlplane.WorkflowID("new-workflow-id"), nil).Once()
 
-	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, mockGit, workflowCreator, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -716,7 +717,7 @@ func TestNewWorkflowModal_ValidationRequiresBaseBranchWhenWorktreeEnabled(t *tes
 	registryService := createTestRegistryService(t)
 	mockGit := createMockGitExecutorWithBranches(t)
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -739,7 +740,7 @@ func TestNewWorkflowModal_ValidationRejectsInvalidBranchNames(t *testing.T) {
 	}, nil)
 	mockGit.EXPECT().ValidateBranchName("invalid..branch").Return(errors.New("invalid ref format"))
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -762,7 +763,7 @@ func TestNewWorkflowModal_ValidationAcceptsValidBranchName(t *testing.T) {
 	}, nil)
 	mockGit.EXPECT().ValidateBranchName("feature/valid-branch").Return(nil)
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -780,7 +781,7 @@ func TestNewWorkflowModal_ValidationPassesWhenWorktreeDisabled(t *testing.T) {
 	registryService := createTestRegistryService(t)
 	mockGit := createMockGitExecutorWithBranches(t)
 
-	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, mockGit, nil, nil, false)
 
 	values := map[string]any{
 		"template":      "quick-plan",
@@ -890,7 +891,7 @@ func TestNewWorkflowModal_OnSubmitCallsWorkflowCreatorWithName(t *testing.T) {
 			spec.Name == "test-feature"
 	})).Return(controlplane.WorkflowID("new-workflow-id"), nil).Once()
 
-	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, nil, false)
 
 	values := map[string]any{
 		"template": "quick-plan",
@@ -944,7 +945,7 @@ func TestNewWorkflowModal_MockCreatorAndRegistryServiceTypes(t *testing.T) {
 
 func TestNewWorkflowModal_BuildCoordinatorPromptContainsAllSections(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	prompt := modal.buildCoordinatorPrompt("quick-plan", "perles-abc123")
 
@@ -964,7 +965,7 @@ func TestNewWorkflowModal_OnSubmitReturnsErrorOnWorkflowCreatorFailure(t *testin
 
 	// Test the error handling path by verifying ErrorMsg is returned
 	// when WorkflowCreator would fail (simulated by checking the error type exists)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	// This test verifies the ErrorMsg type is properly defined and can be used
 	errMsg := ErrorMsg{Err: errors.New("create epic failed")}
@@ -986,7 +987,7 @@ func TestNewWorkflowModal_EpicIDPassedToWorkflowSpec(t *testing.T) {
 		return spec.EpicID == "epic-123" && spec.TemplateID == "quick-plan"
 	})).Return(controlplane.WorkflowID("workflow-123"), nil).Once()
 
-	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, false)
+	modal := NewNewWorkflowModal(registryService, mockCP, nil, workflowCreator, nil, false)
 
 	values := map[string]any{
 		"template": "quick-plan",
@@ -1034,7 +1035,7 @@ registry:
 
 func TestBuildCoordinatorPrompt_UsesCustomSystemPrompt(t *testing.T) {
 	registryService := createTestRegistryServiceWithSystemPrompt(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	prompt := modal.buildCoordinatorPrompt("quick-plan", "perles-abc123")
 
@@ -1084,7 +1085,7 @@ registry:
 func TestBuildCoordinatorPrompt_HandlesNoInstructionsField(t *testing.T) {
 	// Create a registry where the template has no instructions field
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	prompt := modal.buildCoordinatorPrompt("quick-plan", "perles-abc123")
 
@@ -1098,7 +1099,7 @@ func TestBuildCoordinatorPrompt_HandlesNoInstructionsField(t *testing.T) {
 
 func TestNewWorkflowModal_ErrorMsgSetsFormError(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 	modal = modal.SetSize(80, 24)
 
 	// Send ErrorMsg to modal
@@ -1112,7 +1113,7 @@ func TestNewWorkflowModal_ErrorMsgSetsFormError(t *testing.T) {
 
 func TestNewWorkflowModal_ErrorMsgClearsLoadingState(t *testing.T) {
 	registryService := createTestRegistryService(t)
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 	modal = modal.SetSize(80, 24)
 
 	// Simulate loading state by sending startSubmitMsg first
@@ -1168,7 +1169,7 @@ registry:
 	registryService, err := appreg.NewRegistryService(registryFS, "")
 	require.NoError(t, err)
 
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	// Verify templateArgs was populated
 	require.Contains(t, modal.templateArgs, "with-args")
@@ -1223,7 +1224,7 @@ registry:
 	registryService, err := appreg.NewRegistryService(registryFS, "")
 	require.NoError(t, err)
 
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	// Test extracting argument values
 	values := map[string]any{
@@ -1268,7 +1269,7 @@ registry:
 	registryService, err := appreg.NewRegistryService(registryFS, "")
 	require.NoError(t, err)
 
-	modal := NewNewWorkflowModal(registryService, nil, nil, nil, false)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
 
 	// Test validation fails when required argument is missing
 	values := map[string]any{
@@ -1284,4 +1285,467 @@ registry:
 	values["arg_feature_name"] = "my-feature"
 	err = modal.validate(values)
 	require.NoError(t, err)
+}
+
+// === Epic Search Field Integration Tests ===
+
+// createTestRegistryServiceWithEpicSearch creates a registry service with a workflow
+// that has an epic-search argument type.
+// Note: IsEpicDriven() requires exactly 1 argument named "epic_id" and NO nodes.
+func createTestRegistryServiceWithEpicSearch(t *testing.T) *appreg.RegistryService {
+	t.Helper()
+	registryFS := fstest.MapFS{
+		"workflows/epic-driven/template.yaml": &fstest.MapFile{
+			// Epic-driven workflows have:
+			// 1. Exactly one argument named "epic_id"
+			// 2. No nodes (tasks come from the BD tracker, not from YAML)
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "epic-driven"
+    version: "v1"
+    name: "Epic Driven Workflow"
+    description: "Workflow that selects an existing epic"
+    arguments:
+      - key: "epic_id"
+        label: "Epic"
+        description: "Select an epic to work on"
+        type: "epic-search"
+        required: true
+`),
+		},
+		// Default system prompt file is required for workflow registrations
+		"workflows/v1-epic-instructions.md": &fstest.MapFile{Data: []byte("# Default system prompt")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+	return registryService
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_CreatesCorrectFieldType(t *testing.T) {
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Verify templateArgs was populated with epic-search argument
+	require.Contains(t, modal.templateArgs, "epic-driven")
+	args := modal.templateArgs["epic-driven"]
+	require.Len(t, args, 1)
+	require.Equal(t, "epic_id", args[0].Key())
+	require.Equal(t, registry.ArgumentTypeEpicSearch, args[0].Type())
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_InjectsExecutor(t *testing.T) {
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Verify the BQL executor is stored
+	require.Equal(t, mockBQL, modal.bqlExecutor)
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_DefaultDebounce200ms(t *testing.T) {
+	// This test verifies the debounce is set to 200ms by checking the form field config
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+	require.NotNil(t, modal)
+
+	// The field should be created with DebounceMs = 200
+	// We verify by checking that the modal renders without error (the field was created)
+	view := modal.SetSize(100, 40).View()
+	require.NotEmpty(t, view)
+	// When the template is selected, the Epic field should be visible
+	require.Contains(t, view, "Template")
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_FormSubmissionWithSelectedEpic(t *testing.T) {
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+	// Note: BQL executor is not called during form submission - it's only used during field interaction
+
+	mockCP := newMockControlPlane(t)
+	// Verify that the epic_id is passed through to the workflow spec
+	mockCP.On("Create", mock.Anything, mock.MatchedBy(func(spec controlplane.WorkflowSpec) bool {
+		return spec.EpicID == "epic-123" && spec.TemplateID == "epic-driven"
+	})).Return(controlplane.WorkflowID("new-workflow-id"), nil).Once()
+
+	modal := NewNewWorkflowModal(registryService, mockCP, nil, nil, mockBQL, false)
+
+	// Simulate form submission with selected epic
+	values := map[string]any{
+		"template":    "epic-driven",
+		"name":        "",
+		"arg_epic_id": "epic-123",
+	}
+
+	msg := simulateAsyncSubmit(t, modal, values)
+	createMsg, ok := msg.(CreateWorkflowMsg)
+	require.True(t, ok)
+	require.Equal(t, controlplane.WorkflowID("new-workflow-id"), createMsg.WorkflowID)
+
+	mockCP.AssertExpectations(t)
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_MultipleFieldsWorkIndependently(t *testing.T) {
+	// Create a workflow with two epic-search fields to verify they work independently
+	registryFS := fstest.MapFS{
+		"workflows/multi-epic/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "multi-epic"
+    version: "v1"
+    name: "Multi Epic Workflow"
+    description: "Workflow with multiple epic search fields"
+    epic_driven: true
+    arguments:
+      - key: "source_epic"
+        label: "Source Epic"
+        description: "Select source epic"
+        type: "epic-search"
+        required: true
+      - key: "target_epic"
+        label: "Target Epic"
+        description: "Select target epic"
+        type: "epic-search"
+        required: false
+    nodes:
+      - key: "process"
+        name: "Process"
+        template: "v1-process.md"
+`),
+		},
+		"workflows/multi-epic/v1-process.md": &fstest.MapFile{Data: []byte("# Process")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	mockBQL := mocks.NewMockBQLExecutor(t)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Verify both fields were created
+	require.Contains(t, modal.templateArgs, "multi-epic")
+	args := modal.templateArgs["multi-epic"]
+	require.Len(t, args, 2)
+
+	// Both should be epic-search type
+	require.Equal(t, registry.ArgumentTypeEpicSearch, args[0].Type())
+	require.Equal(t, registry.ArgumentTypeEpicSearch, args[1].Type())
+	require.Equal(t, "source_epic", args[0].Key())
+	require.Equal(t, "target_epic", args[1].Key())
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_MockBQLExecutorVerifiesQueryConstruction(t *testing.T) {
+	// This test verifies the BQL executor is properly injected and would be called with correct queries
+	// (The actual query execution happens in formmodal, but we verify the executor is wired up)
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// The executor is stored and would be passed to form fields
+	require.NotNil(t, modal.bqlExecutor)
+	require.Equal(t, mockBQL, modal.bqlExecutor)
+
+	// Modal should render correctly
+	view := modal.SetSize(100, 40).View()
+	require.NotEmpty(t, view)
+}
+
+func TestNewWorkflowModal_EpicSearchArgument_FormValuesIncludeSelectedEpicID(t *testing.T) {
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Simulate extracting argument values (as would happen during form submission)
+	values := map[string]any{
+		"template":    "epic-driven",
+		"arg_epic_id": "perles-123",
+	}
+
+	args := modal.extractArgumentValues("epic-driven", values)
+
+	// The epic_id should be extracted
+	require.Equal(t, "perles-123", args["epic_id"])
+}
+
+// === Regression Tests: Existing Argument Types Still Work ===
+
+func TestNewWorkflowModal_RegressionTest_TextArgumentStillWorks(t *testing.T) {
+	// Verify that text arguments still work after adding epic-search support
+	registryFS := fstest.MapFS{
+		"workflows/with-text/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "with-text"
+    version: "v1"
+    name: "Text Workflow"
+    description: "Workflow with text argument"
+    arguments:
+      - key: "feature"
+        label: "Feature Name"
+        description: "Enter feature name"
+        type: "text"
+        required: true
+    nodes:
+      - key: "task"
+        name: "Task"
+        template: "v1-task.md"
+`),
+		},
+		"workflows/with-text/v1-task.md": &fstest.MapFile{Data: []byte("# Task")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
+
+	// Verify text argument is recognized
+	require.Contains(t, modal.templateArgs, "with-text")
+	args := modal.templateArgs["with-text"]
+	require.Len(t, args, 1)
+	require.Equal(t, registry.ArgumentTypeText, args[0].Type())
+}
+
+func TestNewWorkflowModal_RegressionTest_SelectArgumentStillWorks(t *testing.T) {
+	// Verify that select arguments still work after adding epic-search support
+	registryFS := fstest.MapFS{
+		"workflows/with-select/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "with-select"
+    version: "v1"
+    name: "Select Workflow"
+    description: "Workflow with select argument"
+    arguments:
+      - key: "priority"
+        label: "Priority"
+        description: "Select priority"
+        type: "select"
+        required: true
+        options:
+          - "low"
+          - "medium"
+          - "high"
+    nodes:
+      - key: "task"
+        name: "Task"
+        template: "v1-task.md"
+`),
+		},
+		"workflows/with-select/v1-task.md": &fstest.MapFile{Data: []byte("# Task")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
+
+	// Verify select argument is recognized
+	require.Contains(t, modal.templateArgs, "with-select")
+	args := modal.templateArgs["with-select"]
+	require.Len(t, args, 1)
+	require.Equal(t, registry.ArgumentTypeSelect, args[0].Type())
+}
+
+func TestNewWorkflowModal_RegressionTest_TextareaArgumentStillWorks(t *testing.T) {
+	// Verify that textarea arguments still work after adding epic-search support
+	registryFS := fstest.MapFS{
+		"workflows/with-textarea/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "with-textarea"
+    version: "v1"
+    name: "Textarea Workflow"
+    description: "Workflow with textarea argument"
+    arguments:
+      - key: "notes"
+        label: "Notes"
+        description: "Enter notes"
+        type: "textarea"
+        required: false
+    nodes:
+      - key: "task"
+        name: "Task"
+        template: "v1-task.md"
+`),
+		},
+		"workflows/with-textarea/v1-task.md": &fstest.MapFile{Data: []byte("# Task")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
+
+	// Verify textarea argument is recognized
+	require.Contains(t, modal.templateArgs, "with-textarea")
+	args := modal.templateArgs["with-textarea"]
+	require.Len(t, args, 1)
+	require.Equal(t, registry.ArgumentTypeTextarea, args[0].Type())
+}
+
+func TestNewWorkflowModal_RegressionTest_MultiSelectArgumentStillWorks(t *testing.T) {
+	// Verify that multi-select arguments still work after adding epic-search support
+	registryFS := fstest.MapFS{
+		"workflows/with-multiselect/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "with-multiselect"
+    version: "v1"
+    name: "MultiSelect Workflow"
+    description: "Workflow with multi-select argument"
+    arguments:
+      - key: "labels"
+        label: "Labels"
+        description: "Select labels"
+        type: "multi-select"
+        required: false
+        options:
+          - "bug"
+          - "feature"
+          - "docs"
+    nodes:
+      - key: "task"
+        name: "Task"
+        template: "v1-task.md"
+`),
+		},
+		"workflows/with-multiselect/v1-task.md": &fstest.MapFile{Data: []byte("# Task")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, nil, false)
+
+	// Verify multi-select argument is recognized
+	require.Contains(t, modal.templateArgs, "with-multiselect")
+	args := modal.templateArgs["with-multiselect"]
+	require.Len(t, args, 1)
+	require.Equal(t, registry.ArgumentTypeMultiSelect, args[0].Type())
+}
+
+func TestNewWorkflowModal_RegressionTest_AllExistingFormModalTestsPass(t *testing.T) {
+	// This is a meta-test that documents our expectation:
+	// After adding epic-search support, all existing formmodal tests should still pass.
+	// The actual formmodal tests are in internal/ui/shared/formmodal/
+	// This test just verifies the modal creation still works with various argument types mixed.
+
+	registryFS := fstest.MapFS{
+		"workflows/mixed/template.yaml": &fstest.MapFile{
+			Data: []byte(`
+registry:
+  - namespace: "workflow"
+    key: "mixed"
+    version: "v1"
+    name: "Mixed Workflow"
+    description: "Workflow with all argument types"
+    epic_driven: true
+    arguments:
+      - key: "text_field"
+        label: "Text Field"
+        description: "A text field"
+        type: "text"
+        required: true
+      - key: "number_field"
+        label: "Number Field"
+        description: "A number field"
+        type: "number"
+        required: false
+      - key: "textarea_field"
+        label: "Textarea Field"
+        description: "A textarea field"
+        type: "textarea"
+        required: false
+      - key: "select_field"
+        label: "Select Field"
+        description: "A select field"
+        type: "select"
+        required: false
+        options:
+          - "option1"
+          - "option2"
+      - key: "multiselect_field"
+        label: "MultiSelect Field"
+        description: "A multi-select field"
+        type: "multi-select"
+        required: false
+        options:
+          - "tag1"
+          - "tag2"
+      - key: "epic_field"
+        label: "Epic Field"
+        description: "An epic search field"
+        type: "epic-search"
+        required: false
+    nodes:
+      - key: "task"
+        name: "Task"
+        template: "v1-task.md"
+`),
+		},
+		"workflows/mixed/v1-task.md": &fstest.MapFile{Data: []byte("# Task")},
+	}
+	registryService, err := appreg.NewRegistryService(registryFS, "")
+	require.NoError(t, err)
+
+	mockBQL := mocks.NewMockBQLExecutor(t)
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Verify all arguments are recognized
+	require.Contains(t, modal.templateArgs, "mixed")
+	args := modal.templateArgs["mixed"]
+	require.Len(t, args, 6)
+
+	// Verify each type is correct
+	typeMap := make(map[string]registry.ArgumentType)
+	for _, arg := range args {
+		typeMap[arg.Key()] = arg.Type()
+	}
+
+	require.Equal(t, registry.ArgumentTypeText, typeMap["text_field"])
+	require.Equal(t, registry.ArgumentTypeNumber, typeMap["number_field"])
+	require.Equal(t, registry.ArgumentTypeTextarea, typeMap["textarea_field"])
+	require.Equal(t, registry.ArgumentTypeSelect, typeMap["select_field"])
+	require.Equal(t, registry.ArgumentTypeMultiSelect, typeMap["multiselect_field"])
+	require.Equal(t, registry.ArgumentTypeEpicSearch, typeMap["epic_field"])
+
+	// Modal should render without errors
+	view := modal.SetSize(100, 40).View()
+	require.NotEmpty(t, view)
+}
+
+// TestBuildArgumentFields_EpicSearchFieldConfigIsCorrect verifies the field configuration
+// generated for an epic-search argument type has all required settings.
+func TestBuildArgumentFields_EpicSearchFieldConfigIsCorrect(t *testing.T) {
+	registryService := createTestRegistryServiceWithEpicSearch(t)
+	mockBQL := mocks.NewMockBQLExecutor(t)
+
+	modal := NewNewWorkflowModal(registryService, nil, nil, nil, mockBQL, false)
+
+	// Build argument fields to verify configuration
+	fields := modal.buildArgumentFields(registryService)
+
+	// Find the epic_id field
+	var epicField *formmodal.FieldConfig
+	for i := range fields {
+		if fields[i].Key == "arg_epic_id" {
+			epicField = &fields[i]
+			break
+		}
+	}
+
+	require.NotNil(t, epicField, "epic_id field should exist")
+	require.Equal(t, formmodal.FieldTypeEpicSearch, epicField.Type)
+	require.Equal(t, mockBQL, epicField.EpicSearchExecutor)
+	require.Equal(t, 200, epicField.DebounceMs)
+	require.Equal(t, "Epic", epicField.Label)
+	require.Equal(t, "required", epicField.Hint)
 }

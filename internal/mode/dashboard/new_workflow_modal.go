@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/zjrosen/perles/internal/bql"
 	appgit "github.com/zjrosen/perles/internal/git/application"
 	"github.com/zjrosen/perles/internal/orchestration/controlplane"
 	appreg "github.com/zjrosen/perles/internal/registry/application"
@@ -27,8 +28,9 @@ type NewWorkflowModal struct {
 	controlPlane    controlplane.ControlPlane
 	gitExecutor     appgit.GitExecutor
 	workflowCreator *appreg.WorkflowCreator
-	worktreeEnabled bool // track if worktree options are available
-	vimEnabled      bool // whether vim mode is enabled for textarea fields
+	bqlExecutor     bql.BQLExecutor // BQL executor for epic search fields
+	worktreeEnabled bool            // track if worktree options are available
+	vimEnabled      bool            // whether vim mode is enabled for textarea fields
 
 	// templateArgs maps template key → slice of arguments for that template.
 	// Used to validate required arguments and build TemplateContext.Args on submit.
@@ -69,12 +71,14 @@ type CancelNewWorkflowMsg struct{}
 // gitExecutor is optional - if nil or if ListBranches() fails, worktree options are disabled.
 // workflowCreator is optional - if nil, epic creation is skipped.
 // registryService is optional - if nil, template listing returns empty options.
+// bqlExecutor is optional - if nil, epic search fields will not execute queries.
 // vimEnabled controls whether vim mode is used for textarea fields (from user config).
 func NewNewWorkflowModal(
 	registryService *appreg.RegistryService,
 	cp controlplane.ControlPlane,
 	gitExecutor appgit.GitExecutor,
 	workflowCreator *appreg.WorkflowCreator,
+	bqlExecutor bql.BQLExecutor,
 	vimEnabled bool,
 ) *NewWorkflowModal {
 	m := &NewWorkflowModal{
@@ -82,6 +86,7 @@ func NewNewWorkflowModal(
 		controlPlane:    cp,
 		gitExecutor:     gitExecutor,
 		workflowCreator: workflowCreator,
+		bqlExecutor:     bqlExecutor,
 		vimEnabled:      vimEnabled,
 		templateArgs:    make(map[string][]*registry.Argument),
 	}
@@ -234,6 +239,10 @@ func (m *NewWorkflowModal) buildArgumentFields(registryService *appreg.RegistryS
 				field.Type = formmodal.FieldTypeList
 				field.MultiSelect = true
 				field.Options = buildSelectOptions(arg.Options(), arg.DefaultValue())
+			case registry.ArgumentTypeEpicSearch:
+				field.Type = formmodal.FieldTypeEpicSearch
+				field.EpicSearchExecutor = m.bqlExecutor
+				field.DebounceMs = 200
 			default:
 				field.Type = formmodal.FieldTypeText
 			}

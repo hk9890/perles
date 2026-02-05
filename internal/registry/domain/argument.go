@@ -16,12 +16,14 @@ const (
 	ArgumentTypeSelect ArgumentType = "select"
 	// ArgumentTypeMultiSelect is a multi-select list.
 	ArgumentTypeMultiSelect ArgumentType = "multi-select"
+	// ArgumentTypeEpicSearch is a searchable epic selector with live BQL queries.
+	ArgumentTypeEpicSearch ArgumentType = "epic-search"
 )
 
 // IsValid returns true if the argument type is a known type.
 func (t ArgumentType) IsValid() bool {
 	switch t {
-	case ArgumentTypeText, ArgumentTypeNumber, ArgumentTypeTextarea, ArgumentTypeSelect, ArgumentTypeMultiSelect:
+	case ArgumentTypeText, ArgumentTypeNumber, ArgumentTypeTextarea, ArgumentTypeSelect, ArgumentTypeMultiSelect, ArgumentTypeEpicSearch:
 		return true
 	default:
 		return false
@@ -38,7 +40,7 @@ var (
 	ErrArgumentEmptyKey     = errors.New("argument key cannot be empty")
 	ErrArgumentEmptyLabel   = errors.New("argument label cannot be empty")
 	ErrArgumentEmptyType    = errors.New("argument type cannot be empty")
-	ErrArgumentInvalidType  = errors.New("argument type must be text, number, textarea, select, or multi-select")
+	ErrArgumentInvalidType  = errors.New("argument type must be text, number, textarea, select, multi-select, or epic-search")
 	ErrArgumentEmptyOptions = errors.New("argument options cannot be empty for select/multi-select types")
 )
 
