@@ -97,9 +97,6 @@ type Model struct {
 	// Delete operation state
 	deleteIssueIDs []string // IDs to delete (includes descendants for epics)
 
-	// External editor state
-	editingDescriptionIssueID string // Non-empty when external editor is open for description
-
 	// Focus management
 	focus FocusPane
 
@@ -632,9 +629,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case issueSavedMsg:
 		return m.handleIssueSaved(msg)
 
-	case descriptionChangedMsg:
-		return m.handleDescriptionChanged(msg)
-
 	case debounceSearchMsg:
 		// Only execute if version matches (not stale)
 		if msg.version == m.searchVersion {
@@ -757,23 +751,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.view = ViewEditIssue
 		return m, m.issueEditor.Init()
 
-	case details.OpenDescriptionEditorMsg:
-		// Open external editor for issue description
-		m.editingDescriptionIssueID = msg.IssueID
-		return m, editor.OpenCmd(msg.Description)
-
 	case editor.ExecMsg:
 		// Forward to issueeditor modal if open - this allows Ctrl+G external editor
-		// to work from the modal's description field. Without this check, the message
-		// would be intercepted here and lost when editingDescriptionIssueID is empty.
+		// to work from the modal's description field.
 		if m.view == ViewEditIssue {
 			var cmd tea.Cmd
 			m.issueEditor, cmd = m.issueEditor.Update(msg)
 			return m, cmd
-		}
-		// Execute the external editor command for details view
-		if m.editingDescriptionIssueID != "" {
-			return m, msg.ExecCmd()
 		}
 		return m, nil
 
@@ -784,29 +768,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.issueEditor, cmd = m.issueEditor.Update(msg)
 			return m, cmd
-		}
-		// Handle external editor result for details view
-		if m.editingDescriptionIssueID != "" {
-			issueID := m.editingDescriptionIssueID
-			m.editingDescriptionIssueID = "" // Clear state
-
-			if msg.Err != nil {
-				return m, tea.Batch(
-					tea.EnableMouseCellMotion,
-					func() tea.Msg {
-						return mode.ShowToastMsg{
-							Message: fmt.Sprintf("Editor error: %v", msg.Err),
-							Style:   toaster.StyleError,
-						}
-					},
-				)
-			}
-
-			// Save to database - watcher will refresh UI automatically
-			return m, tea.Batch(
-				tea.EnableMouseCellMotion,
-				m.updateIssueDescriptionCmd(issueID, msg.Content),
-			)
 		}
 		return m, nil
 
@@ -2053,14 +2014,6 @@ type issueSavedMsg struct {
 	err     error
 }
 
-// descriptionChangedMsg signals completion of a description update.
-// Retained for external editor (Ctrl+E) description editing path.
-type descriptionChangedMsg struct {
-	issueID     string
-	description string
-	err         error
-}
-
 // saveActionExistingViewMsg is produced when "existing view" is selected in save action picker.
 type saveActionExistingViewMsg struct {
 	query string
@@ -2143,15 +2096,6 @@ func (m Model) saveIssueCmd(issueID string, opts beads.UpdateIssueOptions) tea.C
 	}
 }
 
-// updateIssueDescriptionCmd creates a command to update an issue's description.
-// Retained for external editor (Ctrl+E) description editing path.
-func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateDescription(issueID, description)
-		return descriptionChangedMsg{issueID: issueID, description: description, err: err}
-	}
-}
-
 // HandleDBChanged processes database change notifications from the app.
 // This is called by app.go when the centralized watcher detects changes.
 // The app handles re-subscription; this method just triggers the refresh.
@@ -2225,26 +2169,6 @@ func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return mode.ShowToastMsg{Message: "Issue updated", Style: toaster.StyleSuccess}
 	}
-}
-
-// handleDescriptionChanged processes description change results.
-// Retained for external editor (Ctrl+E) description editing path.
-func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].DescriptionText = msg.description
-			break
-		}
-	}
-
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
 }
 
 // yankIssueID copies the selected issue ID to clipboard.

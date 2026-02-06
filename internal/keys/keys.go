@@ -267,23 +267,22 @@ var Search = struct {
 
 // Component contains keybindings shared across UI components.
 var Component = struct {
-	Confirm      key.Binding
-	Cancel       key.Binding
-	Tab          key.Binding
-	ShiftTab     key.Binding
-	Delete       key.Binding
-	Next         key.Binding // Alternative navigation (ctrl+n)
-	Prev         key.Binding // Alternative navigation (ctrl+p)
-	GotoTop      key.Binding // Navigate to top (g)
-	GotoBottom   key.Binding // Navigate to bottom (G)
-	EditAction   key.Binding // Edit action (ctrl+e) - opens edit menu
-	DelAction    key.Binding // Delete action (d) - triggers delete
-	Clear        key.Binding // Clear action (c) - clears content
-	Toggle       key.Binding // Toggle action (space)
-	ModeToggle   key.Binding // Mode toggle (m)
-	Close        key.Binding // Close overlay (ctrl+x)
-	Save         key.Binding // Save action (ctrl+s)
-	EditExternal key.Binding // Edit in external editor (ctrl+b)
+	Confirm    key.Binding
+	Cancel     key.Binding
+	Tab        key.Binding
+	ShiftTab   key.Binding
+	Delete     key.Binding
+	Next       key.Binding // Alternative navigation (ctrl+n)
+	Prev       key.Binding // Alternative navigation (ctrl+p)
+	GotoTop    key.Binding // Navigate to top (g)
+	GotoBottom key.Binding // Navigate to bottom (G)
+	EditAction key.Binding // Edit action (ctrl+e) - opens edit menu
+	DelAction  key.Binding // Delete action (d) - triggers delete
+	Clear      key.Binding // Clear action (c) - clears content
+	Toggle     key.Binding // Toggle action (space)
+	ModeToggle key.Binding // Mode toggle (m)
+	Close      key.Binding // Close overlay (ctrl+x)
+	Save       key.Binding // Save action (ctrl+s)
 }{
 	Confirm: key.NewBinding(
 		key.WithKeys("enter"),
@@ -348,10 +347,6 @@ var Component = struct {
 	Save: key.NewBinding(
 		key.WithKeys("ctrl+s"),
 		key.WithHelp("ctrl+s", "save"),
-	),
-	EditExternal: key.NewBinding(
-		key.WithKeys("ctrl+b"),
-		key.WithHelp("ctrl+b", "edit in $EDITOR"),
 	),
 }
 

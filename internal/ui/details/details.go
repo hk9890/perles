@@ -61,13 +61,6 @@ type OpenEditMenuMsg struct {
 	Issue beads.Issue
 }
 
-// OpenDescriptionEditorMsg requests opening the external editor for the issue description.
-// The parent component handles the actual editor process and updates.
-type OpenDescriptionEditorMsg struct {
-	IssueID     string
-	Description string
-}
-
 // FocusPane represents which pane has focus in the details view.
 type FocusPane int
 
@@ -296,14 +289,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			// Open edit menu
 			return m, func() tea.Msg {
 				return OpenEditMenuMsg{Issue: m.issue}
-			}
-		case key.Matches(msg, keys.Component.EditExternal):
-			// Open external editor for description
-			return m, func() tea.Msg {
-				return OpenDescriptionEditorMsg{
-					IssueID:     m.issue.ID,
-					Description: m.issue.DescriptionText,
-				}
 			}
 		}
 	case tea.MouseMsg:
@@ -938,7 +923,7 @@ func (m Model) renderFooter() string {
 		scrollPercent = fmt.Sprintf(" %3.0f%%", m.viewport.ScrollPercent()*100)
 	}
 
-	return footerStyle.Render("[j/k] Scroll  [ctrl+e] Edit  [ctrl+b] Edit Desc  [ctrl+d] Delete  [Esc] Back" + scrollPercent)
+	return footerStyle.Render("[j/k] Scroll  [ctrl+e] Edit  [ctrl+d] Delete  [Esc] Back" + scrollPercent)
 }
 
 // getTypeStyle returns the style for an issue type.

@@ -2372,27 +2372,11 @@ func TestSearch_EditorExecMsg_ForwardedToIssueEditorWhenViewEditIssue(t *testing
 	_ = cmd
 }
 
-func TestSearch_EditorExecMsg_HandledByDetailsViewWhenEditingDescription(t *testing.T) {
-	m := createTestModelWithResults(t)
-
-	// Simulate being in details view editing mode (not the issueeditor modal)
-	m.editingDescriptionIssueID = "test-1"
-
-	// Send an editor.ExecMsg
-	execMsg := editor.ExecMsg{}
-	m, cmd := m.Update(execMsg)
-
-	// The command should be from ExecCmd() - it will be non-nil
-	// This tests that the existing editingDescriptionIssueID path still works
-	require.NotNil(t, cmd, "should return ExecCmd when editingDescriptionIssueID is set")
-}
-
 func TestSearch_EditorExecMsg_ReturnsNilWhenNotEditing(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Not in ViewEditIssue and editingDescriptionIssueID is empty
+	// Not in ViewEditIssue
 	m.view = ViewSearch
-	m.editingDescriptionIssueID = ""
 
 	// Send an editor.ExecMsg
 	execMsg := editor.ExecMsg{}
@@ -2423,9 +2407,8 @@ func TestSearch_EditorFinishedMsg_ForwardedToIssueEditorWhenViewEditIssue(t *tes
 func TestSearch_EditorFinishedMsg_ReturnsNilWhenNotEditing(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Not in ViewEditIssue and editingDescriptionIssueID is empty
+	// Not in ViewEditIssue
 	m.view = ViewSearch
-	m.editingDescriptionIssueID = ""
 
 	// Send an editor.FinishedMsg
 	finishedMsg := editor.FinishedMsg{Content: "some content"}
