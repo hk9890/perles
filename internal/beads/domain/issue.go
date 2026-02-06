@@ -98,3 +98,17 @@ type CreateResult struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 }
+
+// UpdateIssueOptions specifies which fields to update on an issue.
+// Nil pointer fields are skipped (not sent to bd CLI).
+// This enables a single bd update call with only changed fields.
+type UpdateIssueOptions struct {
+	Title       *string
+	Description *string
+	Notes       *string
+	Priority    *Priority
+	Status      *Status
+	Labels      *[]string  // nil = unchanged, &[]string{} = clear all
+	Assignee    *string    // proactive; not used by current editor
+	Type        *IssueType // proactive; not used by current editor
+}

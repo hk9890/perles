@@ -20,6 +20,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 	"github.com/zjrosen/perles/internal/ui/shared/editor"
 	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
+	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -340,52 +341,107 @@ func TestSearch_HelpOverlay_NoUserActions(t *testing.T) {
 	require.Contains(t, view, "General", "expected help overlay to contain General section")
 }
 
-func TestSearch_PriorityChanged_Success(t *testing.T) {
+func TestSearch_IssueSaved_Success_PatchesResults(t *testing.T) {
 	m := createTestModelWithResults(t)
-	m.selectedIssue = &m.results[0]
 
-	msg := priorityChangedMsg{issueID: "test-1", priority: beads.Priority(0), err: nil}
-	m, cmd := m.handlePriorityChanged(msg)
+	newTitle := "Updated Title"
+	newDescription := "Updated Description"
+	newNotes := "Updated Notes"
+	newPriority := beads.PriorityCritical
+	newStatus := beads.StatusClosed
+	newLabels := []string{"done"}
+	msg := issueSavedMsg{
+		issueID: "test-1",
+		opts: beads.UpdateIssueOptions{
+			Title:       &newTitle,
+			Description: &newDescription,
+			Notes:       &newNotes,
+			Priority:    &newPriority,
+			Status:      &newStatus,
+			Labels:      &newLabels,
+		},
+	}
+	m, cmd := m.handleIssueSaved(msg)
 
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
 	require.NotNil(t, cmd, "expected ShowToastMsg command for success")
-	// Check that results list was updated
-	require.Equal(t, beads.Priority(0), m.results[0].Priority, "expected priority updated in results")
+	require.Equal(t, "Updated Title", m.results[0].TitleText, "expected title patched in results")
+	require.Equal(t, "Updated Description", m.results[0].DescriptionText, "expected description patched in results")
+	require.Equal(t, "Updated Notes", m.results[0].Notes, "expected notes patched in results")
+	require.Equal(t, beads.PriorityCritical, m.results[0].Priority, "expected priority patched in results")
+	require.Equal(t, beads.StatusClosed, m.results[0].Status, "expected status patched in results")
+	require.Equal(t, []string{"done"}, m.results[0].Labels, "expected labels patched in results")
+
+	// Verify toast message
+	toastResult := cmd()
+	showToast, ok := toastResult.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg")
+	require.Equal(t, "Issue updated", showToast.Message)
+	require.Equal(t, toaster.StyleSuccess, showToast.Style)
 }
 
-func TestSearch_PriorityChanged_Error(t *testing.T) {
+func TestSearch_IssueSaved_Success_UnchangedFieldsNotModified(t *testing.T) {
 	m := createTestModelWithResults(t)
-	m.selectedIssue = &m.results[0]
 
-	msg := priorityChangedMsg{issueID: "test-1", priority: beads.Priority(0), err: errors.New("db error")}
-	m, cmd := m.handlePriorityChanged(msg)
+	// Set known values on first result
+	m.results[0].TitleText = "Original Title"
+	m.results[0].DescriptionText = "Original Description"
+	m.results[0].Notes = "Original Notes"
+	m.results[0].Priority = beads.PriorityLow
+	m.results[0].Status = beads.StatusOpen
+	m.results[0].Labels = []string{"original"}
 
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
+	// Only update title — all other fields should remain unchanged
+	newTitle := "Updated Title"
+	msg := issueSavedMsg{
+		issueID: "test-1",
+		opts: beads.UpdateIssueOptions{
+			Title: &newTitle,
+		},
+	}
+	m, _ = m.handleIssueSaved(msg)
+
+	require.Equal(t, "Updated Title", m.results[0].TitleText, "title should be updated")
+	require.Equal(t, "Original Description", m.results[0].DescriptionText, "description should be unchanged")
+	require.Equal(t, "Original Notes", m.results[0].Notes, "notes should be unchanged")
+	require.Equal(t, beads.PriorityLow, m.results[0].Priority, "priority should be unchanged")
+	require.Equal(t, beads.StatusOpen, m.results[0].Status, "status should be unchanged")
+	require.Equal(t, []string{"original"}, m.results[0].Labels, "labels should be unchanged")
+}
+
+func TestSearch_IssueSaved_Error_ShowsToast(t *testing.T) {
+	m := createTestModelWithResults(t)
+
+	msg := issueSavedMsg{
+		issueID: "test-1",
+		err:     errors.New("db error"),
+	}
+	m, cmd := m.handleIssueSaved(msg)
+
 	require.NotNil(t, cmd, "expected ShowToastMsg command for error")
+	toastResult := cmd()
+	showToast, ok := toastResult.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg")
+	require.Contains(t, showToast.Message, "Save failed")
+	require.Contains(t, showToast.Message, "db error")
+	require.Equal(t, toaster.StyleError, showToast.Style)
 }
 
-func TestSearch_StatusChanged_Success(t *testing.T) {
+func TestSearch_IssueSaved_IssueNotInResults_NoPanic(t *testing.T) {
 	m := createTestModelWithResults(t)
-	m.selectedIssue = &m.results[0]
 
-	msg := statusChangedMsg{issueID: "test-1", status: beads.StatusClosed, err: nil}
-	m, cmd := m.handleStatusChanged(msg)
+	newTitle := "Updated Title"
+	msg := issueSavedMsg{
+		issueID: "nonexistent-id",
+		opts: beads.UpdateIssueOptions{
+			Title: &newTitle,
+		},
+	}
+	// Should not panic and should still return toast
+	m, cmd := m.handleIssueSaved(msg)
 
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	require.NotNil(t, cmd, "expected ShowToastMsg command for success")
-	// Check that results list was updated
-	require.Equal(t, beads.StatusClosed, m.results[0].Status, "expected status updated in results")
-}
-
-func TestSearch_StatusChanged_Error(t *testing.T) {
-	m := createTestModelWithResults(t)
-	m.selectedIssue = &m.results[0]
-
-	msg := statusChangedMsg{issueID: "test-1", status: beads.StatusClosed, err: errors.New("db error")}
-	m, cmd := m.handleStatusChanged(msg)
-
-	require.Nil(t, m.selectedIssue, "expected selected issue to be cleared")
-	require.NotNil(t, cmd, "expected ShowToastMsg command for error")
+	require.NotNil(t, cmd, "expected ShowToastMsg command")
+	// Verify original results unchanged
+	require.NotEqual(t, "Updated Title", m.results[0].TitleText, "first result should be unchanged")
 }
 
 func TestSearch_View_NotPanics(t *testing.T) {
@@ -1321,14 +1377,23 @@ func TestSearch_IssueEditor_SaveMsg_ReturnsToViewSearch(t *testing.T) {
 	m, cmd := m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
-	require.NotNil(t, cmd, "expected commands for updating priority, status, labels")
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 }
 
-func TestSearch_IssueEditor_SaveMsg_DispatchesAllThreeUpdateCommands(t *testing.T) {
+func TestSearch_IssueEditor_SaveMsg_DispatchesSaveIssueCmd(t *testing.T) {
 	m := createTestModelWithResults(t)
 	m.view = ViewEditIssue
 
-	// Process SaveMsg
+	// Set up selectedIssue for change detection
+	issue := m.results[0]
+	m.selectedIssue = &issue
+
+	// Set up mock executor
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.AnythingOfType("domain.UpdateIssueOptions")).Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Process SaveMsg with changed fields
 	msg := issueeditor.SaveMsg{
 		IssueID:  "test-1",
 		Priority: beads.PriorityCritical,
@@ -1337,12 +1402,16 @@ func TestSearch_IssueEditor_SaveMsg_DispatchesAllThreeUpdateCommands(t *testing.
 	}
 	m, cmd := m.Update(msg)
 
-	require.NotNil(t, cmd, "expected batch command")
-
-	// The batch command should execute and produce multiple messages
-	// We can't easily test the batch contents, but we verify the command exists
-	// and the view state changed correctly
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 	require.Equal(t, ViewSearch, m.view, "view should be ViewSearch")
+	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
+
+	// Execute the command to trigger UpdateIssue
+	result := cmd()
+	savedMsg, ok := result.(issueSavedMsg)
+	require.True(t, ok, "expected issueSavedMsg")
+	require.Equal(t, "test-1", savedMsg.issueID)
+	require.NoError(t, savedMsg.err)
 }
 
 func TestSearch_IssueEditor_CancelMsg_ReturnsToViewSearch(t *testing.T) {
@@ -1417,12 +1486,11 @@ func TestSearch_IssueEditor_KeyDelegation(t *testing.T) {
 func TestSearch_IssueEditor_SaveMsg_UpdatesTitleWhenChanged(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Set up mock executor for title update
+	// Set up mock executor for consolidated UpdateIssue
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateTitle("test-1", "New Title").Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Title != nil && *opts.Title == "New Title"
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
 	// Open editor (which sets selectedIssue)
@@ -1440,37 +1508,29 @@ func TestSearch_IssueEditor_SaveMsg_UpdatesTitleWhenChanged(t *testing.T) {
 		IssueID:     "test-1",
 		Title:       "New Title",
 		Description: issue.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Priority:    issue.Priority,
+		Status:      issue.Status,
+		Labels:      issue.Labels,
 	}
 	m, cmd := m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
-	require.NotNil(t, cmd, "expected batch command")
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
 
-	// Execute the batch command to trigger the mock calls
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				subCmd() // Execute each command in the batch
-			}
-		}
-	}
-	// The mock expectations will fail if UpdateTitle isn't called
+	// Execute the command to trigger UpdateIssue
+	cmd()
+	// The mock expectations will fail if UpdateIssue isn't called with Title set
 }
 
 func TestSearch_IssueEditor_SaveMsg_SkipsTitleUpdateWhenUnchanged(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Set up mock executor - UpdateTitle should NOT be called
+	// Set up mock executor - UpdateIssue should be called but Title should be nil in opts
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	// NOTE: No UpdateTitle expectation - it should NOT be called
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Title == nil // Title should NOT be included when unchanged
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
 	// Open editor (which sets selectedIssue)
@@ -1480,31 +1540,32 @@ func TestSearch_IssueEditor_SaveMsg_SkipsTitleUpdateWhenUnchanged(t *testing.T) 
 	openMsg := details.OpenEditMenuMsg{Issue: issue}
 	m, _ = m.Update(openMsg)
 
-	// Process SaveMsg with same title
+	// Process SaveMsg with same title but changed labels
 	msg := issueeditor.SaveMsg{
 		IssueID:     "test-1",
 		Title:       "Same Title", // Same as original
 		Description: issue.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Priority:    issue.Priority,
+		Status:      issue.Status,
+		Labels:      []string{"updated"}, // Changed to ensure UpdateIssue is called
 	}
 	m, cmd := m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
-	require.NotNil(t, cmd, "expected batch command")
-	// The mock would fail if UpdateTitle was unexpectedly called
+	require.NotNil(t, cmd, "expected saveIssueCmd")
+
+	// Execute the command to trigger UpdateIssue
+	cmd()
 }
 
 func TestSearch_IssueEditor_SaveMsg_UpdatesDescriptionWhenChanged(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Set up mock executor for description update
+	// Set up mock executor for consolidated UpdateIssue
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateDescription("test-1", "New Description").Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Description != nil && *opts.Description == "New Description"
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
 	// Open editor (which sets selectedIssue)
@@ -1522,37 +1583,29 @@ func TestSearch_IssueEditor_SaveMsg_UpdatesDescriptionWhenChanged(t *testing.T) 
 		IssueID:     "test-1",
 		Title:       issue.TitleText,
 		Description: "New Description",
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Priority:    issue.Priority,
+		Status:      issue.Status,
+		Labels:      issue.Labels,
 	}
 	m, cmd := m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
-	require.NotNil(t, cmd, "expected batch command")
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
 
-	// Execute the batch command to trigger the mock calls
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				subCmd() // Execute each command in the batch
-			}
-		}
-	}
-	// The mock expectations will fail if UpdateDescription isn't called
+	// Execute the command to trigger UpdateIssue
+	cmd()
+	// The mock expectations will fail if UpdateIssue isn't called with Description set
 }
 
 func TestSearch_IssueEditor_SaveMsg_SkipsDescriptionUpdateWhenUnchanged(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Set up mock executor - UpdateDescription should NOT be called
+	// Set up mock executor - UpdateIssue should be called but Description should be nil in opts
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	// NOTE: No UpdateDescription expectation - it should NOT be called
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Description == nil // Description should NOT be included when unchanged
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
 	// Open editor (which sets selectedIssue)
@@ -1562,31 +1615,30 @@ func TestSearch_IssueEditor_SaveMsg_SkipsDescriptionUpdateWhenUnchanged(t *testi
 	openMsg := details.OpenEditMenuMsg{Issue: issue}
 	m, _ = m.Update(openMsg)
 
-	// Process SaveMsg with same description
+	// Process SaveMsg with same description but changed labels
 	msg := issueeditor.SaveMsg{
 		IssueID:     "test-1",
 		Title:       issue.TitleText,
 		Description: "Same Description", // Same as original
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Priority:    issue.Priority,
+		Status:      issue.Status,
+		Labels:      []string{"updated"}, // Changed to ensure UpdateIssue is called
 	}
 	m, cmd := m.Update(msg)
 
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch view after save")
-	require.NotNil(t, cmd, "expected batch command")
-	// The mock would fail if UpdateDescription was unexpectedly called
+	require.NotNil(t, cmd, "expected saveIssueCmd")
+
+	// Execute the command to trigger UpdateIssue
+	cmd()
 }
 
 func TestSearch_IssueEditor_SaveMsg_ErrorHandlingShowsToast(t *testing.T) {
 	m := createTestModelWithResults(t)
 
-	// Set up mock executor that returns an error for title update
+	// Set up mock executor that returns an error
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateTitle("test-1", "New Title").Return(errors.New("database error"))
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.AnythingOfType("domain.UpdateIssueOptions")).Return(errors.New("database error"))
 	m.services.BeadsExecutor = mockExecutor
 
 	// Open editor (which sets selectedIssue)
@@ -1601,34 +1653,30 @@ func TestSearch_IssueEditor_SaveMsg_ErrorHandlingShowsToast(t *testing.T) {
 		IssueID:     "test-1",
 		Title:       "New Title",
 		Description: issue.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Priority:    issue.Priority,
+		Status:      issue.Status,
+		Labels:      issue.Labels,
 	}
 	m, cmd := m.Update(msg)
 
-	require.NotNil(t, cmd, "expected batch command")
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 
-	// Execute all commands in the batch and find the titleChangedMsg
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				result := subCmd()
-				if titleMsg, ok := result.(titleChangedMsg); ok {
-					// Handle the error message
-					_, toastCmd := m.Update(titleMsg)
-					require.NotNil(t, toastCmd, "expected toast command on error")
+	// Execute the command to get issueSavedMsg with error
+	result := cmd()
+	savedMsg, ok := result.(issueSavedMsg)
+	require.True(t, ok, "expected issueSavedMsg")
+	require.Error(t, savedMsg.err)
 
-					// Execute toast command to verify it produces a toast message
-					toastResult := toastCmd()
-					showToast, ok := toastResult.(mode.ShowToastMsg)
-					require.True(t, ok, "expected ShowToastMsg")
-					require.Contains(t, showToast.Message, "Error", "toast should contain error message")
-				}
-			}
-		}
-	}
+	// Handle the error message
+	_, toastCmd := m.Update(savedMsg)
+	require.NotNil(t, toastCmd, "expected toast command on error")
+
+	// Execute toast command to verify it produces a toast message
+	toastResult := toastCmd()
+	showToast, ok := toastResult.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg")
+	require.Contains(t, showToast.Message, "Save failed", "toast should contain error message")
+	require.Contains(t, showToast.Message, "database error")
 }
 
 func TestSearch_IssueEditor_CancelMsg_ClearsSelectedIssue(t *testing.T) {
@@ -2388,8 +2436,15 @@ func TestSearch_EditorFinishedMsg_ReturnsNilWhenNotEditing(t *testing.T) {
 }
 
 func TestSearch_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
-	// Verify SaveMsg only includes notes update cmd when notes have actually changed
+	// Verify SaveMsg dispatches saveIssueCmd with Notes=nil when notes unchanged
 	m := createTestModelWithResults(t)
+
+	// Set up mock executor - UpdateIssue called but Notes should be nil
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Notes == nil // Notes should NOT be included when unchanged
+	})).Return(nil)
+	m.services.BeadsExecutor = mockExecutor
 
 	// Set up selectedIssue with original notes
 	m.selectedIssue = &beads.Issue{
@@ -2397,29 +2452,41 @@ func TestSearch_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
 		TitleText:       "Test Issue",
 		DescriptionText: "Test description",
 		Notes:           "original notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
 	}
 	m.view = ViewEditIssue
 
-	// Send SaveMsg with same notes as original (no mock executor needed - just checking state)
+	// Send SaveMsg with same notes as original but changed labels
 	m, cmd := m.Update(issueeditor.SaveMsg{
 		IssueID:     "test-1",
 		Priority:    beads.PriorityMedium,
 		Status:      beads.StatusOpen,
-		Labels:      []string{},
-		Title:       "Test Issue",       // Same as original
-		Description: "Test description", // Same as original
-		Notes:       "original notes",   // Same as original - no change
+		Labels:      []string{"changed"}, // Changed to ensure UpdateIssue is called
+		Title:       "Test Issue",        // Same as original
+		Description: "Test description",  // Same as original
+		Notes:       "original notes",    // Same as original - no change
 	})
 
 	// Verify state transition
 	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
 	require.Equal(t, ViewSearch, m.view, "should return to search view after save")
-	require.NotNil(t, cmd, "should return batch command")
+	require.NotNil(t, cmd, "should return saveIssueCmd")
+
+	// Execute the command to trigger UpdateIssue
+	cmd()
 }
 
 func TestSearch_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
-	// Verify SaveMsg includes notes update cmd when notes have changed
+	// Verify SaveMsg dispatches saveIssueCmd with Notes set when notes changed
 	m := createTestModelWithResults(t)
+
+	// Set up mock executor - UpdateIssue called with Notes set
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateIssue("test-1", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Notes != nil && *opts.Notes == "new notes content"
+	})).Return(nil)
+	m.services.BeadsExecutor = mockExecutor
 
 	// Set up selectedIssue with original notes
 	m.selectedIssue = &beads.Issue{
@@ -2427,15 +2494,17 @@ func TestSearch_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
 		TitleText:       "Test Issue",
 		DescriptionText: "Test description",
 		Notes:           "original notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
 	}
 	m.view = ViewEditIssue
 
-	// Send SaveMsg with different notes (no mock executor needed - just checking state)
+	// Send SaveMsg with different notes
 	m, cmd := m.Update(issueeditor.SaveMsg{
 		IssueID:     "test-1",
 		Priority:    beads.PriorityMedium,
 		Status:      beads.StatusOpen,
-		Labels:      []string{},
+		Labels:      nil,
 		Title:       "Test Issue",        // Same as original
 		Description: "Test description",  // Same as original
 		Notes:       "new notes content", // Different from original
@@ -2444,67 +2513,8 @@ func TestSearch_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
 	// Verify state transition
 	require.Nil(t, m.selectedIssue, "selectedIssue should be cleared after save")
 	require.Equal(t, ViewSearch, m.view, "should return to search view after save")
-	require.NotNil(t, cmd, "should return batch command")
-}
+	require.NotNil(t, cmd, "should return saveIssueCmd")
 
-func TestSearch_UpdateIssueNotesCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssueNotesCmd creates a command that calls BeadsExecutor.UpdateNotes
-	m := createTestModel(t)
-
-	// Create mock executor
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("test-issue", "new notes").Return(nil)
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueNotesCmd("test-issue", "new notes")
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	notesMsg, ok := msg.(notesChangedMsg)
-	require.True(t, ok, "command should return notesChangedMsg")
-	require.Equal(t, "test-issue", notesMsg.issueID)
-	require.Equal(t, "new notes", notesMsg.notes)
-	require.NoError(t, notesMsg.err, "should have no error on success")
-}
-
-func TestSearch_UpdateIssueNotesCmd_PropagatesErrors(t *testing.T) {
-	// Verify updateIssueNotesCmd propagates errors from BeadsExecutor
-	m := createTestModel(t)
-
-	// Create mock executor that returns an error
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("test-issue", "notes").Return(errors.New("update failed"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueNotesCmd("test-issue", "notes")
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	notesMsg, ok := msg.(notesChangedMsg)
-	require.True(t, ok, "command should return notesChangedMsg")
-	require.Error(t, notesMsg.err, "should have error on failure")
-	require.Contains(t, notesMsg.err.Error(), "update failed")
-}
-
-func TestSearch_HandleNotesChanged_UpdatesResultsList(t *testing.T) {
-	// Verify handleNotesChanged updates the Notes field in the results list
-	m := createTestModelWithResults(t)
-
-	// Verify initial state
-	require.Equal(t, 3, len(m.results), "should have test results")
-	require.Empty(t, m.results[0].Notes, "first result should have empty notes initially")
-
-	// Handle notes changed message
-	m, _ = m.handleNotesChanged(notesChangedMsg{
-		issueID: "test-1",
-		notes:   "updated notes",
-		err:     nil,
-	})
-
-	// Verify the result was updated
-	require.Equal(t, "updated notes", m.results[0].Notes, "notes should be updated in results list")
+	// Execute the command to trigger UpdateIssue
+	cmd()
 }

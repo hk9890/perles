@@ -629,20 +629,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case details.NavigateToDependencyMsg:
 		return m.navigateToDependency(msg.IssueID)
 
-	case priorityChangedMsg:
-		return m.handlePriorityChanged(msg)
-
-	case statusChangedMsg:
-		return m.handleStatusChanged(msg)
+	case issueSavedMsg:
+		return m.handleIssueSaved(msg)
 
 	case descriptionChangedMsg:
 		return m.handleDescriptionChanged(msg)
-
-	case titleChangedMsg:
-		return m.handleTitleChanged(msg)
-
-	case notesChangedMsg:
-		return m.handleNotesChanged(msg)
 
 	case debounceSearchMsg:
 		// Only execute if version matches (not stale)
@@ -827,25 +818,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case issueeditor.SaveMsg:
 		m.view = ViewSearch
-		cmds := []tea.Cmd{
-			m.updatePriorityCmd(msg.IssueID, msg.Priority),
-			m.updateStatusCmd(msg.IssueID, msg.Status),
-			m.setLabelsCmd(msg.IssueID, msg.Labels),
-		}
-		// Only update title if changed
-		if m.selectedIssue != nil && msg.Title != m.selectedIssue.TitleText {
-			cmds = append(cmds, m.updateIssueTitleCmd(msg.IssueID, msg.Title))
-		}
-		// Only update description if changed
-		if m.selectedIssue != nil && msg.Description != m.selectedIssue.DescriptionText {
-			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
-		}
-		// Only update notes if changed
-		if m.selectedIssue != nil && msg.Notes != m.selectedIssue.Notes {
-			cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
-		}
-		m.selectedIssue = nil // Clear after use
-		return m, tea.Batch(cmds...)
+		opts := msg.BuildUpdateOptions(m.selectedIssue)
+		m.selectedIssue = nil
+		return m, m.saveIssueCmd(msg.IssueID, opts)
 
 	case issueeditor.CancelMsg:
 		m.view = ViewSearch
@@ -854,9 +829,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case issueDeletedMsg:
 		return m.handleIssueDeleted(msg)
-
-	case labelsChangedMsg:
-		return m.handleLabelsChanged(msg)
 
 	case shared.ActionExecutedMsg:
 		return m.handleActionExecuted(msg)
@@ -881,7 +853,10 @@ func (m Model) View() string {
 	case ViewDeleteConfirm:
 		return zone.Scan(m.modal.Overlay(m.renderMainView()))
 	case ViewEditIssue:
-		return zone.Scan(m.issueEditor.Overlay(m.renderMainView()))
+		// formmodal.Overlay() already calls zone.Scan() internally;
+		// wrapping again causes background tree zones to interfere
+		// with the editor's clickable zones.
+		return m.issueEditor.Overlay(m.renderMainView())
 	}
 
 	return zone.Scan(m.renderMainView())
@@ -2071,39 +2046,19 @@ type treeLoadedMsg struct {
 	Err    error
 }
 
-// priorityChangedMsg signals completion of a priority update.
-type priorityChangedMsg struct {
-	issueID  string
-	priority beads.Priority
-	err      error
-}
-
-// statusChangedMsg signals completion of a status update.
-type statusChangedMsg struct {
+// issueSavedMsg signals completion of a consolidated issue save.
+type issueSavedMsg struct {
 	issueID string
-	status  beads.Status
+	opts    beads.UpdateIssueOptions
 	err     error
 }
 
 // descriptionChangedMsg signals completion of a description update.
+// Retained for external editor (Ctrl+E) description editing path.
 type descriptionChangedMsg struct {
 	issueID     string
 	description string
 	err         error
-}
-
-// titleChangedMsg signals completion of a title update.
-type titleChangedMsg struct {
-	issueID string
-	title   string
-	err     error
-}
-
-// notesChangedMsg signals completion of a notes update.
-type notesChangedMsg struct {
-	issueID string
-	notes   string
-	err     error
 }
 
 // saveActionExistingViewMsg is produced when "existing view" is selected in save action picker.
@@ -2180,43 +2135,20 @@ func debounceSearch(version int, delay time.Duration) tea.Cmd {
 	})
 }
 
-// updatePriorityCmd creates a command to update an issue's priority.
-func (m Model) updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
+// saveIssueCmd creates a command to save all changed fields via a single UpdateIssue call.
+func (m Model) saveIssueCmd(issueID string, opts beads.UpdateIssueOptions) tea.Cmd {
 	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdatePriority(issueID, priority)
-		return priorityChangedMsg{issueID: issueID, priority: priority, err: err}
-	}
-}
-
-// updateStatusCmd creates a command to update an issue's status.
-func (m Model) updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateStatus(issueID, status)
-		return statusChangedMsg{issueID: issueID, status: status, err: err}
+		err := m.services.BeadsExecutor.UpdateIssue(issueID, opts)
+		return issueSavedMsg{issueID: issueID, opts: opts, err: err}
 	}
 }
 
 // updateIssueDescriptionCmd creates a command to update an issue's description.
+// Retained for external editor (Ctrl+E) description editing path.
 func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.services.BeadsExecutor.UpdateDescription(issueID, description)
 		return descriptionChangedMsg{issueID: issueID, description: description, err: err}
-	}
-}
-
-// updateIssueTitleCmd creates a command to update an issue's title.
-func (m Model) updateIssueTitleCmd(issueID string, title string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateTitle(issueID, title)
-		return titleChangedMsg{issueID: issueID, title: title, err: err}
-	}
-}
-
-// updateIssueNotesCmd creates a command to update an issue's notes.
-func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateNotes(issueID, notes)
-		return notesChangedMsg{issueID: issueID, notes: notes, err: err}
 	}
 }
 
@@ -2239,65 +2171,64 @@ func (m Model) HandleDBChanged() (Model, tea.Cmd) {
 
 // Message handlers
 
-// handlePriorityChanged processes priority change results.
-func (m Model) handlePriorityChanged(msg priorityChangedMsg) (Model, tea.Cmd) {
-	m.selectedIssue = nil
+// handleIssueSaved processes the consolidated issue save result.
+func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
+			return mode.ShowToastMsg{Message: "Save failed: " + msg.err.Error(), Style: toaster.StyleError}
 		}
 	}
 
-	// Update the details panel to show new priority
-	m.details = m.details.UpdatePriority(msg.priority)
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].Priority = msg.priority
+	// Patch local results array for responsiveness
+	for i, issue := range m.results {
+		if issue.ID == msg.issueID {
+			if msg.opts.Title != nil {
+				m.results[i].TitleText = *msg.opts.Title
+			}
+			if msg.opts.Description != nil {
+				m.results[i].DescriptionText = *msg.opts.Description
+			}
+			if msg.opts.Notes != nil {
+				m.results[i].Notes = *msg.opts.Notes
+			}
+			if msg.opts.Priority != nil {
+				m.results[i].Priority = *msg.opts.Priority
+			}
+			if msg.opts.Status != nil {
+				m.results[i].Status = *msg.opts.Status
+			}
+			if msg.opts.Labels != nil {
+				m.results[i].Labels = *msg.opts.Labels
+			}
 			break
 		}
 	}
-	// Refresh list items
+
+	// Update the details panel to reflect saved changes
+	if msg.opts.Priority != nil {
+		m.details = m.details.UpdatePriority(*msg.opts.Priority)
+	}
+	if msg.opts.Status != nil {
+		m.details = m.details.UpdateStatus(*msg.opts.Status)
+	}
+	if msg.opts.Labels != nil {
+		m.details = m.details.UpdateLabels(*msg.opts.Labels)
+	}
+
+	// Refresh list items since issueItem holds Issue by value
 	items := make([]list.Item, len(m.results))
 	for i, issue := range m.results {
 		items[i] = issueItem{issue: issue}
 	}
 	m.resultsList.SetItems(items)
 
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Priority updated", Style: toaster.StyleSuccess} }
-}
-
-// handleStatusChanged processes status change results.
-func (m Model) handleStatusChanged(msg statusChangedMsg) (Model, tea.Cmd) {
-	m.selectedIssue = nil
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
+	return m, func() tea.Msg {
+		return mode.ShowToastMsg{Message: "Issue updated", Style: toaster.StyleSuccess}
 	}
-
-	// Update the details panel to show new status
-	m.details = m.details.UpdateStatus(msg.status)
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].Status = msg.status
-			break
-		}
-	}
-	// Refresh list items
-	items := make([]list.Item, len(m.results))
-	for i, issue := range m.results {
-		items[i] = issueItem{issue: issue}
-	}
-	m.resultsList.SetItems(items)
-
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Status updated", Style: toaster.StyleSuccess} }
 }
 
 // handleDescriptionChanged processes description change results.
+// Retained for external editor (Ctrl+E) description editing path.
 func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		return m, func() tea.Msg {
@@ -2314,44 +2245,6 @@ func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.C
 	}
 
 	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
-}
-
-// handleTitleChanged processes title change results.
-func (m Model) handleTitleChanged(msg titleChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].TitleText = msg.title
-			break
-		}
-	}
-
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Title updated", Style: toaster.StyleSuccess} }
-}
-
-// handleNotesChanged processes notes change results.
-func (m Model) handleNotesChanged(msg notesChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].Notes = msg.notes
-			break
-		}
-	}
-
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Notes updated", Style: toaster.StyleSuccess} }
 }
 
 // yankIssueID copies the selected issue ID to clipboard.
@@ -2610,28 +2503,6 @@ func (m Model) handleIssueDeleted(msg issueDeletedMsg) (Model, tea.Cmd) {
 	)
 }
 
-// handleLabelsChanged processes label change results.
-func (m Model) handleLabelsChanged(msg labelsChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-
-	// Update details view to show new labels
-	m.details = m.details.UpdateLabels(msg.labels)
-
-	// Update the issue in our results list
-	for i := range m.results {
-		if m.results[i].ID == msg.issueID {
-			m.results[i].Labels = msg.labels
-			break
-		}
-	}
-
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Labels updated", Style: toaster.StyleSuccess} }
-}
-
 // handleActionExecuted processes user action execution results.
 // Shows an error toast if the action failed to start; otherwise silent.
 func (m Model) handleActionExecuted(msg shared.ActionExecutedMsg) (Model, tea.Cmd) {
@@ -2648,7 +2519,7 @@ func (m Model) handleActionExecuted(msg shared.ActionExecutedMsg) (Model, tea.Cm
 	return m, nil
 }
 
-// Message types for delete and label operations
+// Message types for delete operations
 
 type issueDeletedMsg struct {
 	issueID     string
@@ -2656,14 +2527,6 @@ type issueDeletedMsg struct {
 	wasTreeRoot bool   // True if deleted issue was tree root
 	err         error
 }
-
-type labelsChangedMsg struct {
-	issueID string
-	labels  []string
-	err     error
-}
-
-// Async commands
 
 func (m Model) deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bool) tea.Cmd {
 	return func() tea.Msg {
@@ -2677,12 +2540,5 @@ func (m Model) deleteIssueCmd(issueIDs []string, parentID string, wasTreeRoot bo
 			wasTreeRoot: wasTreeRoot,
 			err:         err,
 		}
-	}
-}
-
-func (m Model) setLabelsCmd(issueID string, labels []string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.SetLabels(issueID, labels)
-		return labelsChangedMsg{issueID: issueID, labels: labels, err: err}
 	}
 }

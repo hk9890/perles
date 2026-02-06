@@ -766,7 +766,7 @@ func createIssueEditorTestModel(t *testing.T) Model {
 }
 
 func TestEditIssue_SaveMsgClosesModal(t *testing.T) {
-	// Verify SaveMsg closes modal and returns batch command for status/priority/labels update
+	// Verify SaveMsg closes modal and dispatches single saveIssueCmd
 	m := createIssueEditorTestModel(t)
 	require.NotNil(t, m.issueEditor, "issue editor should be open")
 
@@ -779,11 +779,12 @@ func TestEditIssue_SaveMsgClosesModal(t *testing.T) {
 	})
 	m = result.(Model)
 
-	// Verify modal is closed
+	// Verify modal is closed and editingIssue cleared
 	require.Nil(t, m.issueEditor, "issue editor should be closed after SaveMsg")
+	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
 
-	// Verify batch command is returned (for status, priority, labels, and tree reload)
-	require.NotNil(t, cmd, "should return batch command for updates")
+	// Verify single saveIssueCmd is returned
+	require.NotNil(t, cmd, "should return saveIssueCmd")
 }
 
 func TestEditIssue_CancelMsgClosesModal(t *testing.T) {
@@ -851,378 +852,155 @@ func TestEditIssue_WindowSizeMsgPropagates(t *testing.T) {
 	require.Nil(t, cmd, "should return nil command for resize")
 }
 
-// === Unit Tests: Async Command Helpers and Result Handlers (perles-56ved.3) ===
+// === Unit Tests: Consolidated Issue Save (perles-zlo4u.5) ===
 
-func TestEditIssue_ErrorToastOnStatusUpdateFailure(t *testing.T) {
-	// Verify that issueStatusChangedMsg with error shows toast
+func TestDashboard_HandleIssueSaved_Success(t *testing.T) {
+	// handleIssueSaved on success should dispatch loadEpicTree
 	m := createIssueEditorTestModel(t)
+	m.lastLoadedEpicID = "epic-123"
 
-	// Send status changed message with error
-	result, cmd := m.Update(issueStatusChangedMsg{
+	msg := issueSavedMsg{
 		issueID: "issue-456",
-		status:  beads.StatusInProgress,
-		err:     errors.New("database connection failed"),
-	})
-	_ = result.(Model)
-
-	// Verify command returns toast message
-	require.NotNil(t, cmd, "should return command for error toast")
-	msg := cmd()
-	toastMsg, ok := msg.(mode.ShowToastMsg)
-	require.True(t, ok, "command should return ShowToastMsg")
-	require.Contains(t, toastMsg.Message, "Failed to update status")
-	require.Contains(t, toastMsg.Message, "database connection failed")
-	require.Equal(t, toaster.StyleError, toastMsg.Style, "should use error style")
-}
-
-func TestEditIssue_ErrorToastOnPriorityUpdateFailure(t *testing.T) {
-	// Verify that issuePriorityChangedMsg with error shows toast
-	m := createIssueEditorTestModel(t)
-
-	// Send priority changed message with error
-	result, cmd := m.Update(issuePriorityChangedMsg{
-		issueID:  "issue-456",
-		priority: beads.PriorityHigh,
-		err:      errors.New("permission denied"),
-	})
-	_ = result.(Model)
-
-	// Verify command returns toast message
-	require.NotNil(t, cmd, "should return command for error toast")
-	msg := cmd()
-	toastMsg, ok := msg.(mode.ShowToastMsg)
-	require.True(t, ok, "command should return ShowToastMsg")
-	require.Contains(t, toastMsg.Message, "Failed to update priority")
-	require.Contains(t, toastMsg.Message, "permission denied")
-	require.Equal(t, toaster.StyleError, toastMsg.Style, "should use error style")
-}
-
-func TestEditIssue_ErrorToastOnLabelsUpdateFailure(t *testing.T) {
-	// Verify that issueLabelsChangedMsg with error shows toast
-	m := createIssueEditorTestModel(t)
-
-	// Send labels changed message with error
-	result, cmd := m.Update(issueLabelsChangedMsg{
-		issueID: "issue-456",
-		labels:  []string{"new-label"},
-		err:     errors.New("validation failed"),
-	})
-	_ = result.(Model)
-
-	// Verify command returns toast message
-	require.NotNil(t, cmd, "should return command for error toast")
-	msg := cmd()
-	toastMsg, ok := msg.(mode.ShowToastMsg)
-	require.True(t, ok, "command should return ShowToastMsg")
-	require.Contains(t, toastMsg.Message, "Failed to update labels")
-	require.Contains(t, toastMsg.Message, "validation failed")
-	require.Equal(t, toaster.StyleError, toastMsg.Style, "should use error style")
-}
-
-func TestEditIssue_StatusSuccessReturnsNil(t *testing.T) {
-	// Verify that issueStatusChangedMsg without error returns nil command
-	m := createIssueEditorTestModel(t)
-
-	// Send status changed message without error
-	result, cmd := m.Update(issueStatusChangedMsg{
-		issueID: "issue-456",
-		status:  beads.StatusInProgress,
+		opts:    beads.UpdateIssueOptions{},
 		err:     nil,
-	})
-	_ = result.(Model)
+	}
+	m, cmd := m.handleIssueSaved(msg)
 
-	// Verify nil command returned (success case)
-	require.Nil(t, cmd, "should return nil command on success")
+	// Should return loadEpicTree command
+	require.NotNil(t, cmd, "should return loadEpicTree command on success")
 }
 
-func TestEditIssue_PrioritySuccessReturnsNil(t *testing.T) {
-	// Verify that issuePriorityChangedMsg without error returns nil command
+func TestDashboard_HandleIssueSaved_Error(t *testing.T) {
+	// handleIssueSaved on error should return ShowToastMsg
 	m := createIssueEditorTestModel(t)
 
-	// Send priority changed message without error
-	result, cmd := m.Update(issuePriorityChangedMsg{
-		issueID:  "issue-456",
-		priority: beads.PriorityHigh,
-		err:      nil,
-	})
-	_ = result.(Model)
-
-	// Verify nil command returned (success case)
-	require.Nil(t, cmd, "should return nil command on success")
-}
-
-func TestEditIssue_LabelsSuccessReturnsNil(t *testing.T) {
-	// Verify that issueLabelsChangedMsg without error returns nil command
-	m := createIssueEditorTestModel(t)
-
-	// Send labels changed message without error
-	result, cmd := m.Update(issueLabelsChangedMsg{
+	msg := issueSavedMsg{
 		issueID: "issue-456",
-		labels:  []string{"new-label"},
-		err:     nil,
-	})
-	_ = result.(Model)
+		opts:    beads.UpdateIssueOptions{},
+		err:     errors.New("database error"),
+	}
+	m, cmd := m.handleIssueSaved(msg)
 
-	// Verify nil command returned (success case)
-	require.Nil(t, cmd, "should return nil command on success")
+	require.NotNil(t, cmd, "expected toast command on error")
+	toastResult := cmd()
+	showToast, ok := toastResult.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg")
+	require.Contains(t, showToast.Message, "Save failed")
+	require.Contains(t, showToast.Message, "database error")
+	require.Equal(t, toaster.StyleError, showToast.Style)
 }
 
-func TestUpdateIssueStatusCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssueStatusCmd creates a command that calls BeadsExecutor.UpdateStatus
+func TestDashboard_SaveIssueCmd_CallsUpdateIssue(t *testing.T) {
+	// Verify saveIssueCmd calls BeadsExecutor.UpdateIssue with correct args
 	m := createIssueEditorTestModel(t)
 
-	// Create mock executor
+	status := beads.StatusInProgress
+	opts := beads.UpdateIssueOptions{Status: &status}
+
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateStatus("issue-456", beads.StatusInProgress).Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("issue-456", opts).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the command
-	cmd := m.updateIssueStatusCmd("issue-456", beads.StatusInProgress)
-	require.NotNil(t, cmd, "should return command")
+	cmd := m.saveIssueCmd("issue-456", opts)
+	require.NotNil(t, cmd)
 
-	// Execute command
 	msg := cmd()
-	statusMsg, ok := msg.(issueStatusChangedMsg)
-	require.True(t, ok, "command should return issueStatusChangedMsg")
-	require.Equal(t, "issue-456", statusMsg.issueID)
-	require.Equal(t, beads.StatusInProgress, statusMsg.status)
-	require.NoError(t, statusMsg.err, "should have no error on success")
+	savedMsg, ok := msg.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
+	require.Equal(t, "issue-456", savedMsg.issueID)
+	require.NoError(t, savedMsg.err)
+	require.NotNil(t, savedMsg.opts.Status)
+	require.Equal(t, beads.StatusInProgress, *savedMsg.opts.Status)
 }
 
-func TestUpdateIssuePriorityCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssuePriorityCmd creates a command that calls BeadsExecutor.UpdatePriority
+func TestDashboard_SaveIssueCmd_PropagatesErrors(t *testing.T) {
+	// Verify saveIssueCmd propagates errors from UpdateIssue
 	m := createIssueEditorTestModel(t)
 
-	// Create mock executor
+	opts := beads.UpdateIssueOptions{}
+
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority("issue-456", beads.PriorityHigh).Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("issue-456", opts).Return(errors.New("update failed"))
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the command
-	cmd := m.updateIssuePriorityCmd("issue-456", beads.PriorityHigh)
-	require.NotNil(t, cmd, "should return command")
+	cmd := m.saveIssueCmd("issue-456", opts)
+	require.NotNil(t, cmd)
 
-	// Execute command
 	msg := cmd()
-	priorityMsg, ok := msg.(issuePriorityChangedMsg)
-	require.True(t, ok, "command should return issuePriorityChangedMsg")
-	require.Equal(t, "issue-456", priorityMsg.issueID)
-	require.Equal(t, beads.PriorityHigh, priorityMsg.priority)
-	require.NoError(t, priorityMsg.err, "should have no error on success")
+	savedMsg, ok := msg.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
+	require.Error(t, savedMsg.err)
+	require.Contains(t, savedMsg.err.Error(), "update failed")
 }
 
-func TestUpdateIssueLabelsCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssueLabelsCmd creates a command that calls BeadsExecutor.SetLabels
+func TestDashboard_SaveMsg_DispatchesSaveIssueCmd(t *testing.T) {
+	// Verify SaveMsg handler dispatches single saveIssueCmd with correct opts from editingIssue
 	m := createIssueEditorTestModel(t)
 
-	// Create mock executor
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().SetLabels("issue-456", []string{"label1", "label2"}).Return(nil)
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueLabelsCmd("issue-456", []string{"label1", "label2"})
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	labelsMsg, ok := msg.(issueLabelsChangedMsg)
-	require.True(t, ok, "command should return issueLabelsChangedMsg")
-	require.Equal(t, "issue-456", labelsMsg.issueID)
-	require.Equal(t, []string{"label1", "label2"}, labelsMsg.labels)
-	require.NoError(t, labelsMsg.err, "should have no error on success")
-}
-
-func TestUpdateIssueStatusCmd_ReturnsErrorOnFailure(t *testing.T) {
-	// Verify updateIssueStatusCmd propagates errors from BeadsExecutor
-	m := createIssueEditorTestModel(t)
-
-	// Create mock executor that returns an error
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateStatus("issue-456", beads.StatusInProgress).Return(errors.New("database error"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueStatusCmd("issue-456", beads.StatusInProgress)
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	statusMsg, ok := msg.(issueStatusChangedMsg)
-	require.True(t, ok, "command should return issueStatusChangedMsg")
-	require.Error(t, statusMsg.err, "should have error on failure")
-	require.Contains(t, statusMsg.err.Error(), "database error")
-}
-
-func TestUpdateIssuePriorityCmd_ReturnsErrorOnFailure(t *testing.T) {
-	// Verify updateIssuePriorityCmd propagates errors from BeadsExecutor
-	m := createIssueEditorTestModel(t)
-
-	// Create mock executor that returns an error
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority("issue-456", beads.PriorityHigh).Return(errors.New("permission denied"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssuePriorityCmd("issue-456", beads.PriorityHigh)
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	priorityMsg, ok := msg.(issuePriorityChangedMsg)
-	require.True(t, ok, "command should return issuePriorityChangedMsg")
-	require.Error(t, priorityMsg.err, "should have error on failure")
-	require.Contains(t, priorityMsg.err.Error(), "permission denied")
-}
-
-func TestUpdateIssueLabelsCmd_ReturnsErrorOnFailure(t *testing.T) {
-	// Verify updateIssueLabelsCmd propagates errors from BeadsExecutor
-	m := createIssueEditorTestModel(t)
-
-	// Create mock executor that returns an error
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().SetLabels("issue-456", []string{"label1"}).Return(errors.New("validation failed"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueLabelsCmd("issue-456", []string{"label1"})
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	labelsMsg, ok := msg.(issueLabelsChangedMsg)
-	require.True(t, ok, "command should return issueLabelsChangedMsg")
-	require.Error(t, labelsMsg.err, "should have error on failure")
-	require.Contains(t, labelsMsg.err.Error(), "validation failed")
-}
-
-func TestUpdateIssueStatusCmd_NilExecutorReturnsError(t *testing.T) {
-	// Verify updateIssueStatusCmd handles nil BeadsExecutor
-	m := createIssueEditorTestModel(t)
-	m.services.BeadsExecutor = nil
-
-	// Get the command
-	cmd := m.updateIssueStatusCmd("issue-456", beads.StatusInProgress)
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	statusMsg, ok := msg.(issueStatusChangedMsg)
-	require.True(t, ok, "command should return issueStatusChangedMsg")
-	require.Error(t, statusMsg.err, "should have error when executor is nil")
-	require.Contains(t, statusMsg.err.Error(), "beads executor unavailable")
-}
-
-func TestUpdateIssueNotesCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssueNotesCmd creates a command that calls BeadsExecutor.UpdateNotes
-	m := createIssueEditorTestModel(t)
-
-	// Create mock executor
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("issue-456", "new notes content").Return(nil)
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueNotesCmd("issue-456", "new notes content")
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	notesMsg, ok := msg.(issueNotesChangedMsg)
-	require.True(t, ok, "command should return issueNotesChangedMsg")
-	require.Equal(t, "issue-456", notesMsg.issueID)
-	require.Equal(t, "new notes content", notesMsg.notes)
-	require.NoError(t, notesMsg.err, "should have no error on success")
-}
-
-func TestUpdateIssueNotesCmd_PropagatesErrors(t *testing.T) {
-	// Verify updateIssueNotesCmd propagates errors from BeadsExecutor
-	m := createIssueEditorTestModel(t)
-
-	// Create mock executor that returns an error
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("issue-456", "notes").Return(errors.New("update failed"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the command
-	cmd := m.updateIssueNotesCmd("issue-456", "notes")
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	notesMsg, ok := msg.(issueNotesChangedMsg)
-	require.True(t, ok, "command should return issueNotesChangedMsg")
-	require.Error(t, notesMsg.err, "should have error on failure")
-	require.Contains(t, notesMsg.err.Error(), "update failed")
-}
-
-func TestUpdateIssueNotesCmd_NilExecutorReturnsError(t *testing.T) {
-	// Verify updateIssueNotesCmd handles nil BeadsExecutor
-	m := createIssueEditorTestModel(t)
-	m.services.BeadsExecutor = nil
-
-	// Get the command
-	cmd := m.updateIssueNotesCmd("issue-456", "notes")
-	require.NotNil(t, cmd, "should return command")
-
-	// Execute command
-	msg := cmd()
-	notesMsg, ok := msg.(issueNotesChangedMsg)
-	require.True(t, ok, "command should return issueNotesChangedMsg")
-	require.Error(t, notesMsg.err, "should have error when executor is nil")
-	require.Contains(t, notesMsg.err.Error(), "beads executor unavailable")
-}
-
-func TestDashboard_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
-	// Verify SaveMsg only includes notes update cmd when notes have actually changed
-	m := createIssueEditorTestModel(t)
-
-	// Set the original issue with existing notes
+	// Set the original issue for change detection
 	originalIssue := beads.Issue{
-		ID:    "issue-456",
-		Notes: "original notes",
+		ID:       "issue-456",
+		Priority: beads.PriorityMedium,
+		Status:   beads.StatusOpen,
+		Labels:   []string{"test"},
+		Notes:    "original notes",
 	}
 	m.editingIssue = &originalIssue
 
-	// Send SaveMsg with same notes as original (no mock executor needed - just checking state)
+	// Send SaveMsg with changed fields
 	result, cmd := m.Update(issueeditor.SaveMsg{
 		IssueID:  "issue-456",
 		Priority: beads.PriorityHigh,
 		Status:   beads.StatusInProgress,
-		Labels:   []string{"label"},
-		Notes:    "original notes", // Same as original - no change
+		Labels:   []string{"updated"},
+		Notes:    "new notes",
 	})
 	m = result.(Model)
 
-	// Verify state transition
+	// Verify state transitions
+	require.Nil(t, m.issueEditor, "issue editor should be closed after SaveMsg")
 	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
-	require.NotNil(t, cmd, "should return batch command")
+	require.NotNil(t, cmd, "should return saveIssueCmd")
 }
 
-func TestDashboard_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
-	// Verify SaveMsg includes notes update cmd when notes have changed
+func TestDashboard_SaveMsg_UnchangedFields(t *testing.T) {
+	// Verify SaveMsg with unchanged fields results in all-nil opts
 	m := createIssueEditorTestModel(t)
 
-	// Set the original issue with existing notes
 	originalIssue := beads.Issue{
-		ID:    "issue-456",
-		Notes: "original notes",
+		ID:       "issue-456",
+		Priority: beads.PriorityMedium,
+		Status:   beads.StatusOpen,
+		Labels:   []string{"test"},
+		Notes:    "original notes",
 	}
 	m.editingIssue = &originalIssue
 
-	// Send SaveMsg with different notes (no mock executor needed - just checking state)
+	// Set up mock expecting UpdateIssue with all-nil opts (no changes)
+	mockExecutor := mocks.NewMockIssueExecutor(t)
+	mockExecutor.EXPECT().UpdateIssue("issue-456", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Title == nil && opts.Description == nil && opts.Notes == nil &&
+			opts.Priority == nil && opts.Status == nil && opts.Labels == nil
+	})).Return(nil)
+	m.services.BeadsExecutor = mockExecutor
+
+	// Send SaveMsg with same values as original
 	result, cmd := m.Update(issueeditor.SaveMsg{
 		IssueID:  "issue-456",
-		Priority: beads.PriorityHigh,
-		Status:   beads.StatusInProgress,
-		Labels:   []string{"label"},
-		Notes:    "new notes content", // Different from original
+		Priority: beads.PriorityMedium,
+		Status:   beads.StatusOpen,
+		Labels:   []string{"test"},
+		Notes:    "original notes",
 	})
 	m = result.(Model)
 
-	// Verify state transition
 	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
-	require.NotNil(t, cmd, "should return batch command")
+	require.NotNil(t, cmd)
+
+	// Execute to trigger mock verification
+	cmdResult := cmd()
+	_, ok := cmdResult.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
 }
 
 // === Unit Tests: ctrl+e Key Handling (perles-56ved.4) ===

@@ -524,6 +524,53 @@ func (_c *MockIssueExecutor_UpdateDescription_Call) RunAndReturn(run func(string
 	return _c
 }
 
+// UpdateIssue provides a mock function with given fields: issueID, opts
+func (_m *MockIssueExecutor) UpdateIssue(issueID string, opts domain.UpdateIssueOptions) error {
+	ret := _m.Called(issueID, opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateIssue")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, domain.UpdateIssueOptions) error); ok {
+		r0 = rf(issueID, opts)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockIssueExecutor_UpdateIssue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateIssue'
+type MockIssueExecutor_UpdateIssue_Call struct {
+	*mock.Call
+}
+
+// UpdateIssue is a helper method to define mock.On call
+//   - issueID string
+//   - opts domain.UpdateIssueOptions
+func (_e *MockIssueExecutor_Expecter) UpdateIssue(issueID interface{}, opts interface{}) *MockIssueExecutor_UpdateIssue_Call {
+	return &MockIssueExecutor_UpdateIssue_Call{Call: _e.mock.On("UpdateIssue", issueID, opts)}
+}
+
+func (_c *MockIssueExecutor_UpdateIssue_Call) Run(run func(issueID string, opts domain.UpdateIssueOptions)) *MockIssueExecutor_UpdateIssue_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(domain.UpdateIssueOptions))
+	})
+	return _c
+}
+
+func (_c *MockIssueExecutor_UpdateIssue_Call) Return(_a0 error) *MockIssueExecutor_UpdateIssue_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockIssueExecutor_UpdateIssue_Call) RunAndReturn(run func(string, domain.UpdateIssueOptions) error) *MockIssueExecutor_UpdateIssue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateNotes provides a mock function with given fields: issueID, notes
 func (_m *MockIssueExecutor) UpdateNotes(issueID string, notes string) error {
 	ret := _m.Called(issueID, notes)

@@ -209,11 +209,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 
-	case statusChangedMsg:
-		return m.handleStatusChanged(msg)
-
-	case priorityChangedMsg:
-		return m.handlePriorityChanged(msg)
+	case issueSavedMsg:
+		return m.handleIssueSaved(msg)
 
 	case pickerCancelledMsg:
 		// Return to board view (used by view menu picker)
@@ -230,29 +227,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case issueeditor.SaveMsg:
 		m.view = ViewBoard
-		m.pendingCursor = m.saveCursor()
 		m.loading = true
-		m.board = m.board.InvalidateViews()
-		cmds := []tea.Cmd{
-			m.updatePriorityCmd(msg.IssueID, msg.Priority),
-			m.updateStatusCmd(msg.IssueID, msg.Status),
-			m.setLabelsCmd(msg.IssueID, msg.Labels),
-			m.board.LoadAllColumns(),
-		}
-		// Only update title if changed
-		if m.editingIssue != nil && msg.Title != m.editingIssue.TitleText {
-			cmds = append(cmds, m.updateIssueTitleCmd(msg.IssueID, msg.Title))
-		}
-		// Only update description if changed
-		if m.editingIssue != nil && msg.Description != m.editingIssue.DescriptionText {
-			cmds = append(cmds, m.updateIssueDescriptionCmd(msg.IssueID, msg.Description))
-		}
-		// Only update notes if changed
-		if m.editingIssue != nil && msg.Notes != m.editingIssue.Notes {
-			cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
-		}
-		m.editingIssue = nil // Clear after use
-		return m, tea.Batch(cmds...)
+		opts := msg.BuildUpdateOptions(m.editingIssue)
+		m.editingIssue = nil
+		return m, m.saveIssueCmd(msg.IssueID, opts)
 
 	case issueeditor.CancelMsg:
 		m.view = ViewBoard
@@ -264,18 +242,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case issueDeletedMsg:
 		return m.handleIssueDeleted(msg)
-
-	case labelsChangedMsg:
-		return m.handleLabelsChanged(msg)
-
-	case titleChangedMsg:
-		return m.handleTitleChanged(msg)
-
-	case descriptionChangedMsg:
-		return m.handleDescriptionChanged(msg)
-
-	case notesChangedMsg:
-		return m.handleNotesChanged(msg)
 
 	case shared.ActionExecutedMsg:
 		return m.handleActionExecuted(msg)
@@ -734,42 +700,10 @@ type clearErrorMsg struct{}
 
 type clearRefreshIndicatorMsg struct{}
 
-type statusChangedMsg struct {
+// issueSavedMsg signals completion of a consolidated issue save.
+type issueSavedMsg struct {
 	issueID string
-	status  beads.Status
-	err     error
-}
-
-type priorityChangedMsg struct {
-	issueID  string
-	priority beads.Priority
-	err      error
-}
-
-type labelsChangedMsg struct {
-	issueID string
-	labels  []string
-	err     error
-}
-
-// titleChangedMsg signals completion of a title update.
-type titleChangedMsg struct {
-	issueID string
-	title   string
-	err     error
-}
-
-// descriptionChangedMsg signals completion of a description update.
-type descriptionChangedMsg struct {
-	issueID     string
-	description string
-	err         error
-}
-
-// notesChangedMsg signals completion of a notes update.
-type notesChangedMsg struct {
-	issueID string
-	notes   string
+	opts    beads.UpdateIssueOptions
 	err     error
 }
 
@@ -787,48 +721,10 @@ type viewMenuRenameMsg struct{}
 
 // Async commands
 
-func (m Model) updateStatusCmd(issueID string, status beads.Status) tea.Cmd {
+func (m Model) saveIssueCmd(issueID string, opts beads.UpdateIssueOptions) tea.Cmd {
 	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateStatus(issueID, status)
-		return statusChangedMsg{issueID, status, err}
-	}
-}
-
-func (m Model) updatePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdatePriority(issueID, priority)
-		return priorityChangedMsg{issueID, priority, err}
-	}
-}
-
-func (m Model) setLabelsCmd(issueID string, labels []string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.SetLabels(issueID, labels)
-		return labelsChangedMsg{issueID: issueID, labels: labels, err: err}
-	}
-}
-
-// updateIssueTitleCmd creates a command to update an issue's title.
-func (m Model) updateIssueTitleCmd(issueID string, title string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateTitle(issueID, title)
-		return titleChangedMsg{issueID: issueID, title: title, err: err}
-	}
-}
-
-// updateIssueDescriptionCmd creates a command to update an issue's description.
-func (m Model) updateIssueDescriptionCmd(issueID string, description string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateDescription(issueID, description)
-		return descriptionChangedMsg{issueID: issueID, description: description, err: err}
-	}
-}
-
-// updateIssueNotesCmd creates a command to update an issue's notes.
-func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
-	return func() tea.Msg {
-		err := m.services.BeadsExecutor.UpdateNotes(issueID, notes)
-		return notesChangedMsg{issueID: issueID, notes: notes, err: err}
+		err := m.services.BeadsExecutor.UpdateIssue(issueID, opts)
+		return issueSavedMsg{issueID: issueID, opts: opts, err: err}
 	}
 }
 

@@ -5,6 +5,7 @@
 package issueeditor
 
 import (
+	"slices"
 	"strconv"
 
 	beads "github.com/zjrosen/perles/internal/beads/domain"
@@ -34,6 +35,47 @@ type SaveMsg struct {
 
 // CancelMsg is sent when the user cancels the editor.
 type CancelMsg struct{}
+
+// BuildUpdateOptions compares the SaveMsg fields against the original issue
+// snapshot and returns an UpdateIssueOptions with only changed fields set (non-nil).
+// If original is nil (safety fallback), all fields are populated from the SaveMsg.
+func (m SaveMsg) BuildUpdateOptions(original *beads.Issue) beads.UpdateIssueOptions {
+	var opts beads.UpdateIssueOptions
+	if original == nil {
+		opts.Title = &m.Title
+		opts.Description = &m.Description
+		opts.Notes = &m.Notes
+		p := m.Priority
+		opts.Priority = &p
+		s := m.Status
+		opts.Status = &s
+		labels := m.Labels
+		opts.Labels = &labels
+		return opts
+	}
+	if m.Title != original.TitleText {
+		opts.Title = &m.Title
+	}
+	if m.Description != original.DescriptionText {
+		opts.Description = &m.Description
+	}
+	if m.Notes != original.Notes {
+		opts.Notes = &m.Notes
+	}
+	if m.Priority != original.Priority {
+		p := m.Priority
+		opts.Priority = &p
+	}
+	if m.Status != original.Status {
+		s := m.Status
+		opts.Status = &s
+	}
+	if !slices.Equal(m.Labels, original.Labels) {
+		labels := m.Labels
+		opts.Labels = &labels
+	}
+	return opts
+}
 
 // New creates a new issue editor with the given issue.
 func New(issue beads.Issue) Model {

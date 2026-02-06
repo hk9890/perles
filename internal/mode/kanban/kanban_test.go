@@ -21,6 +21,7 @@ import (
 	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
 	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
 	"github.com/zjrosen/perles/internal/ui/shared/editor"
+	"github.com/zjrosen/perles/internal/ui/shared/toaster"
 )
 
 // Note: TestMain is defined in golden_test.go and initializes zone.NewGlobal()
@@ -1068,229 +1069,146 @@ func TestKanban_EditorFinishedMsg_ReturnsNilWhenNotInEditIssueView(t *testing.T)
 // Title and Description Update Tests
 // =============================================================================
 
-func TestKanban_IssueEditor_SaveMsg_UpdatesTitleWhenChanged(t *testing.T) {
+func TestKanban_SaveMsg_DispatchesSingleSaveIssueCmd(t *testing.T) {
 	m := createTestModelWithIssue("test-123", "status = open")
 
-	// Set up mock executor for title update
+	// Set up mock executor expecting single UpdateIssue call
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateTitle("test-123", "New Title").Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("test-123", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Title != nil && *opts.Title == "New Title"
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the selected issue and modify its title
+	// Get selected issue and set original title
 	issue := m.board.SelectedIssue()
 	require.NotNil(t, issue, "precondition: should have selected issue")
 	issueCopy := *issue
 	issueCopy.TitleText = "Original Title"
 
-	// Open editor (which sets editingIssue)
+	// Open editor (sets editingIssue)
 	m, _ = m.Update(OpenEditMenuMsg{Issue: issueCopy})
-	require.NotNil(t, m.editingIssue, "editingIssue should be set")
-	require.Equal(t, "Original Title", m.editingIssue.TitleText, "original title should be stored")
+	require.NotNil(t, m.editingIssue)
 
 	// Process SaveMsg with changed title
 	msg := issueeditor.SaveMsg{
 		IssueID:     "test-123",
 		Title:       "New Title",
 		Description: issueCopy.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+		Notes:       issueCopy.Notes,
+		Priority:    issueCopy.Priority,
+		Status:      issueCopy.Status,
+		Labels:      issueCopy.Labels,
 	}
 	m, cmd := m.Update(msg)
 
-	require.Equal(t, ViewBoard, m.view, "expected ViewBoard view after save")
-	require.NotNil(t, cmd, "expected batch command")
+	require.Equal(t, ViewBoard, m.view)
+	require.True(t, m.loading)
 	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
+	require.NotNil(t, cmd, "expected saveIssueCmd")
 
-	// Execute the batch command to trigger the mock calls
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				subCmd() // Execute each command in the batch
-			}
-		}
-	}
-	// The mock expectations will fail if UpdateTitle isn't called
+	// Execute the command to trigger the mock
+	result := cmd()
+	_, ok := result.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
 }
 
-func TestKanban_IssueEditor_SaveMsg_SkipsTitleUpdateWhenUnchanged(t *testing.T) {
+func TestKanban_HandleIssueSaved_Success(t *testing.T) {
 	m := createTestModelWithIssue("test-123", "status = open")
 
-	// Set up mock executor - UpdateTitle should NOT be called
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	// NOTE: No UpdateTitle expectation - it should NOT be called
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the selected issue
-	issue := m.board.SelectedIssue()
-	require.NotNil(t, issue, "precondition: should have selected issue")
-	issueCopy := *issue
-	issueCopy.TitleText = "Same Title"
-
-	// Open editor (which sets editingIssue)
-	m, _ = m.Update(OpenEditMenuMsg{Issue: issueCopy})
-
-	// Process SaveMsg with same title
-	msg := issueeditor.SaveMsg{
-		IssueID:     "test-123",
-		Title:       "Same Title", // Same as original
-		Description: issueCopy.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+	// handleIssueSaved on success should save cursor and invalidate views
+	msg := issueSavedMsg{
+		issueID: "test-123",
+		opts:    beads.UpdateIssueOptions{},
+		err:     nil,
 	}
-	m, cmd := m.Update(msg)
+	m, _ = m.handleIssueSaved(msg)
 
-	require.Equal(t, ViewBoard, m.view, "expected ViewBoard view after save")
-	require.NotNil(t, cmd, "expected batch command")
-	// The mock would fail if UpdateTitle was unexpectedly called
+	require.NotNil(t, m.pendingCursor, "should save cursor for issue following")
+	require.Equal(t, "test-123", m.pendingCursor.issueID, "cursor should track saved issue")
 }
 
-func TestKanban_IssueEditor_SaveMsg_UpdatesDescriptionWhenChanged(t *testing.T) {
-	m := createTestModelWithIssue("test-123", "status = open")
+func TestKanban_HandleIssueSaved_Error(t *testing.T) {
+	m := createTestModel(t)
 
-	// Set up mock executor for description update
+	// handleIssueSaved on error should return ShowToastMsg
+	msg := issueSavedMsg{
+		issueID: "test-123",
+		opts:    beads.UpdateIssueOptions{},
+		err:     errors.New("database error"),
+	}
+	m, cmd := m.handleIssueSaved(msg)
+
+	require.NotNil(t, cmd, "expected toast command on error")
+	toastResult := cmd()
+	showToast, ok := toastResult.(mode.ShowToastMsg)
+	require.True(t, ok, "expected ShowToastMsg")
+	require.Contains(t, showToast.Message, "Save failed")
+	require.Contains(t, showToast.Message, "database error")
+	require.Equal(t, toaster.StyleError, showToast.Style)
+}
+
+func TestKanban_SaveMsg_NoChanges(t *testing.T) {
+	// When nothing changed, UpdateIssue is still called with all-nil opts (no-op)
+	m := createTestModel(t)
+
+	m.editingIssue = &beads.Issue{
+		ID:              "test-issue",
+		TitleText:       "Test Issue",
+		DescriptionText: "Test description",
+		Notes:           "original notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		Labels:          []string{},
+	}
+	m.view = ViewEditIssue
+
+	// Set up mock expecting UpdateIssue with all-nil opts
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateDescription("test-123", "New Description").Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("test-issue", mock.MatchedBy(func(opts beads.UpdateIssueOptions) bool {
+		return opts.Title == nil && opts.Description == nil && opts.Notes == nil &&
+			opts.Priority == nil && opts.Status == nil && opts.Labels == nil
+	})).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the selected issue and modify its description
-	issue := m.board.SelectedIssue()
-	require.NotNil(t, issue, "precondition: should have selected issue")
-	issueCopy := *issue
-	issueCopy.DescriptionText = "Original Description"
+	m, cmd := m.Update(issueeditor.SaveMsg{
+		IssueID:     "test-issue",
+		Priority:    beads.PriorityMedium,
+		Status:      beads.StatusOpen,
+		Labels:      []string{},
+		Title:       "Test Issue",
+		Description: "Test description",
+		Notes:       "original notes",
+	})
 
-	// Open editor (which sets editingIssue)
-	m, _ = m.Update(OpenEditMenuMsg{Issue: issueCopy})
-	require.NotNil(t, m.editingIssue, "editingIssue should be set")
-	require.Equal(t, "Original Description", m.editingIssue.DescriptionText, "original description should be stored")
-
-	// Process SaveMsg with changed description
-	msg := issueeditor.SaveMsg{
-		IssueID:     "test-123",
-		Title:       issueCopy.TitleText,
-		Description: "New Description",
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
-	}
-	m, cmd := m.Update(msg)
-
-	require.Equal(t, ViewBoard, m.view, "expected ViewBoard view after save")
-	require.NotNil(t, cmd, "expected batch command")
 	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
+	require.Equal(t, ViewBoard, m.view)
+	require.NotNil(t, cmd)
 
-	// Execute the batch command to trigger the mock calls
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				subCmd() // Execute each command in the batch
-			}
-		}
-	}
-	// The mock expectations will fail if UpdateDescription isn't called
+	// Execute to trigger mock
+	result := cmd()
+	_, ok := result.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
 }
 
-func TestKanban_IssueEditor_SaveMsg_SkipsDescriptionUpdateWhenUnchanged(t *testing.T) {
-	m := createTestModelWithIssue("test-123", "status = open")
+func TestKanban_SaveMsg_ClearsEditingIssue(t *testing.T) {
+	m := createTestModel(t)
 
-	// Set up mock executor - UpdateDescription should NOT be called
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	// NOTE: No UpdateDescription expectation - it should NOT be called
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the selected issue
-	issue := m.board.SelectedIssue()
-	require.NotNil(t, issue, "precondition: should have selected issue")
-	issueCopy := *issue
-	issueCopy.DescriptionText = "Same Description"
-
-	// Open editor (which sets editingIssue)
-	m, _ = m.Update(OpenEditMenuMsg{Issue: issueCopy})
-
-	// Process SaveMsg with same description
-	msg := issueeditor.SaveMsg{
-		IssueID:     "test-123",
-		Title:       issueCopy.TitleText,
-		Description: "Same Description", // Same as original
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
+	m.editingIssue = &beads.Issue{
+		ID:        "test-issue",
+		TitleText: "Test Issue",
 	}
-	m, cmd := m.Update(msg)
+	m.view = ViewEditIssue
 
-	require.Equal(t, ViewBoard, m.view, "expected ViewBoard view after save")
-	require.NotNil(t, cmd, "expected batch command")
-	// The mock would fail if UpdateDescription was unexpectedly called
-}
+	m, _ = m.Update(issueeditor.SaveMsg{
+		IssueID:  "test-issue",
+		Title:    "Test Issue",
+		Priority: beads.PriorityMedium,
+		Status:   beads.StatusOpen,
+		Labels:   []string{},
+	})
 
-func TestKanban_IssueEditor_SaveMsg_TitleErrorShowsToast(t *testing.T) {
-	m := createTestModelWithIssue("test-123", "status = open")
-
-	// Set up mock executor that returns an error for title update
-	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdatePriority(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateStatus(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().SetLabels(mock.Anything, mock.Anything).Return(nil).Maybe()
-	mockExecutor.EXPECT().UpdateTitle("test-123", "New Title").Return(errors.New("database error"))
-	m.services.BeadsExecutor = mockExecutor
-
-	// Get the selected issue
-	issue := m.board.SelectedIssue()
-	require.NotNil(t, issue, "precondition: should have selected issue")
-	issueCopy := *issue
-	issueCopy.TitleText = "Original Title"
-
-	// Open editor (which sets editingIssue)
-	m, _ = m.Update(OpenEditMenuMsg{Issue: issueCopy})
-
-	// Process SaveMsg with changed title
-	msg := issueeditor.SaveMsg{
-		IssueID:     "test-123",
-		Title:       "New Title",
-		Description: issueCopy.DescriptionText,
-		Priority:    beads.PriorityHigh,
-		Status:      beads.StatusInProgress,
-		Labels:      []string{"updated"},
-	}
-	m, cmd := m.Update(msg)
-
-	require.NotNil(t, cmd, "expected batch command")
-
-	// Execute all commands in the batch and find the titleChangedMsg
-	batchResult := cmd()
-	if batchMsg, ok := batchResult.(tea.BatchMsg); ok {
-		for _, subCmd := range batchMsg {
-			if subCmd != nil {
-				result := subCmd()
-				if titleMsg, ok := result.(titleChangedMsg); ok {
-					// Handle the error message
-					_, toastCmd := m.handleTitleChanged(titleMsg)
-					require.NotNil(t, toastCmd, "expected toast command on error")
-
-					// Execute toast command to verify it produces a toast message
-					toastResult := toastCmd()
-					showToast, ok := toastResult.(mode.ShowToastMsg)
-					require.True(t, ok, "expected ShowToastMsg")
-					require.Contains(t, showToast.Message, "Error", "toast should contain error message")
-				}
-			}
-		}
-	}
+	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
+	require.Equal(t, ViewBoard, m.view)
 }
 
 func TestKanban_IssueEditor_CancelMsg_ClearsEditingIssue(t *testing.T) {
@@ -1313,105 +1231,43 @@ func TestKanban_IssueEditor_CancelMsg_ClearsEditingIssue(t *testing.T) {
 	require.Nil(t, m.editingIssue, "editingIssue should be cleared after cancel")
 }
 
-func TestKanban_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {
-	// Verify SaveMsg only includes notes update cmd when notes have actually changed
+func TestKanban_SaveIssueCmd_CallsUpdateIssue(t *testing.T) {
 	m := createTestModel(t)
 
-	// Set up editingIssue with original notes
-	m.editingIssue = &beads.Issue{
-		ID:              "test-issue",
-		TitleText:       "Test Issue",
-		DescriptionText: "Test description",
-		Notes:           "original notes",
-	}
-	m.view = ViewEditIssue
+	title := "New Title"
+	opts := beads.UpdateIssueOptions{Title: &title}
 
-	// Send SaveMsg with same notes as original (no mock executor needed - just checking state)
-	m, cmd := m.Update(issueeditor.SaveMsg{
-		IssueID:     "test-issue",
-		Priority:    beads.PriorityMedium,
-		Status:      beads.StatusOpen,
-		Labels:      []string{},
-		Title:       "Test Issue",       // Same as original
-		Description: "Test description", // Same as original
-		Notes:       "original notes",   // Same as original - no change
-	})
-
-	// Verify state transition
-	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
-	require.Equal(t, ViewBoard, m.view, "should return to board view after save")
-	require.NotNil(t, cmd, "should return batch command")
-}
-
-func TestKanban_SaveMsg_UpdatesNotesWhenChanged(t *testing.T) {
-	// Verify SaveMsg includes notes update cmd when notes have changed
-	m := createTestModel(t)
-
-	// Set up editingIssue with original notes
-	m.editingIssue = &beads.Issue{
-		ID:              "test-issue",
-		TitleText:       "Test Issue",
-		DescriptionText: "Test description",
-		Notes:           "original notes",
-	}
-	m.view = ViewEditIssue
-
-	// Send SaveMsg with different notes (no mock executor needed - just checking state)
-	m, cmd := m.Update(issueeditor.SaveMsg{
-		IssueID:     "test-issue",
-		Priority:    beads.PriorityMedium,
-		Status:      beads.StatusOpen,
-		Labels:      []string{},
-		Title:       "Test Issue",        // Same as original
-		Description: "Test description",  // Same as original
-		Notes:       "new notes content", // Different from original
-	})
-
-	// Verify state transition
-	require.Nil(t, m.editingIssue, "editingIssue should be cleared after save")
-	require.Equal(t, ViewBoard, m.view, "should return to board view after save")
-	require.NotNil(t, cmd, "should return batch command")
-}
-
-func TestKanban_UpdateIssueNotesCmd_CallsBeadsExecutor(t *testing.T) {
-	// Verify updateIssueNotesCmd creates a command that calls BeadsExecutor.UpdateNotes
-	m := createTestModel(t)
-
-	// Create mock executor
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("test-issue", "new notes").Return(nil)
+	mockExecutor.EXPECT().UpdateIssue("test-issue", opts).Return(nil)
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the command
-	cmd := m.updateIssueNotesCmd("test-issue", "new notes")
-	require.NotNil(t, cmd, "should return command")
+	cmd := m.saveIssueCmd("test-issue", opts)
+	require.NotNil(t, cmd)
 
-	// Execute command
 	msg := cmd()
-	notesMsg, ok := msg.(notesChangedMsg)
-	require.True(t, ok, "command should return notesChangedMsg")
-	require.Equal(t, "test-issue", notesMsg.issueID)
-	require.Equal(t, "new notes", notesMsg.notes)
-	require.NoError(t, notesMsg.err, "should have no error on success")
+	savedMsg, ok := msg.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
+	require.Equal(t, "test-issue", savedMsg.issueID)
+	require.NoError(t, savedMsg.err)
+	require.NotNil(t, savedMsg.opts.Title)
+	require.Equal(t, "New Title", *savedMsg.opts.Title)
 }
 
-func TestKanban_UpdateIssueNotesCmd_PropagatesErrors(t *testing.T) {
-	// Verify updateIssueNotesCmd propagates errors from BeadsExecutor
+func TestKanban_SaveIssueCmd_PropagatesErrors(t *testing.T) {
 	m := createTestModel(t)
 
-	// Create mock executor that returns an error
+	opts := beads.UpdateIssueOptions{}
+
 	mockExecutor := mocks.NewMockIssueExecutor(t)
-	mockExecutor.EXPECT().UpdateNotes("test-issue", "notes").Return(errors.New("update failed"))
+	mockExecutor.EXPECT().UpdateIssue("test-issue", opts).Return(errors.New("update failed"))
 	m.services.BeadsExecutor = mockExecutor
 
-	// Get the command
-	cmd := m.updateIssueNotesCmd("test-issue", "notes")
-	require.NotNil(t, cmd, "should return command")
+	cmd := m.saveIssueCmd("test-issue", opts)
+	require.NotNil(t, cmd)
 
-	// Execute command
 	msg := cmd()
-	notesMsg, ok := msg.(notesChangedMsg)
-	require.True(t, ok, "command should return notesChangedMsg")
-	require.Error(t, notesMsg.err, "should have error on failure")
-	require.Contains(t, notesMsg.err.Error(), "update failed")
+	savedMsg, ok := msg.(issueSavedMsg)
+	require.True(t, ok, "command should return issueSavedMsg")
+	require.Error(t, savedMsg.err)
+	require.Contains(t, savedMsg.err.Error(), "update failed")
 }

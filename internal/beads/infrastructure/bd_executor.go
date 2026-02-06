@@ -21,6 +21,8 @@ var _ appbeads.IssueExecutor = (*BDExecutor)(nil)
 type BDExecutor struct {
 	workDir  string
 	beadsDir string
+	// runFunc is an optional override for runBeads, used in tests.
+	runFunc func(args ...string) (string, error)
 }
 
 // NewBDExecutor creates a new BDExecutor.
@@ -32,6 +34,9 @@ func NewBDExecutor(workDir, beadsDir string) *BDExecutor {
 
 // runBeads executes a bd command and returns stdout and any error.
 func (e *BDExecutor) runBeads(args ...string) (string, error) {
+	if e.runFunc != nil {
+		return e.runFunc(args...)
+	}
 	//nolint:gosec // G204: args come from controlled sources
 	cmd := exec.Command("bd", args...)
 	if e.workDir != "" {
@@ -139,6 +144,61 @@ func (e *BDExecutor) UpdateNotes(issueID, notes string) error {
 	return nil
 }
 
+// UpdateIssue applies field updates to an issue via bd CLI.
+// Only non-nil fields in opts are included. Labels are handled as a separate
+// bd update call because --set-labels cannot be combined with other flags.
+// Returns nil without invoking bd if no fields are set.
+func (e *BDExecutor) UpdateIssue(issueID string, opts domain.UpdateIssueOptions) error {
+	start := time.Now()
+	defer func() {
+		log.Debug(log.CatBeads, "UpdateIssue completed", "issueID", issueID, "duration", time.Since(start))
+	}()
+
+	// Build args for non-label fields.
+	args := []string{"update", issueID}
+
+	if opts.Title != nil {
+		args = append(args, "--title", *opts.Title)
+	}
+	if opts.Description != nil {
+		args = append(args, "--description", *opts.Description)
+	}
+	if opts.Notes != nil {
+		args = append(args, "--notes", *opts.Notes)
+	}
+	if opts.Priority != nil {
+		args = append(args, "--priority", fmt.Sprintf("%d", *opts.Priority))
+	}
+	if opts.Status != nil {
+		args = append(args, "--status", string(*opts.Status))
+	}
+	if opts.Assignee != nil {
+		args = append(args, "--assignee", *opts.Assignee)
+	}
+	if opts.Type != nil {
+		args = append(args, "--type", string(*opts.Type))
+	}
+
+	// Execute non-label update if any fields were set.
+	if len(args) > 2 {
+		args = append(args, "--json")
+		if _, err := e.runBeads(args...); err != nil {
+			log.Error(log.CatBeads, "UpdateIssue failed", "issueID", issueID, "error", err)
+			return fmt.Errorf("saving issue %s: %w", issueID, err)
+		}
+	}
+
+	// Labels require a separate bd update call; --set-labels cannot be
+	// combined with other flags in a single invocation.
+	if opts.Labels != nil {
+		if err := e.SetLabels(issueID, *opts.Labels); err != nil {
+			return fmt.Errorf("saving issue %s labels: %w", issueID, err)
+		}
+	}
+
+	return nil
+}
+
 // CloseIssue marks an issue as closed with a reason via bd CLI.
 func (e *BDExecutor) CloseIssue(issueID, reason string) error {
 	start := time.Now()
@@ -191,15 +251,41 @@ func (e *BDExecutor) DeleteIssues(issueIDs []string) error {
 }
 
 // SetLabels replaces all labels on an issue via bd CLI.
-// Pass an empty slice to remove all labels.
+// Pass an empty slice (or nil) to remove all labels.
+//
+// bd's --set-labels flag is a repeatable "strings" type that ignores empty
+// values, so clearing all labels requires fetching the current labels and
+// calling --remove-label for each one.
 func (e *BDExecutor) SetLabels(issueID string, labels []string) error {
 	start := time.Now()
 	defer func() {
 		log.Debug(log.CatBeads, "SetLabels completed", "issueID", issueID, "labels", strings.Join(labels, ","), "duration", time.Since(start))
 	}()
 
-	if _, err := e.runBeads("update", issueID, "--set-labels", strings.Join(labels, ","), "--json"); err != nil {
-		log.Error(log.CatBeads, "SetLabels failed", "issueID", issueID, "error", err)
+	if len(labels) > 0 {
+		if _, err := e.runBeads("update", issueID, "--set-labels", strings.Join(labels, ","), "--json"); err != nil {
+			log.Error(log.CatBeads, "SetLabels failed", "issueID", issueID, "error", err)
+			return err
+		}
+		return nil
+	}
+
+	// Empty labels: bd ignores --set-labels "", so we must fetch current
+	// labels and remove each one individually.
+	current, err := e.ShowIssue(issueID)
+	if err != nil {
+		return fmt.Errorf("fetching issue %s for label clearing: %w", issueID, err)
+	}
+	if len(current.Labels) == 0 {
+		return nil // already clear
+	}
+	args := []string{"update", issueID}
+	for _, l := range current.Labels {
+		args = append(args, "--remove-label", l)
+	}
+	args = append(args, "--json")
+	if _, err := e.runBeads(args...); err != nil {
+		log.Error(log.CatBeads, "SetLabels (clear) failed", "issueID", issueID, "error", err)
 		return err
 	}
 	return nil

@@ -33,6 +33,7 @@ type IssueWriter interface {
 	CreateTask(title, description, parentID, assignee string, labels []string) (domain.CreateResult, error)
 	DeleteIssues(issueIDs []string) error
 	AddDependency(taskID, dependsOnID string) error
+	UpdateIssue(issueID string, opts domain.UpdateIssueOptions) error
 }
 
 // IssueExecutor combines read and write operations for issues.

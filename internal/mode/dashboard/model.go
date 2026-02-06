@@ -417,18 +417,9 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 			}
 		case issueeditor.SaveMsg:
 			m.issueEditor = nil
-			cmds := []tea.Cmd{
-				m.updateIssueStatusCmd(msg.IssueID, msg.Status),
-				m.updateIssuePriorityCmd(msg.IssueID, msg.Priority),
-				m.updateIssueLabelsCmd(msg.IssueID, msg.Labels),
-				loadEpicTree(m.lastLoadedEpicID, m.services.Executor),
-			}
-			// Only update notes if changed
-			if m.editingIssue != nil && msg.Notes != m.editingIssue.Notes {
-				cmds = append(cmds, m.updateIssueNotesCmd(msg.IssueID, msg.Notes))
-			}
-			m.editingIssue = nil // Clear after use
-			return m, tea.Batch(cmds...)
+			opts := msg.BuildUpdateOptions(m.editingIssue)
+			m.editingIssue = nil
+			return m, m.saveIssueCmd(msg.IssueID, opts)
 		case issueeditor.CancelMsg:
 			m.issueEditor = nil
 			m.editingIssue = nil // Clear on cancel too
@@ -446,50 +437,8 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 			m.eventCh = msg.eventCh
 			m.unsubscribe = msg.unsubscribe
 			return m, m.listenForEvents()
-		case issueStatusChangedMsg:
-			// Handle async result even when modal is open
-			if msg.err != nil {
-				return m, func() tea.Msg {
-					return mode.ShowToastMsg{
-						Message: fmt.Sprintf("Failed to update status: %v", msg.err),
-						Style:   toaster.StyleError,
-					}
-				}
-			}
-			return m, nil
-		case issuePriorityChangedMsg:
-			// Handle async result even when modal is open
-			if msg.err != nil {
-				return m, func() tea.Msg {
-					return mode.ShowToastMsg{
-						Message: fmt.Sprintf("Failed to update priority: %v", msg.err),
-						Style:   toaster.StyleError,
-					}
-				}
-			}
-			return m, nil
-		case issueLabelsChangedMsg:
-			// Handle async result even when modal is open
-			if msg.err != nil {
-				return m, func() tea.Msg {
-					return mode.ShowToastMsg{
-						Message: fmt.Sprintf("Failed to update labels: %v", msg.err),
-						Style:   toaster.StyleError,
-					}
-				}
-			}
-			return m, nil
-		case issueNotesChangedMsg:
-			// Handle async result even when modal is open
-			if msg.err != nil {
-				return m, func() tea.Msg {
-					return mode.ShowToastMsg{
-						Message: fmt.Sprintf("Failed to update notes: %v", msg.err),
-						Style:   toaster.StyleError,
-					}
-				}
-			}
-			return m, nil
+		case issueSavedMsg:
+			return m.handleIssueSaved(msg)
 		}
 		var cmd tea.Cmd
 		newEditor, cmd := m.issueEditor.Update(msg)
@@ -606,38 +555,8 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 			},
 		)
 
-	case issueStatusChangedMsg:
-		if msg.err != nil {
-			return m, func() tea.Msg {
-				return mode.ShowToastMsg{
-					Message: fmt.Sprintf("Failed to update status: %v", msg.err),
-					Style:   toaster.StyleError,
-				}
-			}
-		}
-		return m, nil
-
-	case issuePriorityChangedMsg:
-		if msg.err != nil {
-			return m, func() tea.Msg {
-				return mode.ShowToastMsg{
-					Message: fmt.Sprintf("Failed to update priority: %v", msg.err),
-					Style:   toaster.StyleError,
-				}
-			}
-		}
-		return m, nil
-
-	case issueLabelsChangedMsg:
-		if msg.err != nil {
-			return m, func() tea.Msg {
-				return mode.ShowToastMsg{
-					Message: fmt.Sprintf("Failed to update labels: %v", msg.err),
-					Style:   toaster.StyleError,
-				}
-			}
-		}
-		return m, nil
+	case issueSavedMsg:
+		return m.handleIssueSaved(msg)
 
 	case CoordinatorPanelSubmitMsg:
 		// Check for slash commands first
@@ -2001,31 +1920,10 @@ type workflowArchivedMsg struct {
 	name string
 }
 
-// issueStatusChangedMsg is sent when an issue status update completes.
-type issueStatusChangedMsg struct {
+// issueSavedMsg signals completion of a consolidated issue save.
+type issueSavedMsg struct {
 	issueID string
-	status  beads.Status
-	err     error
-}
-
-// issuePriorityChangedMsg is sent when an issue priority update completes.
-type issuePriorityChangedMsg struct {
-	issueID  string
-	priority beads.Priority
-	err      error
-}
-
-// issueLabelsChangedMsg is sent when an issue labels update completes.
-type issueLabelsChangedMsg struct {
-	issueID string
-	labels  []string
-	err     error
-}
-
-// issueNotesChangedMsg is sent when an issue notes update completes.
-type issueNotesChangedMsg struct {
-	issueID string
-	notes   string
+	opts    beads.UpdateIssueOptions
 	err     error
 }
 
@@ -2076,56 +1974,36 @@ func (m Model) startWorkflow(id controlplane.WorkflowID) tea.Cmd {
 	}
 }
 
-// updateIssueStatusCmd returns a command that updates an issue's status.
-func (m Model) updateIssueStatusCmd(issueID string, status beads.Status) tea.Cmd {
+// saveIssueCmd creates a command to save all changed fields via a single UpdateIssue call.
+func (m Model) saveIssueCmd(issueID string, opts beads.UpdateIssueOptions) tea.Cmd {
 	return func() tea.Msg {
-		var err error
-		if m.services.BeadsExecutor == nil {
-			err = fmt.Errorf("beads executor unavailable")
-		} else {
-			err = m.services.BeadsExecutor.UpdateStatus(issueID, status)
-		}
-		return issueStatusChangedMsg{issueID: issueID, status: status, err: err}
+		err := m.services.BeadsExecutor.UpdateIssue(issueID, opts)
+		return issueSavedMsg{issueID: issueID, opts: opts, err: err}
 	}
 }
 
-// updateIssuePriorityCmd returns a command that updates an issue's priority.
-func (m Model) updateIssuePriorityCmd(issueID string, priority beads.Priority) tea.Cmd {
-	return func() tea.Msg {
-		var err error
-		if m.services.BeadsExecutor == nil {
-			err = fmt.Errorf("beads executor unavailable")
-		} else {
-			err = m.services.BeadsExecutor.UpdatePriority(issueID, priority)
+// handleIssueSaved processes the result of a consolidated issue save.
+func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Save failed: " + msg.err.Error(), Style: toaster.StyleError}
 		}
-		return issuePriorityChangedMsg{issueID: issueID, priority: priority, err: err}
 	}
-}
 
-// updateIssueLabelsCmd returns a command that updates an issue's labels.
-func (m Model) updateIssueLabelsCmd(issueID string, labels []string) tea.Cmd {
-	return func() tea.Msg {
-		var err error
-		if m.services.BeadsExecutor == nil {
-			err = fmt.Errorf("beads executor unavailable")
-		} else {
-			err = m.services.BeadsExecutor.SetLabels(issueID, labels)
+	// Update the epic details panel to reflect saved changes
+	if m.hasEpicDetail {
+		if msg.opts.Priority != nil {
+			m.epicDetails = m.epicDetails.UpdatePriority(*msg.opts.Priority)
 		}
-		return issueLabelsChangedMsg{issueID: issueID, labels: labels, err: err}
+		if msg.opts.Status != nil {
+			m.epicDetails = m.epicDetails.UpdateStatus(*msg.opts.Status)
+		}
+		if msg.opts.Labels != nil {
+			m.epicDetails = m.epicDetails.UpdateLabels(*msg.opts.Labels)
+		}
 	}
-}
 
-// updateIssueNotesCmd returns a command that updates an issue's notes.
-func (m Model) updateIssueNotesCmd(issueID string, notes string) tea.Cmd {
-	return func() tea.Msg {
-		var err error
-		if m.services.BeadsExecutor == nil {
-			err = fmt.Errorf("beads executor unavailable")
-		} else {
-			err = m.services.BeadsExecutor.UpdateNotes(issueID, notes)
-		}
-		return issueNotesChangedMsg{issueID: issueID, notes: notes, err: err}
-	}
+	return m, loadEpicTree(m.lastLoadedEpicID, m.services.Executor)
 }
 
 // InNewWorkflowModal returns true if the new workflow modal is showing.

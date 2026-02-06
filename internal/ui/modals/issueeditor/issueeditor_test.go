@@ -19,6 +19,198 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// --- BuildUpdateOptions tests ---
+
+func TestBuildUpdateOptions_AllFieldsChanged(t *testing.T) {
+	original := &beads.Issue{
+		TitleText:       "Old Title",
+		DescriptionText: "Old Desc",
+		Notes:           "Old Notes",
+		Priority:        beads.PriorityLow,
+		Status:          beads.StatusOpen,
+		Labels:          []string{"old-label"},
+	}
+	msg := SaveMsg{
+		Title:       "New Title",
+		Description: "New Desc",
+		Notes:       "New Notes",
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusClosed,
+		Labels:      []string{"new-label"},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.NotNil(t, opts.Title)
+	require.Equal(t, "New Title", *opts.Title)
+	require.NotNil(t, opts.Description)
+	require.Equal(t, "New Desc", *opts.Description)
+	require.NotNil(t, opts.Notes)
+	require.Equal(t, "New Notes", *opts.Notes)
+	require.NotNil(t, opts.Priority)
+	require.Equal(t, beads.PriorityHigh, *opts.Priority)
+	require.NotNil(t, opts.Status)
+	require.Equal(t, beads.StatusClosed, *opts.Status)
+	require.NotNil(t, opts.Labels)
+	require.Equal(t, []string{"new-label"}, *opts.Labels)
+}
+
+func TestBuildUpdateOptions_NoFieldsChanged(t *testing.T) {
+	original := &beads.Issue{
+		TitleText:       "Same Title",
+		DescriptionText: "Same Desc",
+		Notes:           "Same Notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		Labels:          []string{"bug", "feature"},
+	}
+	msg := SaveMsg{
+		Title:       "Same Title",
+		Description: "Same Desc",
+		Notes:       "Same Notes",
+		Priority:    beads.PriorityMedium,
+		Status:      beads.StatusOpen,
+		Labels:      []string{"bug", "feature"},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.Nil(t, opts.Title)
+	require.Nil(t, opts.Description)
+	require.Nil(t, opts.Notes)
+	require.Nil(t, opts.Priority)
+	require.Nil(t, opts.Status)
+	require.Nil(t, opts.Labels)
+}
+
+func TestBuildUpdateOptions_SingleFieldChanged(t *testing.T) {
+	original := &beads.Issue{
+		TitleText:       "Original",
+		DescriptionText: "Desc",
+		Notes:           "Notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		Labels:          []string{"bug"},
+	}
+	msg := SaveMsg{
+		Title:       "Changed Title",
+		Description: "Desc",
+		Notes:       "Notes",
+		Priority:    beads.PriorityMedium,
+		Status:      beads.StatusOpen,
+		Labels:      []string{"bug"},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.NotNil(t, opts.Title, "only Title should be non-nil")
+	require.Equal(t, "Changed Title", *opts.Title)
+	require.Nil(t, opts.Description)
+	require.Nil(t, opts.Notes)
+	require.Nil(t, opts.Priority)
+	require.Nil(t, opts.Status)
+	require.Nil(t, opts.Labels)
+}
+
+func TestBuildUpdateOptions_NilOriginalFallback(t *testing.T) {
+	msg := SaveMsg{
+		Title:       "Title",
+		Description: "Desc",
+		Notes:       "Notes",
+		Priority:    beads.PriorityHigh,
+		Status:      beads.StatusInProgress,
+		Labels:      []string{"label"},
+	}
+
+	opts := msg.BuildUpdateOptions(nil)
+
+	require.NotNil(t, opts.Title)
+	require.Equal(t, "Title", *opts.Title)
+	require.NotNil(t, opts.Description)
+	require.Equal(t, "Desc", *opts.Description)
+	require.NotNil(t, opts.Notes)
+	require.Equal(t, "Notes", *opts.Notes)
+	require.NotNil(t, opts.Priority)
+	require.Equal(t, beads.PriorityHigh, *opts.Priority)
+	require.NotNil(t, opts.Status)
+	require.Equal(t, beads.StatusInProgress, *opts.Status)
+	require.NotNil(t, opts.Labels)
+	require.Equal(t, []string{"label"}, *opts.Labels)
+}
+
+func TestBuildUpdateOptions_LabelsChanged(t *testing.T) {
+	original := &beads.Issue{
+		TitleText: "T",
+		Labels:    []string{"bug", "feature"},
+	}
+	msg := SaveMsg{
+		Title:  "T",
+		Labels: []string{"bug", "ui"},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.NotNil(t, opts.Labels)
+	require.Equal(t, []string{"bug", "ui"}, *opts.Labels)
+	require.Nil(t, opts.Title, "Title unchanged")
+}
+
+func TestBuildUpdateOptions_LabelsUnchanged(t *testing.T) {
+	original := &beads.Issue{
+		TitleText: "T",
+		Labels:    []string{"bug", "feature"},
+	}
+	msg := SaveMsg{
+		Title:  "T",
+		Labels: []string{"bug", "feature"},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.Nil(t, opts.Labels, "Labels should be nil when unchanged")
+}
+
+func TestBuildUpdateOptions_LabelsEmptyVsPopulated(t *testing.T) {
+	original := &beads.Issue{
+		TitleText: "T",
+		Labels:    []string{"bug"},
+	}
+	msg := SaveMsg{
+		Title:  "T",
+		Labels: []string{},
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.NotNil(t, opts.Labels, "empty slice vs populated should be detected as change")
+	require.Equal(t, []string{}, *opts.Labels)
+}
+
+func TestBuildUpdateOptions_ValueTypesUseAddressOfCopy(t *testing.T) {
+	original := &beads.Issue{
+		TitleText: "T",
+		Priority:  beads.PriorityLow,
+		Status:    beads.StatusOpen,
+	}
+	msg := SaveMsg{
+		Title:    "T",
+		Priority: beads.PriorityHigh,
+		Status:   beads.StatusClosed,
+	}
+
+	opts := msg.BuildUpdateOptions(original)
+
+	require.NotNil(t, opts.Priority)
+	require.NotNil(t, opts.Status)
+
+	// Verify the pointers point to independent copies, not the SaveMsg fields.
+	// Mutating the returned values should not affect msg.
+	*opts.Priority = beads.PriorityBacklog
+	*opts.Status = beads.StatusDeferred
+	require.Equal(t, beads.PriorityHigh, msg.Priority, "mutating opts.Priority must not affect SaveMsg")
+	require.Equal(t, beads.StatusClosed, msg.Status, "mutating opts.Status must not affect SaveMsg")
+}
+
 // testIssue creates a beads.Issue for testing with the given parameters.
 func testIssue(id string, labels []string, priority beads.Priority, status beads.Status) beads.Issue {
 	return beads.Issue{

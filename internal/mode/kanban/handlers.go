@@ -504,82 +504,16 @@ func (m Model) handleColumnLoaded(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleStatusChanged processes status change results.
-func (m Model) handleStatusChanged(msg statusChangedMsg) (Model, tea.Cmd) {
+// handleIssueSaved processes the result of a consolidated issue save.
+func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
-		m.err = msg.err
-		m.errContext = "updating status"
-		m.view = ViewBoard
-		return m, scheduleErrorClear()
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "Save failed: " + msg.err.Error(), Style: toaster.StyleError}
+		}
 	}
-	m.view = ViewBoard
-	// Save cursor to follow the issue after status change
-	m.pendingCursor = &cursorState{
-		column:  m.board.FocusedColumn(),
-		issueID: msg.issueID,
-	}
-	// Invalidate other views so they reload when switched to
+	m.pendingCursor = m.saveCursor()
 	m.board = m.board.InvalidateViews()
 	return m, m.board.LoadAllColumns()
-}
-
-// handlePriorityChanged processes priority change results.
-func (m Model) handlePriorityChanged(msg priorityChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.errContext = "changing priority"
-		m.view = ViewBoard
-		return m, scheduleErrorClear()
-	}
-	m.view = ViewBoard
-	// Save cursor to stay on the same issue after priority change
-	m.pendingCursor = &cursorState{
-		column:  m.board.FocusedColumn(),
-		issueID: msg.issueID,
-	}
-	// Invalidate other views so they reload when switched to
-	m.board = m.board.InvalidateViews()
-	return m, m.board.LoadAllColumns()
-}
-
-// handleLabelsChanged processes label change results.
-func (m Model) handleLabelsChanged(msg labelsChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		m.err = msg.err
-		m.errContext = "updating labels"
-		return m, scheduleErrorClear()
-	}
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Labels updated", Style: toaster.StyleSuccess} }
-}
-
-// handleTitleChanged processes title change results.
-func (m Model) handleTitleChanged(msg titleChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Title updated", Style: toaster.StyleSuccess} }
-}
-
-// handleDescriptionChanged processes description change results.
-func (m Model) handleDescriptionChanged(msg descriptionChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Description updated", Style: toaster.StyleSuccess} }
-}
-
-// handleNotesChanged processes notes change results.
-func (m Model) handleNotesChanged(msg notesChangedMsg) (Model, tea.Cmd) {
-	if msg.err != nil {
-		return m, func() tea.Msg {
-			return mode.ShowToastMsg{Message: "Error: " + msg.err.Error(), Style: toaster.StyleError}
-		}
-	}
-	return m, func() tea.Msg { return mode.ShowToastMsg{Message: "Notes updated", Style: toaster.StyleSuccess} }
 }
 
 // handleActionExecuted processes user action execution results.
