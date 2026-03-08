@@ -8,7 +8,7 @@ func BuildAssistantInitialPrompt() string {
 
 Before greeting the user, run these commands to get context:
 1. bd ready -n 5              (work available to start)
-2. bd activity --limit 10     (recent activity)
+2. bd list -n 10 --sort updated --reverse   (recently updated issues)
 
 Then greet the user and summarize what you found. Let them know you can help with:
 - bd (beads) CLI commands and workflows
@@ -34,13 +34,15 @@ bd is the command-line tool for beads issue tracking.
 - bd show <id>                Show issue details (use --json for structured output)
 - bd list                     List all issues
 - bd search "query"           Search issues by text
+- bd comments add <id> "text" Add a comment or progress update
 
 ### Creating Issues
 - bd create "title" -t bug -p 1           Create a bug with priority 1
 - bd create "title" -t task --parent <epic-id>    Create subtask under epic
 - bd create "title" -t epic -d "description"      Create epic with description
 
-Types: bug, feature, task, epic, chore
+Core types: bug, feature, task, epic, chore, decision
+Custom types may also exist via project configuration.
 Priorities: -p 0 (critical) through -p 4 (backlog)
 
 ### Updating Issues
@@ -56,7 +58,7 @@ Priorities: -p 0 (critical) through -p 4 (backlog)
 Note: --parent only creates hierarchy, NOT execution dependencies. Use bd dep add for task ordering.
 
 ### Epics & Subtasks
-- bd epic list                List all epics
+- bd epic status              Show epic completion status
 - bd list --parent <epic-id>  List tasks under an epic
 - Subtask IDs are hierarchical: epic-id.1, epic-id.2, etc.
 

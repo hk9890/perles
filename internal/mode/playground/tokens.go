@@ -122,6 +122,8 @@ func GetTokenColor(token styles.ColorToken) string {
 		return styles.IssueBugColor.Dark
 	case styles.TokenTypeFeature:
 		return styles.IssueFeatureColor.Dark
+	case styles.TokenTypeDecision:
+		return styles.IssueDecisionColor.Dark
 	case styles.TokenTypeMolecule:
 		return styles.IssueMoleculeColor.Dark
 	case styles.TokenTypeConvoy:
@@ -272,6 +274,7 @@ func GetTokenCategories() []TokenCategory {
 				styles.TokenTypeEpic,
 				styles.TokenTypeBug,
 				styles.TokenTypeFeature,
+				styles.TokenTypeDecision,
 				styles.TokenTypeMolecule,
 				styles.TokenTypeConvoy,
 				styles.TokenTypeAgent,

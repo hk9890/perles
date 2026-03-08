@@ -1534,7 +1534,7 @@ func (m *IssueBadgeDemoModel) View() string {
 	sb.WriteString("\n\n")
 
 	// Section 1: Issue Types
-	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M/🚚/👨‍💼):"))
+	sb.WriteString(sectionStyle.Render("Issue Types (E/T/F/B/C/M/C/A):"))
 	sb.WriteString("\n")
 	for i := range 8 {
 		issue := sampleIssues[i]

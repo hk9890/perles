@@ -2,6 +2,9 @@
 package styles
 
 import (
+	"strings"
+	"unicode"
+
 	beads "github.com/hk9890/perles/internal/beads/domain"
 
 	"github.com/charmbracelet/lipgloss"
@@ -127,6 +130,7 @@ var (
 	IssueEpicColor     = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 	IssueBugColor      = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 	IssueFeatureColor  = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	IssueDecisionColor = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#7C8CF8"}
 	IssueMoleculeColor = lipgloss.AdaptiveColor{Light: "#FF731A", Dark: "#FF731A"}
 	IssueConvoyColor   = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#888888"}
 	IssueAgentColor    = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#5C6BC0"}
@@ -136,6 +140,7 @@ var (
 	TypeTaskStyle     = lipgloss.NewStyle().Foreground(IssueTaskColor)
 	TypeEpicStyle     = lipgloss.NewStyle().Foreground(IssueEpicColor)
 	TypeChoreStyle    = lipgloss.NewStyle().Foreground(IssueChoreColor)
+	TypeDecisionStyle = lipgloss.NewStyle().Foreground(IssueDecisionColor)
 	TypeMoleculeStyle = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
 	TypeConvoyStyle   = lipgloss.NewStyle().Foreground(IssueConvoyColor)
 	TypeAgentStyle    = lipgloss.NewStyle().Foreground(IssueAgentColor)
@@ -184,14 +189,12 @@ func GetTypeIndicator(t beads.IssueType) string {
 		return "[E]"
 	case beads.TypeChore:
 		return "[C]"
-	case beads.TypeMolecule:
-		return "[M]"
-	case beads.TypeConvoy:
-		return "[🚚]"
-	case beads.TypeAgent:
-		return "[👨‍💼]"
-	default:
+	case beads.TypeDecision:
+		return "[D]"
+	case "":
 		return "[?]"
+	default:
+		return "[" + formatTypeLabel(string(t)) + "]"
 	}
 }
 
@@ -208,15 +211,48 @@ func GetTypeStyle(t beads.IssueType) lipgloss.Style {
 		return TypeEpicStyle
 	case beads.TypeChore:
 		return TypeChoreStyle
-	case beads.TypeMolecule:
-		return TypeMoleculeStyle
-	case beads.TypeConvoy:
-		return TypeConvoyStyle
-	case beads.TypeAgent:
-		return TypeAgentStyle
+	case beads.TypeDecision:
+		return TypeDecisionStyle
 	default:
 		return lipgloss.NewStyle()
 	}
+}
+
+func formatTypeLabel(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "?"
+	}
+
+	fields := strings.FieldsFunc(trimmed, func(r rune) bool {
+		switch r {
+		case '-', '_', '/', '.', ' ':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(fields) == 0 {
+		return "?"
+	}
+
+	letters := make([]rune, 0, 3)
+	for _, field := range fields {
+		if field == "" {
+			continue
+		}
+		runes := []rune(field)
+		letters = append(letters, unicode.ToUpper(runes[0]))
+		if len(letters) == 3 {
+			break
+		}
+	}
+
+	if len(letters) == 0 {
+		return "?"
+	}
+
+	return string(letters)
 }
 
 // GetPriorityStyle returns the style for a priority level.

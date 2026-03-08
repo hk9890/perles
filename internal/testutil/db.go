@@ -69,15 +69,16 @@ CREATE TABLE comments (
 	FOREIGN KEY (issue_id) REFERENCES issues(id)
 );
 
-CREATE TABLE blocked_issues_cache (
-	issue_id TEXT PRIMARY KEY
+CREATE TABLE blocked_issues (
+	id TEXT PRIMARY KEY,
+	blocked_by_count INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE VIEW ready_issues AS
 SELECT i.id
 FROM issues i
 WHERE i.status IN ('open', 'in_progress')
-  AND i.id NOT IN (SELECT issue_id FROM blocked_issues_cache);
+  AND i.id NOT IN (SELECT id FROM blocked_issues);
 `
 
 // NewTestDB creates an in-memory SQLite database with the full test schema.

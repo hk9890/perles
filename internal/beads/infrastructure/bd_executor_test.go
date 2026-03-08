@@ -2,11 +2,13 @@ package infrastructure
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	domain "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBDExecutor_ImplementsIssueExecutor verifies BDExecutor implements IssueExecutor.
@@ -389,4 +391,49 @@ func TestUpdateIssueOptions_ZeroValue(t *testing.T) {
 	require.Nil(t, opts.Labels)
 	require.Nil(t, opts.Assignee)
 	require.Nil(t, opts.Type)
+}
+
+// TestBDExecutor_AddComment_UsesCommentsAddCommand verifies AddComment uses
+// the current bd CLI contract and does not include the legacy "--" separator.
+func TestBDExecutor_AddComment_UsesCommentsAddCommand(t *testing.T) {
+	var captured []string
+	executor := newTestExecutor(func(args ...string) (string, error) {
+		captured = append([]string(nil), args...)
+		return "", nil
+	})
+
+	err := executor.AddComment("PROJ-11", "alice", "Looks good")
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"comments", "add", "PROJ-11", "--author", "alice", "Looks good",
+	}, captured)
+}
+
+// TestBDExecutor_AddComment_ErrorPropagation verifies AddComment returns errors
+// from the command executor unchanged.
+func TestBDExecutor_AddComment_ErrorPropagation(t *testing.T) {
+	executor := newTestExecutor(func(args ...string) (string, error) {
+		return "", errors.New("bd comments failed: permission denied")
+	})
+
+	err := executor.AddComment("PROJ-12", "alice", "Will fail")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bd comments failed: permission denied")
+}
+
+// TestBDExecutor_AddComment_StderrFromBdIsSurfaced verifies runBeads includes
+// stderr content in the returned error for failed comment commands.
+func TestBDExecutor_AddComment_StderrFromBdIsSurfaced(t *testing.T) {
+	tempDir := t.TempDir()
+	bdPath := filepath.Join(tempDir, "bd")
+
+	script := "#!/bin/sh\nprintf 'comment create failed: invalid author' 1>&2\nexit 1\n"
+	require.NoError(t, os.WriteFile(bdPath, []byte(script), 0o755))
+
+	t.Setenv("PATH", tempDir)
+
+	executor := NewBDExecutor("", "")
+	err := executor.AddComment("PROJ-13", "alice", "Will fail")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bd comments failed: comment create failed: invalid author")
 }

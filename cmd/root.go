@@ -206,26 +206,26 @@ func runApp(cmd *cobra.Command, args []string) error {
 	// 2. BEADS_DIR environment variable
 	// 3. beads_dir config file setting
 	// 4. Current working directory
-	var dbPath string
+	var beadsPathInput string
 	if cmd.Flags().Changed("beads-dir") {
 		// -b flag explicitly provided on command line
-		dbPath, _ = cmd.Flags().GetString("beads-dir")
+		beadsPathInput, _ = cmd.Flags().GetString("beads-dir")
 	} else if envDir := os.Getenv("BEADS_DIR"); envDir != "" {
 		// BEADS_DIR environment variable
-		dbPath = envDir
+		beadsPathInput = envDir
 	} else if cfg.BeadsDir != "" {
 		// beads_dir from config file
-		dbPath = cfg.BeadsDir
+		beadsPathInput = cfg.BeadsDir
 	} else {
 		// Default to working directory
-		dbPath = workDir
+		beadsPathInput = workDir
 	}
 
 	// Resolve full .beads path (handles redirect for worktrees, normalizes input)
-	cfg.ResolvedBeadsDir = paths.ResolveBeadsDir(dbPath)
+	cfg.ResolvedBeadsDir = paths.ResolveBeadsDir(beadsPathInput)
 	log.Info(log.CatConfig, "resolved beads dir", "path", cfg.ResolvedBeadsDir)
 
-	client, err := infrabeads.NewSQLiteClient(cfg.ResolvedBeadsDir)
+	client, err := infrabeads.NewDoltClient(cfg.ResolvedBeadsDir)
 	if err != nil {
 		// Show friendly TUI empty state instead of CLI error
 		return runNoBeadsMode()
@@ -274,7 +274,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		cfg,
 		bqlCache,
 		depGraphCache,
-		client.DBPath(),
+		"",
 		configFilePath,
 		workDir,
 		debug,

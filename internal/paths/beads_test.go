@@ -73,6 +73,16 @@ func TestResolveBeadsDir_TableDriven(t *testing.T) {
 	}
 }
 
+func TestResolveBeadsDir_DoesNotTreatBeadsDBAsBeadsDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	legacyDataDir := filepath.Join(tmpDir, "legacy")
+	require.NoError(t, os.MkdirAll(legacyDataDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(legacyDataDir, "beads.db"), []byte("stub"), 0644))
+
+	result := ResolveBeadsDir(legacyDataDir)
+	require.Equal(t, filepath.Join(legacyDataDir, ".beads"), result)
+}
+
 func TestResolveBeadsDir_FollowsRedirect(t *testing.T) {
 	// Create a temp directory structure with redirect
 	tmpDir := t.TempDir()

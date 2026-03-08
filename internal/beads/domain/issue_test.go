@@ -82,6 +82,7 @@ func TestIssueType_Values(t *testing.T) {
 	require.Equal(t, IssueType("task"), TypeTask)
 	require.Equal(t, IssueType("epic"), TypeEpic)
 	require.Equal(t, IssueType("chore"), TypeChore)
+	require.Equal(t, IssueType("decision"), TypeDecision)
 	require.Equal(t, IssueType("molecule"), TypeMolecule)
 	require.Equal(t, IssueType("convoy"), TypeConvoy)
 	require.Equal(t, IssueType("agent"), TypeAgent)

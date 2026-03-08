@@ -83,7 +83,7 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		require.Equal(t, "i.id IN (SELECT issue_id FROM blocked_issues_cache)", where)
+		require.Equal(t, "i.id IN (SELECT id FROM blocked_issues)", where)
 		require.Empty(t, params)
 	})
 
@@ -95,7 +95,7 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		require.Equal(t, "i.id NOT IN (SELECT issue_id FROM blocked_issues_cache)", where)
+		require.Equal(t, "i.id NOT IN (SELECT id FROM blocked_issues)", where)
 	})
 
 	t.Run("ready true", func(t *testing.T) {
@@ -339,7 +339,7 @@ func TestSQLBuilder_NotExpression(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, _, _ := builder.Build()
 
-	require.Equal(t, "NOT (i.id IN (SELECT issue_id FROM blocked_issues_cache))", where)
+	require.Equal(t, "NOT (i.id IN (SELECT id FROM blocked_issues))", where)
 }
 
 func TestSQLBuilder_OrderBy(t *testing.T) {
@@ -395,17 +395,14 @@ func TestSQLBuilder_DateComparisons(t *testing.T) {
 		input     string
 		wantWhere string
 	}{
-		// Column wrapped in datetime() to normalize ISO 8601 with timezone to UTC
-		{"created > today", "datetime(i.created_at) > date('now')"},
-		{"created > yesterday", "datetime(i.created_at) > date('now', '-1 day')"},
-		{"created > -7d", "datetime(i.created_at) > date('now', '-7 days')"},
-		{"updated >= -30d", "datetime(i.updated_at) >= date('now', '-30 days')"},
-		// Hour offsets use datetime() for sub-day precision
-		{"created > -24h", "datetime(i.created_at) > datetime('now', '-24 hours')"},
-		{"updated >= -1h", "datetime(i.updated_at) >= datetime('now', '-1 hours')"},
-		// Month offsets
-		{"created > -3m", "datetime(i.created_at) > date('now', '-3 months')"},
-		{"updated >= -1m", "datetime(i.updated_at) >= date('now', '-1 months')"},
+		{"created > today", "i.created_at > CURDATE()"},
+		{"created > yesterday", "i.created_at > DATE_SUB(CURDATE(), INTERVAL 1 DAY)"},
+		{"created > -7d", "i.created_at > DATE_SUB(CURDATE(), INTERVAL 7 DAY)"},
+		{"updated >= -30d", "i.updated_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"},
+		{"created > -24h", "i.created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)"},
+		{"updated >= -1h", "i.updated_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)"},
+		{"created > -3m", "i.created_at > DATE_SUB(CURDATE(), INTERVAL 3 MONTH)"},
+		{"updated >= -1m", "i.updated_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)"},
 	}
 
 	for _, tt := range tests {
@@ -432,7 +429,7 @@ func TestSQLBuilder_ComplexQuery(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, orderBy, params := builder.Build()
 
-	require.Equal(t, "((i.issue_type = ? OR i.issue_type = ?) AND i.id NOT IN (SELECT issue_id FROM blocked_issues_cache))", where)
+	require.Equal(t, "((i.issue_type = ? OR i.issue_type = ?) AND i.id NOT IN (SELECT id FROM blocked_issues))", where)
 	require.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
 	require.Equal(t, []interface{}{"bug", "task"}, params)
 }

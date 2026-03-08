@@ -59,11 +59,11 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 	// Handle special fields
 	switch e.Field {
 	case "blocked":
-		// blocked = true means has entries in blocked_issues_cache
+		// blocked = true means has entries in blocked_issues
 		if e.Value.Bool {
-			return "i.id IN (SELECT issue_id FROM blocked_issues_cache)"
+			return "i.id IN (SELECT id FROM blocked_issues)"
 		}
-		return "i.id NOT IN (SELECT issue_id FROM blocked_issues_cache)"
+		return "i.id NOT IN (SELECT id FROM blocked_issues)"
 
 	case "ready":
 		// ready = true means in ready_issues view
@@ -110,12 +110,10 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 		return fmt.Sprintf("%s %s ?", column, b.opToSQL(e.Op))
 	}
 
-	// Handle date comparisons
-	// Wrap column in datetime() to normalize ISO 8601 timestamps with timezone
-	// to UTC format that matches datetime('now', ...) expressions
+	// Handle date comparisons using Dolt/MySQL-compatible functions.
 	if e.Value.Type == ValueDate {
 		dateSQL := b.dateToSQL(e.Value.String)
-		return fmt.Sprintf("datetime(%s) %s %s", column, b.opToSQL(e.Op), dateSQL)
+		return fmt.Sprintf("%s %s %s", column, b.opToSQL(e.Op), dateSQL)
 	}
 
 	// Handle nullable string fields (use COALESCE so NULL matches empty string)
@@ -224,9 +222,9 @@ func (b *SQLBuilder) opToSQL(op TokenType) string {
 func (b *SQLBuilder) dateToSQL(dateStr string) string {
 	switch dateStr {
 	case "today":
-		return "date('now')"
+		return "CURDATE()"
 	case "yesterday":
-		return "date('now', '-1 day')"
+		return "DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
 	default:
 		// Handle relative time formats: -Nd (days), -Nh (hours), -Nm (months)
 		if len(dateStr) > 1 && dateStr[0] == '-' {
@@ -235,12 +233,11 @@ func (b *SQLBuilder) dateToSQL(dateStr string) string {
 
 			switch suffix {
 			case 'd', 'D':
-				return fmt.Sprintf("date('now', '-%s days')", value)
+				return fmt.Sprintf("DATE_SUB(CURDATE(), INTERVAL %s DAY)", value)
 			case 'h', 'H':
-				// Hours use datetime() for sub-day precision
-				return fmt.Sprintf("datetime('now', '-%s hours')", value)
+				return fmt.Sprintf("DATE_SUB(NOW(), INTERVAL %s HOUR)", value)
 			case 'm', 'M':
-				return fmt.Sprintf("date('now', '-%s months')", value)
+				return fmt.Sprintf("DATE_SUB(CURDATE(), INTERVAL %s MONTH)", value)
 			}
 		}
 		// Assume ISO date, pass through as string

@@ -273,6 +273,7 @@ func TestDetails_View_AllTypes(t *testing.T) {
 		beads.TypeTask,
 		beads.TypeEpic,
 		beads.TypeChore,
+		beads.TypeDecision,
 	}
 
 	for _, issueType := range types {
@@ -287,6 +288,12 @@ func TestDetails_View_AllTypes(t *testing.T) {
 		view := m.View()
 		require.NotEmpty(t, view, "expected non-empty view for type %s", issueType)
 	}
+}
+
+func TestFormatType_CustomReadable(t *testing.T) {
+	require.Equal(t, "Decision", formatType(beads.TypeDecision))
+	require.Equal(t, "Ml Model", formatType(beads.IssueType("ml_model")))
+	require.Equal(t, "Unknown", formatType(beads.IssueType("")))
 }
 
 func TestDetails_View_AllPriorities(t *testing.T) {

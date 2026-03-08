@@ -3,15 +3,15 @@
 │ ────────────────────────── │  │ Use j/k to move selection                                        │
 │   vimtextarea              │  │                                                                  │
 │   modal                    │  │                                                                  │
-│   formmodal                │  │ Issue Types (E/T/F/B/C/M/🚚/👨‍💼):                                 │
+│   formmodal                │  │ Issue Types (E/T/F/B/C/M/C/A):                                   │
 │   panes                    │  │ >[E][P1][demo-e01] Epic: User Authentication System              │
 │   scrollpane               │  │  [T][P2][demo-t02] Task: Implement login form validation         │
 │   colorpicker              │  │  [F][P1][demo-f03] Feature: Add dark mode support                │
 │   picker                   │  │  [B][P0][demo-b04] Bug: Fix memory leak in cache                 │
 │   commandpalette           │  │  [C][P3][demo-c05] Chore: Update dependencies                    │
 │   toaster                  │  │  [M][P2][demo-m06] Molecule: Reusable auth component             │
-│   logoverlay               │  │  [🚚][P2][demo-v07] Convoy: Batch deployment pipeline            │
-│   markdown                 │  │  [👨‍💼][P2][demo-a08] Agent: AI-assisted task automation           │
+│   logoverlay               │  │  [C][P2][demo-v07] Convoy: Batch deployment pipeline             │
+│   markdown                 │  │  [A][P2][demo-a08] Agent: AI-assisted task automation            │
 │   chainart                 │  │                                                                  │
 │ ● issuebadge               │  │                                                                  │
 │   issueeditor              │  │ Priority Levels (P0-P4):                                         │

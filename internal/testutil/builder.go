@@ -45,7 +45,7 @@ func (b *Builder) WithDependency(issueID, dependsOnID, depType string) *Builder 
 	return b
 }
 
-// WithBlockedCache marks an issue as blocked in the cache.
+// WithBlockedCache marks an issue as blocked in blocked_issues.
 func (b *Builder) WithBlockedCache(issueID string) *Builder {
 	b.blocked = append(b.blocked, issueID)
 	return b
@@ -110,6 +110,6 @@ func (b *Builder) insertDependency(dep depData) {
 
 func (b *Builder) insertBlockedCache(issueID string) {
 	b.t.Helper()
-	_, err := b.db.Exec(`INSERT INTO blocked_issues_cache (issue_id) VALUES (?)`, issueID)
+	_, err := b.db.Exec(`INSERT INTO blocked_issues (id, blocked_by_count) VALUES (?, 1)`, issueID)
 	require.NoError(b.t, err)
 }

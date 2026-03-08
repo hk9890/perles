@@ -1215,7 +1215,7 @@ func TestExecutor_ExcludesDeletedStatusWithDeletedAt(t *testing.T) {
 
 	executor := newTestExecutor(t, db)
 
-	// Query all issues - deleted should be excluded (both status and deleted_at check)
+	// Query all issues - deleted should be excluded by status filter
 	issues, err := executor.Execute("order by id asc")
 	require.NoError(t, err)
 
@@ -2027,7 +2027,7 @@ func setupRealisticDataInternal(tb testing.TB, count int) *sql.DB {
 			if err != nil {
 				tb.Fatalf("failed to insert dependency: %v", err)
 			}
-			_, err = db.Exec(`INSERT INTO blocked_issues_cache (issue_id) VALUES (?)`, id)
+			_, err = db.Exec(`INSERT INTO blocked_issues (id, blocked_by_count) VALUES (?, 1)`, id)
 			if err != nil {
 				tb.Fatalf("failed to insert blocked cache: %v", err)
 			}
@@ -2306,9 +2306,9 @@ func TestSetupRealisticData_CreatesExpectedDistribution(t *testing.T) {
 	// Verify blocked issues have dependencies
 	var blockedWithDeps int
 	err = db.QueryRow(`
-		SELECT COUNT(DISTINCT bc.issue_id)
-		FROM blocked_issues_cache bc
-		JOIN dependencies d ON d.issue_id = bc.issue_id
+		SELECT COUNT(DISTINCT b.id)
+		FROM blocked_issues b
+		JOIN dependencies d ON d.issue_id = b.id
 	`).Scan(&blockedWithDeps)
 	require.NoError(t, err)
 	require.Greater(t, blockedWithDeps, 0, "blocked issues should have dependencies")

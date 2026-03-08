@@ -235,6 +235,9 @@ func applyColors(colors map[ColorToken]string) {
 	if c, ok := colors[TokenTypeFeature]; ok {
 		IssueFeatureColor = makeColor(c)
 	}
+	if c, ok := colors[TokenTypeDecision]; ok {
+		IssueDecisionColor = makeColor(c)
+	}
 	if c, ok := colors[TokenTypeMolecule]; ok {
 		IssueMoleculeColor = makeColor(c)
 	}
@@ -326,6 +329,7 @@ func rebuildStyles() {
 	TypeTaskStyle = lipgloss.NewStyle().Foreground(IssueTaskColor)
 	TypeEpicStyle = lipgloss.NewStyle().Foreground(IssueEpicColor)
 	TypeChoreStyle = lipgloss.NewStyle().Foreground(IssueChoreColor)
+	TypeDecisionStyle = lipgloss.NewStyle().Foreground(IssueDecisionColor)
 	TypeMoleculeStyle = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
 	TypeConvoyStyle = lipgloss.NewStyle().Foreground(IssueConvoyColor)
 	TypeAgentStyle = lipgloss.NewStyle().Foreground(IssueAgentColor)

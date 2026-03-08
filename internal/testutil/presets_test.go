@@ -42,7 +42,7 @@ func TestPreset_StandardTestData(t *testing.T) {
 	require.Equal(t, 2, count, "expected 2 dependencies")
 
 	// Verify blocked cache
-	err = db.QueryRow(`SELECT COUNT(*) FROM blocked_issues_cache`).Scan(&count)
+	err = db.QueryRow(`SELECT COUNT(*) FROM blocked_issues`).Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count, "expected 1 blocked issue")
 

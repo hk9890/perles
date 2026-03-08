@@ -61,6 +61,16 @@ func TestRenderBadge_IssueTypes(t *testing.T) {
 			issueType:    beads.TypeChore,
 			wantContains: "[C]",
 		},
+		{
+			name:         "decision",
+			issueType:    beads.TypeDecision,
+			wantContains: "[D]",
+		},
+		{
+			name:         "custom type readable shorthand",
+			issueType:    beads.IssueType("risk_assessment"),
+			wantContains: "[RA]",
+		},
 	}
 
 	for _, tt := range tests {

@@ -808,6 +808,11 @@ func TestBuildAssistantSystemPrompt(t *testing.T) {
 	require.Contains(t, prompt, "bd ready")
 	require.Contains(t, prompt, "bd create")
 	require.Contains(t, prompt, "bd dep add")
+	require.Contains(t, prompt, "bd comments add")
+	require.Contains(t, prompt, "bd epic status")
+	require.Contains(t, prompt, "decision")
+	require.NotContains(t, prompt, "bd activity")
+	require.NotContains(t, prompt, "bd epic list")
 
 	// Verify prompt contains BQL help section
 	require.Contains(t, prompt, "BQL")
@@ -839,7 +844,8 @@ func TestBuildAssistantInitialPrompt(t *testing.T) {
 	// Verify prompt contains key elements
 	require.Contains(t, prompt, "Perles")
 	require.Contains(t, prompt, "bd ready")
-	require.Contains(t, prompt, "bd activity")
+	require.Contains(t, prompt, "bd list -n 10 --sort updated --reverse")
+	require.NotContains(t, prompt, "bd activity")
 }
 
 // ============================================================================

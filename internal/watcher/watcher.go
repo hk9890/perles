@@ -1,24 +1,22 @@
-// Package watcher provides file system watching with debouncing for the beads database.
+// Package watcher provides polling-based refresh events for beads data.
 package watcher
 
 import (
-	"fmt"
-	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/pubsub"
-
-	"github.com/fsnotify/fsnotify"
 )
 
 // WatcherEventType identifies the kind of watcher event.
 type WatcherEventType string
 
 const (
-	// DBChanged is emitted when the database file changes (after debounce).
+	// DBChanged is emitted on each polling tick to refresh UI state.
 	DBChanged WatcherEventType = "db_changed"
-	// WatcherError is emitted when the watcher encounters an error (immediate, not debounced).
+	// WatcherError is emitted when the watcher encounters an internal error.
+	// Kept for API compatibility.
 	WatcherError WatcherEventType = "error"
 )
 
@@ -28,72 +26,64 @@ type WatcherEvent struct {
 	Error error // Non-nil for WatcherError events
 }
 
-// Watcher monitors the beads database for changes and publishes events via broker.
+// Watcher emits periodic refresh events and publishes them via broker.
+//
+// Dolt refresh contract:
+//   - Refresh is polling-based (not SQLite file-event based)
+//   - Default polling interval is 1s
+//   - Target visible refresh latency is under 2s from backend change
 type Watcher struct {
-	fsWatcher *fsnotify.Watcher
-	dbPath    string
-	debounce  time.Duration
-	done      chan struct{}
-	broker    *pubsub.Broker[WatcherEvent]
+	pollInterval time.Duration
+	done         chan struct{}
+	stopOnce     sync.Once
+	broker       *pubsub.Broker[WatcherEvent]
 }
 
 // Config holds watcher configuration options.
 type Config struct {
-	DBPath      string
-	DebounceDur time.Duration
+	// PollInterval controls how often DBChanged is emitted.
+	PollInterval time.Duration
 }
 
 // DefaultConfig returns sensible defaults for the watcher.
-func DefaultConfig(dbPath string) Config {
+func DefaultConfig() Config {
 	return Config{
-		DBPath:      dbPath,
-		DebounceDur: 100 * time.Millisecond,
+		PollInterval: 1 * time.Second,
 	}
 }
 
-// New creates a new database watcher.
+// New creates a new polling watcher.
 func New(cfg Config) (*Watcher, error) {
-	log.Debug(log.CatWatcher, "Creating watcher", "dbPath", cfg.DBPath, "debounce", cfg.DebounceDur)
-	fsw, err := fsnotify.NewWatcher()
-	if err != nil {
-		log.ErrorErr(log.CatWatcher, "Failed to create fsnotify watcher", err)
-		return nil, fmt.Errorf("creating fsnotify watcher: %w", err)
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = DefaultConfig().PollInterval
 	}
+	log.Debug(log.CatWatcher, "Creating polling watcher", "interval", cfg.PollInterval)
 
 	return &Watcher{
-		fsWatcher: fsw,
-		dbPath:    cfg.DBPath,
-		debounce:  cfg.DebounceDur,
-		done:      make(chan struct{}),
-		broker:    pubsub.NewBroker[WatcherEvent](),
+		pollInterval: cfg.PollInterval,
+		done:         make(chan struct{}),
+		broker:       pubsub.NewBroker[WatcherEvent](),
 	}, nil
 }
 
-// Start begins watching the database directory.
+// Start begins polling for refresh updates.
 // Subscribe to watcher events using Broker().Subscribe(ctx) instead of the old channel return.
 func (w *Watcher) Start() error {
-	// Watch the directory containing the database
-	dir := filepath.Dir(w.dbPath)
-	if err := w.fsWatcher.Add(dir); err != nil {
-		log.ErrorErr(log.CatWatcher, "Failed to watch directory", err, "dir", dir)
-		return fmt.Errorf("watching directory %s: %w", dir, err)
-	}
-
-	log.Info(log.CatWatcher, "Started watching", "dir", dir)
+	log.Info(log.CatWatcher, "Started polling refresh watcher", "interval", w.pollInterval)
 	go w.loop()
 
 	return nil
 }
 
 // Stop terminates the watcher and releases resources.
-// CRITICAL SHUTDOWN SEQUENCE: broker.Close() must be called BEFORE fsWatcher.Close().
-// This ensures subscribers receive clean channel close notifications before the underlying
-// fsnotify watcher is destroyed. Reversing this order could leave subscribers hanging.
+// broker.Close() is called to notify subscribers and close channels.
 func (w *Watcher) Stop() error {
-	log.Debug(log.CatWatcher, "Stopping watcher")
-	close(w.done)
-	w.broker.Close() // Close broker first to notify subscribers
-	return w.fsWatcher.Close()
+	w.stopOnce.Do(func() {
+		log.Debug(log.CatWatcher, "Stopping watcher")
+		close(w.done)
+		w.broker.Close()
+	})
+	return nil
 }
 
 // Broker returns the pub/sub broker for subscribing to watcher events.
@@ -102,87 +92,21 @@ func (w *Watcher) Broker() *pubsub.Broker[WatcherEvent] {
 	return w.broker
 }
 
-// loop processes file system events with debouncing.
+// loop emits periodic refresh events.
 func (w *Watcher) loop() {
-	var (
-		timer   *time.Timer
-		pending bool
-	)
+	ticker := time.NewTicker(w.pollInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case event, ok := <-w.fsWatcher.Events:
-			if !ok {
-				return
-			}
-
-			// Only react to writes on database files
-			if !w.isRelevantEvent(event) {
-				continue
-			}
-
-			log.Debug(log.CatWatcher, "File event received", "file", event.Name, "op", event.Op.String())
-
-			// Reset or start debounce timer
-			if timer == nil {
-				log.Debug(log.CatWatcher, "Starting debounce timer", "duration", w.debounce)
-				timer = time.NewTimer(w.debounce)
-				pending = true
-			} else {
-				if !timer.Stop() {
-					// Drain the timer channel if it already fired
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				log.Debug(log.CatWatcher, "Resetting debounce timer", "duration", w.debounce)
-				timer.Reset(w.debounce)
-				pending = true
-			}
-
-		case <-func() <-chan time.Time {
-			if timer != nil {
-				return timer.C
-			}
-			return nil
-		}():
-			if pending {
-				log.Debug(log.CatWatcher, "Debounce complete, triggering refresh")
-				// Publish DBChanged event to broker (non-blocking by design)
-				w.broker.Publish(pubsub.UpdatedEvent, WatcherEvent{
-					Type: DBChanged,
-				})
-				pending = false
-			}
-
-		case err, ok := <-w.fsWatcher.Errors:
-			if !ok {
-				return
-			}
-			// Log error AND publish error event (immediate, not debounced)
-			log.ErrorErr(log.CatWatcher, "File watcher error", err)
+		case <-ticker.C:
+			log.Debug(log.CatWatcher, "Polling tick, triggering refresh")
 			w.broker.Publish(pubsub.UpdatedEvent, WatcherEvent{
-				Type:  WatcherError,
-				Error: err,
+				Type: DBChanged,
 			})
 
 		case <-w.done:
-			if timer != nil {
-				timer.Stop()
-			}
 			return
 		}
 	}
-}
-
-// isRelevantEvent checks if the event should trigger a refresh.
-func (w *Watcher) isRelevantEvent(event fsnotify.Event) bool {
-	// Only care about write or create operations (WAL file may be created fresh)
-	if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
-		return false
-	}
-
-	base := filepath.Base(event.Name)
-	return base == "beads.db" || base == "beads.db-wal"
 }

@@ -56,7 +56,7 @@ Orchestration uses a pub/sub broker to decouple producers (process/runtime) from
 
 ## Data and Runtime Paths
 
-- Beads data source: `.beads/beads.db` (resolved from flag/env/config/CWD)
+- Beads data source: Dolt SQL server mode discovered from `.beads/metadata.json`, `.beads/dolt/config.yaml`, and `.beads/dolt-server.port` (resolved from flag/env/config/CWD)
 - Orchestration sessions: `~/.perles/sessions/` by default
 - Optional trace output: `~/.config/perles/traces/traces.jsonl`
 

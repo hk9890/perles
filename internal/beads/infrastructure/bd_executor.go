@@ -320,14 +320,14 @@ func (e *BDExecutor) ShowIssue(issueID string) (*domain.Issue, error) {
 	return &issues[0], nil
 }
 
-// AddComment executes 'bd comment <id> --author <author> -- <text>'.
+// AddComment executes 'bd comments add <id> --author <author> <text>'.
 func (e *BDExecutor) AddComment(issueID, author, text string) error {
 	start := time.Now()
 	defer func() {
 		log.Debug(log.CatBeads, "AddComment completed", "issueID", issueID, "author", author, "duration", time.Since(start))
 	}()
 
-	if _, err := e.runBeads("comment", issueID, "--author", author, "--", text); err != nil {
+	if _, err := e.runBeads("comments", "add", issueID, "--author", author, text); err != nil {
 		log.Error(log.CatBeads, "AddComment failed", "issueID", issueID, "error", err)
 		return err
 	}

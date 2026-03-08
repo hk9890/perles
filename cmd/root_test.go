@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNoBeadsDirectory_BeadsClientFails verifies that appbeads.NewSQLiteClient returns
+// TestNoBeadsDirectory_BeadsClientFails verifies that appbeads.NewDoltClient returns
 // an error when there's no .beads directory. This is the condition that triggers
 // the nobeads empty state view.
 func TestNoBeadsDirectory_BeadsClientFails(t *testing.T) {
@@ -26,37 +26,23 @@ func TestNoBeadsDirectory_BeadsClientFails(t *testing.T) {
 	_, err = os.Stat(beadsPath)
 	require.True(t, os.IsNotExist(err), "expected .beads to not exist")
 
-	// Verify NewSQLiteClient fails for this directory
-	_, err = infrabeads.NewSQLiteClient(tmpDir)
-	require.Error(t, err, "expected NewSQLiteClient to fail without .beads directory")
+	// Verify NewDoltClient fails for this directory
+	_, err = infrabeads.NewDoltClient(tmpDir)
+	require.Error(t, err, "expected NewDoltClient to fail without .beads directory")
 }
 
-// TestNoBeadsDirectory_WithBeadsSucceeds verifies that appbeads.NewSQLiteClient succeeds
-// when there IS a valid .beads directory.
-func TestNoBeadsDirectory_WithBeadsSucceeds(t *testing.T) {
-	// Use the actual project directory which has .beads
-	cwd, err := os.Getwd()
-	require.NoError(t, err)
+// TestNoBeadsDirectory_WithBeadsFailsIfServerUnavailable verifies NewDoltClient
+// attempts to connect to the configured Dolt SQL endpoint and fails when unavailable.
+func TestNoBeadsDirectory_WithBeadsFailsIfServerUnavailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsPath := filepath.Join(tmpDir, ".beads")
+	require.NoError(t, os.MkdirAll(filepath.Join(beadsPath, "dolt"), 0755))
 
-	// Go up to project root if we're in cmd/
-	projectRoot := filepath.Dir(cwd)
-	beadsPath := filepath.Join(projectRoot, ".beads")
+	require.NoError(t, os.WriteFile(filepath.Join(beadsPath, "metadata.json"), []byte(`{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(beadsPath, "dolt", "config.yaml"), []byte("listener:\n  host: 127.0.0.1\n  port: 1\n"), 0644))
 
-	// Skip if not in expected directory structure
-	if _, err := os.Stat(beadsPath); os.IsNotExist(err) {
-		// Try current directory
-		if _, err := os.Stat(filepath.Join(cwd, ".beads")); os.IsNotExist(err) {
-			t.Skip("not running from project directory with .beads")
-		}
-		projectRoot = cwd
-	}
-
-	// Verify NewSQLiteClient succeeds
-	client, err := infrabeads.NewSQLiteClient(projectRoot)
-	if err == nil {
-		// Clean up if we got a client
-		_ = client
-	}
+	_, err := infrabeads.NewDoltClient(beadsPath)
+	require.Error(t, err)
 }
 
 // ============================================================================

@@ -12,6 +12,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 
 	"github.com/hk9890/perles/frontend"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	infrabeads "github.com/hk9890/perles/internal/beads/infrastructure"
 	"github.com/hk9890/perles/internal/bql"
@@ -118,7 +119,7 @@ type Model struct {
 //
 // Returns an error if database initialization fails (fail-fast behavior).
 func NewWithConfig(
-	client *infrabeads.SQLiteClient,
+	client appbeads.ReadClient,
 	cfg config.Config,
 	bqlCache cachemanager.CacheManager[string, []beads.Issue],
 	depGraphCache cachemanager.CacheManager[string, *bql.DependencyGraph],
@@ -152,8 +153,8 @@ func NewWithConfig(
 		watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
 	)
 
-	if cfg.AutoRefresh && dbPath != "" {
-		w, err := watcher.New(watcher.DefaultConfig(dbPath))
+	if cfg.AutoRefresh {
+		w, err := watcher.New(watcher.DefaultConfig())
 		if err == nil {
 			if err := w.Start(); err == nil {
 				watcherHandle = w

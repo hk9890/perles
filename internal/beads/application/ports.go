@@ -1,5 +1,7 @@
 package application
 
+import "database/sql"
+
 import domain "github.com/hk9890/perles/internal/beads/domain"
 
 // VersionReader reads the beads database version.
@@ -10,6 +12,18 @@ type VersionReader interface {
 // CommentReader reads comments for issues.
 type CommentReader interface {
 	GetComments(issueID string) ([]domain.Comment, error)
+}
+
+// DBProvider exposes a shared SQL DB handle for query execution layers.
+type DBProvider interface {
+	DB() *sql.DB
+}
+
+// ReadClient combines read concerns and shared DB access.
+type ReadClient interface {
+	VersionReader
+	CommentReader
+	DBProvider
 }
 
 // IssueReader reads issue details.

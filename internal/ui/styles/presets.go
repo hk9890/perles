@@ -92,6 +92,7 @@ var DefaultPreset = Preset{
 		TokenTypeEpic:     "#7D56F4",
 		TokenTypeBug:      "#FF8787",
 		TokenTypeFeature:  "#73F59F",
+		TokenTypeDecision: "#7C8CF8",
 		TokenTypeMolecule: "#FF731A",
 		TokenTypeConvoy:   "#888888",
 		TokenTypeAgent:    "#5C6BC0", // indigo
@@ -190,6 +191,7 @@ var CatppuccinMochaPreset = Preset{
 		TokenTypeEpic:     "#CBA6F7", // mauve
 		TokenTypeBug:      "#F38BA8", // red
 		TokenTypeFeature:  "#A6E3A1", // green
+		TokenTypeDecision: "#B4BEFE", // lavender
 		TokenTypeMolecule: "#FAB387", // peach
 		TokenTypeConvoy:   "#6C7086", // overlay0
 		TokenTypeAgent:    "#89B4FA", // blue
@@ -288,6 +290,7 @@ var CatppuccinLattePreset = Preset{
 		TokenTypeEpic:     "#8839EF", // mauve
 		TokenTypeBug:      "#D20F39", // red
 		TokenTypeFeature:  "#40A02B", // green
+		TokenTypeDecision: "#7287FD", // lavender
 		TokenTypeMolecule: "#FE640B", // peach
 		TokenTypeConvoy:   "#9CA0B0", // overlay0
 		TokenTypeAgent:    "#1E66F5", // blue
@@ -386,6 +389,7 @@ var DraculaPreset = Preset{
 		TokenTypeEpic:     "#BD93F9", // purple
 		TokenTypeBug:      "#FF5555", // red
 		TokenTypeFeature:  "#50FA7B", // green
+		TokenTypeDecision: "#BD93F9", // purple
 		TokenTypeMolecule: "#FFB86C", // orange
 		TokenTypeConvoy:   "#6272A4", // comment
 		TokenTypeAgent:    "#BD93F9", // purple
@@ -488,6 +492,7 @@ var NordPreset = Preset{
 		TokenTypeEpic:     "#B48EAD", // aurora purple
 		TokenTypeBug:      "#BF616A", // aurora red
 		TokenTypeFeature:  "#A3BE8C", // aurora green
+		TokenTypeDecision: "#81A1C1", // frost blue
 		TokenTypeMolecule: "#D08770", // aurora orange
 		TokenTypeConvoy:   "#4C566A", // polar night 4
 		TokenTypeAgent:    "#81A1C1", // frost blue
@@ -587,6 +592,7 @@ var HighContrastPreset = Preset{
 		TokenTypeEpic:     "#FF00FF", // magenta
 		TokenTypeBug:      "#FF0000", // red
 		TokenTypeFeature:  "#00FF00", // green
+		TokenTypeDecision: "#FFFFFF", // white
 		TokenTypeMolecule: "#FFA500", // orange
 		TokenTypeConvoy:   "#808080", // gray
 		TokenTypeAgent:    "#00BFFF", // deep sky blue
@@ -684,6 +690,7 @@ var GruvboxPreset = Preset{
 		TokenTypeEpic:     "#D3869B", // purple
 		TokenTypeBug:      "#FB4934", // red
 		TokenTypeFeature:  "#B8BB26", // green
+		TokenTypeDecision: "#83A598", // blue
 		TokenTypeMolecule: "#FE8019", // orange
 		TokenTypeConvoy:   "#928374", // gray
 		TokenTypeAgent:    "#83A598", // blue bright

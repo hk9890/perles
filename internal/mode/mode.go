@@ -47,11 +47,8 @@ type Controller interface {
 	SetSize(width, height int) Controller
 }
 
-// BeadsClient combines version and comment reading for mode controllers.
-type BeadsClient interface {
-	appbeads.VersionReader
-	appbeads.CommentReader
-}
+// BeadsClient combines runtime read operations and shared DB access.
+type BeadsClient = appbeads.ReadClient
 
 // Services contains shared dependencies injected into mode controllers.
 type Services struct {

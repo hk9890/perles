@@ -74,6 +74,7 @@ const (
 	TokenTypeEpic     ColorToken = "type.epic"
 	TokenTypeBug      ColorToken = "type.bug"
 	TokenTypeFeature  ColorToken = "type.feature"
+	TokenTypeDecision ColorToken = "type.decision"
 	TokenTypeMolecule ColorToken = "type.molecule"
 	TokenTypeConvoy   ColorToken = "type.convoy"
 	TokenTypeAgent    ColorToken = "type.agent"
@@ -167,6 +168,7 @@ func AllTokens() []ColorToken {
 		TokenTypeEpic,
 		TokenTypeBug,
 		TokenTypeFeature,
+		TokenTypeDecision,
 		TokenTypeMolecule,
 		TokenTypeConvoy,
 		TokenTypeAgent,

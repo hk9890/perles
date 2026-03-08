@@ -33,6 +33,10 @@ const (
 	TypeTask     IssueType = "task"
 	TypeEpic     IssueType = "epic"
 	TypeChore    IssueType = "chore"
+	TypeDecision IssueType = "decision"
+
+	// Legacy/custom issue types retained for compatibility.
+	// These are not treated as guaranteed built-in core types in UI rendering.
 	TypeMolecule IssueType = "molecule"
 	TypeConvoy   IssueType = "convoy"
 	TypeAgent    IssueType = "agent"

@@ -167,15 +167,14 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 			i.mol_type
 		FROM issues i
 		WHERE i.status not in ('deleted', 'tombstone')
-	  AND i.deleted_at is null
 	`
 
 	if whereClause != "" {
-		sqlQuery += " AND " + whereClause
+		sqlQuery += " AND " + whereClause //nolint:gosec // whereClause is generated from validated BQL AST, not raw user SQL
 	}
 
 	if orderBy != "" {
-		sqlQuery += " ORDER BY " + orderBy
+		sqlQuery += " ORDER BY " + orderBy //nolint:gosec // orderBy is generated from validated BQL sort terms, not raw user SQL
 	} else {
 		sqlQuery += " ORDER BY i.updated_at DESC"
 	}
@@ -399,14 +398,12 @@ func (e *Executor) loadDependenciesForIssues(ids []string) (map[string]IssueDeps
 		JOIN issues i ON d.depends_on_id = i.id
 		WHERE d.issue_id IN (%s)
 		  AND i.status NOT IN ('deleted', 'tombstone')
-		  AND i.deleted_at IS NULL
 		UNION
 		SELECT d.issue_id, d.depends_on_id, d.type
 		FROM dependencies d
 		JOIN issues i ON d.issue_id = i.id
 		WHERE d.depends_on_id IN (%s)
 		  AND i.status NOT IN ('deleted', 'tombstone')
-		  AND i.deleted_at IS NULL
 	`, inClause, inClause)
 
 	rows, err := e.db.Query(query, params...)
@@ -711,8 +708,6 @@ func (e *Executor) loadDependencyGraphFromDB() (*DependencyGraph, error) {
 		JOIN issues i2 ON d.depends_on_id = i2.id
 		WHERE i1.status NOT IN ('deleted', 'tombstone')
 		  AND i2.status NOT IN ('deleted', 'tombstone')
-		  AND i1.deleted_at IS NULL
-		  AND i2.deleted_at IS NULL
 	`
 
 	rows, err := e.db.Query(query)

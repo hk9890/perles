@@ -12,7 +12,7 @@ func TestNewTestDB_CreatesSchema(t *testing.T) {
 
 	// Verify all tables exist by querying sqlite_master
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('issues', 'labels', 'dependencies', 'comments', 'blocked_issues_cache')`).Scan(&count)
+	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('issues', 'labels', 'dependencies', 'comments', 'blocked_issues')`).Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 5, count, "expected 5 tables")
 
@@ -27,7 +27,7 @@ func TestNewTestDB_TablesExist(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	// Test each table is queryable via COUNT
-	tables := []string{"issues", "labels", "dependencies", "comments", "blocked_issues_cache"}
+	tables := []string{"issues", "labels", "dependencies", "comments", "blocked_issues"}
 	for _, table := range tables {
 		var count int
 		err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)

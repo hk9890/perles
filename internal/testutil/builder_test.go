@@ -150,7 +150,7 @@ func TestBuilder_WithBlockedCache(t *testing.T) {
 		Build()
 
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM blocked_issues_cache WHERE issue_id = ?`, "issue-1").Scan(&count)
+	err := db.QueryRow(`SELECT COUNT(*) FROM blocked_issues WHERE id = ?`, "issue-1").Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 }

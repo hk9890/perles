@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
@@ -97,7 +98,7 @@ type Model struct {
 // New creates a new detail view.
 // The optional loader parameter enables loading full issue data for dependencies.
 // The optional commentLoader enables loading comments for the issue.
-// Pass *beads.SQLiteClient for both (it implements both interfaces); nil disables loading.
+// Pass a beads read client (for example *infrastructure.DoltClient) for both; nil disables loading.
 func New(issue beads.Issue, executor bql.BQLExecutor, commentLoader appbeads.CommentReader) Model {
 	m := Model{
 		issue:         issue,
@@ -928,26 +929,7 @@ func (m Model) renderFooter() string {
 
 // getTypeStyle returns the style for an issue type.
 func getTypeStyle(t beads.IssueType) lipgloss.Style {
-	switch t {
-	case beads.TypeBug:
-		return styles.TypeBugStyle
-	case beads.TypeFeature:
-		return styles.TypeFeatureStyle
-	case beads.TypeTask:
-		return styles.TypeTaskStyle
-	case beads.TypeEpic:
-		return styles.TypeEpicStyle
-	case beads.TypeChore:
-		return styles.TypeChoreStyle
-	case beads.TypeMolecule:
-		return styles.TypeMoleculeStyle
-	case beads.TypeConvoy:
-		return styles.TypeConvoyStyle
-	case beads.TypeAgent:
-		return styles.TypeAgentStyle
-	default:
-		return lipgloss.NewStyle()
-	}
+	return styles.GetTypeStyle(t)
 }
 
 // getPriorityStyle returns the style for a priority level.
@@ -1039,6 +1021,8 @@ func formatType(t beads.IssueType) string {
 		return "Epic"
 	case beads.TypeChore:
 		return "Chore"
+	case beads.TypeDecision:
+		return "Decision"
 	case beads.TypeMolecule:
 		return "Molecule"
 	case beads.TypeConvoy:
@@ -1046,8 +1030,38 @@ func formatType(t beads.IssueType) string {
 	case beads.TypeAgent:
 		return "Agent"
 	default:
-		return string(t)
+		return formatCustomTypeLabel(t)
 	}
+}
+
+func formatCustomTypeLabel(t beads.IssueType) string {
+	raw := strings.TrimSpace(string(t))
+	if raw == "" {
+		return "Unknown"
+	}
+
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case '-', '_', '/', '.':
+			return true
+		default:
+			return unicode.IsSpace(r)
+		}
+	})
+	if len(parts) == 0 {
+		return "Unknown"
+	}
+
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		runes := []rune(strings.ToLower(p))
+		runes[0] = unicode.ToUpper(runes[0])
+		parts[i] = string(runes)
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // IssueID returns the ID of the currently displayed issue.
