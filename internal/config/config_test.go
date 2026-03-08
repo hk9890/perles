@@ -88,16 +88,49 @@ func TestDefaults(t *testing.T) {
 	cfg := Defaults()
 
 	require.True(t, cfg.AutoRefresh)
-	require.Len(t, cfg.Views, 1)
+	require.Len(t, cfg.Views, 2)
 	require.Equal(t, "Default", cfg.Views[0].Name)
 	require.Len(t, cfg.Views[0].Columns, 4)
+	require.Equal(t, "Planning", cfg.Views[1].Name)
+	require.Len(t, cfg.Views[1].Columns, 4)
 }
 
 func TestDefaultViews(t *testing.T) {
 	views := DefaultViews()
-	require.Len(t, views, 1)
+	require.Len(t, views, 2)
 	require.Equal(t, "Default", views[0].Name)
 	require.Len(t, views[0].Columns, 4)
+	require.Equal(t, "Planning", views[1].Name)
+	require.Len(t, views[1].Columns, 4)
+}
+
+func TestDefaultViews_PlanningColumns(t *testing.T) {
+	views := DefaultViews()
+	require.Len(t, views, 2)
+
+	planning := views[1]
+	require.Equal(t, "Planning", planning.Name)
+	require.Equal(t, []ColumnConfig{
+		{Name: "Needs Discussion", Query: "label = needs:discussion"},
+		{Name: "Blocked Status", Query: "status = blocked and label != needs:discussion"},
+		{Name: "Open", Query: "status = open and label != needs:discussion"},
+		{Name: "Closed", Query: "status = closed"},
+	}, planning.Columns)
+}
+
+func TestDefaultViews_PlanningOpenDoesNotOverlapNeedsDiscussion(t *testing.T) {
+	views := DefaultViews()
+	planning := views[1]
+	require.Len(t, planning.Columns, 4)
+
+	needsDiscussion := planning.Columns[0]
+	open := planning.Columns[2]
+
+	require.Equal(t, "Needs Discussion", needsDiscussion.Name)
+	require.Equal(t, "label = needs:discussion", needsDiscussion.Query)
+	require.Equal(t, "Open", open.Name)
+	require.Equal(t, "status = open and label != needs:discussion", open.Query)
+	require.Contains(t, open.Query, "label != needs:discussion")
 }
 
 func TestConfig_GetColumns(t *testing.T) {
@@ -129,9 +162,11 @@ func TestConfig_GetViews_Empty(t *testing.T) {
 	cfg := Config{} // No views
 	views := cfg.GetViews()
 	// Should return defaults
-	require.Len(t, views, 1)
+	require.Len(t, views, 2)
 	require.Equal(t, "Default", views[0].Name)
 	require.Len(t, views[0].Columns, 4)
+	require.Equal(t, "Planning", views[1].Name)
+	require.Len(t, views[1].Columns, 4)
 }
 
 func TestConfig_SetColumns(t *testing.T) {
@@ -2187,15 +2222,18 @@ func TestKeybindingsConfig_ZeroValue(t *testing.T) {
 	cfg := KeybindingsConfig{}
 	require.Empty(t, cfg.Search, "Search zero value should be empty")
 	require.Empty(t, cfg.Dashboard, "Dashboard zero value should be empty")
+	require.Empty(t, cfg.Editor, "Editor zero value should be empty")
 }
 
 func TestKeybindingsConfig_WithValues(t *testing.T) {
 	cfg := KeybindingsConfig{
 		Search:    "ctrl+k",
 		Dashboard: "ctrl+d",
+		Editor:    "ctrl+shift+e",
 	}
 	require.Equal(t, "ctrl+k", cfg.Search)
 	require.Equal(t, "ctrl+d", cfg.Dashboard)
+	require.Equal(t, "ctrl+shift+e", cfg.Editor)
 }
 
 func TestUIConfig_KeybindingsField(t *testing.T) {
@@ -2207,16 +2245,23 @@ func TestUIConfig_KeybindingsField(t *testing.T) {
 		Keybindings: KeybindingsConfig{
 			Search:    "ctrl+space",
 			Dashboard: "ctrl+o",
+			Quit:      "ctrl+q",
+			Editor:    "ctrl+shift+e",
 		},
 	}
 	require.Equal(t, "ctrl+space", cfg.Keybindings.Search)
 	require.Equal(t, "ctrl+o", cfg.Keybindings.Dashboard)
+	require.Equal(t, "ctrl+q", cfg.Keybindings.Quit)
+	require.Equal(t, "ctrl+shift+e", cfg.Keybindings.Editor)
 }
 
 func TestDefaults_KeybindingsEmpty(t *testing.T) {
 	cfg := Defaults()
 	require.Equal(t, cfg.UI.Keybindings.Search, "ctrl+space")
 	require.Equal(t, cfg.UI.Keybindings.Dashboard, "ctrl+o")
+	require.Equal(t, cfg.UI.Keybindings.Quit, "ctrl+q")
+	require.Equal(t, cfg.UI.Keybindings.Editor, "ctrl+shift+e")
+	require.True(t, cfg.UI.QuitConfirm)
 }
 
 func TestConfigUnmarshal_Keybindings(t *testing.T) {
@@ -2229,12 +2274,16 @@ func TestConfigUnmarshal_Keybindings(t *testing.T) {
 			Keybindings: KeybindingsConfig{
 				Search:    "ctrl+k",
 				Dashboard: "ctrl+d",
+				Quit:      "ctrl+q",
+				Editor:    "ctrl+shift+f",
 			},
 		},
 	}
 
 	require.Equal(t, "ctrl+k", cfg.UI.Keybindings.Search)
 	require.Equal(t, "ctrl+d", cfg.UI.Keybindings.Dashboard)
+	require.Equal(t, "ctrl+q", cfg.UI.Keybindings.Quit)
+	require.Equal(t, "ctrl+shift+f", cfg.UI.Keybindings.Editor)
 }
 
 func TestConfigUnmarshal_NoKeybindings(t *testing.T) {
@@ -2249,6 +2298,8 @@ func TestConfigUnmarshal_NoKeybindings(t *testing.T) {
 
 	require.Empty(t, cfg.UI.Keybindings.Search, "Search should be empty when not specified")
 	require.Empty(t, cfg.UI.Keybindings.Dashboard, "Dashboard should be empty when not specified")
+	require.Empty(t, cfg.UI.Keybindings.Quit, "Quit should be empty when not specified")
+	require.Empty(t, cfg.UI.Keybindings.Editor, "Editor should be empty when not specified")
 }
 
 func TestConfigUnmarshal_PartialKeybindings(t *testing.T) {
@@ -2266,6 +2317,8 @@ func TestConfigUnmarshal_PartialKeybindings(t *testing.T) {
 
 	require.Equal(t, "ctrl+k", cfg.UI.Keybindings.Search)
 	require.Empty(t, cfg.UI.Keybindings.Dashboard, "Dashboard should be empty when not specified")
+	require.Empty(t, cfg.UI.Keybindings.Quit, "Quit should be empty when not specified")
+	require.Empty(t, cfg.UI.Keybindings.Editor, "Editor should be empty when not specified")
 }
 
 func TestKeybindingsConfig_NestedInConfig(t *testing.T) {
@@ -2280,6 +2333,8 @@ func TestKeybindingsConfig_NestedInConfig(t *testing.T) {
 			Keybindings: KeybindingsConfig{
 				Search:    "alt+s",
 				Dashboard: "f5",
+				Quit:      "ctrl+q",
+				Editor:    "ctrl+shift+e",
 			},
 		},
 	}
@@ -2288,6 +2343,8 @@ func TestKeybindingsConfig_NestedInConfig(t *testing.T) {
 	require.True(t, cfg.UI.ShowCounts)
 	require.Equal(t, "alt+s", cfg.UI.Keybindings.Search)
 	require.Equal(t, "f5", cfg.UI.Keybindings.Dashboard)
+	require.Equal(t, "ctrl+q", cfg.UI.Keybindings.Quit)
+	require.Equal(t, "ctrl+shift+e", cfg.UI.Keybindings.Editor)
 }
 
 func TestKeybindingsConfig_EmptyValuesNoPanic(t *testing.T) {
@@ -2297,6 +2354,8 @@ func TestKeybindingsConfig_EmptyValuesNoPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		_ = cfg.UI.Keybindings.Search
 		_ = cfg.UI.Keybindings.Dashboard
+		_ = cfg.UI.Keybindings.Quit
+		_ = cfg.UI.Keybindings.Editor
 	})
 }
 
@@ -2307,16 +2366,16 @@ func TestKeybindingsConfig_EmptyValuesNoPanic(t *testing.T) {
 func TestValidateKeybindings_ValidKeys(t *testing.T) {
 	// Valid formats like ctrl+k, alt+s, f5 should be accepted
 	testCases := []KeybindingsConfig{
-		{Search: "ctrl+k", Dashboard: "ctrl+d"},
-		{Search: "alt+s", Dashboard: "alt+d"},
-		{Search: "f5", Dashboard: "f12"},
-		{Search: "ctrl+space", Dashboard: "ctrl+o"},
-		{Search: "tab", Dashboard: "space"},
-		{Search: "up", Dashboard: "down"},
-		{Search: "ctrl+up", Dashboard: "ctrl+down"},
-		{Search: "shift+tab", Dashboard: "backspace"},
-		{Search: "a", Dashboard: "b"},
-		{Search: "/", Dashboard: "["},
+		{Search: "ctrl+k", Dashboard: "ctrl+d", Quit: "ctrl+q", Editor: "ctrl+shift+e"},
+		{Search: "alt+s", Dashboard: "alt+d", Quit: "f12"},
+		{Search: "f5", Dashboard: "f11", Quit: "f12"},
+		{Search: "ctrl+space", Dashboard: "ctrl+o", Quit: "ctrl+q"},
+		{Search: "tab", Dashboard: "space", Quit: "ctrl+q"},
+		{Search: "up", Dashboard: "down", Quit: "ctrl+right"},
+		{Search: "ctrl+up", Dashboard: "ctrl+down", Quit: "ctrl+q"},
+		{Search: "shift+tab", Dashboard: "backspace", Quit: "ctrl+q"},
+		{Search: "a", Dashboard: "b", Quit: "z"},
+		{Search: "/", Dashboard: "[", Quit: "\\"},
 	}
 
 	for _, tc := range testCases {
@@ -2356,12 +2415,22 @@ func TestValidateKeybindings_InvalidFormat(t *testing.T) {
 		},
 		{
 			name:     "invalid combo",
-			kb:       KeybindingsConfig{Search: "ctrl+shift+a"},
+			kb:       KeybindingsConfig{Search: "ctrl+shift+aa"},
 			contains: "invalid key format",
 		},
 		{
 			name:     "number with ctrl not valid",
 			kb:       KeybindingsConfig{Search: "ctrl+9"},
+			contains: "invalid key format",
+		},
+		{
+			name:     "quit invalid format",
+			kb:       KeybindingsConfig{Quit: "crtl+q"},
+			contains: "invalid key format",
+		},
+		{
+			name:     "editor invalid format",
+			kb:       KeybindingsConfig{Editor: "ctrl+shift+1"},
 			contains: "invalid key format",
 		},
 	}
@@ -2391,6 +2460,18 @@ func TestValidateKeybindings_ReservedKeys(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "reserved key")
 		})
+
+		t.Run("quit_"+key, func(t *testing.T) {
+			err := ValidateKeybindings(KeybindingsConfig{Quit: key})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "reserved key")
+		})
+
+		t.Run("editor_"+key, func(t *testing.T) {
+			err := ValidateKeybindings(KeybindingsConfig{Editor: key})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "reserved key")
+		})
 	}
 }
 
@@ -2401,6 +2482,10 @@ func TestValidateKeybindings_DuplicateKeys(t *testing.T) {
 		{Search: "f5", Dashboard: "f5"},
 		{Search: "Ctrl+K", Dashboard: "ctrl+k"},   // Case insensitive
 		{Search: " ctrl+k ", Dashboard: "ctrl+k"}, // Whitespace normalized
+		{Search: "ctrl+k", Quit: "ctrl+k"},
+		{Dashboard: "ctrl+d", Quit: "ctrl+d"},
+		{Search: "ctrl+k", Editor: "ctrl+k"},
+		{Quit: "ctrl+q", Editor: "ctrl+q"},
 	}
 
 	for _, tc := range testCases {
@@ -2417,6 +2502,8 @@ func TestValidateKeybindings_SwappedDefaults(t *testing.T) {
 	err := ValidateKeybindings(KeybindingsConfig{
 		Search:    "ctrl+o",
 		Dashboard: "ctrl+space",
+		Quit:      "ctrl+q",
+		Editor:    "ctrl+shift+e",
 	})
 	require.NoError(t, err)
 }
@@ -2424,9 +2511,11 @@ func TestValidateKeybindings_SwappedDefaults(t *testing.T) {
 func TestValidateKeybindings_EmptyValues(t *testing.T) {
 	// Empty strings should pass validation (use defaults)
 	testCases := []KeybindingsConfig{
-		{Search: "", Dashboard: ""},
-		{Search: "ctrl+k", Dashboard: ""},
-		{Search: "", Dashboard: "ctrl+d"},
+		{Search: "", Dashboard: "", Quit: "", Editor: ""},
+		{Search: "ctrl+k", Dashboard: "", Quit: ""},
+		{Search: "", Dashboard: "ctrl+d", Quit: ""},
+		{Search: "", Dashboard: "", Quit: "ctrl+q"},
+		{Search: "", Dashboard: "", Quit: "", Editor: "ctrl+shift+f"},
 	}
 
 	for i, tc := range testCases {
@@ -2504,6 +2593,8 @@ func TestIsValidKeyFormat_AllPatterns(t *testing.T) {
 		"a", "z", "0", "9", "/", "[", "]", "^", "_", "?", "@",
 		// ctrl+X
 		"ctrl+a", "ctrl+z", "ctrl+@", "ctrl+[",
+		// ctrl+shift+X
+		"ctrl+shift+a", "ctrl+shift+e", "ctrl+shift+z",
 		// alt+X
 		"alt+a", "alt+z",
 		// Special keys
@@ -2529,7 +2620,7 @@ func TestIsValidKeyFormat_AllPatterns(t *testing.T) {
 		"crtl+o",       // typo
 		"ctrl space",   // missing plus
 		"cmd+o",        // unsupported modifier
-		"ctrl+shift+a", // double modifier
+		"ctrl+shift+1", // non-letter with ctrl+shift
 		"ctrl+9",       // number with ctrl
 		"alt+1",        // number with alt
 		"f0",           // invalid function key

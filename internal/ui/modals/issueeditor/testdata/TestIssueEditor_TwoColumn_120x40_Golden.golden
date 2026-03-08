@@ -2,7 +2,7 @@
 │ Edit Issue                                                                [T][P1][test-layout] │
 │────────────────────────────────────────────────────────────────────────────────────────────────│
 │                                                                                                │
-│ ╭─ Title ───────────────────────────────────╮   ╭─ Description (Ctrl+G for editor) ──────────╮ │
+│ ╭─ Title ───────────────────────────────────╮   ╭─ Description (ctrl+shift+e for editor) ────╮ │
 │ │Multi-Column Issue                         │   │This description appears in column 1        │ │
 │ ╰───────────────────────────────────────────╯   │                                            │ │
 │                                                 │                                            │ │
@@ -13,7 +13,7 @@
 │ │ ( ) P3 - Low                              │   │                                            │ │
 │ │ ( ) P4 - Backlog                          │   ╰────────────────────────────────────────────╯ │
 │ ╰───────────────────────────────────────────╯                                                  │
-│                                                 ╭─ Notes (Ctrl+G for editor) ────────────────╮ │
+│                                                 ╭─ Notes (ctrl+shift+e for editor) ──────────╮ │
 │ ╭─ Status (Space to toggle) ────────────────╮   │Internal notes here                         │ │
 │ │ (●) Open                                  │   │                                            │ │
 │ │ ( ) In Progress                           │   │                                            │ │

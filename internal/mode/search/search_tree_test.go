@@ -471,16 +471,16 @@ func TestTreeSubMode_HelpKey_ShowsHelp(t *testing.T) {
 	require.Equal(t, ViewHelp, m.view, "? should switch to help view")
 }
 
-func TestTreeSubMode_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
+func TestTreeSubMode_QuitBinding_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTreeTestModel(t)
 
-	// Press ctrl+c - should return mode.RequestQuitMsg
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// Press configured app quit key (ctrl+q) - should return mode.RequestQuitMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 
 	require.NotNil(t, cmd, "expected quit request command")
 	result := cmd()
 	_, isRequestQuit := result.(mode.RequestQuitMsg)
-	require.True(t, isRequestQuit, "ctrl+c should return mode.RequestQuitMsg")
+	require.True(t, isRequestQuit, "ctrl+q should return mode.RequestQuitMsg")
 }
 
 func TestTreeSubMode_NotFocused_KeysPassThrough(t *testing.T) {

@@ -30,7 +30,7 @@
 │ │ Enter label name...                            │ │
 │ ╰────────────────────────────────────────────────╯ │
 │                                                    │
-│ ╭─ Description (Ctrl+G for editor) ──────────────╮ │
+│ ╭─ Description (ctrl+shift+e for editor) ────────╮ │
 │ │Description in single column                    │ │
 │ │                                                │ │
 │                                                    │

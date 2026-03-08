@@ -2,14 +2,21 @@
 │  Search Mode Help                                                                               │ 
 │─────────────────────────────────────────────────────────────────────────────────────────────────│ 
 │                                                                                                 │ 
-│  Navigation                   Actions                      General                              │ 
-│  h          focus results     enter      open tree view    ctrl+space switch mode               │ 
-│  l          focus details     y          copy issue ID     ?          toggle help               │ 
-│  k/↑        move up           ctrl+s     save to view      ctrl+c     quit                      │ 
-│  j/↓        move down                                                                           │ 
+│  Navigation                   Actions                       General                             │ 
+│  h          focus results     enter      open tree view     ctrl+space switch mode              │ 
+│  l          focus details     y          copy issue ID      ?          toggle help              │ 
+│  k/↑        move up           ctrl+s     save to view       ctrl+q     quit                     │ 
+│  j/↓        move down         ctrl+t     toggle text/BQL                                        │ 
 │  /          focus search                                                                        │ 
 │  esc        exit to kanban                                                                      │ 
 │                                                                                                 │ 
+│                                                                                                 │ 
+│  Search Modes                                                                                   │ 
+│  Text Search (default): broad LIKE search                                                       │ 
+│    fields: title, description, notes, labels,                                                   │ 
+│            id, comments, design, acceptance                                                     │ 
+│  BQL Search: advanced filters, syntax highlighting                                              │ 
+│  Switch with Ctrl+T or click Text/BQL tabs                                                      │ 
 │                                                                                                 │ 
 │  BQL Fields                                                  BQL Operators                      │ 
 │  status      open, in_progress, closed, blocked, deferred    =  !=       equality               │ 

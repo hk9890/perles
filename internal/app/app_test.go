@@ -470,11 +470,11 @@ func TestApp_KanbanModeExtracted(t *testing.T) {
 	require.Equal(t, mode.ModeKanban, m.currentMode, "should still be in kanban mode")
 }
 
-func TestApp_CtrlC_ShowsQuitConfirmation(t *testing.T) {
+func TestApp_QuitBinding_ShowsQuitConfirmation(t *testing.T) {
 	m := createTestModel(t)
 
-	// Ctrl+C in kanban mode returns mode.RequestQuitMsg
-	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// App quit key in kanban mode returns mode.RequestQuitMsg
+	newModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m = newModel.(Model)
 
 	// Kanban returns a command that produces mode.RequestQuitMsg
@@ -490,6 +490,32 @@ func TestApp_CtrlC_ShowsQuitConfirmation(t *testing.T) {
 	// Now quit modal should be visible, no command returned
 	require.True(t, m.quitModal.IsVisible(), "expected quit modal to be visible")
 	require.Nil(t, cmd, "expected no command (quit modal showing)")
+}
+
+func TestApp_RequestQuitMsg_ImmediateQuitWhenConfirmationDisabled(t *testing.T) {
+	m := createTestModel(t)
+	m.services.Config.UI.QuitConfirm = false
+
+	newModel, cmd := m.Update(mode.RequestQuitMsg{})
+	m = newModel.(Model)
+
+	require.False(t, m.quitModal.IsVisible(), "quit modal should stay hidden when confirmation disabled")
+	require.NotNil(t, cmd, "expected tea.Quit command")
+	_, ok := cmd().(tea.QuitMsg)
+	require.True(t, ok, "expected tea.QuitMsg from command")
+}
+
+func TestApp_ChatPanelQuitRequest_ImmediateQuitWhenConfirmationDisabled(t *testing.T) {
+	m := createTestModel(t)
+	m.services.Config.UI.QuitConfirm = false
+
+	newModel, cmd := m.Update(chatpanel.RequestQuitMsg{})
+	m = newModel.(Model)
+
+	require.False(t, m.quitModal.IsVisible(), "quit modal should stay hidden when confirmation disabled")
+	require.NotNil(t, cmd, "expected tea.Quit command")
+	_, ok := cmd().(tea.QuitMsg)
+	require.True(t, ok, "expected tea.QuitMsg from command")
 }
 
 func TestApp_SearchModeReceivesUpdates(t *testing.T) {

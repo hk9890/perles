@@ -20,7 +20,7 @@ func (c *OpenExternalEditorCommand) Execute(m *Model) ExecuteResult {
 
 // Keys returns the trigger keys for this command.
 func (c *OpenExternalEditorCommand) Keys() []string {
-	return []string{"<ctrl+g>"}
+	return []string{"<ctrl+g>", "<ctrl+shift+e>"}
 }
 
 // Mode returns the mode this command operates in.

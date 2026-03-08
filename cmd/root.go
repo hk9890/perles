@@ -112,6 +112,9 @@ func initConfig() {
 	// Keybinding defaults
 	viper.SetDefault("ui.keybindings.search", "ctrl+space")
 	viper.SetDefault("ui.keybindings.dashboard", "ctrl+o")
+	viper.SetDefault("ui.keybindings.quit", defaults.UI.Keybindings.Quit)
+	viper.SetDefault("ui.keybindings.editor", defaults.UI.Keybindings.Editor)
+	viper.SetDefault("ui.quit_confirmation", defaults.UI.QuitConfirm)
 
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -213,7 +216,12 @@ func runApp(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply keybinding overrides from config
-	keys.ApplyConfig(cfg.UI.Keybindings.Search, cfg.UI.Keybindings.Dashboard)
+	keys.ApplyConfig(
+		cfg.UI.Keybindings.Search,
+		cfg.UI.Keybindings.Dashboard,
+		cfg.UI.Keybindings.Quit,
+		cfg.UI.Keybindings.Editor,
+	)
 
 	// Working directory is always the current directory (where perles was invoked)
 	workDir, err := os.Getwd()

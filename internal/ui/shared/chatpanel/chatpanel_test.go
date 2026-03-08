@@ -509,45 +509,45 @@ func TestModel_Update_SubmitMsg_EmptyContent(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
-func TestModel_Update_CtrlC_EmitsRequestQuit(t *testing.T) {
+func TestModel_Update_QuitBinding_EmitsRequestQuit(t *testing.T) {
 	// Create a visible, focused panel
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
-	// Ctrl+C should always emit RequestQuitMsg regardless of vim mode
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// App quit key should emit RequestQuitMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 
-	require.NotNil(t, cmd, "Ctrl+C should return a command")
+	require.NotNil(t, cmd, "Ctrl+Q should return a command")
 	msg := cmd()
 	_, ok := msg.(RequestQuitMsg)
-	require.True(t, ok, "Ctrl+C should emit RequestQuitMsg")
+	require.True(t, ok, "Ctrl+Q should emit RequestQuitMsg")
 }
 
-func TestModel_Update_CtrlC_InsertMode_StillEmitsRequestQuit(t *testing.T) {
+func TestModel_Update_QuitBinding_InsertMode_StillEmitsRequestQuit(t *testing.T) {
 	// Create a visible, focused panel
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle().Focus()
 
 	// vimtextarea starts in insert mode by default
 	require.False(t, m.input.InNormalMode(), "should start in insert mode")
 
-	// Ctrl+C in insert mode should still emit RequestQuitMsg (not switch to normal mode)
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// App quit key in insert mode should still emit RequestQuitMsg
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 
-	require.NotNil(t, cmd, "Ctrl+C in insert mode should return a command")
+	require.NotNil(t, cmd, "Ctrl+Q in insert mode should return a command")
 	msg := cmd()
 	_, ok := msg.(RequestQuitMsg)
-	require.True(t, ok, "Ctrl+C in insert mode should emit RequestQuitMsg")
+	require.True(t, ok, "Ctrl+Q in insert mode should emit RequestQuitMsg")
 }
 
-func TestModel_Update_CtrlC_NotFocused_NoAction(t *testing.T) {
+func TestModel_Update_QuitBinding_NotFocused_NoAction(t *testing.T) {
 	// Create a visible but unfocused panel
 	m := New(DefaultConfig()).SetSize(40, 20).Toggle()
 
 	require.False(t, m.Focused())
 
-	// Ctrl+C should not be processed when not focused
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// App quit key should not be processed when not focused
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 
-	require.Nil(t, cmd, "Ctrl+C should not be processed when not focused")
+	require.Nil(t, cmd, "Ctrl+Q should not be processed when not focused")
 }
 
 // ============================================================================

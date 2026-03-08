@@ -834,6 +834,19 @@ func TestDetails_FooterShowsDeleteKeybinding(t *testing.T) {
 	require.Contains(t, view, "[ctrl+d]", "expected footer to show delete keybinding")
 }
 
+func TestDetails_FooterShowsExternalEditorKeybinding(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-1",
+		TitleText: "Test Issue",
+		CreatedAt: time.Now(),
+	}
+	m := createTestModel(t, issue)
+	m = m.SetSize(100, 40)
+	view := m.View()
+
+	require.Contains(t, view, "[ctrl+shift+e]", "expected footer to show external editor keybinding")
+}
+
 // TestDetails_View_Golden uses teatest golden file comparison.
 // Run with -update flag to update golden files: go test -update ./internal/ui/details/...
 func TestDetails_View_Golden(t *testing.T) {

@@ -522,6 +522,56 @@ func TestIsBQLQuery(t *testing.T) {
 	}
 }
 
+func TestExecuteSimpleTextSearch_MatchesConfiguredFields(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("needle-id", testutil.Title("id field issue")).
+			WithIssue("title-1", testutil.Title("Needle in title")).
+			WithIssue("desc-1", testutil.Description("needle in description")).
+			WithIssue("notes-1", testutil.Title("notes holder")).
+			WithIssue("labels-1", testutil.Labels("needle-label")).
+			WithIssue("comments-1", testutil.Comments(testutil.Comment("alice", "needle in comment"))).
+			WithIssue("design-1", testutil.Title("design holder")).
+			WithIssue("acceptance-1", testutil.Title("acceptance holder")).
+			WithIssue("no-match", testutil.Title("completely unrelated"))
+	})
+	defer func() { _ = db.Close() }()
+
+	_, err := db.Exec(`UPDATE issues SET notes = ? WHERE id = ?`, "needle in notes", "notes-1")
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE issues SET design = ? WHERE id = ?`, "needle in design", "design-1")
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE issues SET acceptance_criteria = ? WHERE id = ?`, "needle in acceptance", "acceptance-1")
+	require.NoError(t, err)
+
+	issues, err := ExecuteSimpleTextSearch(db, "NEEDLE")
+	require.NoError(t, err)
+
+	ids := map[string]bool{}
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+
+	require.True(t, ids["needle-id"], "should match issue id")
+	require.True(t, ids["title-1"], "should match title")
+	require.True(t, ids["desc-1"], "should match description")
+	require.True(t, ids["notes-1"], "should match notes")
+	require.True(t, ids["labels-1"], "should match labels")
+	require.True(t, ids["comments-1"], "should match comments")
+	require.True(t, ids["design-1"], "should match design")
+	require.True(t, ids["acceptance-1"], "should match acceptance criteria")
+	require.False(t, ids["no-match"], "should not include non-matching issues")
+}
+
+func TestExecuteSimpleTextSearch_EmptyInputReturnsEmpty(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = db.Close() }()
+
+	issues, err := ExecuteSimpleTextSearch(db, "   ")
+	require.NoError(t, err)
+	require.Empty(t, issues)
+}
+
 func TestExecutor_OrderByOnly(t *testing.T) {
 	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
 	defer func() { _ = db.Close() }()

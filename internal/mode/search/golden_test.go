@@ -1,6 +1,7 @@
 package search
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func createGoldenTestModel(t *testing.T) Model {
 
 	mockClient := mocks.NewMockBeadsClient(t)
 	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return((*sql.DB)(nil)).Maybe()
 
 	services := mode.Services{
 		Client:    mockClient,

@@ -11,7 +11,7 @@ import (
 
 func TestOpenExternalEditorCommand_Keys(t *testing.T) {
 	cmd := &OpenExternalEditorCommand{}
-	require.Equal(t, []string{"<ctrl+g>"}, cmd.Keys())
+	require.Equal(t, []string{"<ctrl+g>", "<ctrl+shift+e>"}, cmd.Keys())
 }
 
 func TestOpenExternalEditorCommand_Mode(t *testing.T) {

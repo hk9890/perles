@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/keys"
 	"github.com/hk9890/perles/internal/mode/shared"
 	"github.com/hk9890/perles/internal/ui/shared/formmodal"
 	"github.com/hk9890/perles/internal/ui/shared/issuebadge"
@@ -132,7 +133,7 @@ func New(issue beads.Issue) Model {
 				Key:          "description",
 				Type:         formmodal.FieldTypeTextArea,
 				Label:        "Description",
-				Hint:         "Ctrl+G for editor",
+				Hint:         keys.Component.Editor.Help().Key + " for editor",
 				Placeholder:  "Issue description...",
 				InitialValue: issue.DescriptionText,
 				VimEnabled:   true,
@@ -143,7 +144,7 @@ func New(issue beads.Issue) Model {
 				Key:          "notes",
 				Type:         formmodal.FieldTypeTextArea,
 				Label:        "Notes",
-				Hint:         "Ctrl+G for editor",
+				Hint:         keys.Component.Editor.Help().Key + " for editor",
 				Placeholder:  "Issue notes...",
 				InitialValue: issue.Notes,
 				VimEnabled:   true,

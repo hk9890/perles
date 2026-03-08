@@ -250,12 +250,12 @@ func TestKanban_TKey_NoIssue_NoCommand(t *testing.T) {
 // Quit Request Tests (quit modal now handled at app level)
 // =============================================================================
 
-func TestKanban_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
+func TestKanban_QuitBinding_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTestModel(t)
 	m.view = ViewBoard
 
-	// Simulate Ctrl+C keypress
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	// Simulate configured app quit key (Ctrl+Q)
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	_, cmd := m.handleBoardKey(msg)
 
 	// Should return a command that produces mode.RequestQuitMsg
@@ -283,12 +283,12 @@ func TestKanban_QKey_DoesNotQuit(t *testing.T) {
 	}
 }
 
-func TestKanban_HelpView_CtrlC_ReturnsRequestQuitMsg(t *testing.T) {
+func TestKanban_HelpView_QuitBinding_ReturnsRequestQuitMsg(t *testing.T) {
 	m := createTestModel(t)
 	m.view = ViewHelp
 
-	// Simulate Ctrl+C in help view
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	// Simulate configured app quit key in help view
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	_, cmd := m.handleKey(msg)
 
 	// Should return mode.RequestQuitMsg

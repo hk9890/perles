@@ -71,7 +71,8 @@ type Model struct {
 	selectedIssue       *beads.Issue // Issue being deleted
 
 	// Edit operation state
-	editingIssue *beads.Issue // Issue being edited (for title/description comparison on save)
+	editingIssue         *beads.Issue // Issue being edited (for title/description comparison on save)
+	externalEditingIssue *beads.Issue // Issue being edited through issue-level external editor
 
 	// Pending cursor restoration after refresh
 	pendingCursor *cursorState
@@ -240,6 +241,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case details.DeleteIssueMsg:
 		return m.openDeleteConfirm(msg)
 
+	case details.OpenExternalEditorMsg:
+		issue := msg.Issue
+		m.externalEditingIssue = &issue
+		return m, editor.OpenCmd(editor.MarshalIssueMarkdown(issue))
+
 	case issueDeletedMsg:
 		return m.handleIssueDeleted(msg)
 
@@ -334,6 +340,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m.handleModalCancel()
 
 	case editor.ExecMsg:
+		if m.externalEditingIssue != nil {
+			return m, msg.ExecCmd()
+		}
 		// Forward to issueeditor modal if open - this allows Ctrl+G external editor
 		// to work from the modal's description field. Without this check, the message
 		// would be intercepted here and lost.
@@ -345,6 +354,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case editor.FinishedMsg:
+		if m.externalEditingIssue != nil {
+			return m.handleIssueExternalEditorFinished(msg)
+		}
 		// Forward to issueeditor modal if open - ensures editor results return
 		// to the modal's description field when editing via Ctrl+G.
 		if m.view == ViewEditIssue {

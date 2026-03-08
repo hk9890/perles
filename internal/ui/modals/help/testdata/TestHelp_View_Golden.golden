@@ -8,7 +8,7 @@
 │  enter      open tree view       ctrl+j/n   next view        h/l        left/right                 ?          toggle help        │
 │  r          refresh issues       ctrl+k/p   previous view    j/k        up/down                    w          toggle status bar  │
 │  y          copy issue ID        ctrl+v     view menu        ^space     search mode                esc        go back            │
-│  a          add column           /          search column    ctrl+w     toggle chat panel          ctrl+c     quit               │
+│  a          add column           /          search column    ctrl+w     toggle chat panel          ctrl+q     quit               │
 │  e          edit column                                      tab        switch chat/board focus                                  │
 │  d          delete column                                    ctrl+j     next chat tab                                            │
 │  ctrl+h     move column left                                 ctrl+k     prev chat tab                                            │

@@ -67,7 +67,7 @@ func TestHelp_View_ContainsKeybindings(t *testing.T) {
 
 	// General keys
 	require.Contains(t, view, "?", "expected view to contain help key")
-	require.Contains(t, view, "ctrl+c", "expected view to contain quit key")
+	require.Contains(t, view, "ctrl+q", "expected view to contain quit key")
 	require.Contains(t, view, "esc", "expected view to contain escape key")
 }
 
@@ -197,7 +197,7 @@ func TestHelp_renderBinding_KanbanQuitConfirm(t *testing.T) {
 	// Test rendering the kanban-specific quit confirm binding
 	output := renderBinding(keys.Kanban.QuitConfirm)
 
-	require.Contains(t, output, "ctrl+c", "expected binding to contain ctrl+c key")
+	require.Contains(t, output, "ctrl+q", "expected binding to contain ctrl+q key")
 	require.Contains(t, output, "quit", "expected binding to contain description")
 }
 
@@ -205,7 +205,7 @@ func TestHelp_renderBinding_SearchQuitConfirm(t *testing.T) {
 	// Test rendering the search-specific quit confirm binding
 	output := renderBinding(keys.Search.QuitConfirm)
 
-	require.Contains(t, output, "ctrl+c", "expected binding to contain ctrl+c key")
+	require.Contains(t, output, "ctrl+q", "expected binding to contain ctrl+q key")
 	require.Contains(t, output, "quit", "expected binding to contain description")
 }
 
@@ -289,6 +289,17 @@ func TestHelp_SearchView_ContainsKeybindings(t *testing.T) {
 	// Actions
 	require.Contains(t, view, "y", "expected y for copy issue ID")
 	require.Contains(t, view, "ctrl+s", "expected ctrl+s for save as column")
+	require.Contains(t, view, "ctrl+t", "expected ctrl+t for search mode toggle")
+}
+
+func TestHelp_SearchView_ContainsSearchModePrimer(t *testing.T) {
+	m := NewSearch().SetSize(120, 40)
+	view := m.View()
+
+	require.Contains(t, view, "Search Modes")
+	require.Contains(t, view, "Text Search (default)")
+	require.Contains(t, view, "BQL Search")
+	require.Contains(t, view, "click Text/BQL tabs")
 }
 
 func TestHelp_SearchView_ContainsExamples(t *testing.T) {
@@ -348,7 +359,7 @@ func TestHelpOverlay_ShowsCustomKeys(t *testing.T) {
 	// Apply custom key binding
 	keys.ResetForTesting()
 	defer keys.ResetForTesting()
-	keys.ApplyConfig("ctrl+k", "")
+	keys.ApplyConfig("ctrl+k", "", "ctrl+q", "ctrl+shift+e")
 
 	// Tree mode should show the configured key, not hardcoded "Ctrl+Space"
 	m := New().SetMode(ModeSearchTree).SetSize(100, 40)

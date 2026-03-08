@@ -252,7 +252,7 @@ func TestApplyConfig_ModifiesSearchBindings(t *testing.T) {
 	defer ResetForTesting()
 
 	// Apply config with custom search key
-	ApplyConfig("ctrl+s", "")
+	ApplyConfig("ctrl+s", "", "", "")
 
 	// Verify Kanban.SwitchMode updated
 	kanbanKeys := Kanban.SwitchMode.Keys()
@@ -269,11 +269,23 @@ func TestApplyConfig_ModifiesDashboardBindings(t *testing.T) {
 	defer ResetForTesting()
 
 	// Apply config with custom dashboard key
-	ApplyConfig("", "ctrl+d")
+	ApplyConfig("", "ctrl+d", "", "")
 
 	// Verify Kanban.Dashboard updated
 	dashboardKeys := Kanban.Dashboard.Keys()
 	require.Equal(t, []string{"ctrl+d"}, dashboardKeys, "Kanban.Dashboard should be bound to ctrl+d")
+}
+
+func TestApplyConfig_ModifiesEditorBinding(t *testing.T) {
+	ResetForTesting()
+	defer ResetForTesting()
+
+	ApplyConfig("", "", "", "ctrl+shift+k")
+
+	require.Equal(t, []string{"ctrl+shift+k"}, Component.Editor.Keys(), "Component.Editor should be bound to ctrl+shift+k")
+	help := Component.Editor.Help()
+	require.Equal(t, "ctrl+shift+k", help.Key)
+	require.Equal(t, "external editor", help.Desc)
 }
 
 func TestApplyConfig_SetsHelpText(t *testing.T) {
@@ -282,7 +294,7 @@ func TestApplyConfig_SetsHelpText(t *testing.T) {
 	defer ResetForTesting()
 
 	// Apply config with ctrl+space (should translate display properly)
-	ApplyConfig("ctrl+space", "ctrl+o")
+	ApplyConfig("ctrl+space", "ctrl+o", "", "")
 
 	// Verify Kanban.SwitchMode help text
 	kanbanHelp := Kanban.SwitchMode.Help()
@@ -311,7 +323,7 @@ func TestApplyConfig_EmptyString_NoChange(t *testing.T) {
 	originalDashboardKeys := Kanban.Dashboard.Keys()
 
 	// Apply config with empty strings (should not modify)
-	ApplyConfig("", "")
+	ApplyConfig("", "", "", "")
 
 	// Verify bindings unchanged
 	require.Equal(t, originalKanbanSwitchKeys, Kanban.SwitchMode.Keys(), "Kanban.SwitchMode should be unchanged")
@@ -322,7 +334,7 @@ func TestApplyConfig_EmptyString_NoChange(t *testing.T) {
 func TestResetForTesting_RestoresDefaults(t *testing.T) {
 	// First modify state
 	ResetForTesting()
-	ApplyConfig("ctrl+x", "ctrl+y")
+	ApplyConfig("ctrl+x", "ctrl+y", "ctrl+z", "ctrl+shift+e")
 
 	// Verify modified
 	require.Equal(t, []string{"ctrl+x"}, Kanban.SwitchMode.Keys())
@@ -335,6 +347,9 @@ func TestResetForTesting_RestoresDefaults(t *testing.T) {
 	require.Equal(t, []string{"ctrl+@"}, Kanban.SwitchMode.Keys(), "Kanban.SwitchMode should be restored to ctrl+@")
 	require.Equal(t, []string{"ctrl+@"}, Search.SwitchMode.Keys(), "Search.SwitchMode should be restored to ctrl+@")
 	require.Equal(t, []string{"ctrl+o"}, Kanban.Dashboard.Keys(), "Kanban.Dashboard should be restored to ctrl+o")
+	require.Equal(t, []string{"ctrl+q"}, Kanban.QuitConfirm.Keys(), "Kanban.QuitConfirm should be restored to ctrl+q")
+	require.Equal(t, []string{"ctrl+q"}, Search.QuitConfirm.Keys(), "Search.QuitConfirm should be restored to ctrl+q")
+	require.Equal(t, []string{"ctrl+shift+e"}, Component.Editor.Keys(), "Component.Editor should be restored to ctrl+shift+e")
 
 	// Verify help text restored
 	kanbanHelp := Kanban.SwitchMode.Help()
@@ -345,5 +360,11 @@ func TestResetForTesting_RestoresDefaults(t *testing.T) {
 
 	dashboardHelp := Kanban.Dashboard.Help()
 	require.Equal(t, "ctrl+o", dashboardHelp.Key, "Kanban.Dashboard help key should be restored to ctrl+o")
+
+	quitHelp := Kanban.QuitConfirm.Help()
+	require.Equal(t, "ctrl+q", quitHelp.Key, "Kanban.QuitConfirm help key should be restored to ctrl+q")
+
+	editorHelp := Component.Editor.Help()
+	require.Equal(t, "ctrl+shift+e", editorHelp.Key, "Component.Editor help key should be restored to ctrl+shift+e")
 
 }

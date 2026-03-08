@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"
 
+	"github.com/hk9890/perles/internal/keys"
 	"github.com/hk9890/perles/internal/mode"
 	"github.com/hk9890/perles/internal/orchestration/events"
 	"github.com/hk9890/perles/internal/orchestration/metrics"
@@ -331,8 +333,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Handle Ctrl+C for quit - always show quit modal regardless of vim mode
-		if msg.Type == tea.KeyCtrlC {
+		// Handle app quit key for quit request
+		if key.Matches(msg, keys.Kanban.QuitConfirm) {
 			return m, func() tea.Msg { return RequestQuitMsg{} }
 		}
 

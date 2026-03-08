@@ -60,9 +60,18 @@ const (
 	ViewEditIssue     // Unified issue editor modal
 )
 
+// SearchInputMode controls whether the query box runs plain text search or BQL.
+type SearchInputMode int
+
+const (
+	SearchInputModeText SearchInputMode = iota
+	SearchInputModeBQL
+)
+
 // Model holds the search mode state.
 type Model struct {
 	services mode.Services
+	mode     SearchInputMode
 
 	// Sub-mode state
 	subMode mode.SubMode
@@ -93,6 +102,9 @@ type Model struct {
 	newViewModal  formmodal.Model
 	modal         modal.Model
 	issueEditor   issueeditor.Model // Unified issue editor modal
+
+	// Issue-level external editor state
+	externalEditingIssue *beads.Issue
 
 	// Delete operation state
 	deleteIssueIDs []string // IDs to delete (includes descendants for epics)
@@ -457,14 +469,14 @@ func New(services mode.Services) Model {
 	input := vimtextarea.New(vimtextarea.Config{
 		VimEnabled:  services.Config.UI.VimMode,
 		DefaultMode: vimtextarea.ModeNormal,
-		Placeholder: "Enter BQL query ex: status in (open,in_progress) and label not in (backlog) order by priority,created desc",
+		Placeholder: "Search issues (title, description, labels, comments, id, notes, design, acceptance)",
 		MaxHeight:   3,
 	})
 	// Wire up clipboard for yank operations
 	if services.Clipboard != nil {
 		input = input.SetClipboard(services.Clipboard)
 	}
-	input.SetLexer(bql.NewSyntaxLexer())
+	input.SetLexer(nil)
 	input.Focus()
 
 	// Configure results list with custom delegate
@@ -497,6 +509,7 @@ func New(services mode.Services) Model {
 
 	return Model{
 		services:    services,
+		mode:        SearchInputModeText,
 		input:       input,
 		resultsList: resultsList,
 		focus:       FocusSearch,
@@ -527,12 +540,39 @@ func (m Model) handleEnter(msg EnterMsg) (Model, tea.Cmd) {
 	// List sub-mode: BQL search
 	m.subMode = mode.SubModeList
 	m.focus = FocusSearch // Focus search input
+	m.mode = SearchInputModeText
 	m.input.Focus()
 	m.input.SetValue(msg.Query)
+	if strings.TrimSpace(msg.Query) != "" {
+		// Preserve existing saved BQL column flows that open search with a query.
+		m.setSearchInputMode(SearchInputModeBQL)
+	} else {
+		m.setSearchInputMode(SearchInputModeText)
+	}
 	// Clear tree state from any previous tree sub-mode usage
 	m.tree = nil
 	m.treeRoot = nil
 	return m, m.executeSearch()
+}
+
+func (m *Model) setSearchInputMode(next SearchInputMode) {
+	m.mode = next
+	if next == SearchInputModeBQL {
+		m.input.SetPlaceholder("Enter BQL query ex: status in (open,in_progress) and label not in (backlog) order by priority,created desc")
+		m.input.SetLexer(bql.NewSyntaxLexer())
+		return
+	}
+
+	m.input.SetPlaceholder("Search issues (title, description, labels, comments, id, notes, design, acceptance)")
+	m.input.SetLexer(nil)
+}
+
+func (m *Model) toggleSearchInputMode() {
+	if m.mode == SearchInputModeText {
+		m.setSearchInputMode(SearchInputModeBQL)
+		return
+	}
+	m.setSearchInputMode(SearchInputModeText)
 }
 
 // SetSize handles terminal resize.
@@ -751,7 +791,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.view = ViewEditIssue
 		return m, m.issueEditor.Init()
 
+	case details.OpenExternalEditorMsg:
+		issue := msg.Issue
+		m.externalEditingIssue = &issue
+		return m, editor.OpenCmd(editor.MarshalIssueMarkdown(issue))
+
 	case editor.ExecMsg:
+		if m.externalEditingIssue != nil {
+			return m, msg.ExecCmd()
+		}
 		// Forward to issueeditor modal if open - this allows Ctrl+G external editor
 		// to work from the modal's description field.
 		if m.view == ViewEditIssue {
@@ -762,6 +810,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 
 	case editor.FinishedMsg:
+		if m.externalEditingIssue != nil {
+			return m.handleIssueExternalEditorFinished(msg)
+		}
 		// Forward to issueeditor modal if open - ensures editor results return
 		// to the modal's description field when editing via Ctrl+G.
 		if m.view == ViewEditIssue {
@@ -875,6 +926,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.view = ViewSearch
 			return m, nil
 		}
+		if key.Matches(msg, keys.Component.Editor) && m.selectedIssue != nil {
+			issue := *m.selectedIssue
+			m.view = ViewSearch
+			m.selectedIssue = nil
+			m.externalEditingIssue = &issue
+			return m, editor.OpenCmd(editor.MarshalIssueMarkdown(issue))
+		}
 		// Delegate to issue editor
 		var cmd tea.Cmd
 		m.issueEditor, cmd = m.issueEditor.Update(msg)
@@ -894,7 +952,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 
 		switch {
-		case msg.Type == tea.KeyCtrlC:
+		case key.Matches(msg, keys.Search.QuitConfirm):
 			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case msg.String() == "tab" || msg.String() == "ctrl+n":
 			// Exit search input, move to results
@@ -912,6 +970,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.input.Blur()
 			m.focus = FocusResults
 			m.showSearchErr = true // Show any pending error now
+			return m, m.executeSearch()
+		case key.Matches(msg, keys.Search.ToggleSearchType):
+			m.toggleSearchInputMode()
+			m.searchVersion++
 			return m, m.executeSearch()
 		case key.Matches(msg, keys.Search.SwitchMode):
 			// Let app handle mode switch (ctrl+space)
@@ -964,7 +1026,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	// Tree sub-mode specific handling (when focused on tree panel)
 	if m.subMode == mode.SubModeTree && m.focus == FocusResults {
 		switch {
-		case msg.Type == tea.KeyCtrlC:
+		case key.Matches(msg, keys.Search.QuitConfirm):
 			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case key.Matches(msg, keys.Search.Blur):
 			return m, func() tea.Msg { return ExitToKanbanMsg{} }
@@ -1053,7 +1115,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	// Not in search input - handle navigation and global keys
 	switch {
-	case msg.Type == tea.KeyCtrlC:
+	case key.Matches(msg, keys.Search.QuitConfirm):
 		return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 
 	case key.Matches(msg, keys.Search.Blur):
@@ -1081,6 +1143,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case key.Matches(msg, keys.Search.SwitchMode):
 		// Let app handle mode switch (ctrl+space)
 		return m, nil
+
+	case key.Matches(msg, keys.Search.ToggleSearchType):
+		m.toggleSearchInputMode()
+		m.searchVersion++
+		return m, m.executeSearch()
 
 	case key.Matches(msg, keys.Search.SaveColumn):
 		// Save current query as column
@@ -1262,6 +1329,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		// Fall through to details delegation when focused on details
 
+	case key.Matches(msg, keys.Component.Editor):
+		if m.focus == FocusResults {
+			if issue := m.getSelectedIssue(); issue != nil {
+				return m, func() tea.Msg {
+					return details.OpenExternalEditorMsg{Issue: *issue}
+				}
+			}
+			return m, nil
+		}
+		if m.focus == FocusDetails {
+			break // Delegate to details component below to use currently displayed issue
+		}
+		if issue := m.getSelectedIssue(); issue != nil {
+			return m, func() tea.Msg {
+				return details.OpenExternalEditorMsg{Issue: *issue}
+			}
+		}
+		return m, nil
+
 	case key.Matches(msg, keys.Component.DelAction):
 		// Only handle in list pane (list sub-mode); tree sub-mode handles 'd' for direction toggle first
 		if m.focus == FocusResults {
@@ -1336,6 +1422,26 @@ func (m Model) handleNavUp() (Model, tea.Cmd) {
 
 // handleMouseClick handles left-click release events on issues.
 func (m Model) handleMouseClick(msg tea.MouseMsg) (Model, tea.Cmd) {
+	// Search mode tabs in list sub-mode.
+	if m.subMode == mode.SubModeList {
+		if z := zone.Get(searchModeTabZoneID(SearchInputModeText)); z != nil && z.InBounds(msg) {
+			if m.mode != SearchInputModeText {
+				m.setSearchInputMode(SearchInputModeText)
+				m.searchVersion++
+				return m, m.executeSearch()
+			}
+			return m, nil
+		}
+		if z := zone.Get(searchModeTabZoneID(SearchInputModeBQL)); z != nil && z.InBounds(msg) {
+			if m.mode != SearchInputModeBQL {
+				m.setSearchInputMode(SearchInputModeBQL)
+				m.searchVersion++
+				return m, m.executeSearch()
+			}
+			return m, nil
+		}
+	}
+
 	switch m.subMode {
 	case mode.SubModeList:
 		// Check if click is within any registered issue zone in the results list
@@ -1595,13 +1701,30 @@ func (m Model) getSelectedIssue() *beads.Issue {
 func (m Model) executeSearch() tea.Cmd {
 	query := m.input.Value()
 	executor := m.services.Executor
+	searchMode := m.mode
 
 	return func() tea.Msg {
+		if strings.TrimSpace(query) == "" {
+			return searchResultsMsg{issues: []beads.Issue{}, err: nil}
+		}
+
 		start := time.Now()
-		log.Debug(log.CatBQL, "Executing search", "query", query)
-		issues, err := executor.Execute(query)
+		log.Debug(log.CatBQL, "Executing search", "query", query, "mode", searchMode)
+		var (
+			issues []beads.Issue
+			err    error
+		)
+		if searchMode == SearchInputModeText {
+			if m.services.Client == nil || m.services.Client.DB() == nil {
+				return searchResultsMsg{issues: nil, err: fmt.Errorf("text search unavailable: no database connection")}
+			}
+			issues, err = bql.ExecuteSimpleTextSearch(m.services.Client.DB(), query)
+		} else {
+			issues, err = executor.Execute(query)
+		}
 		log.Debug(log.CatBQL, "Search completed",
 			"query", query,
+			"mode", searchMode,
 			"resultCount", len(issues),
 			"duration_ms", time.Since(start).Milliseconds(),
 			"error", err)
@@ -1844,13 +1967,23 @@ func (m Model) renderListLeftPanel(width int) string {
 	inputHeight := inputContentHeight + 2                     // add 2 for borders
 	resultsHeight := m.height - inputHeight                   // fills remaining space
 
-	// BQL Search input with titled border
+	searchTabs := []panes.Tab{
+		{Label: "Text Search", ZoneID: searchModeTabZoneID(SearchInputModeText)},
+		{Label: "BQL Search", ZoneID: searchModeTabZoneID(SearchInputModeBQL)},
+	}
+	activeSearchTab := 0
+	if m.mode == SearchInputModeBQL {
+		activeSearchTab = 1
+	}
+
+	// Search input with explicit mode tabs.
 	inputContent := m.input.View()
 	inputBorder := panes.BorderedPane(panes.BorderConfig{
 		Content:            inputContent,
 		Width:              width,
 		Height:             inputHeight,
-		TopLeft:            "BQL Search",
+		Tabs:               searchTabs,
+		ActiveTab:          activeSearchTab,
 		BottomLeft:         m.input.ModeIndicator(), // Vim mode indicator (styled by component)
 		Focused:            m.focus == FocusSearch,
 		TitleColor:         styles.OverlayTitleColor,
@@ -1880,7 +2013,11 @@ func (m Model) renderListLeftPanel(width int) string {
 			Foreground(styles.TextSecondaryColor).
 			Italic(true).
 			Padding(1, 2)
-		resultsContent = emptyStyle.Render("Enter a BQL query to search")
+		helpText := "Enter search text"
+		if m.mode == SearchInputModeBQL {
+			helpText = "Enter a BQL query to search"
+		}
+		resultsContent = emptyStyle.Render(helpText)
 	}
 
 	// Results count in top right (only shown if > 0)
@@ -2171,6 +2308,37 @@ func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
 	}
 }
 
+func (m Model) handleIssueExternalEditorFinished(msg editor.FinishedMsg) (Model, tea.Cmd) {
+	issue := m.externalEditingIssue
+	m.externalEditingIssue = nil
+	if issue == nil || msg.Err != nil {
+		return m, nil
+	}
+
+	parsed, err := editor.ParseIssueMarkdown(msg.Content)
+	if err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "External editor parse error: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	saveMsg := issueeditor.SaveMsg{
+		IssueID:     issue.ID,
+		Title:       parsed.Title,
+		Description: parsed.Description,
+		Notes:       parsed.Notes,
+		Priority:    parsed.Priority,
+		Status:      parsed.Status,
+		Labels:      parsed.Labels,
+	}
+	opts := saveMsg.BuildUpdateOptions(issue)
+	if opts.Title == nil && opts.Description == nil && opts.Notes == nil && opts.Priority == nil && opts.Status == nil && opts.Labels == nil {
+		return m, nil
+	}
+
+	return m, m.saveIssueCmd(issue.ID, opts)
+}
+
 // yankIssueID copies the selected issue ID to clipboard.
 func (m Model) yankIssueID() (Model, tea.Cmd) {
 	if m.selectedIdx < 0 || m.selectedIdx >= len(m.results) {
@@ -2209,6 +2377,7 @@ func (m Model) yankDetailsIssueID() (Model, tea.Cmd) {
 const (
 	zoneSearchListPrefix = "search:list:"
 	zoneSearchTreePrefix = "search:tree:"
+	zoneSearchModePrefix = "search:mode:"
 )
 
 // makeSearchListZoneID creates a zone ID for an issue in the search results list.
@@ -2219,6 +2388,13 @@ func makeSearchListZoneID(issueID string) string {
 // makeSearchTreeZoneID creates a zone ID for an issue in the search tree.
 func makeSearchTreeZoneID(issueID string) string {
 	return zoneSearchTreePrefix + issueID
+}
+
+func searchModeTabZoneID(m SearchInputMode) string {
+	if m == SearchInputModeBQL {
+		return zoneSearchModePrefix + "bql"
+	}
+	return zoneSearchModePrefix + "text"
 }
 
 // issueItem wraps beads.Issue for the list component.

@@ -62,6 +62,11 @@ type OpenEditMenuMsg struct {
 	Issue beads.Issue
 }
 
+// OpenExternalEditorMsg requests opening issue-level external editor flow.
+type OpenExternalEditorMsg struct {
+	Issue beads.Issue
+}
+
 // FocusPane represents which pane has focus in the details view.
 type FocusPane int
 
@@ -290,6 +295,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			// Open edit menu
 			return m, func() tea.Msg {
 				return OpenEditMenuMsg{Issue: m.issue}
+			}
+		case key.Matches(msg, keys.Component.Editor):
+			return m, func() tea.Msg {
+				return OpenExternalEditorMsg{Issue: m.issue}
 			}
 		}
 	case tea.MouseMsg:
@@ -924,7 +933,7 @@ func (m Model) renderFooter() string {
 		scrollPercent = fmt.Sprintf(" %3.0f%%", m.viewport.ScrollPercent()*100)
 	}
 
-	return footerStyle.Render("[j/k] Scroll  [ctrl+e] Edit  [ctrl+d] Delete  [Esc] Back" + scrollPercent)
+	return footerStyle.Render("[j/k] Scroll  [ctrl+e] Edit  [" + keys.Component.Editor.Help().Key + "] External Edit  [ctrl+d] Delete  [Esc] Back" + scrollPercent)
 }
 
 // getTypeStyle returns the style for an issue type.

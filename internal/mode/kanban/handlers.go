@@ -14,7 +14,9 @@ import (
 	"github.com/hk9890/perles/internal/mode/shared"
 	"github.com/hk9890/perles/internal/ui/coleditor"
 	"github.com/hk9890/perles/internal/ui/details"
+	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
 	"github.com/hk9890/perles/internal/ui/shared/diffviewer"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
 	"github.com/hk9890/perles/internal/ui/shared/modal"
 	"github.com/hk9890/perles/internal/ui/shared/picker"
 	"github.com/hk9890/perles/internal/ui/shared/toaster"
@@ -27,7 +29,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handleBoardKey(msg)
 	case ViewHelp:
 		switch {
-		case msg.Type == tea.KeyCtrlC:
+		case key.Matches(msg, keys.Kanban.QuitConfirm):
 			return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 		case key.Matches(msg, keys.Common.Escape), key.Matches(msg, keys.Common.Help):
 			m.view = ViewBoard
@@ -57,13 +59,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	// Dismiss error on any key press (except Ctrl+C)
 	// Don't return early - let the key continue to be processed
-	if m.err != nil && msg.Type != tea.KeyCtrlC {
+	if m.err != nil && !key.Matches(msg, keys.Kanban.QuitConfirm) {
 		m.err = nil
 		m.errContext = ""
 	}
 
 	switch {
-	case msg.Type == tea.KeyCtrlC:
+	case key.Matches(msg, keys.Kanban.QuitConfirm):
 		return m, func() tea.Msg { return mode.RequestQuitMsg{} }
 
 	case key.Matches(msg, keys.Common.Help):
@@ -309,6 +311,15 @@ func (m Model) handleBoardKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case key.Matches(msg, keys.Component.Editor):
+		issue := m.board.SelectedIssue()
+		if issue == nil {
+			return m, nil
+		}
+		return m, func() tea.Msg {
+			return details.OpenExternalEditorMsg{Issue: *issue}
+		}
+
 	case key.Matches(msg, keys.Component.DelAction):
 		// Open delete confirmation for the selected issue
 		issue := m.board.SelectedIssue()
@@ -390,6 +401,14 @@ func (m Model) handleEditIssueKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// Close overlay instead of quitting
 		m.view = ViewBoard
 		return m, nil
+	}
+
+	if key.Matches(msg, keys.Component.Editor) && m.editingIssue != nil {
+		issue := *m.editingIssue
+		m.view = ViewBoard
+		m.editingIssue = nil
+		m.externalEditingIssue = &issue
+		return m, editor.OpenCmd(editor.MarshalIssueMarkdown(issue))
 	}
 
 	// Delegate to issue editor
@@ -514,6 +533,38 @@ func (m Model) handleIssueSaved(msg issueSavedMsg) (Model, tea.Cmd) {
 	m.pendingCursor = m.saveCursor()
 	m.board = m.board.InvalidateViews()
 	return m, m.board.LoadAllColumns()
+}
+
+func (m Model) handleIssueExternalEditorFinished(msg editor.FinishedMsg) (Model, tea.Cmd) {
+	issue := m.externalEditingIssue
+	m.externalEditingIssue = nil
+	if issue == nil || msg.Err != nil {
+		return m, nil
+	}
+
+	parsed, err := editor.ParseIssueMarkdown(msg.Content)
+	if err != nil {
+		return m, func() tea.Msg {
+			return mode.ShowToastMsg{Message: "External editor parse error: " + err.Error(), Style: toaster.StyleError}
+		}
+	}
+
+	saveMsg := issueeditor.SaveMsg{
+		IssueID:     issue.ID,
+		Title:       parsed.Title,
+		Description: parsed.Description,
+		Notes:       parsed.Notes,
+		Priority:    parsed.Priority,
+		Status:      parsed.Status,
+		Labels:      parsed.Labels,
+	}
+	opts := saveMsg.BuildUpdateOptions(issue)
+	if opts.Title == nil && opts.Description == nil && opts.Notes == nil && opts.Priority == nil && opts.Status == nil && opts.Labels == nil {
+		return m, nil
+	}
+
+	m.loading = true
+	return m, m.saveIssueCmd(issue.ID, opts)
 }
 
 // handleActionExecuted processes user action execution results.

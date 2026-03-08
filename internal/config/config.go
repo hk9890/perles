@@ -54,6 +54,7 @@ type UIConfig struct {
 	ShowStatusBar bool              `mapstructure:"show_status_bar"`
 	MarkdownStyle string            `mapstructure:"markdown_style"` // "dark" (default) or "light"
 	VimMode       bool              `mapstructure:"vim_mode"`       // Enable vim keybindings in text input areas
+	QuitConfirm   bool              `mapstructure:"quit_confirmation"`
 	Keybindings   KeybindingsConfig `mapstructure:"keybindings"`
 	Actions       ActionsConfig     `mapstructure:"actions"` // User-defined keybinding actions
 }
@@ -62,6 +63,8 @@ type UIConfig struct {
 type KeybindingsConfig struct {
 	Search    string `mapstructure:"search"`    // Default: "ctrl+space"
 	Dashboard string `mapstructure:"dashboard"` // Default: "ctrl+o"
+	Quit      string `mapstructure:"quit"`      // Default: "ctrl+q"
+	Editor    string `mapstructure:"editor"`    // Default: "ctrl+shift+e"
 }
 
 // ActionConfig defines a single user-defined action that can be triggered by a keybinding.
@@ -496,12 +499,33 @@ func DefaultColumns() []ColumnConfig {
 	}
 }
 
-// DefaultViews returns the default view configuration with a single "Default" view.
+// DefaultViews returns the default built-in view configuration.
 func DefaultViews() []ViewConfig {
 	return []ViewConfig{
 		{
 			Name:    "Default",
 			Columns: DefaultColumns(),
+		},
+		{
+			Name: "Planning",
+			Columns: []ColumnConfig{
+				{
+					Name:  "Needs Discussion",
+					Query: "label = needs:discussion",
+				},
+				{
+					Name:  "Blocked Status",
+					Query: "status = blocked and label != needs:discussion",
+				},
+				{
+					Name:  "Open",
+					Query: "status = open and label != needs:discussion",
+				},
+				{
+					Name:  "Closed",
+					Query: "status = closed",
+				},
+			},
 		},
 	}
 }
@@ -788,6 +812,7 @@ func isValidKeyFormat(key string) bool {
 	validPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`^[a-z0-9/\[\]\\^_?@]$`),                       // Single character
 		regexp.MustCompile(`^ctrl\+[a-z@\[\]\\^_]$`),                      // ctrl+X
+		regexp.MustCompile(`^ctrl\+shift\+[a-z]$`),                        // ctrl+shift+X
 		regexp.MustCompile(`^alt\+[a-z]$`),                                // alt+X
 		regexp.MustCompile(`^(enter|esc|tab|space|backspace)$`),           // Special keys
 		regexp.MustCompile(`^f([1-9]|1[0-2])$`),                           // Function keys f1-f12
@@ -812,33 +837,35 @@ func ValidateKeybindings(kb KeybindingsConfig) error {
 		"q": true, "ctrl+c": true, "esc": true, "?": true, "enter": true,
 	}
 
-	// Validate search key if specified
-	if kb.Search != "" {
-		normalized := NormalizeKey(kb.Search)
-		if !isValidKeyFormat(normalized) {
-			return fmt.Errorf("ui.keybindings.search: invalid key format %q", kb.Search)
-		}
-		if reserved[normalized] {
-			return fmt.Errorf("ui.keybindings.search: %q is a reserved key and cannot be remapped", kb.Search)
-		}
+	bindings := []struct {
+		name  string
+		path  string
+		value string
+	}{
+		{name: "search", path: "ui.keybindings.search", value: kb.Search},
+		{name: "dashboard", path: "ui.keybindings.dashboard", value: kb.Dashboard},
+		{name: "quit", path: "ui.keybindings.quit", value: kb.Quit},
+		{name: "editor", path: "ui.keybindings.editor", value: kb.Editor},
 	}
 
-	// Validate dashboard key if specified
-	if kb.Dashboard != "" {
-		normalized := NormalizeKey(kb.Dashboard)
+	seen := make(map[string]string)
+	for _, binding := range bindings {
+		if binding.value == "" {
+			continue
+		}
+
+		normalized := NormalizeKey(binding.value)
 		if !isValidKeyFormat(normalized) {
-			return fmt.Errorf("ui.keybindings.dashboard: invalid key format %q", kb.Dashboard)
+			return fmt.Errorf("%s: invalid key format %q", binding.path, binding.value)
 		}
 		if reserved[normalized] {
-			return fmt.Errorf("ui.keybindings.dashboard: %q is a reserved key and cannot be remapped", kb.Dashboard)
+			return fmt.Errorf("%s: %q is a reserved key and cannot be remapped", binding.path, binding.value)
 		}
-	}
+		if existing, ok := seen[normalized]; ok {
+			return fmt.Errorf("ui.keybindings: %s and %s cannot use the same key %q", existing, binding.name, binding.value)
+		}
 
-	// Check for duplicate mappings
-	if kb.Search != "" && kb.Dashboard != "" {
-		if NormalizeKey(kb.Search) == NormalizeKey(kb.Dashboard) {
-			return fmt.Errorf("ui.keybindings: search and dashboard cannot use the same key %q", kb.Search)
-		}
+		seen[normalized] = binding.name
 	}
 
 	return nil
@@ -975,9 +1002,12 @@ func Defaults() Config {
 			ShowStatusBar: true,
 			MarkdownStyle: "dark",
 			VimMode:       false, // Disabled by default for non-vim users
+			QuitConfirm:   true,
 			Keybindings: KeybindingsConfig{
 				Search:    "ctrl+space",
 				Dashboard: "ctrl+o",
+				Quit:      "ctrl+q",
+				Editor:    "ctrl+shift+e",
 			},
 		},
 		Theme: ThemeConfig{
@@ -1045,9 +1075,14 @@ ui:
   vim_mode: false         # Enable vim keybindings in text input areas (orchestration mode)
 
   # Keybinding overrides (optional)
-  # keybindings:
-  #   search: "ctrl+space"    # Default: ctrl+space
-  #   dashboard: "ctrl+o"     # Default: ctrl+o
+		# keybindings:
+		#   search: "ctrl+space"    # Default: ctrl+space
+		#   dashboard: "ctrl+o"     # Default: ctrl+o
+		#   quit: "ctrl+q"          # Default: ctrl+q
+		#   editor: "ctrl+shift+e"  # Default: ctrl+shift+e
+
+		# Show confirmation modal before quitting the app
+		# quit_confirmation: true
 
 # Theme configuration
 # Use a preset theme or customize individual colors
@@ -1073,13 +1108,13 @@ theme:
 
 # Board views - each view is a named collection of columns
 # Cycle through views with Shift+J (next) and Shift+K (previous)
-	views:
-	  - name: Default
-	    columns:
-	      - name: Blocked
-	        type: bql
-	        query: "blocked = true"
-	        color: "#FF8787"
+views:
+  - name: Default
+    columns:
+      - name: Blocked
+        type: bql
+        query: "blocked = true"
+        color: "#FF8787"
 
       - name: Ready
         type: bql
@@ -1095,6 +1130,24 @@ theme:
         type: bql
         query: "status = closed"
         color: "#BBBBBB"
+
+  - name: Planning
+    columns:
+      - name: Needs Discussion
+        type: bql
+        query: "label = needs:discussion"
+
+      - name: Blocked Status
+        type: bql
+        query: "status = blocked and label != needs:discussion"
+
+      - name: Open
+        type: bql
+        query: "status = open and label != needs:discussion"
+
+      - name: Closed
+        type: bql
+        query: "status = closed"
 
 # View options:
 #   name: Display name for the view (required)

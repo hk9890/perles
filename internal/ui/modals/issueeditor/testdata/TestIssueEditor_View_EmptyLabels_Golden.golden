@@ -30,7 +30,7 @@
 │ │ Enter label name...                            │ │
 │ ╰────────────────────────────────────────────────╯ │
 │                                                    │
-│ ╭─ Description (Ctrl+G for editor) ──────────────╮ │
+│ ╭─ Description (ctrl+shift+e for editor) ────────╮ │
 │ │Issue description...                            │ │
 │ │                                                │ │
 │ │                                                │ │
@@ -41,7 +41,7 @@
 │ │                                                │ │
 │ ╰────────────────────────────────────────────────╯ │
 │                                                    │
-│ ╭─ Notes (Ctrl+G for editor) ────────────────────╮ │
+│ ╭─ Notes (ctrl+shift+e for editor) ──────────────╮ │
 │ │Issue notes...                                  │ │
 │                                                    │
 │    Save      Cancel                                │

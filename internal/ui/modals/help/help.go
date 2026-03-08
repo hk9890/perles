@@ -343,6 +343,7 @@ func (m Model) renderSearchContent() string {
 	actionsCol.WriteString(renderBinding(keys.Search.OpenTree))
 	actionsCol.WriteString(renderBinding(keys.Search.Yank))
 	actionsCol.WriteString(renderBinding(keys.Search.SaveColumn))
+	actionsCol.WriteString(renderBinding(keys.Search.ToggleSearchType))
 
 	// General column
 	var generalCol strings.Builder
@@ -385,6 +386,20 @@ func (m Model) renderSearchContent() string {
 	bqlStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 	bqlLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(12)
 	bqlValueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+
+	// Search mode primer section.
+	var modeCol strings.Builder
+	modeCol.WriteString(sectionStyle.Render("Search Modes"))
+	modeCol.WriteString("\n")
+	modeCol.WriteString(bqlStyle.Render("Text Search (default): broad LIKE search"))
+	modeCol.WriteString("\n")
+	modeCol.WriteString(bqlStyle.Render("  fields: title, description, notes, labels,"))
+	modeCol.WriteString("\n")
+	modeCol.WriteString(bqlStyle.Render("          id, comments, design, acceptance"))
+	modeCol.WriteString("\n")
+	modeCol.WriteString(bqlStyle.Render("BQL Search: advanced filters, syntax highlighting"))
+	modeCol.WriteString("\n")
+	modeCol.WriteString(bqlStyle.Render("Switch with Ctrl+T or click Text/BQL tabs"))
 
 	// Fields column - use shared BQL data
 	var fieldsCol strings.Builder
@@ -465,7 +480,7 @@ func (m Model) renderSearchContent() string {
 	boxWidth := columnsWidth + 4 // Add horizontal padding (2 each side)
 
 	// Build body content with padding
-	allContent := keybindingColumns + "\n" + bqlColumns + "\n" + examplesCol.String() + "\n" + footerStyle.Render("Press ? or Esc to close")
+	allContent := keybindingColumns + "\n" + modeCol.String() + "\n" + bqlColumns + "\n" + examplesCol.String() + "\n" + footerStyle.Render("Press ? or Esc to close")
 	body := contentStyle.Render(allContent)
 
 	// Divider spans full box width

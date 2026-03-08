@@ -1,6 +1,7 @@
 package search
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -12,9 +13,11 @@ import (
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/keys"
 	"github.com/hk9890/perles/internal/mocks"
 	"github.com/hk9890/perles/internal/mode"
 	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/testutil"
 	"github.com/hk9890/perles/internal/ui/details"
 	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
 	"github.com/hk9890/perles/internal/ui/shared/diffviewer"
@@ -32,6 +35,7 @@ func createTestModel(t *testing.T) Model {
 
 	mockClient := mocks.NewMockBeadsClient(t)
 	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return((*sql.DB)(nil)).Maybe()
 
 	mockExecutor := mocks.NewMockBQLExecutor(t)
 	mockExecutor.EXPECT().Execute(mock.Anything).Return([]beads.Issue{}, nil).Maybe()
@@ -68,6 +72,94 @@ func TestSearch_New(t *testing.T) {
 	require.Equal(t, ViewSearch, m.view, "expected ViewSearch mode")
 	require.False(t, m.hasDetail, "expected no detail initially")
 	require.Nil(t, m.results, "expected no results initially")
+	require.Equal(t, SearchInputModeText, m.mode, "expected text search as default mode")
+}
+
+func TestSearch_EnterMsg_EmptyQuery_DefaultsToTextMode(t *testing.T) {
+	m := createTestModel(t)
+	m.setSearchInputMode(SearchInputModeBQL)
+
+	m, _ = m.Update(EnterMsg{SubMode: mode.SubModeList, Query: ""})
+
+	require.Equal(t, SearchInputModeText, m.mode, "empty query should open in text search mode")
+}
+
+func TestSearch_EnterMsg_WithQuery_UsesBQLModeForSavedFlows(t *testing.T) {
+	m := createTestModel(t)
+
+	m, _ = m.Update(EnterMsg{SubMode: mode.SubModeList, Query: "status = open"})
+
+	require.Equal(t, SearchInputModeBQL, m.mode, "non-empty prefilled query should use BQL mode")
+}
+
+func TestSearch_ToggleSearchType_KeySwitchesMode(t *testing.T) {
+	m := createTestModel(t)
+	m.focus = FocusResults
+	require.Equal(t, SearchInputModeText, m.mode)
+
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlT})
+	require.Equal(t, SearchInputModeBQL, m.mode, "ctrl+t should toggle to BQL mode")
+
+	m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlT})
+	require.Equal(t, SearchInputModeText, m.mode, "ctrl+t should toggle back to text mode")
+}
+
+func TestSearch_ModeTabClick_SwitchesMode(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.subMode = mode.SubModeList
+	m.focus = FocusResults
+
+	// Zones are registered asynchronously; retry a few times.
+	_ = m.View()
+	var bqlZone *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		bqlZone = zone.Get(searchModeTabZoneID(SearchInputModeBQL))
+		if bqlZone != nil && !bqlZone.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, bqlZone, "expected BQL tab zone")
+	require.False(t, bqlZone.IsZero(), "expected BQL zone to be non-zero")
+
+	m, _ = m.Update(tea.MouseMsg{
+		X:      bqlZone.StartX + 1,
+		Y:      bqlZone.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Equal(t, SearchInputModeBQL, m.mode, "clicking BQL tab should switch mode")
+}
+
+func TestSearch_TextMode_UsesSimpleTextSearch(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	builder := testutil.NewBuilder(t, db)
+	builder.
+		WithIssue("search-title", testutil.Title("Alpha token in title")).
+		WithIssue("search-other", testutil.Title("Unrelated"))
+	builder.Build()
+
+	mockClient := mocks.NewMockBeadsClient(t)
+	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return(db).Maybe()
+
+	mockExecutor := mocks.NewMockBQLExecutor(t)
+	// Ensure text mode does not execute BQL.
+	mockExecutor.On("Execute", mock.Anything).Return([]beads.Issue{}, nil).Maybe()
+
+	cfg := config.Defaults()
+	m := New(mode.Services{Client: mockClient, Executor: mockExecutor, Config: &cfg})
+	m.mode = SearchInputModeText
+	m.input.SetValue("alpha")
+
+	msg := m.executeSearch()()
+	results, ok := msg.(searchResultsMsg)
+	require.True(t, ok)
+	require.NoError(t, results.err)
+	require.Len(t, results.issues, 1)
+	require.Equal(t, "search-title", results.issues[0].ID)
 }
 
 func TestSearch_SetSize(t *testing.T) {
@@ -297,6 +389,7 @@ func TestSearch_HelpOverlay_ShowsUserActions(t *testing.T) {
 
 	mockClient := mocks.NewMockBeadsClient(t)
 	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return((*sql.DB)(nil)).Maybe()
 
 	mockExecutor := mocks.NewMockBQLExecutor(t)
 	mockExecutor.EXPECT().Execute(mock.Anything).Return([]beads.Issue{}, nil).Maybe()
@@ -1087,12 +1180,12 @@ func executeBatchCmd(cmd tea.Cmd) []tea.Msg {
 // Quit Request Tests (quit modal now handled at app level)
 // =============================================================================
 
-func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusResults(t *testing.T) {
+func TestSearch_QuitBinding_ReturnsRequestQuitMsg_FocusResults(t *testing.T) {
 	m := createTestModelWithResults(t)
 	m.focus = FocusResults
 
-	// Simulate Ctrl+C keypress
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	// Simulate configured app quit key (Ctrl+Q)
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	_, cmd := m.handleKey(msg)
 
 	// Should return mode.RequestQuitMsg
@@ -1102,13 +1195,13 @@ func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusResults(t *testing.T) {
 	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg")
 }
 
-func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusSearch(t *testing.T) {
+func TestSearch_QuitBinding_ReturnsRequestQuitMsg_FocusSearch(t *testing.T) {
 	m := createTestModel(t)
 	m.focus = FocusSearch
 	m.input.Focus()
 
-	// Simulate Ctrl+C keypress
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	// Simulate configured app quit key (Ctrl+Q)
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	_, cmd := m.handleKey(msg)
 
 	// Should return mode.RequestQuitMsg
@@ -1118,13 +1211,13 @@ func TestSearch_CtrlC_ReturnsRequestQuitMsg_FocusSearch(t *testing.T) {
 	require.True(t, isRequestQuit, "expected mode.RequestQuitMsg in search input")
 }
 
-func TestSearch_CtrlC_ReturnsRequestQuitMsg_TreeSubMode(t *testing.T) {
+func TestSearch_QuitBinding_ReturnsRequestQuitMsg_TreeSubMode(t *testing.T) {
 	m := createTestModel(t)
 	m.subMode = mode.SubModeTree
 	m.focus = FocusResults
 
-	// Simulate Ctrl+C keypress
-	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
+	// Simulate configured app quit key (Ctrl+Q)
+	msg := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	_, cmd := m.handleKey(msg)
 
 	// Should return mode.RequestQuitMsg in tree sub-mode too
@@ -1225,6 +1318,41 @@ func TestSearch_EditKey_FocusSearch_NoOp(t *testing.T) {
 
 	// No edit menu should open - input should still be focused
 	require.True(t, m.input.Focused(), "input should still be focused")
+}
+
+func TestSearch_ExternalEditorKey_ListSubMode_EmitsOpenExternalEditorMsg(t *testing.T) {
+	keys.Component.Editor.SetKeys("E")
+	defer keys.ResetForTesting()
+
+	m := createTestModelWithResults(t)
+	m.focus = FocusResults
+	m.selectedIdx = 0
+
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	extMsg, ok := msg.(details.OpenExternalEditorMsg)
+	require.True(t, ok, "expected OpenExternalEditorMsg, got %T", msg)
+	require.Equal(t, "test-1", extMsg.Issue.ID)
+}
+
+func TestSearch_ExternalEditorKey_FocusDetails_DelegatesToDetails(t *testing.T) {
+	keys.Component.Editor.SetKeys("E")
+	defer keys.ResetForTesting()
+
+	m := createTestModelWithResults(t)
+	m.focus = FocusDetails
+	m.details = details.New(m.results[0], m.services.Executor, m.services.Client).SetSize(50, 30)
+	m.hasDetail = true
+
+	m, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	extMsg, ok := msg.(details.OpenExternalEditorMsg)
+	require.True(t, ok, "expected OpenExternalEditorMsg, got %T", msg)
+	require.Equal(t, "test-1", extMsg.Issue.ID)
 }
 
 func TestSearch_DeleteKey_ListSubMode_EmitsDeleteIssueMsg(t *testing.T) {
@@ -2416,6 +2544,16 @@ func TestSearch_EditorFinishedMsg_ReturnsNilWhenNotEditing(t *testing.T) {
 
 	// Should return nil when not in any editing context
 	require.Nil(t, cmd, "should return nil when not in any editing context")
+}
+
+func TestSearch_EditorExecMsg_ExecutesWhenIssueExternalEditingActive(t *testing.T) {
+	m := createTestModelWithResults(t)
+	issue := m.results[0]
+	m.externalEditingIssue = &issue
+
+	msg := editor.ExecMsg{}
+	m, cmd := m.Update(msg)
+	require.NotNil(t, cmd, "issue-level editor flow should execute ExecMsg")
 }
 
 func TestSearch_SaveMsg_UpdatesNotesOnlyWhenChanged(t *testing.T) {

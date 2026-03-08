@@ -760,7 +760,7 @@ func TestView_ContainsDescriptionField(t *testing.T) {
 	view := m.View()
 
 	require.Contains(t, view, "Description", "expected Description field in view")
-	require.Contains(t, view, "Ctrl+G for editor", "expected Ctrl+G hint in view")
+	require.Contains(t, view, "ctrl+shift+e for editor", "expected editor key hint in view")
 }
 
 // Tests for Notes field

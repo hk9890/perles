@@ -613,7 +613,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward external editor messages to chatPanel
 	// These are emitted by vimtextarea when user presses Ctrl+G to open $EDITOR
 	case editor.FinishedMsg:
-		if m.chatPanel.Visible() && m.currentMode != mode.ModeDashboard {
+		if m.chatPanelFocused && m.chatPanel.Visible() && m.currentMode != mode.ModeDashboard {
 			var cmd tea.Cmd
 			m.chatPanel, cmd = m.chatPanel.Update(msg)
 			return m, cmd
@@ -663,8 +663,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Handle RequestQuitMsg from chatPanel (user pressed Ctrl+C in normal mode)
 	case chatpanel.RequestQuitMsg:
-		m.quitModal.Show()
-		return m, nil
+		return m.requestAppQuit()
 
 	// Handle NewSessionRequestMsg from chatPanel (user pressed Ctrl+N)
 	case chatpanel.NewSessionRequestMsg:
@@ -672,8 +671,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Handle RequestQuitMsg from kanban/search modes (user pressed Ctrl+C)
 	case mode.RequestQuitMsg:
-		m.quitModal.Show()
-		return m, nil
+		return m.requestAppQuit()
 
 	case mode.ShowToastMsg:
 		m.toaster = m.toaster.Show(msg.Message, msg.Style)
@@ -756,8 +754,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case editor.ExecMsg:
-		// Forward to chatPanel - this triggers tea.ExecProcess for $EDITOR
-		if m.chatPanel.Visible() && m.currentMode != mode.ModeDashboard {
+		// Forward to chatPanel only when it has focus - otherwise allow mode-level
+		// issue editor flows to process this message.
+		if m.chatPanelFocused && m.chatPanel.Visible() && m.currentMode != mode.ModeDashboard {
 			var cmd tea.Cmd
 			m.chatPanel, cmd = m.chatPanel.Update(msg)
 			return m, cmd
@@ -787,6 +786,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) requestAppQuit() (tea.Model, tea.Cmd) {
+	if m.services.Config.UI.QuitConfirm {
+		m.quitModal.Show()
+		return m, nil
+	}
+	return m, tea.Quit
 }
 
 // switchMode toggles between Kanban and Search modes.

@@ -109,6 +109,7 @@ func TestStartup_ValidKeybindings(t *testing.T) {
 	kb := config.KeybindingsConfig{
 		Search:    "ctrl+k",
 		Dashboard: "ctrl+d",
+		Editor:    "ctrl+shift+e",
 	}
 
 	// Validation should pass
@@ -121,11 +122,12 @@ func TestStartup_ValidKeybindings(t *testing.T) {
 
 	searchKey := kb.Search
 	dashboardKey := kb.Dashboard
-	keys.ApplyConfig(searchKey, dashboardKey)
+	keys.ApplyConfig(searchKey, dashboardKey, "ctrl+q", "ctrl+shift+e")
 
 	// Verify keys were applied
 	require.Equal(t, []string{"ctrl+k"}, keys.Kanban.SwitchMode.Keys())
 	require.Equal(t, []string{"ctrl+d"}, keys.Kanban.Dashboard.Keys())
+	require.Equal(t, []string{"ctrl+shift+e"}, keys.Component.Editor.Keys())
 }
 
 // TestStartup_InvalidKeybindings verifies that invalid keybindings cause
@@ -174,6 +176,7 @@ func TestStartup_NoKeybindings(t *testing.T) {
 	kb := config.KeybindingsConfig{
 		Search:    "", // Empty
 		Dashboard: "", // Empty
+		Editor:    "", // Empty
 	}
 
 	// Validation should pass for empty values
@@ -192,7 +195,11 @@ func TestStartup_NoKeybindings(t *testing.T) {
 	if dashboardKey == "" {
 		dashboardKey = "ctrl+o" // Default
 	}
-	keys.ApplyConfig(searchKey, dashboardKey)
+	editorKey := kb.Editor
+	if editorKey == "" {
+		editorKey = "ctrl+shift+e" // Default
+	}
+	keys.ApplyConfig(searchKey, dashboardKey, "ctrl+q", editorKey)
 
 	// Verify defaults were applied
 	// ctrl+space translates to ctrl+@ for terminal
@@ -200,6 +207,8 @@ func TestStartup_NoKeybindings(t *testing.T) {
 		"default search key should be ctrl+@ (ctrl+space)")
 	require.Equal(t, []string{"ctrl+o"}, keys.Kanban.Dashboard.Keys(),
 		"default dashboard key should be ctrl+o")
+	require.Equal(t, []string{"ctrl+shift+e"}, keys.Component.Editor.Keys(),
+		"default editor key should be ctrl+shift+e")
 }
 
 // TestStartup_PartialKeybindings verifies that specifying only one keybinding
@@ -209,6 +218,7 @@ func TestStartup_PartialKeybindings(t *testing.T) {
 		kb := config.KeybindingsConfig{
 			Search:    "ctrl+k",
 			Dashboard: "", // Use default
+			Editor:    "", // Use default
 		}
 
 		// Validation should pass
@@ -227,19 +237,26 @@ func TestStartup_PartialKeybindings(t *testing.T) {
 		if dashboardKey == "" {
 			dashboardKey = "ctrl+o" // Default
 		}
-		keys.ApplyConfig(searchKey, dashboardKey)
+		editorKey := kb.Editor
+		if editorKey == "" {
+			editorKey = "ctrl+shift+e"
+		}
+		keys.ApplyConfig(searchKey, dashboardKey, "ctrl+q", editorKey)
 
 		// Verify custom search and default dashboard
 		require.Equal(t, []string{"ctrl+k"}, keys.Kanban.SwitchMode.Keys(),
 			"search key should be ctrl+k")
 		require.Equal(t, []string{"ctrl+o"}, keys.Kanban.Dashboard.Keys(),
 			"dashboard key should default to ctrl+o")
+		require.Equal(t, []string{"ctrl+shift+e"}, keys.Component.Editor.Keys(),
+			"editor key should default to ctrl+shift+e")
 	})
 
 	t.Run("only dashboard specified", func(t *testing.T) {
 		kb := config.KeybindingsConfig{
 			Search:    "", // Use default
 			Dashboard: "ctrl+d",
+			Editor:    "ctrl+shift+f",
 		}
 
 		// Validation should pass
@@ -258,13 +275,19 @@ func TestStartup_PartialKeybindings(t *testing.T) {
 		if dashboardKey == "" {
 			dashboardKey = "ctrl+o"
 		}
-		keys.ApplyConfig(searchKey, dashboardKey)
+		editorKey := kb.Editor
+		if editorKey == "" {
+			editorKey = "ctrl+shift+e"
+		}
+		keys.ApplyConfig(searchKey, dashboardKey, "ctrl+q", editorKey)
 
 		// Verify default search and custom dashboard
 		require.Equal(t, []string{"ctrl+@"}, keys.Kanban.SwitchMode.Keys(),
 			"search key should default to ctrl+@ (ctrl+space)")
 		require.Equal(t, []string{"ctrl+d"}, keys.Kanban.Dashboard.Keys(),
 			"dashboard key should be ctrl+d")
+		require.Equal(t, []string{"ctrl+shift+f"}, keys.Component.Editor.Keys(),
+			"editor key should be ctrl+shift+f")
 	})
 }
 

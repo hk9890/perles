@@ -1,5 +1,5 @@
-╭─ BQL Search ─────────────────────────╮ ╭─ Issue Details ─────────────────────╮
-│[7m [27m                                     │ │[F][P1][bd-a1b] Implement webhook    │
+╭─ Text Search ─ BQL Search ───────────╮ ╭─ Issue Details ─────────────────────╮
+│                                      │ │[F][P1][bd-a1b] Implement webhook    │
 ╰──────────────────────────────────────╯ │system                               │
 ╭─────────────────────────── Count: 1 ─╮ │                                     │
 │>[F][P1][bd-a1b] Implement w... 1h ago│ │Status: Open                         │

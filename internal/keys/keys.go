@@ -95,7 +95,7 @@ var Kanban = struct {
 	SwitchMode       key.Binding
 	ToggleStatus     key.Binding
 	Dashboard        key.Binding // Open multi-workflow dashboard
-	QuitConfirm      key.Binding // Ctrl+C quit with confirmation (kanban-specific)
+	QuitConfirm      key.Binding // Configurable app quit with confirmation (kanban-specific)
 }{
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
@@ -170,30 +170,31 @@ var Kanban = struct {
 		key.WithHelp("ctrl+o", "dashboard"),
 	),
 	QuitConfirm: key.NewBinding(
-		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
+		key.WithKeys("ctrl+q"),
+		key.WithHelp("ctrl+q", "quit"),
 	),
 }
 
 // Search contains keybindings specific to search mode.
 var Search = struct {
-	Up          key.Binding
-	Down        key.Binding
-	Left        key.Binding
-	Right       key.Binding
-	FocusSearch key.Binding
-	Execute     key.Binding
-	Blur        key.Binding
-	OpenTree    key.Binding
-	Edit        key.Binding
-	Priority    key.Binding
-	Status      key.Binding
-	Yank        key.Binding
-	SaveColumn  key.Binding
-	SwitchMode  key.Binding
-	Help        key.Binding
-	Quit        key.Binding
-	QuitConfirm key.Binding // Ctrl+C quit with confirmation (search-specific)
+	Up               key.Binding
+	Down             key.Binding
+	Left             key.Binding
+	Right            key.Binding
+	FocusSearch      key.Binding
+	Execute          key.Binding
+	Blur             key.Binding
+	OpenTree         key.Binding
+	Edit             key.Binding
+	Priority         key.Binding
+	Status           key.Binding
+	Yank             key.Binding
+	SaveColumn       key.Binding
+	ToggleSearchType key.Binding
+	SwitchMode       key.Binding
+	Help             key.Binding
+	Quit             key.Binding
+	QuitConfirm      key.Binding // Configurable app quit with confirmation (search-specific)
 }{
 	Up: key.NewBinding(
 		key.WithKeys("k", "up"),
@@ -247,6 +248,10 @@ var Search = struct {
 		key.WithKeys("ctrl+s"),
 		key.WithHelp("ctrl+s", "save to view"),
 	),
+	ToggleSearchType: key.NewBinding(
+		key.WithKeys("ctrl+t"),
+		key.WithHelp("ctrl+t", "toggle text/BQL"),
+	),
 	SwitchMode: key.NewBinding(
 		key.WithKeys("ctrl+@"),
 		key.WithHelp("ctrl+space", "switch mode"),
@@ -256,12 +261,12 @@ var Search = struct {
 		key.WithHelp("?", "toggle help"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
+		key.WithKeys("q"),
 		key.WithHelp("q", "quit"),
 	),
 	QuitConfirm: key.NewBinding(
-		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
+		key.WithKeys("ctrl+q"),
+		key.WithHelp("ctrl+q", "quit"),
 	),
 }
 
@@ -272,6 +277,7 @@ var Component = struct {
 	Tab        key.Binding
 	ShiftTab   key.Binding
 	Delete     key.Binding
+	Editor     key.Binding // Issue-level external editor action
 	Next       key.Binding // Alternative navigation (ctrl+n)
 	Prev       key.Binding // Alternative navigation (ctrl+p)
 	GotoTop    key.Binding // Navigate to top (g)
@@ -303,6 +309,10 @@ var Component = struct {
 	Delete: key.NewBinding(
 		key.WithKeys("ctrl+d", "backspace"),
 		key.WithHelp("ctrl+d", "delete"),
+	),
+	Editor: key.NewBinding(
+		key.WithKeys("ctrl+shift+e"),
+		key.WithHelp("ctrl+shift+e", "external editor"),
 	),
 	Next: key.NewBinding(
 		key.WithKeys("ctrl+n"),
@@ -648,7 +658,7 @@ func DashboardFullHelp() [][]key.Binding {
 }
 
 // ApplyConfig applies user-configured keybindings to the package-level bindings.
-func ApplyConfig(searchKey, dashboardKey string) {
+func ApplyConfig(searchKey, dashboardKey, quitKey, editorKey string) {
 	if searchKey != "" {
 		terminalKey := translateToTerminal(searchKey)
 		displayKey := translateToDisplay(searchKey)
@@ -664,6 +674,22 @@ func ApplyConfig(searchKey, dashboardKey string) {
 		Kanban.Dashboard.SetKeys(terminalKey)
 		Kanban.Dashboard.SetHelp(displayKey, "dashboard")
 	}
+
+	if quitKey != "" {
+		terminalKey := translateToTerminal(quitKey)
+		displayKey := translateToDisplay(quitKey)
+		Kanban.QuitConfirm.SetKeys(terminalKey)
+		Kanban.QuitConfirm.SetHelp(displayKey, "quit")
+		Search.QuitConfirm.SetKeys(terminalKey)
+		Search.QuitConfirm.SetHelp(displayKey, "quit")
+	}
+
+	if editorKey != "" {
+		terminalKey := translateToTerminal(editorKey)
+		displayKey := translateToDisplay(editorKey)
+		Component.Editor.SetKeys(terminalKey)
+		Component.Editor.SetHelp(displayKey, "external editor")
+	}
 }
 
 // ResetForTesting resets keybindings to defaults for testing.
@@ -675,4 +701,10 @@ func ResetForTesting() {
 	Search.SwitchMode.SetHelp("ctrl+space", "switch mode")
 	Kanban.Dashboard.SetKeys("ctrl+o")
 	Kanban.Dashboard.SetHelp("ctrl+o", "dashboard")
+	Kanban.QuitConfirm.SetKeys("ctrl+q")
+	Kanban.QuitConfirm.SetHelp("ctrl+q", "quit")
+	Search.QuitConfirm.SetKeys("ctrl+q")
+	Search.QuitConfirm.SetHelp("ctrl+q", "quit")
+	Component.Editor.SetKeys("ctrl+shift+e")
+	Component.Editor.SetHelp("ctrl+shift+e", "external editor")
 }
