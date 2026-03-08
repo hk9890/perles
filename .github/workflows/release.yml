@@ -5,6 +5,17 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish GitHub release assets"
+        required: true
+        default: false
+        type: boolean
+      target_ref:
+        description: "Tag/ref to build (required when publish=true)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -13,16 +24,52 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve release mode
+        id: mode
+        run: |
+          set -euo pipefail
+
+          event_name="${GITHUB_EVENT_NAME}"
+          dispatch_publish="${{ github.event.inputs.publish || '' }}"
+          dispatch_target_ref="${{ github.event.inputs.target_ref || '' }}"
+
+          publish="false"
+          checkout_ref="${GITHUB_REF}"
+
+          if [[ "${event_name}" == "push" ]]; then
+            publish="true"
+            checkout_ref="${GITHUB_REF}"
+          elif [[ "${event_name}" == "workflow_dispatch" ]]; then
+            if [[ "${dispatch_publish}" == "true" ]]; then
+              publish="true"
+              if [[ -z "${dispatch_target_ref}" ]]; then
+                echo "workflow_dispatch publish=true requires target_ref (for example refs/tags/v0.1.0 or v0.1.0)" >&2
+                exit 1
+              fi
+              checkout_ref="${dispatch_target_ref}"
+            elif [[ -n "${dispatch_target_ref}" ]]; then
+              checkout_ref="${dispatch_target_ref}"
+            fi
+          fi
+
+          {
+            echo "publish=${publish}"
+            echo "checkout_ref=${checkout_ref}"
+          } >>"${GITHUB_OUTPUT}"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ steps.mode.outputs.checkout_ref }}
 
       - name: Preflight context
         run: |
           echo "Repository: ${{ github.repository }}"
           echo "Ref: ${{ github.ref }}"
           echo "Event: ${{ github.event_name }}"
+          echo "Checkout ref: ${{ steps.mode.outputs.checkout_ref }}"
+          echo "Publish mode: ${{ steps.mode.outputs.publish }}"
           echo "Release publishing target: GitHub Releases only"
           echo "Required secret: GITHUB_TOKEN (provided by GitHub Actions)"
 
@@ -45,7 +92,7 @@ jobs:
         run: make test
 
       - name: Run GoReleaser (snapshot preflight)
-        if: github.event_name == 'workflow_dispatch'
+        if: steps.mode.outputs.publish == 'false'
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
@@ -56,7 +103,7 @@ jobs:
           PUBLISH_GITHUB_RELEASES: "false"
 
       - name: Run GoReleaser (publish)
-        if: github.event_name == 'push'
+        if: steps.mode.outputs.publish == 'true'
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser

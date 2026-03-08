@@ -89,7 +89,10 @@ Record completion of these human-only checks on the active release task before c
 
 ### 1) CI snapshot preflight (no publish)
 
-Use **Actions → Release → Run workflow** (`workflow_dispatch`).
+Use **Actions → Release → Run workflow** (`workflow_dispatch`) with:
+
+- `publish = false`
+- Optional `target_ref` (leave empty to test default branch HEAD)
 
 Behavior from `.github/workflows/release.yml`:
 
@@ -150,6 +153,26 @@ Tag push behavior:
   - `amd64`/`arm64`
   - plus `checksums.txt`
 
+### 2b) Manual publish fallback (when tag push event is missing)
+
+If tag push does not create a `push`-event run, publish manually via `workflow_dispatch`:
+
+1. Open **Actions → Release → Run workflow**.
+2. Set:
+   - `publish = true`
+   - `target_ref = refs/tags/vX.Y.Z` (preferred) or `vX.Y.Z`
+3. Start the run.
+
+Fallback behavior:
+
+- Workflow checks out `target_ref` and publishes from that exact tag/ref.
+- It runs `goreleaser release --clean` with `PUBLISH_GITHUB_RELEASES=true`.
+- Snapshot mode remains available via `publish=false`.
+
+Guardrail:
+
+- `publish=true` without `target_ref` fails fast to prevent accidental publish from `main`.
+
 ## Verification checklist
 
 After publish completes:
@@ -180,6 +203,8 @@ perles --version
 - Fix root cause in branch.
 - Create a new patch tag (for example `v0.1.1`) and push it.
 - Avoid force-moving/deleting published tags unless absolutely necessary.
+
+If failure is specifically missing tag-triggered workflow execution, use the manual publish fallback in **2b** for the existing tag.
 
 ### Release exists but assets are wrong/incomplete
 
