@@ -41,3 +41,5 @@ Add any other context about the problem here, including:
 - Configuration file contents (if relevant)
 - Error messages or logs
 - Whether this worked before
+
+If you want to submit a fix, see [/CONTRIBUTING.md](/CONTRIBUTING.md) and [/docs/TESTING.md](/docs/TESTING.md).

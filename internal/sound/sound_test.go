@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/hk9890/perles/internal/config"
 )
 
 // skipIfAudioNotAvailable skips the test if no audio player is available.

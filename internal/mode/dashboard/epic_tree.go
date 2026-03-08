@@ -6,15 +6,15 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/ui/details"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/ui/details"
+	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
+	"github.com/hk9890/perles/internal/ui/tree"
 )
 
 // loadEpicTree creates a command to load the epic tree data for the given epic ID.

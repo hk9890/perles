@@ -8,8 +8,8 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/muesli/reflow/wordwrap"
 
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/shared/overlay"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Zone ID prefixes for mouse click detection.

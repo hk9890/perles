@@ -28,3 +28,5 @@ Add any other context, mockups, or screenshots about the feature request here.
 - [ ] Yes, I'd like to implement this myself
 - [ ] I could help with testing
 - [ ] I'm just suggesting the idea
+
+If you'd like to contribute an implementation, start with [/CONTRIBUTING.md](/CONTRIBUTING.md) and [/docs/PULL-REQUESTS.md](/docs/PULL-REQUESTS.md).

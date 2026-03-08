@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 // UserRegistryDir returns the path to user YAML workflow registries.

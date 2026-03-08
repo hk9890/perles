@@ -8,7 +8,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/hk9890/perles/internal/ui/shared/modal"
 )
 
 func TestMain(m *testing.M) {

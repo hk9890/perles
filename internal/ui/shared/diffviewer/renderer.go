@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	domaingit "github.com/zjrosen/perles/internal/git/domain"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	domaingit "github.com/hk9890/perles/internal/git/domain"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // lineNumberWidth is the width reserved for line numbers in the gutter.

@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/claude"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/claude"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/pubsub"
 )
 
 // DefaultOutputBufferCapacity is the default number of lines to keep in output buffer.

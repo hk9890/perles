@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/infrastructure/migrations"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/infrastructure/migrations"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/sessions/domain"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"

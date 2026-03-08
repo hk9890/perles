@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/fabric/domain"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Model holds the thread picker state.

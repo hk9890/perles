@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/testutil"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/testutil"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

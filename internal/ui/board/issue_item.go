@@ -3,7 +3,7 @@ package board
 import (
 	"fmt"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
+	beads "github.com/hk9890/perles/internal/beads/domain"
 )
 
 // IssueItem wraps an Issue to implement the bubbles list.Item interface.

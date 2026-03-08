@@ -12,9 +12,9 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/editor"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/ui/shared/colorpicker"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
 )
 
 func TestMain(m *testing.M) {

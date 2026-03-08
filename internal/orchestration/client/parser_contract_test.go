@@ -5,12 +5,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/amp"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/claude"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/codex"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/gemini"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/opencode"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/amp"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/claude"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/codex"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/gemini"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/opencode"
 )
 
 // parserTestCase defines a provider parser to test against the contract.

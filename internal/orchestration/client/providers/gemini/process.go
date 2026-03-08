@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // Process represents a headless Gemini CLI process.

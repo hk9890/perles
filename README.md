@@ -33,28 +33,25 @@ Perles has its own [Orchestration Control Plane](ORCHESTRATION.md) that spawns a
 ### Install Script
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/zjrosen/perles/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/hk9890/perles/main/install.sh | bash
 ```
 
-### Homebrew (macOS/Linux)
+### Homebrew (status)
 
-```bash
-brew tap zjrosen/perles
-brew install perles
-```
+Homebrew publishing is intentionally not part of the first fork release. For `v0.1.0`, use the install script or GitHub release binaries.
 
 ### Go Install
 
 Requires Go 1.21+
 
 ```bash
-go install github.com/zjrosen/perles@latest
+go install github.com/hk9890/perles@latest
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/zjrosen/perles.git
+git clone https://github.com/hk9890/perles.git
 cd perles
 make install
 perles
@@ -62,7 +59,7 @@ perles
 
 ### Binary Downloads
 
-Pre-built binaries for Linux and macOS (both Intel and Apple Silicon) are available on the [Releases](https://github.com/zjrosen/perles/releases) page.
+Pre-built binaries for Linux and macOS (both Intel and Apple Silicon) are available on the [Releases](https://github.com/hk9890/perles/releases) page.
 
 1. Download the archive for your platform
 2. Extract: `tar -xzf perles_*.tar.gz`

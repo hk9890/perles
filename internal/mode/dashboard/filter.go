@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // FilterState manages the filter/search state for the dashboard.

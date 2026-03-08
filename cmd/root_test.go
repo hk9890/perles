@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/keys"
+	infrabeads "github.com/hk9890/perles/internal/beads/infrastructure"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/keys"
 
 	"github.com/stretchr/testify/require"
 )

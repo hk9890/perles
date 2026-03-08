@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/hk9890/perles/internal/log"
 )
 
 // ErrExecutableNotFound is returned when the executable cannot be located

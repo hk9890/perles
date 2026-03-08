@@ -10,9 +10,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/registry/domain"
-	"github.com/zjrosen/perles/internal/templates"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/templates"
 )
 
 // createTestFS creates a MapFS for testing with workflow subdirectories containing template.yaml and templates

@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/mcp"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/mcp"
+	"github.com/hk9890/perles/internal/orchestration/v2/process"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt/roles"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/pubsub"
 )
 
 // SpawnOptions contains optional configuration for spawning a process.

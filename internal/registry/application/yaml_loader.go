@@ -9,8 +9,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 // maxYAMLSize is the maximum allowed size for template.yaml files (1MB)

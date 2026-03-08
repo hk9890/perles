@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zjrosen/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/sessions/domain"
 )
 
 // sessionColumns is the list of columns to select for session queries.

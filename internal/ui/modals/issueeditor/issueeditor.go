@@ -8,10 +8,10 @@ import (
 	"slices"
 	"strconv"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/issuebadge"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/formmodal"
+	"github.com/hk9890/perles/internal/ui/shared/issuebadge"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

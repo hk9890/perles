@@ -40,8 +40,8 @@
 // use aliasing to disambiguate:
 //
 //	import (
-//	    domainreg "github.com/zjrosen/perles/internal/registry/domain"
-//	    appreg "github.com/zjrosen/perles/internal/registry/application"
+//	    domainreg "github.com/hk9890/perles/internal/registry/domain"
+//	    appreg "github.com/hk9890/perles/internal/registry/application"
 //	)
 //
 // Or reference the application package through RegistryService without a separate alias.

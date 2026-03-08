@@ -14,7 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/pubsub"
 )
 
 // Level represents log severity.

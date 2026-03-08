@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/ui/shared/editor"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
 )
 
 func TestModel_ForwardsExternalEditorMessages_WhenNotVisible(t *testing.T) {

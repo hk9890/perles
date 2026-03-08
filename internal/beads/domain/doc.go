@@ -27,7 +27,7 @@
 // When importing both packages, use aliasing to disambiguate:
 //
 //	import (
-//	    domainbeads "github.com/zjrosen/perles/internal/beads/domain"
-//	    appbeads "github.com/zjrosen/perles/internal/beads/application"
+//	    domainbeads "github.com/hk9890/perles/internal/beads/domain"
+//	    appbeads "github.com/hk9890/perles/internal/beads/application"
 //	)
 package domain

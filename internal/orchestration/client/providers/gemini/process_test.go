@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // errTest is a sentinel error for testing

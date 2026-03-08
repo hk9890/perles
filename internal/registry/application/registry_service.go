@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 // RegistryService errors

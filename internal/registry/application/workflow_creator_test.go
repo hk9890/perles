@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/templates"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/templates"
 )
 
 func TestWorkflowCreator_Create(t *testing.T) {

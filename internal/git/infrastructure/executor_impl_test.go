@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	appgit "github.com/zjrosen/perles/internal/git/application"
-	domain "github.com/zjrosen/perles/internal/git/domain"
+	appgit "github.com/hk9890/perles/internal/git/application"
+	domain "github.com/hk9890/perles/internal/git/domain"
 	"github.com/stretchr/testify/require"
 )
 

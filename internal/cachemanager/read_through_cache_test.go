@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mocks"
 )
 
 type wrappedInput struct {

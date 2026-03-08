@@ -4,7 +4,7 @@ project_name: perles
 
 before:
   hooks:
-    - sh -c "cd frontend && npm install && npm run build"
+    - sh -c "cd frontend && npm ci && npm run build"
     - go mod tidy
     - go generate ./...
 
@@ -64,32 +64,27 @@ changelog:
 
 release:
   github:
-    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    owner: hk9890
     name: perles
   draft: false
   prerelease: auto
   mode: replace
+  disable: "{{ ne .Env.PUBLISH_GITHUB_RELEASES \"true\" }}"
   header: |
     ## Perles {{ .Version }}
 
     Terminal-based kanban board for beads issue tracking.
-  footer: |
-    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/perles/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-# Homebrew tap configuration
-# Repository: https://github.com/zjrosen/homebrew-perles
-# Requires HOMEBREW_TAP_TOKEN secret with repo scope
-brews:
-  - name: perles
-    repository:
-      owner: zjrosen
-      name: homebrew-perles
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/zjrosen/perles"
-    description: "Terminal-based kanban board for beads issue tracking"
-    license: "MIT"
-    install: |
-      bin.install "perles"
-    test: |
-      system "#{bin}/perles", "--version"
+    This is the bootstrap release stream for hk9890/perles.
+
+    {{- if eq .Version "v0.1.0" }}
+    ### First production release notes
+
+    - First fork-owned production release for `hk9890/perles`
+    - Publishing channel for this phase: **GitHub Releases only**
+    - Homebrew publishing intentionally excluded from v0.1.0 scope
+    {{- end }}
+  footer: |
+    {{- if .PreviousTag }}
+    **Full Changelog**: https://github.com/hk9890/perles/compare/{{ .PreviousTag }}...{{ .Tag }}
+    {{- end }}

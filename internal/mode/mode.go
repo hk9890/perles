@@ -4,15 +4,15 @@ package mode
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/flags"
-	appgit "github.com/zjrosen/perles/internal/git/application"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	domain "github.com/zjrosen/perles/internal/sessions/domain"
-	"github.com/zjrosen/perles/internal/sound"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/flags"
+	appgit "github.com/hk9890/perles/internal/git/application"
+	"github.com/hk9890/perles/internal/mode/shared"
+	domain "github.com/hk9890/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/sound"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
 )
 
 // AppMode identifies the current application mode.

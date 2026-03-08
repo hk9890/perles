@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"pgregory.net/rapid"
 
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
 )
 
 // === Stress Test Helpers ===

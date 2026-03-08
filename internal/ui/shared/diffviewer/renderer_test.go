@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
-	domaingit "github.com/zjrosen/perles/internal/git/domain"
-	"github.com/zjrosen/perles/internal/mocks"
+	domaingit "github.com/hk9890/perles/internal/git/domain"
+	"github.com/hk9890/perles/internal/mocks"
 )
 
 func TestRenderDiffContent_Colors(t *testing.T) {

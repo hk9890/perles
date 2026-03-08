@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	client "github.com/zjrosen/perles/internal/orchestration/client"
+	client "github.com/hk9890/perles/internal/orchestration/client"
 
 	mock "github.com/stretchr/testify/mock"
 )

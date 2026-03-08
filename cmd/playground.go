@@ -6,7 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/zjrosen/perles/internal/mode/playground"
+	"github.com/hk9890/perles/internal/mode/playground"
 )
 
 var playgroundCmd = &cobra.Command{

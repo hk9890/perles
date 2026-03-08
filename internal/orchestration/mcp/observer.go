@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
-	fabricmcp "github.com/zjrosen/perles/internal/orchestration/fabric/mcp"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	"github.com/hk9890/perles/internal/orchestration/fabric/domain"
+	fabricmcp "github.com/hk9890/perles/internal/orchestration/fabric/mcp"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt"
 )
 
 // ObserverServer is an MCP server that exposes read-only fabric tools to the Observer agent.

@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Scroll indicator styles

@@ -16,13 +16,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/v2/types"
-	"github.com/zjrosen/perles/internal/sound"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/tracing"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/v2/types"
+	"github.com/hk9890/perles/internal/sound"
 )
 
 // ===========================================================================

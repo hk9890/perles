@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/registry/domain"
 
 	"github.com/stretchr/testify/require"
 )

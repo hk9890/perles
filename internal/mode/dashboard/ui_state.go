@@ -3,12 +3,12 @@ package dashboard
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/tree"
 )
 
 // maxCommandLogEntries is the maximum number of entries to keep in the command log.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Scrollbar characters

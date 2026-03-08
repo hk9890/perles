@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
 )
 
 func TestNewProcessRegistry_CreatesEmptyRegistry(t *testing.T) {

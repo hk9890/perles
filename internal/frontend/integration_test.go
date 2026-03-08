@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/frontend"
+	"github.com/hk9890/perles/internal/frontend"
 )
 
 // TestIntegration_APIAndSPARoutesOnSameMux verifies that when API routes and

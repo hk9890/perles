@@ -6,11 +6,11 @@ import (
 
 	zone "github.com/lrstanley/bubblezone"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/issuebadge"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/issuebadge"
+	"github.com/hk9890/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"

@@ -5,11 +5,11 @@ import (
 
 	zone "github.com/lrstanley/bubblezone"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/ui/shared/colorpicker"
+	"github.com/hk9890/perles/internal/ui/shared/modal"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"

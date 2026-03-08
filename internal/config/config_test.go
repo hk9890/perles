@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 func TestValidateColumns_Empty(t *testing.T) {

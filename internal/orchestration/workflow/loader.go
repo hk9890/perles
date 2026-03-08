@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt/roles"
 
 	"gopkg.in/yaml.v3"
 )

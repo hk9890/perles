@@ -7,11 +7,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // === Unit Tests: getStatusTextAndColor ===

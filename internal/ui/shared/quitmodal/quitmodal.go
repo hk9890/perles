@@ -7,7 +7,7 @@ package quitmodal
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/hk9890/perles/internal/ui/shared/modal"
 )
 
 // Result indicates the outcome of modal interaction.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	stdlog "log"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // geminiEvent represents the raw Gemini CLI stream-json event structure.

@@ -6,11 +6,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/workflow"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/shared/panes"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Border colors for assistant status (matches orchestration mode)

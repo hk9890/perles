@@ -10,9 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
-	appgit "github.com/zjrosen/perles/internal/git/application"
-	domaingit "github.com/zjrosen/perles/internal/git/domain"
-	"github.com/zjrosen/perles/internal/mocks"
+	appgit "github.com/hk9890/perles/internal/git/application"
+	domaingit "github.com/hk9890/perles/internal/git/domain"
+	"github.com/hk9890/perles/internal/mocks"
 )
 
 // setupModelWithFiles creates a test model with working dir files and tree properly initialized.

@@ -9,9 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/ui/shared/editor"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Clipboard defines the interface for clipboard operations.

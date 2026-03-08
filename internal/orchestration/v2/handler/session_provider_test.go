@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/v2/process"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
 )
 
 func TestProcessRegistrySessionProvider_New(t *testing.T) {

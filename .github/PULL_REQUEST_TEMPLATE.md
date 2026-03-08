@@ -16,12 +16,13 @@ Closes #(issue number)
 
 ## Checklist
 
-- [ ] I have read the [CONTRIBUTING](CONTRIBUTING.md) guidelines
-- [ ] My code follows the project's code style
-- [ ] I have added tests that prove my fix/feature works
-- [ ] All new and existing tests pass (`make test`)
-- [ ] I have updated documentation as needed
-- [ ] I have updated golden files if UI changed (`make test-update`)
+- [ ] I have read [/CONTRIBUTING.md](/CONTRIBUTING.md)
+- [ ] I followed [/docs/CODING.md](/docs/CODING.md) for relevant conventions and commands
+- [ ] I followed [/docs/TESTING.md](/docs/TESTING.md) and ran the relevant validation commands
+- [ ] I added or updated tests for behavior changes
+- [ ] I updated documentation when behavior/workflow/config changed
+- [ ] I updated golden files if UI output changed (`make test-update`)
+- [ ] I reviewed [/docs/PULL-REQUESTS.md](/docs/PULL-REQUESTS.md) and added reviewer-friendly testing notes
 
 ## Screenshots (if applicable)
 

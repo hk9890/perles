@@ -3,7 +3,7 @@ package codex
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // Config holds configuration for spawning a Codex process.

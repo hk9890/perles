@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/hk9890/perles/internal/orchestration/workflow"
 )
 
 // promptModeData holds data for rendering the prompt mode system prompt.

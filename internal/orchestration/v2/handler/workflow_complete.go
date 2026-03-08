@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/sound"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/sound"
 )
 
 // ===========================================================================

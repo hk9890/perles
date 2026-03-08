@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Test row data structure

@@ -6,8 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
 )
 
 // =============================================================================

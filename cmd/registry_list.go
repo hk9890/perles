@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zjrosen/perles/internal/presentation"
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/presentation"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 var (

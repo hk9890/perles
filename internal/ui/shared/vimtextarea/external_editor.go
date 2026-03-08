@@ -3,7 +3,7 @@ package vimtextarea
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/zjrosen/perles/internal/ui/shared/editor"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
 )
 
 // OpenExternalEditorCommand opens the current content in $EDITOR.

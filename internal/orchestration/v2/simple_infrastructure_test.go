@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // createTestSimpleAgentProvider creates an AgentProvider mock for testing.

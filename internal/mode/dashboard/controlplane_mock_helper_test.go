@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	controlplanemocks "github.com/zjrosen/perles/internal/orchestration/controlplane/mocks"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	controlplanemocks "github.com/hk9890/perles/internal/orchestration/controlplane/mocks"
 )
 
 // newMockControlPlane creates a mockery-generated MockControlPlane with default expectations.

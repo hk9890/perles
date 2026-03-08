@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zjrosen/perles/internal/orchestration/message"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/orchestration/message"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
 )
 
 // maxLineSize is the buffer size for reading JSONL lines.

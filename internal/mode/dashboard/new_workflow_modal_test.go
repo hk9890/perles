@@ -10,17 +10,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	beadsdomain "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	domaingit "github.com/zjrosen/perles/internal/git/domain"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	controlplanemocks "github.com/zjrosen/perles/internal/orchestration/controlplane/mocks"
-	appreg "github.com/zjrosen/perles/internal/registry/application"
-	registry "github.com/zjrosen/perles/internal/registry/domain"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
+	beadsdomain "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	domaingit "github.com/hk9890/perles/internal/git/domain"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	controlplanemocks "github.com/hk9890/perles/internal/orchestration/controlplane/mocks"
+	appreg "github.com/hk9890/perles/internal/registry/application"
+	registry "github.com/hk9890/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/ui/shared/formmodal"
 )
 
 // === Test Helpers ===

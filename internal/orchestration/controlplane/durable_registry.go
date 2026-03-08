@@ -8,7 +8,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/zjrosen/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/sessions/domain"
 )
 
 // DurableRegistry implements Registry with SQLite-backed persistence for durable fields

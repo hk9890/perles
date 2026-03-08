@@ -10,12 +10,12 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/details"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/details"
+	"github.com/hk9890/perles/internal/ui/tree"
 )
 
 // errTest is a sentinel error for testing

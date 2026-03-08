@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode/shared"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode/shared"
 
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"

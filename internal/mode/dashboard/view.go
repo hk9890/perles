@@ -10,11 +10,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/shared/table"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/ui/shared/panes"
+	"github.com/hk9890/perles/internal/ui/shared/table"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Color constants for status and health indicators.

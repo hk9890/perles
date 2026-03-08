@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane/mocks"
-	appreg "github.com/zjrosen/perles/internal/registry/application"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/orchestration/controlplane/mocks"
+	appreg "github.com/hk9890/perles/internal/registry/application"
 )
 
 // === Tests ===

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	beads "github.com/zjrosen/perles/internal/beads/application"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/registry/domain"
+	beads "github.com/hk9890/perles/internal/beads/application"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 // WorkflowResultDTO is the final output of workflow creation.

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 )
 
 // verifyInterfaceCompliance ensures BQLSyntaxLexer implements SyntaxLexer

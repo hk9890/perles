@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/zjrosen/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/sessions/domain"
 )
 
 // SessionModel represents the database row for the sessions table.

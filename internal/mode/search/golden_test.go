@@ -8,11 +8,11 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/mock"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/ui/shared/formmodal"
 )
 
 // testNow is a fixed reference time for golden tests to ensure reproducible timestamps.

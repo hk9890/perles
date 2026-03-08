@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // renderSidebar renders the component list sidebar.

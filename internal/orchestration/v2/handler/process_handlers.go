@@ -14,16 +14,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/tracing"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/process"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt/roles"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/sound"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/tracing"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/orchestration/v2/process"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt/roles"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/workflow"
+	"github.com/hk9890/perles/internal/sound"
 )
 
 // ===========================================================================

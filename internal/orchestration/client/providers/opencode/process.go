@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // defaultKnownPaths defines the priority-ordered paths to check for the opencode executable.

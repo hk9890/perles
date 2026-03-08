@@ -2,38 +2,38 @@ with-expecter: true
 dir: internal/mocks
 outpkg: mocks
 packages:
-  github.com/zjrosen/perles/internal/mode:
+  github.com/hk9890/perles/internal/mode:
     interfaces:
       BeadsClient:
-  github.com/zjrosen/perles/internal/beads/application:
+  github.com/hk9890/perles/internal/beads/application:
     interfaces:
       VersionReader:
       CommentReader:
       IssueReader:
       IssueWriter:
       IssueExecutor:
-  github.com/zjrosen/perles/internal/bql:
+  github.com/hk9890/perles/internal/bql:
     interfaces:
       BQLExecutor:
-  github.com/zjrosen/perles/internal/cachemanager:
+  github.com/hk9890/perles/internal/cachemanager:
     interfaces:
       CacheManager:
-  github.com/zjrosen/perles/internal/mode/shared:
+  github.com/hk9890/perles/internal/mode/shared:
     interfaces:
       Clock:
       Clipboard:
-  github.com/zjrosen/perles/internal/orchestration/client:
+  github.com/hk9890/perles/internal/orchestration/client:
     interfaces:
       AgentProvider:
       HeadlessClient:
       HeadlessProcess:
-  github.com/zjrosen/perles/internal/git/application:
+  github.com/hk9890/perles/internal/git/application:
     interfaces:
       GitExecutor:
-  github.com/zjrosen/perles/internal/sound:
+  github.com/hk9890/perles/internal/sound:
     interfaces:
       SoundService:
-  github.com/zjrosen/perles/internal/orchestration/controlplane:
+  github.com/hk9890/perles/internal/orchestration/controlplane:
     config:
       dir: internal/orchestration/controlplane/mocks
       outpkg: mocks

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Cached styles to avoid repeated allocations during rendering.

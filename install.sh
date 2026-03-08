@@ -3,7 +3,7 @@
 # Perles Install Script
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/zjrosen/perles/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/hk9890/perles/main/install.sh | bash
 #
 # Environment Variables:
 #   INSTALL_DIR - Installation directory (default: $HOME/.local/bin)
@@ -12,7 +12,7 @@
 set -e
 
 # Configuration
-OWNER="${OWNER:-zjrosen}"
+OWNER="${OWNER:-hk9890}"
 REPO="perles"
 # Default to a per-user install path so root is not required.
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
@@ -70,15 +70,15 @@ detect_arch() {
     esac
 }
 
-# Get latest version from GitHub API
+# Resolve latest version from GitHub release redirect
 get_latest_version() {
-    local version
-    version=$(curl -sS "https://api.github.com/repos/$OWNER/$REPO/releases/latest" 2>/dev/null | \
-        grep '"tag_name":' | \
-        sed -E 's/.*"([^"]+)".*/\1/')
+    local latest_url resolved_url version
+    latest_url="https://github.com/$OWNER/$REPO/releases/latest"
+    resolved_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$latest_url" 2>/dev/null)
+    version="${resolved_url##*/}"
 
-    if [ -z "$version" ]; then
-        error "Failed to fetch latest version. Check your network connection and GitHub repository."
+    if [ -z "$version" ] || [ "$version" = "latest" ]; then
+        error "Failed to resolve latest version from $latest_url"
     fi
 
     echo "$version"

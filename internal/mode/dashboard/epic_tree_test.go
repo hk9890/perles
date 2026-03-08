@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
+	"github.com/hk9890/perles/internal/ui/tree"
 )
 
 // === Test Helpers ===

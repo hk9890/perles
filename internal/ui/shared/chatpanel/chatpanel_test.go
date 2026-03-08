@@ -12,17 +12,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	v2 "github.com/zjrosen/perles/internal/orchestration/v2"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/processor"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
-	"github.com/zjrosen/perles/internal/pubsub"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	v2 "github.com/hk9890/perles/internal/orchestration/v2"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/orchestration/v2/processor"
+	"github.com/hk9890/perles/internal/orchestration/workflow"
+	"github.com/hk9890/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 )
 
 // scanView wraps View() with zone.Scan() to strip zone markers for golden tests.

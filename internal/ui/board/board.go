@@ -7,13 +7,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/panes"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // IssueClickedMsg is emitted when a user clicks on an issue in the board.

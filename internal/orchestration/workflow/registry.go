@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zjrosen/perles/internal/config"
+	"github.com/hk9890/perles/internal/config"
 )
 
 // Registry manages workflow templates from multiple sources.

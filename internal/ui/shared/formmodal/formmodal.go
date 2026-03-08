@@ -7,10 +7,10 @@ import (
 
 	zone "github.com/lrstanley/bubblezone"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/colorpicker"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/ui/shared/colorpicker"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"

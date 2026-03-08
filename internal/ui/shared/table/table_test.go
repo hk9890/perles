@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // testWorkflow is a test row data structure for golden tests

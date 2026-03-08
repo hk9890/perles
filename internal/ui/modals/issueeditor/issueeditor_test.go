@@ -7,7 +7,7 @@ import (
 
 	zone "github.com/lrstanley/bubblezone"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
+	beads "github.com/hk9890/perles/internal/beads/domain"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"

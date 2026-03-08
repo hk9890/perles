@@ -39,7 +39,7 @@
 // workflow templates. When importing both packages, use aliasing to disambiguate:
 //
 //	import (
-//	    domainreg "github.com/zjrosen/perles/internal/registry/domain"
-//	    "github.com/zjrosen/perles/internal/orchestration/workflow"
+//	    domainreg "github.com/hk9890/perles/internal/registry/domain"
+//	    "github.com/hk9890/perles/internal/orchestration/workflow"
 //	)
 package registry

@@ -7,14 +7,14 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	fabricmcp "github.com/zjrosen/perles/internal/orchestration/fabric/mcp"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	fabricmcp "github.com/hk9890/perles/internal/orchestration/fabric/mcp"
+	"github.com/hk9890/perles/internal/orchestration/v2/adapter"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/validation"
 )
 
 // CoordinatorServer is an MCP server that exposes orchestration tools to the coordinator agent.

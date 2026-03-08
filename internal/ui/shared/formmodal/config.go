@@ -82,8 +82,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/ui/shared/modal"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/ui/shared/modal"
 )
 
 // FieldType identifies the type of form field.

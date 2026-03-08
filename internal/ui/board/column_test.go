@@ -9,7 +9,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
+	beads "github.com/hk9890/perles/internal/beads/domain"
 )
 
 func TestColumn_NewColumn(t *testing.T) {

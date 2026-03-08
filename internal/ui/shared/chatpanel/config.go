@@ -3,8 +3,8 @@ package chatpanel
 import (
 	"time"
 
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/orchestration/workflow"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/orchestration/workflow"
 )
 
 // Config holds configuration for the chat panel.

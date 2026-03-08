@@ -10,17 +10,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/mocks"
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/details"
-	"github.com/zjrosen/perles/internal/ui/modals/issueeditor"
-	"github.com/zjrosen/perles/internal/ui/shared/diffviewer"
-	"github.com/zjrosen/perles/internal/ui/shared/editor"
-	"github.com/zjrosen/perles/internal/ui/shared/formmodal"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/mocks"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/details"
+	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
+	"github.com/hk9890/perles/internal/ui/shared/diffviewer"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
+	"github.com/hk9890/perles/internal/ui/shared/formmodal"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.

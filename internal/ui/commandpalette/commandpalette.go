@@ -5,9 +5,9 @@ package commandpalette
 import (
 	"strings"
 
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/ui/shared/overlay"
+	"github.com/hk9890/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"

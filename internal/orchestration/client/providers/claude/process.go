@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // defaultKnownPaths defines the priority-ordered paths to check for the claude executable.

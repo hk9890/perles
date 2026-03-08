@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	domain "github.com/zjrosen/perles/internal/beads/domain"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	domain "github.com/hk9890/perles/internal/beads/domain"
 )
 
 // TestBDExecutor_ImplementsIssueExecutor verifies BDExecutor implements IssueExecutor.

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
 
-	"github.com/zjrosen/perles/internal/sessions/domain"
+	"github.com/hk9890/perles/internal/sessions/domain"
 )
 
 // setupTestRepo creates a new DB and returns the repository for testing.

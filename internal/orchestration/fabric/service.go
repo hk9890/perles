@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
-	"github.com/zjrosen/perles/internal/orchestration/fabric/repository"
+	"github.com/hk9890/perles/internal/orchestration/fabric/domain"
+	"github.com/hk9890/perles/internal/orchestration/fabric/repository"
 )
 
 // Service is the main facade for Fabric operations.

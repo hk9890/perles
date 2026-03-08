@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // TestStatusIndicator_AllStatuses verifies correct char/style for all known ProcessStatus values.

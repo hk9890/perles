@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
 )
 
 // ProcessRegistry tracks active Process instances for runtime operations.

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/client"
 )
 
 // ColumnConfig defines a single kanban column.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/hk9890/perles/internal/log"
 )
 
 // CommandFactoryFunc creates an exec.Cmd for testing purposes.

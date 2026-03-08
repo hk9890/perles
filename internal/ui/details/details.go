@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/bql"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/ui/shared/markdown"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/bql"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/ui/shared/markdown"
+	"github.com/hk9890/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"

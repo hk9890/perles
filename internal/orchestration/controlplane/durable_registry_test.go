@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/infrastructure/sqlite"
+	"github.com/hk9890/perles/internal/infrastructure/sqlite"
 )
 
 func TestDurableRegistry_Put_Get(t *testing.T) {

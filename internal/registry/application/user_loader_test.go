@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/registry/domain"
+	"github.com/hk9890/perles/internal/registry/domain"
 )
 
 func TestUserRegistryDir(t *testing.T) {

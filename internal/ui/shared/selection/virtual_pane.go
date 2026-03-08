@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/styles"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

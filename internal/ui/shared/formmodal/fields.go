@@ -4,7 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 )
 
 // subFocus tracks which part of a composite field has focus.

@@ -9,9 +9,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Status indicator styles (shared across all agent types)

@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/orchestration/client"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/amp"
-	"github.com/zjrosen/perles/internal/orchestration/client/providers/claude"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/orchestration/client"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/amp"
+	"github.com/hk9890/perles/internal/orchestration/client/providers/claude"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/pubsub"
 )
 
 // TestCostFlowEndToEnd_Claude verifies that cost data flows correctly from raw Claude JSON

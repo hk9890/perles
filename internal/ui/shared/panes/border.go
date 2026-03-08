@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Border characters (rounded)

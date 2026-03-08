@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/stretchr/testify/require"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
 )
 
 // Helper to create test messages

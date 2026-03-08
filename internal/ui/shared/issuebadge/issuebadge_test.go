@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
+	beads "github.com/hk9890/perles/internal/beads/domain"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"

@@ -1,7 +1,7 @@
 package bql
 
 import (
-	"github.com/zjrosen/perles/internal/ui/styles"
+	"github.com/hk9890/perles/internal/ui/styles"
 
 	"github.com/charmbracelet/lipgloss"
 )

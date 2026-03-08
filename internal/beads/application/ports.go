@@ -1,6 +1,6 @@
 package application
 
-import domain "github.com/zjrosen/perles/internal/beads/domain"
+import domain "github.com/hk9890/perles/internal/beads/domain"
 
 // VersionReader reads the beads database version.
 type VersionReader interface {

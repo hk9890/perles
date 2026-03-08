@@ -12,13 +12,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	appgit "github.com/zjrosen/perles/internal/git/application"
-	domaingit "github.com/zjrosen/perles/internal/git/domain"
-	"github.com/zjrosen/perles/internal/keys"
-	"github.com/zjrosen/perles/internal/mode/shared"
-	"github.com/zjrosen/perles/internal/ui/shared/overlay"
-	"github.com/zjrosen/perles/internal/ui/shared/panes"
-	"github.com/zjrosen/perles/internal/ui/styles"
+	appgit "github.com/hk9890/perles/internal/git/application"
+	domaingit "github.com/hk9890/perles/internal/git/domain"
+	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/overlay"
+	"github.com/hk9890/perles/internal/ui/shared/panes"
+	"github.com/hk9890/perles/internal/ui/styles"
 )
 
 // Layout constants

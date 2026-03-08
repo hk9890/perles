@@ -8,8 +8,8 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/zjrosen/perles/internal/config"
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/hk9890/perles/internal/config"
+	"github.com/hk9890/perles/internal/log"
 )
 
 // SoundService plays audio feedback. Implementations handle all errors

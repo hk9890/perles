@@ -1,4 +1,4 @@
-.PHONY: all build build-go build-frontend run run-all install test test-v test-update clean lint mocks mocks-clean playground up down jaeger daemon
+.PHONY: all build build-go build-frontend run run-all install test test-v test-update clean lint mocks mocks-clean playground up down jaeger daemon release-preflight
 
 # Version from git (tag or commit hash)
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -83,6 +83,10 @@ test-update:
 # Run linter (requires golangci-lint)
 lint:
 	golangci-lint run ./...
+
+# Run release preflight without publishing a production release
+release-preflight:
+	PUBLISH_GITHUB_RELEASES=false goreleaser release --snapshot --clean
 
 # Generate all mocks (clean first)
 mocks: mocks-clean

@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/require"
 
-	beads "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/ui/tree"
+	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/ui/tree"
 )
 
 func TestNewTreeColumn(t *testing.T) {

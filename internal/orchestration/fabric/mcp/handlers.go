@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	"github.com/zjrosen/perles/internal/orchestration/fabric/domain"
-	"github.com/zjrosen/perles/internal/orchestration/mcp/types"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	"github.com/hk9890/perles/internal/orchestration/fabric/domain"
+	"github.com/hk9890/perles/internal/orchestration/mcp/types"
 )
 
 // ToolCallResult is an alias for the shared MCP types package.

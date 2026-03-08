@@ -6,7 +6,7 @@ import (
 
 	gocache "github.com/patrickmn/go-cache"
 
-	"github.com/zjrosen/perles/internal/log"
+	"github.com/hk9890/perles/internal/log"
 )
 
 const DefaultExpiration = 10 * time.Minute

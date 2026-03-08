@@ -9,17 +9,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zjrosen/perles/internal/mode"
-	"github.com/zjrosen/perles/internal/orchestration/controlplane"
-	"github.com/zjrosen/perles/internal/orchestration/events"
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	fabricDomain "github.com/zjrosen/perles/internal/orchestration/fabric/domain"
-	"github.com/zjrosen/perles/internal/orchestration/metrics"
-	"github.com/zjrosen/perles/internal/orchestration/v2/command"
-	"github.com/zjrosen/perles/internal/orchestration/v2/repository"
-	"github.com/zjrosen/perles/internal/ui/shared/chatrender"
-	"github.com/zjrosen/perles/internal/ui/shared/toaster"
-	"github.com/zjrosen/perles/internal/ui/shared/vimtextarea"
+	"github.com/hk9890/perles/internal/mode"
+	"github.com/hk9890/perles/internal/orchestration/controlplane"
+	"github.com/hk9890/perles/internal/orchestration/events"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	fabricDomain "github.com/hk9890/perles/internal/orchestration/fabric/domain"
+	"github.com/hk9890/perles/internal/orchestration/metrics"
+	"github.com/hk9890/perles/internal/orchestration/v2/command"
+	"github.com/hk9890/perles/internal/orchestration/v2/repository"
+	"github.com/hk9890/perles/internal/ui/shared/chatrender"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 )
 
 func TestNewCoordinatorPanel(t *testing.T) {

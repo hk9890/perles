@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zjrosen/perles/internal/log"
-	"github.com/zjrosen/perles/internal/orchestration/fabric"
-	fabricmcp "github.com/zjrosen/perles/internal/orchestration/fabric/mcp"
-	mcptypes "github.com/zjrosen/perles/internal/orchestration/mcp/types"
-	"github.com/zjrosen/perles/internal/orchestration/v2/adapter"
-	"github.com/zjrosen/perles/internal/orchestration/v2/prompt"
-	"github.com/zjrosen/perles/internal/orchestration/validation"
+	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/orchestration/fabric"
+	fabricmcp "github.com/hk9890/perles/internal/orchestration/fabric/mcp"
+	mcptypes "github.com/hk9890/perles/internal/orchestration/mcp/types"
+	"github.com/hk9890/perles/internal/orchestration/v2/adapter"
+	"github.com/hk9890/perles/internal/orchestration/v2/prompt"
+	"github.com/hk9890/perles/internal/orchestration/validation"
 )
 
 // Validation constants for post_accountability_summary tool.

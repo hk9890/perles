@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	appbeads "github.com/zjrosen/perles/internal/beads/application"
-	domain "github.com/zjrosen/perles/internal/beads/domain"
-	"github.com/zjrosen/perles/internal/log"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
+	domain "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/log"
 
 	_ "github.com/ncruces/go-sqlite3/driver"
 	_ "github.com/ncruces/go-sqlite3/embed"

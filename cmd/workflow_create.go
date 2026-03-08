@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	infrabeads "github.com/zjrosen/perles/internal/beads/infrastructure"
-	"github.com/zjrosen/perles/internal/presentation"
-	appreg "github.com/zjrosen/perles/internal/registry/application"
+	infrabeads "github.com/hk9890/perles/internal/beads/infrastructure"
+	"github.com/hk9890/perles/internal/presentation"
+	appreg "github.com/hk9890/perles/internal/registry/application"
 )
 
 var (
