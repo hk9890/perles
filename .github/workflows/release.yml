@@ -38,6 +38,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Build frontend assets
+        run: make build-frontend
+
       - name: Run tests
         run: make test
 
