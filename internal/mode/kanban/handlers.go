@@ -542,24 +542,13 @@ func (m Model) handleIssueExternalEditorFinished(msg editor.FinishedMsg) (Model,
 		return m, nil
 	}
 
-	parsed, err := editor.ParseIssueMarkdown(msg.Content)
+	opts, err := issueeditor.BuildUpdateOptionsFromIssueMarkdown(issue, msg.Content)
 	if err != nil {
 		return m, func() tea.Msg {
 			return mode.ShowToastMsg{Message: "External editor parse error: " + err.Error(), Style: toaster.StyleError}
 		}
 	}
-
-	saveMsg := issueeditor.SaveMsg{
-		IssueID:     issue.ID,
-		Title:       parsed.Title,
-		Description: parsed.Description,
-		Notes:       parsed.Notes,
-		Priority:    parsed.Priority,
-		Status:      parsed.Status,
-		Labels:      parsed.Labels,
-	}
-	opts := saveMsg.BuildUpdateOptions(issue)
-	if opts.Title == nil && opts.Description == nil && opts.Notes == nil && opts.Priority == nil && opts.Status == nil && opts.Labels == nil {
+	if opts.IsEmpty() {
 		return m, nil
 	}
 

@@ -542,7 +542,7 @@ func (m Model) View() string {
 			TopRight:           col.RightTitle(),
 			Focused:            showFocusHighlight,
 			TitleColor:         colColor,
-			FocusedBorderColor: colColor,
+			FocusedBorderColor: styles.BorderHighlightFocusColor,
 		})
 		cols = append(cols, rendered)
 	}

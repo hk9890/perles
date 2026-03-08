@@ -211,6 +211,51 @@ func TestBuildUpdateOptions_ValueTypesUseAddressOfCopy(t *testing.T) {
 	require.Equal(t, beads.StatusClosed, msg.Status, "mutating opts.Status must not affect SaveMsg")
 }
 
+func TestBuildUpdateOptionsFromIssueMarkdown_NoChanges(t *testing.T) {
+	original := &beads.Issue{
+		ID:              "test-123",
+		TitleText:       "Title",
+		DescriptionText: "Desc",
+		Notes:           "Notes",
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		Labels:          []string{"bug"},
+	}
+
+	content := `# Perles Issue External Edit
+
+Edit the sections below and save. Keep section headings unchanged.
+
+## Title
+Title
+
+## Description
+Desc
+
+## Notes
+Notes
+
+## Labels
+- bug
+
+## Status
+open
+
+## Priority
+P2
+`
+
+	opts, err := BuildUpdateOptionsFromIssueMarkdown(original, content)
+	require.NoError(t, err)
+	require.True(t, opts.IsEmpty())
+}
+
+func TestBuildUpdateOptionsFromIssueMarkdown_ParseError(t *testing.T) {
+	_, err := BuildUpdateOptionsFromIssueMarkdown(&beads.Issue{ID: "test-123"}, "## Title\nOnly title")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing section")
+}
+
 // testIssue creates a beads.Issue for testing with the given parameters.
 func testIssue(id string, labels []string, priority beads.Priority, status beads.Status) beads.Issue {
 	return beads.Issue{

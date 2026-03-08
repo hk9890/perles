@@ -7,8 +7,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/exp/teatest"
 	zone "github.com/lrstanley/bubblezone"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
@@ -19,6 +21,7 @@ import (
 // TestMain initializes the global zone manager for all tests in this package.
 func TestMain(m *testing.M) {
 	zone.NewGlobal()
+	lipgloss.SetColorProfile(termenv.Ascii)
 	os.Exit(m.Run())
 }
 
@@ -110,6 +113,28 @@ func TestBoard_View_Golden(t *testing.T) {
 	m := NewFromViews(config.DefaultViews(), nil, nil).SetSize(120, 40)
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestBoard_View_Planning_Golden(t *testing.T) {
+	m := NewFromViews(config.DefaultViews(), nil, nil).SetSize(120, 40)
+	m, _ = m.SwitchToView(1)
+	view := m.View()
+	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestBoard_View_PlanningFocusHighlightChangesRendering(t *testing.T) {
+	oldProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	defer lipgloss.SetColorProfile(oldProfile)
+
+	m := NewFromViews(config.DefaultViews(), nil, nil).SetSize(120, 40)
+	m, _ = m.SwitchToView(1)
+
+	focusedView := m.View()
+	unfocusedView := m.SetBoardFocused(false).View()
+
+	require.NotEqual(t, focusedView, unfocusedView, "planning view should visibly change when board focus highlighting is disabled")
+	require.Contains(t, focusedView, "\x1b[38;5;75m", "focused planning view should render focus highlight color")
 }
 
 func TestBoard_CustomColumns(t *testing.T) {

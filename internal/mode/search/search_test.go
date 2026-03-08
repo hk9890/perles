@@ -24,6 +24,7 @@ import (
 	"github.com/hk9890/perles/internal/ui/shared/editor"
 	"github.com/hk9890/perles/internal/ui/shared/formmodal"
 	"github.com/hk9890/perles/internal/ui/shared/toaster"
+	"github.com/hk9890/perles/internal/ui/shared/vimtextarea"
 )
 
 // createTestModel creates a minimal Model for testing state transitions.
@@ -160,6 +161,39 @@ func TestSearch_TextMode_UsesSimpleTextSearch(t *testing.T) {
 	require.NoError(t, results.err)
 	require.Len(t, results.issues, 1)
 	require.Equal(t, "search-title", results.issues[0].ID)
+}
+
+func TestSearch_VimMode_AllowsImmediateTypingAndRendersQuery(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.UI.VimMode = true
+	clipboard := mocks.NewMockClipboard(t)
+	clipboard.EXPECT().Copy(mock.Anything).Return(nil).Maybe()
+
+	mockClient := mocks.NewMockBeadsClient(t)
+	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return((*sql.DB)(nil)).Maybe()
+
+	mockExecutor := mocks.NewMockBQLExecutor(t)
+	mockExecutor.EXPECT().Execute(mock.Anything).Return([]beads.Issue{}, nil).Maybe()
+
+	m := New(mode.Services{
+		Client:    mockClient,
+		Executor:  mockExecutor,
+		Config:    &cfg,
+		Clipboard: clipboard,
+	})
+	m = m.SetSize(100, 40)
+
+	require.True(t, m.input.VimEnabled(), "precondition: vim mode should be enabled")
+	require.Equal(t, vimtextarea.ModeInsert, m.input.Mode(), "search should start in insert mode so typing is immediately visible")
+
+	for _, r := range []rune{'a', 'b', 'c'} {
+		m, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	require.Equal(t, "abc", m.input.Value(), "typed characters should be captured in the search input")
+	require.Contains(t, m.input.View(), "abc", "input widget should render the typed query")
+	require.Contains(t, m.View(), "abc", "rendered search view should show the typed query")
 }
 
 func TestSearch_SetSize(t *testing.T) {

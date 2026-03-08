@@ -116,3 +116,15 @@ type UpdateIssueOptions struct {
 	Assignee    *string    // proactive; not used by current editor
 	Type        *IssueType // proactive; not used by current editor
 }
+
+// IsEmpty reports whether no update fields were set.
+func (o UpdateIssueOptions) IsEmpty() bool {
+	return o.Title == nil &&
+		o.Description == nil &&
+		o.Notes == nil &&
+		o.Priority == nil &&
+		o.Status == nil &&
+		o.Labels == nil &&
+		o.Assignee == nil &&
+		o.Type == nil
+}

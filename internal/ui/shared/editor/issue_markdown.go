@@ -35,10 +35,6 @@ func MarshalIssueMarkdown(issue beads.Issue) string {
 	}
 	labelsBlock = strings.TrimRight(labelsBlock, "\n")
 
-	if labelsBlock == "" {
-		labelsBlock = ""
-	}
-
 	return fmt.Sprintf(`# Perles Issue External Edit
 
 Edit the sections below and save. Keep section headings unchanged.

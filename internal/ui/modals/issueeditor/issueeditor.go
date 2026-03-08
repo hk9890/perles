@@ -11,6 +11,7 @@ import (
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/keys"
 	"github.com/hk9890/perles/internal/mode/shared"
+	"github.com/hk9890/perles/internal/ui/shared/editor"
 	"github.com/hk9890/perles/internal/ui/shared/formmodal"
 	"github.com/hk9890/perles/internal/ui/shared/issuebadge"
 
@@ -76,6 +77,34 @@ func (m SaveMsg) BuildUpdateOptions(original *beads.Issue) beads.UpdateIssueOpti
 		opts.Labels = &labels
 	}
 	return opts
+}
+
+// BuildUpdateOptionsFromIssueMarkdown parses issue-level external editor content
+// and returns only the changed fields for the original issue.
+func BuildUpdateOptionsFromIssueMarkdown(original *beads.Issue, content string) (beads.UpdateIssueOptions, error) {
+	parsed, err := editor.ParseIssueMarkdown(content)
+	if err != nil {
+		return beads.UpdateIssueOptions{}, err
+	}
+
+	saveMsg := SaveMsg{
+		IssueID:     issueID(original),
+		Title:       parsed.Title,
+		Description: parsed.Description,
+		Notes:       parsed.Notes,
+		Priority:    parsed.Priority,
+		Status:      parsed.Status,
+		Labels:      parsed.Labels,
+	}
+
+	return saveMsg.BuildUpdateOptions(original), nil
+}
+
+func issueID(original *beads.Issue) string {
+	if original == nil {
+		return ""
+	}
+	return original.ID
 }
 
 // New creates a new issue editor with the given issue.

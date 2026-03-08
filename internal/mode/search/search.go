@@ -468,7 +468,7 @@ func treeModeToIndex(mode string) int {
 func New(services mode.Services) Model {
 	input := vimtextarea.New(vimtextarea.Config{
 		VimEnabled:  services.Config.UI.VimMode,
-		DefaultMode: vimtextarea.ModeNormal,
+		DefaultMode: vimtextarea.ModeInsert,
 		Placeholder: "Search issues (title, description, labels, comments, id, notes, design, acceptance)",
 		MaxHeight:   3,
 	})
@@ -1330,14 +1330,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// Fall through to details delegation when focused on details
 
 	case key.Matches(msg, keys.Component.Editor):
-		if m.focus == FocusResults {
-			if issue := m.getSelectedIssue(); issue != nil {
-				return m, func() tea.Msg {
-					return details.OpenExternalEditorMsg{Issue: *issue}
-				}
-			}
-			return m, nil
-		}
 		if m.focus == FocusDetails {
 			break // Delegate to details component below to use currently displayed issue
 		}
@@ -1966,10 +1958,11 @@ func (m Model) renderListLeftPanel(width int) string {
 	inputContentHeight := min(m.input.TotalDisplayLines(), 3) // lines of wrapped text, max 3
 	inputHeight := inputContentHeight + 2                     // add 2 for borders
 	resultsHeight := m.height - inputHeight                   // fills remaining space
+	inputContent := m.input.View()
 
 	searchTabs := []panes.Tab{
-		{Label: "Text Search", ZoneID: searchModeTabZoneID(SearchInputModeText)},
-		{Label: "BQL Search", ZoneID: searchModeTabZoneID(SearchInputModeBQL)},
+		{Label: "Text Search", Content: inputContent, ZoneID: searchModeTabZoneID(SearchInputModeText)},
+		{Label: "BQL Search", Content: inputContent, ZoneID: searchModeTabZoneID(SearchInputModeBQL)},
 	}
 	activeSearchTab := 0
 	if m.mode == SearchInputModeBQL {
@@ -1977,7 +1970,6 @@ func (m Model) renderListLeftPanel(width int) string {
 	}
 
 	// Search input with explicit mode tabs.
-	inputContent := m.input.View()
 	inputBorder := panes.BorderedPane(panes.BorderConfig{
 		Content:            inputContent,
 		Width:              width,
@@ -2315,24 +2307,13 @@ func (m Model) handleIssueExternalEditorFinished(msg editor.FinishedMsg) (Model,
 		return m, nil
 	}
 
-	parsed, err := editor.ParseIssueMarkdown(msg.Content)
+	opts, err := issueeditor.BuildUpdateOptionsFromIssueMarkdown(issue, msg.Content)
 	if err != nil {
 		return m, func() tea.Msg {
 			return mode.ShowToastMsg{Message: "External editor parse error: " + err.Error(), Style: toaster.StyleError}
 		}
 	}
-
-	saveMsg := issueeditor.SaveMsg{
-		IssueID:     issue.ID,
-		Title:       parsed.Title,
-		Description: parsed.Description,
-		Notes:       parsed.Notes,
-		Priority:    parsed.Priority,
-		Status:      parsed.Status,
-		Labels:      parsed.Labels,
-	}
-	opts := saveMsg.BuildUpdateOptions(issue)
-	if opts.Title == nil && opts.Description == nil && opts.Notes == nil && opts.Priority == nil && opts.Status == nil && opts.Labels == nil {
+	if opts.IsEmpty() {
 		return m, nil
 	}
 

@@ -78,7 +78,7 @@ func ExecuteSimpleTextSearch(db *sql.DB, input string) ([]beads.Issue, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	executor := &Executor{}
+	executor := &Executor{db: db}
 	issues, err := executor.scanIssuesBase(rows)
 	if err != nil {
 		return nil, err
@@ -92,15 +92,15 @@ func ExecuteSimpleTextSearch(db *sql.DB, input string) ([]beads.Issue, error) {
 		ids[i] = issue.ID
 	}
 
-	labels, err := executor.loadLabelsForIssuesWithDB(db, ids)
+	labels, err := executor.loadLabelsForIssues(ids)
 	if err != nil {
 		return nil, fmt.Errorf("load labels: %w", err)
 	}
-	commentCounts, err := executor.loadCommentCountsForIssuesWithDB(db, ids)
+	commentCounts, err := executor.loadCommentCountsForIssues(ids)
 	if err != nil {
 		return nil, fmt.Errorf("load comment counts: %w", err)
 	}
-	deps, err := executor.loadDependenciesForIssuesWithDB(db, ids)
+	deps, err := executor.loadDependenciesForIssues(ids)
 	if err != nil {
 		return nil, fmt.Errorf("load dependencies: %w", err)
 	}
@@ -124,28 +124,4 @@ func ExecuteSimpleTextSearch(db *sql.DB, input string) ([]beads.Issue, error) {
 	}
 
 	return issues, nil
-}
-
-func (e *Executor) loadDependenciesForIssuesWithDB(db *sql.DB, ids []string) (map[string]IssueDeps, error) {
-	if e != nil && e.db != nil {
-		return e.loadDependenciesForIssues(ids)
-	}
-	tmp := &Executor{db: db}
-	return tmp.loadDependenciesForIssues(ids)
-}
-
-func (e *Executor) loadLabelsForIssuesWithDB(db *sql.DB, ids []string) (map[string][]string, error) {
-	if e != nil && e.db != nil {
-		return e.loadLabelsForIssues(ids)
-	}
-	tmp := &Executor{db: db}
-	return tmp.loadLabelsForIssues(ids)
-}
-
-func (e *Executor) loadCommentCountsForIssuesWithDB(db *sql.DB, ids []string) (map[string]int, error) {
-	if e != nil && e.db != nil {
-		return e.loadCommentCountsForIssues(ids)
-	}
-	tmp := &Executor{db: db}
-	return tmp.loadCommentCountsForIssues(ids)
 }
