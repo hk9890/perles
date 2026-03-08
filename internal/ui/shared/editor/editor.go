@@ -2,6 +2,7 @@
 package editor
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -41,6 +42,11 @@ func OpenCmd(content string) tea.Cmd {
 			editor = "vi"
 		}
 
+		editorArgs := strings.Fields(editor)
+		if len(editorArgs) == 0 {
+			return FinishedMsg{Err: errors.New("editor command is empty")}
+		}
+
 		// Create temp file with current content
 		tmpFile, err := os.CreateTemp("", "perles-edit-*.md")
 		if err != nil {
@@ -58,9 +64,9 @@ func OpenCmd(content string) tea.Cmd {
 			return FinishedMsg{Err: err}
 		}
 
-		// Create the editor command
-		// #nosec G204 -- editor command is from trusted env vars (VISUAL/EDITOR) or hardcoded "vi"
-		cmd := exec.Command(editor, tmpPath)
+		// Create the editor command.
+		//nolint:gosec // G204,G702: editor selection is an intentional local-user choice via VISUAL/EDITOR.
+		cmd := exec.Command(editorArgs[0], append(editorArgs[1:], tmpPath)...)
 
 		// Return an ExecMsg that will be handled by the parent
 		return ExecMsg{

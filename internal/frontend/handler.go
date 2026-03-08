@@ -738,9 +738,8 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security: Only allow reading files within the sessions directory
-	// This prevents arbitrary file access
-	if !strings.HasPrefix(filePath, h.sessionBaseDir) {
+	// Security: Only allow reading files within the sessions directory.
+	if err := h.validateSessionPath(filePath); err != nil {
 		http.Error(w, "access denied: file outside sessions directory", http.StatusForbidden)
 		return
 	}
@@ -759,5 +758,6 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Set content type based on file extension
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(content)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(content) //nolint:gosec // G705: content is returned as plain text with nosniff, not rendered as HTML
 }

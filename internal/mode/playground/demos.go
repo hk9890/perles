@@ -1160,7 +1160,7 @@ func createScrollablePaneDemo(width, height int) DemoModel {
 	// Generate long content to demonstrate scrolling
 	var content strings.Builder
 	for i := 1; i <= 50; i++ {
-		content.WriteString(fmt.Sprintf("Line %2d: This is sample content for the scrollable pane demo.\n", i))
+		_, _ = fmt.Fprintf(&content, "Line %2d: This is sample content for the scrollable pane demo.\n", i)
 	}
 	vp.SetContent(content.String())
 
@@ -1232,7 +1232,7 @@ func (m *ScrollablePaneDemoModel) View() string {
 			// Generate content
 			var content strings.Builder
 			for i := 1; i <= 50; i++ {
-				content.WriteString(fmt.Sprintf("Line %2d: Sample scrollable content demonstrating viewport.\n", i))
+				_, _ = fmt.Fprintf(&content, "Line %2d: Sample scrollable content demonstrating viewport.\n", i)
 			}
 			return content.String()
 		},
@@ -1870,7 +1870,7 @@ func renderTokenContent() string {
 				swatch := lipgloss.NewStyle().
 					Background(lipgloss.Color(hex)).
 					Render("  ")
-				sb.WriteString(fmt.Sprintf("%s%s %s", colSpacing, swatch, hex))
+				_, _ = fmt.Fprintf(&sb, "%s%s %s", colSpacing, swatch, hex)
 			}
 			sb.WriteString("\n")
 		}

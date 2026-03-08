@@ -19,11 +19,11 @@ func OpenBrowser(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", url) //nolint:gosec // G204: fixed OS launcher; URL is passed as an argument, not through a shell
 	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", url) //nolint:gosec // G204: fixed OS launcher; URL is passed as an argument, not through a shell
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url) //nolint:gosec // G204: fixed OS launcher; URL is passed as an argument, not through a shell
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}

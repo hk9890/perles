@@ -195,14 +195,14 @@ func BuildWorkerOutOfContextPrompt(workerID string, taskID string) string {
 	var prompt strings.Builder
 
 	prompt.WriteString("[WORKER CONTEXT EXHAUSTED]\n\n")
-	prompt.WriteString(fmt.Sprintf("Worker `%s` has run out of context and can no longer process messages.\n\n", workerID))
+	_, _ = fmt.Fprintf(&prompt, "Worker `%s` has run out of context and can no longer process messages.\n\n", workerID)
 
 	prompt.WriteString("REQUIRED ACTION:\n")
-	prompt.WriteString(fmt.Sprintf("1. Use `replace_worker` tool to replace `%s` with a fresh worker\n", workerID))
+	_, _ = fmt.Fprintf(&prompt, "1. Use `replace_worker` tool to replace `%s` with a fresh worker\n", workerID)
 	prompt.WriteString("2. Wait for the new worker to send a \"ready\" message\n")
 
 	if taskID != "" {
-		prompt.WriteString(fmt.Sprintf("3. The previous worker was working on task `%s`. Use `assign_task` to assign this task to the new worker and include in the summary they need to check for existing work since they are taking over from a previous worker.\n", taskID))
+		_, _ = fmt.Fprintf(&prompt, "3. The previous worker was working on task `%s`. Use `assign_task` to assign this task to the new worker and include in the summary they need to check for existing work since they are taking over from a previous worker.\n", taskID)
 	} else {
 		prompt.WriteString("3. The previous worker had no assigned task. Use `send_to_worker` to send the new worker instructions for what to work on and include in the summary they need to check for existing work since they are taking over from a previous worker.\n")
 	}
@@ -261,7 +261,7 @@ func BuildWorkflowContinuationPrompt(workflowState *workflow.WorkflowState) stri
 
 	// Section 3: Active workflow section
 	if workflowState != nil && workflowState.WorkflowName != "" {
-		prompt.WriteString(fmt.Sprintf("ACTIVE WORKFLOW: %s\n", workflowState.WorkflowName))
+		_, _ = fmt.Fprintf(&prompt, "ACTIVE WORKFLOW: %s\n", workflowState.WorkflowName)
 		prompt.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 		prompt.WriteString(workflowState.WorkflowContent)
 		prompt.WriteString("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")

@@ -698,7 +698,7 @@ func (m Model) ClearMessages() Model {
 func (m Model) SetInfrastructure(infra *v2.SimpleInfrastructure) Model {
 	m.infra = infra
 	// Create context for subscription lifetime
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	m.ctx, m.cancel = context.WithCancel(context.Background()) //nolint:gosec // G118: cancel is stored on the model and invoked by Cleanup
 	// Initialize the continuous listener for event subscription
 	m.v2Listener = pubsub.NewContinuousListener(m.ctx, infra.EventBus)
 	return m

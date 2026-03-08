@@ -13,9 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/mocks"
@@ -28,6 +25,9 @@ import (
 	"github.com/hk9890/perles/internal/orchestration/v2/processor"
 	"github.com/hk9890/perles/internal/orchestration/v2/repository"
 	"github.com/hk9890/perles/internal/pubsub"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // ===========================================================================
@@ -743,15 +743,13 @@ func TestV2Integration_MessageQueueFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, completeResult.Success)
 
-	// After task completion, a DeliverQueued follow-up is submitted.
-	// Wait for the processor to have processed enough commands (avoid race with Size())
+	// After task completion, a DeliverQueued follow-up is submitted asynchronously.
+	// Wait for the queue to shrink rather than relying on a brittle processed-count total.
 	require.Eventually(t, func() bool {
-		// 1 spawn + assign + 3 sends + report_complete + deliver_queued = 6
-		return stack.processor.ProcessedCount() >= 6
-	}, time.Second, 10*time.Millisecond, "commands should be processed")
+		return stack.queueRepo.Size(workerID) < 3
+	}, time.Second, 10*time.Millisecond, "at least one queued message should be delivered after task completion")
 
 	// DeliverQueued handler delivers ONE message and transitions worker to Working.
-	// After processing, the queue should have fewer than 3 messages.
 	newSize := stack.queueRepo.Size(workerID)
 	assert.Less(t, newSize, 3, "at least one queued message should be delivered after task completion")
 }

@@ -75,7 +75,7 @@ func (b *CrossWorkflowEventBus) AttachWorkflow(inst *WorkflowInstance) {
 	b.DetachWorkflow(inst.ID)
 
 	// Create cancellable context for this subscription
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel is stored in the subscriptions map and invoked on detach
 
 	b.mu.Lock()
 	b.subscriptions[inst.ID] = cancel

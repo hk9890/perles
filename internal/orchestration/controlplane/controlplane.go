@@ -510,7 +510,7 @@ func (cp *defaultControlPlane) Archive(ctx context.Context, id WorkflowID) error
 // The channel is automatically closed when the context is cancelled.
 func (cp *defaultControlPlane) Subscribe(ctx context.Context) (<-chan ControlPlaneEvent, func()) {
 	// Create a cancellable context for this subscription
-	subCtx, cancel := context.WithCancel(ctx)
+	subCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel is returned to the caller as the unsubscribe function
 
 	// Subscribe to the event bus broker
 	brokerCh := cp.eventBus.broker.Subscribe(subCtx)
@@ -555,7 +555,7 @@ func (cp *defaultControlPlane) SubscribeWorkflow(ctx context.Context, id Workflo
 // and event types to exclude. See EventFilter for details.
 func (cp *defaultControlPlane) SubscribeFiltered(ctx context.Context, filter EventFilter) (<-chan ControlPlaneEvent, func()) {
 	// Create a cancellable context for this subscription
-	subCtx, cancel := context.WithCancel(ctx)
+	subCtx, cancel := context.WithCancel(ctx) //nolint:gosec // G118: cancel is returned to the caller as the unsubscribe function
 
 	// Subscribe to the event bus broker
 	brokerCh := cp.eventBus.broker.Subscribe(subCtx)

@@ -408,36 +408,36 @@ func buildAccountabilitySummaryMarkdown(workerID string, args postAccountability
 
 	// YAML frontmatter
 	b.WriteString("---\n")
-	b.WriteString(fmt.Sprintf("task_id: %s\n", args.TaskID))
-	b.WriteString(fmt.Sprintf("worker_id: %s\n", workerID))
-	b.WriteString(fmt.Sprintf("timestamp: %s\n", timestamp))
+	_, _ = fmt.Fprintf(&b, "task_id: %s\n", args.TaskID)
+	_, _ = fmt.Fprintf(&b, "worker_id: %s\n", workerID)
+	_, _ = fmt.Fprintf(&b, "timestamp: %s\n", timestamp)
 
 	// Optional array fields in frontmatter
 	if len(args.Commits) > 0 {
 		b.WriteString("commits:\n")
 		for _, commit := range args.Commits {
-			b.WriteString(fmt.Sprintf("  - %s\n", commit))
+			_, _ = fmt.Fprintf(&b, "  - %s\n", commit)
 		}
 	}
 	if len(args.IssuesDiscovered) > 0 {
 		b.WriteString("issues_discovered:\n")
 		for _, issue := range args.IssuesDiscovered {
-			b.WriteString(fmt.Sprintf("  - %s\n", issue))
+			_, _ = fmt.Fprintf(&b, "  - %s\n", issue)
 		}
 	}
 	if len(args.IssuesClosed) > 0 {
 		b.WriteString("issues_closed:\n")
 		for _, issue := range args.IssuesClosed {
-			b.WriteString(fmt.Sprintf("  - %s\n", issue))
+			_, _ = fmt.Fprintf(&b, "  - %s\n", issue)
 		}
 	}
 	b.WriteString("---\n\n")
 
 	// Markdown body - Header with metadata
 	b.WriteString("# Worker Accountability Summary\n\n")
-	b.WriteString(fmt.Sprintf("**Worker:** %s\n", workerID))
-	b.WriteString(fmt.Sprintf("**Task:** %s\n", args.TaskID))
-	b.WriteString(fmt.Sprintf("**Date:** %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
+	_, _ = fmt.Fprintf(&b, "**Worker:** %s\n", workerID)
+	_, _ = fmt.Fprintf(&b, "**Task:** %s\n", args.TaskID)
+	_, _ = fmt.Fprintf(&b, "**Date:** %s\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
 	// What I Accomplished section (always included)
 	b.WriteString("## What I Accomplished\n\n")
@@ -448,7 +448,7 @@ func buildAccountabilitySummaryMarkdown(workerID string, args postAccountability
 	if len(args.VerificationPoints) > 0 {
 		b.WriteString("## Verification Points\n\n")
 		for _, point := range args.VerificationPoints {
-			b.WriteString(fmt.Sprintf("- %s\n", point))
+			_, _ = fmt.Fprintf(&b, "- %s\n", point)
 		}
 		b.WriteString("\n")
 	}
@@ -457,7 +457,7 @@ func buildAccountabilitySummaryMarkdown(workerID string, args postAccountability
 	if len(args.IssuesDiscovered) > 0 {
 		b.WriteString("## Issues Discovered\n\n")
 		for _, issue := range args.IssuesDiscovered {
-			b.WriteString(fmt.Sprintf("- %s\n", issue))
+			_, _ = fmt.Fprintf(&b, "- %s\n", issue)
 		}
 		b.WriteString("\n")
 	}
