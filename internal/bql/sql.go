@@ -59,18 +59,47 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 	// Handle special fields
 	switch e.Field {
 	case "blocked":
-		// blocked = true means has entries in blocked_issues
+		// blocked = true means issue has an active blocker.
+		// Use direct dependency predicates instead of blocked_issues view to avoid
+		// Dolt field-index errors when selecting through wide i.* views.
+		blockedExpr := `EXISTS (
+			SELECT 1
+			FROM dependencies d
+			WHERE d.issue_id = i.id
+			  AND d.type = 'blocks'
+			  AND EXISTS (
+				SELECT 1
+				FROM issues blocker
+				WHERE blocker.id = d.depends_on_id
+				  AND blocker.status NOT IN ('closed', 'pinned')
+			  )
+		)`
 		if e.Value.Bool {
-			return "i.id IN (SELECT id FROM blocked_issues)"
+			return blockedExpr
 		}
-		return "i.id NOT IN (SELECT id FROM blocked_issues)"
+		return "NOT " + blockedExpr
 
 	case "ready":
-		// ready = true means in ready_issues view
+		// ready = true means issue is active and has no active blockers.
+		// Keep this independent of ready_issues view to avoid Dolt view-scan bugs.
+		readyExpr := `((i.status = 'open' OR i.status = 'in_progress')
+			AND NOT EXISTS (
+				SELECT 1
+				FROM dependencies d
+				WHERE d.issue_id = i.id
+				  AND d.type = 'blocks'
+				  AND EXISTS (
+					SELECT 1
+					FROM issues blocker
+					WHERE blocker.id = d.depends_on_id
+					  AND blocker.status NOT IN ('closed', 'pinned')
+				  )
+			)
+		)`
 		if e.Value.Bool {
-			return "i.id IN (SELECT id FROM ready_issues)"
+			return readyExpr
 		}
-		return "i.id NOT IN (SELECT id FROM ready_issues)"
+		return "NOT " + readyExpr
 
 	case "pinned", "is_template":
 		// Nullable boolean columns (INTEGER in SQLite)

@@ -475,7 +475,7 @@ func DefaultColumns() []ColumnConfig {
 	return []ColumnConfig{
 		{
 			Name:  "Blocked",
-			Query: "status = open and blocked = true",
+			Query: "blocked = true",
 			Color: "#FF8787",
 		},
 		{
@@ -1073,13 +1073,13 @@ theme:
 
 # Board views - each view is a named collection of columns
 # Cycle through views with Shift+J (next) and Shift+K (previous)
-views:
-  - name: Default
-    columns:
-      - name: Blocked
-        type: bql
-        query: "status = open and blocked = true"
-        color: "#FF8787"
+	views:
+	  - name: Default
+	    columns:
+	      - name: Blocked
+	        type: bql
+	        query: "blocked = true"
+	        color: "#FF8787"
 
       - name: Ready
         type: bql

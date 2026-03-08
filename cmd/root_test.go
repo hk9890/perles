@@ -6,12 +6,33 @@ import (
 	"path/filepath"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/hk9890/perles/internal/app"
 	infrabeads "github.com/hk9890/perles/internal/beads/infrastructure"
 	"github.com/hk9890/perles/internal/config"
 	"github.com/hk9890/perles/internal/keys"
 
 	"github.com/stretchr/testify/require"
 )
+
+type testModelNoClose struct{}
+
+func (m testModelNoClose) Init() tea.Cmd                           { return nil }
+func (m testModelNoClose) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m testModelNoClose) View() string                            { return "" }
+
+type testModelWithClose struct {
+	closed bool
+	err    error
+}
+
+func (m *testModelWithClose) Init() tea.Cmd                           { return nil }
+func (m *testModelWithClose) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m *testModelWithClose) View() string                            { return "" }
+func (m *testModelWithClose) Close() error {
+	m.closed = true
+	return m.err
+}
 
 // TestNoBeadsDirectory_BeadsClientFails verifies that appbeads.NewDoltClient returns
 // an error when there's no .beads directory. This is the condition that triggers
@@ -244,5 +265,107 @@ func TestStartup_PartialKeybindings(t *testing.T) {
 			"search key should default to ctrl+@ (ctrl+space)")
 		require.Equal(t, []string{"ctrl+d"}, keys.Kanban.Dashboard.Keys(),
 			"dashboard key should be ctrl+d")
+	})
+}
+
+func TestCleanupFinalModel(t *testing.T) {
+	t.Run("nil final model returns run error", func(t *testing.T) {
+		runErr := fmt.Errorf("run failed")
+		err := cleanupFinalModel(nil, runErr, false)
+		require.ErrorIs(t, err, runErr)
+	})
+
+	t.Run("non closable model keeps run error", func(t *testing.T) {
+		runErr := fmt.Errorf("run failed")
+		err := cleanupFinalModel(testModelNoClose{}, runErr, true)
+		require.ErrorIs(t, err, runErr)
+	})
+
+	t.Run("closable pointer model is closed", func(t *testing.T) {
+		m := &testModelWithClose{}
+		err := cleanupFinalModel(m, nil, false)
+		require.NoError(t, err)
+		require.True(t, m.closed, "expected Close() to be called")
+	})
+
+	t.Run("app.Model value final model is closed", func(t *testing.T) {
+		oldCloseAppModel := closeAppModel
+		t.Cleanup(func() { closeAppModel = oldCloseAppModel })
+
+		called := 0
+		closeAppModel = func(m *app.Model) error {
+			called++
+			require.NotNil(t, m)
+			return nil
+		}
+
+		finalModel := app.Model{}
+		err := cleanupFinalModel(finalModel, nil, false)
+		require.NoError(t, err)
+		require.Equal(t, 1, called, "expected app.Model Close() path to be called")
+	})
+
+	t.Run("*app.Model pointer final model is closed", func(t *testing.T) {
+		oldCloseAppModel := closeAppModel
+		t.Cleanup(func() { closeAppModel = oldCloseAppModel })
+
+		called := 0
+		closeAppModel = func(m *app.Model) error {
+			called++
+			require.NotNil(t, m)
+			return nil
+		}
+
+		finalModel := &app.Model{}
+		err := cleanupFinalModel(finalModel, nil, false)
+		require.NoError(t, err)
+		require.Equal(t, 1, called, "expected *app.Model Close() path to be called")
+	})
+
+	t.Run("typed nil *app.Model is ignored", func(t *testing.T) {
+		oldCloseAppModel := closeAppModel
+		t.Cleanup(func() { closeAppModel = oldCloseAppModel })
+
+		called := 0
+		closeAppModel = func(m *app.Model) error {
+			called++
+			return nil
+		}
+
+		var finalModel *app.Model
+		err := cleanupFinalModel(finalModel, nil, false)
+		require.NoError(t, err)
+		require.Equal(t, 0, called, "expected typed nil *app.Model to skip Close()")
+	})
+
+	t.Run("close error returned when run succeeded", func(t *testing.T) {
+		closeErr := fmt.Errorf("close failed")
+		m := &testModelWithClose{err: closeErr}
+		err := cleanupFinalModel(m, nil, true)
+		require.ErrorIs(t, err, closeErr)
+		require.True(t, m.closed, "expected Close() to be called")
+	})
+
+	t.Run("run error preserved when close also fails", func(t *testing.T) {
+		runErr := fmt.Errorf("run failed")
+		closeErr := fmt.Errorf("close failed")
+		m := &testModelWithClose{err: closeErr}
+		err := cleanupFinalModel(m, runErr, true)
+		require.ErrorIs(t, err, runErr)
+		require.True(t, m.closed, "expected Close() to be called")
+	})
+
+	t.Run("app.Model close error is returned when run succeeded", func(t *testing.T) {
+		oldCloseAppModel := closeAppModel
+		t.Cleanup(func() { closeAppModel = oldCloseAppModel })
+
+		closeErr := fmt.Errorf("app close failed")
+		closeAppModel = func(m *app.Model) error {
+			return closeErr
+		}
+
+		finalModel := app.Model{}
+		err := cleanupFinalModel(finalModel, nil, true)
+		require.ErrorIs(t, err, closeErr)
 	})
 }

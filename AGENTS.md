@@ -42,19 +42,6 @@ Perles is a Go TUI for beads issue tracking, search/kanban workflows, and multi-
 
 - Read `docs/CONFIGURATION.md` for config file schema, defaults, environment variables, and overrides.
 
-## Landing the Plane (Session Completion)
+## Reminder
 
-When ending a session, complete all of the following:
-
-1. Track follow-up work in beads (create/update/close tasks and bugs as appropriate).
-2. Run quality gates for changed code (tests, lint, build per routed docs).
-3. Update task status so beads reflects actual completion state.
-4. Push to remote:
-   ```bash
-   git pull --rebase
-   git push
-   git status  # must show up to date with origin
-   ```
-5. Verify final state: changes committed, pushed, and task workflow updated.
-
-**Critical:** Session completion requires a successful `git push`.
+- Always run `make build-go` before telling the user work is done or ready to test.

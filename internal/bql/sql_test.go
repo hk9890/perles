@@ -83,7 +83,18 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, params := builder.Build()
 
-		require.Equal(t, "i.id IN (SELECT id FROM blocked_issues)", where)
+		require.Equal(t, `EXISTS (
+			SELECT 1
+			FROM dependencies d
+			WHERE d.issue_id = i.id
+			  AND d.type = 'blocks'
+			  AND EXISTS (
+				SELECT 1
+				FROM issues blocker
+				WHERE blocker.id = d.depends_on_id
+				  AND blocker.status NOT IN ('closed', 'pinned')
+			  )
+		)`, where)
 		require.Empty(t, params)
 	})
 
@@ -95,7 +106,18 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		require.Equal(t, "i.id NOT IN (SELECT id FROM blocked_issues)", where)
+		require.Equal(t, `NOT EXISTS (
+			SELECT 1
+			FROM dependencies d
+			WHERE d.issue_id = i.id
+			  AND d.type = 'blocks'
+			  AND EXISTS (
+				SELECT 1
+				FROM issues blocker
+				WHERE blocker.id = d.depends_on_id
+				  AND blocker.status NOT IN ('closed', 'pinned')
+			  )
+		)`, where)
 	})
 
 	t.Run("ready true", func(t *testing.T) {
@@ -106,7 +128,20 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		require.Equal(t, "i.id IN (SELECT id FROM ready_issues)", where)
+		require.Equal(t, `((i.status = 'open' OR i.status = 'in_progress')
+			AND NOT EXISTS (
+				SELECT 1
+				FROM dependencies d
+				WHERE d.issue_id = i.id
+				  AND d.type = 'blocks'
+				  AND EXISTS (
+					SELECT 1
+					FROM issues blocker
+					WHERE blocker.id = d.depends_on_id
+					  AND blocker.status NOT IN ('closed', 'pinned')
+				  )
+			)
+		)`, where)
 	})
 
 	t.Run("pinned true", func(t *testing.T) {
@@ -339,7 +374,18 @@ func TestSQLBuilder_NotExpression(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, _, _ := builder.Build()
 
-	require.Equal(t, "NOT (i.id IN (SELECT id FROM blocked_issues))", where)
+	require.Equal(t, `NOT (EXISTS (
+			SELECT 1
+			FROM dependencies d
+			WHERE d.issue_id = i.id
+			  AND d.type = 'blocks'
+			  AND EXISTS (
+				SELECT 1
+				FROM issues blocker
+				WHERE blocker.id = d.depends_on_id
+				  AND blocker.status NOT IN ('closed', 'pinned')
+			  )
+		))`, where)
 }
 
 func TestSQLBuilder_OrderBy(t *testing.T) {
@@ -429,7 +475,18 @@ func TestSQLBuilder_ComplexQuery(t *testing.T) {
 	builder := NewSQLBuilder(query)
 	where, orderBy, params := builder.Build()
 
-	require.Equal(t, "((i.issue_type = ? OR i.issue_type = ?) AND i.id NOT IN (SELECT id FROM blocked_issues))", where)
+	require.Equal(t, `((i.issue_type = ? OR i.issue_type = ?) AND NOT EXISTS (
+			SELECT 1
+			FROM dependencies d
+			WHERE d.issue_id = i.id
+			  AND d.type = 'blocks'
+			  AND EXISTS (
+				SELECT 1
+				FROM issues blocker
+				WHERE blocker.id = d.depends_on_id
+				  AND blocker.status NOT IN ('closed', 'pinned')
+			  )
+		))`, where)
 	require.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)
 	require.Equal(t, []interface{}{"bug", "task"}, params)
 }

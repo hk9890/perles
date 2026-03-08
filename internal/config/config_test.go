@@ -72,7 +72,7 @@ func TestDefaultColumns(t *testing.T) {
 	require.Len(t, cols, 4)
 
 	require.Equal(t, "Blocked", cols[0].Name)
-	require.Equal(t, "status = open and blocked = true", cols[0].Query)
+	require.Equal(t, "blocked = true", cols[0].Query)
 
 	require.Equal(t, "Ready", cols[1].Name)
 	require.Equal(t, "status = open and ready = true", cols[1].Query)

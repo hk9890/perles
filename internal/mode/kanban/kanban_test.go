@@ -180,6 +180,16 @@ func TestKanban_SlashKey_SendsSubModeList(t *testing.T) {
 	require.Equal(t, "priority >= 0", switchMsg.Query, "expected Query to match column BQL")
 }
 
+func TestNew_UsesBlockedByDependencyAndReadySemanticsInDefaultColumns(t *testing.T) {
+	cfg := config.Config{}
+	services := mode.Services{Config: &cfg}
+
+	m := New(services)
+
+	require.Equal(t, "blocked = true", m.board.Column(0).Query())
+	require.Equal(t, "status = open and ready = true", m.board.Column(1).Query())
+}
+
 func TestKanban_EnterKey_NoIssue_NoCommand(t *testing.T) {
 	// Model with empty board (no issues)
 	cfg := config.Defaults()

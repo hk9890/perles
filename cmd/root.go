@@ -327,19 +327,53 @@ func runApp(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Clean up watcher resources using the final model state (which has controlPlane if dashboard was used)
-	appModel := finalModel.(app.Model)
-	if closeErr := appModel.Close(); closeErr != nil && err == nil {
-		if debug {
-			log.Error(log.CatConfig, "Error during cleanup", "error", closeErr)
-		}
-		err = closeErr
-	}
+	err = cleanupFinalModel(finalModel, err, debug)
 
 	if err != nil {
 		return fmt.Errorf("running program: %w", err)
 	}
 	return nil
+}
+
+func cleanupFinalModel(finalModel tea.Model, runErr error, debug bool) error {
+	if finalModel == nil {
+		return runErr
+	}
+
+	closeErr := closeModel(finalModel, debug)
+	if closeErr != nil {
+		if debug {
+			log.Error(log.CatConfig, "Error during cleanup", "error", closeErr)
+		}
+		if runErr == nil {
+			return closeErr
+		}
+	}
+
+	return runErr
+}
+
+var closeAppModel = func(m *app.Model) error {
+	return m.Close()
+}
+
+func closeModel(finalModel tea.Model, debug bool) error {
+	switch m := finalModel.(type) {
+	case app.Model:
+		return closeAppModel(&m)
+	case *app.Model:
+		if m == nil {
+			return nil
+		}
+		return closeAppModel(m)
+	case interface{ Close() error }:
+		return m.Close()
+	default:
+		if debug {
+			log.Debug(log.CatConfig, "Final model does not implement Close", "type", fmt.Sprintf("%T", finalModel))
+		}
+		return nil
+	}
 }
 
 // Execute runs the root command

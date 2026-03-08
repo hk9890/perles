@@ -139,6 +139,70 @@ func TestExecutor_ReadyFilter(t *testing.T) {
 	}
 }
 
+func TestExecutor_DefaultBoardBlockedQuery(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("blocked = true")
+	require.NoError(t, err)
+
+	// In standard test data, test-3 is currently blocked by dependency test-1.
+	require.Len(t, issues, 1)
+	require.Equal(t, "test-3", issues[0].ID)
+}
+
+func TestExecutor_BlockedFilter_DoesNotReturnBlockersUnlessAlsoBlocked(t *testing.T) {
+	db := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.
+			WithIssue("blocker-only", testutil.Title("Blocker only"), testutil.Status("open")).
+			WithIssue("blocked-by-blocker", testutil.Title("Blocked by blocker"), testutil.Status("open")).
+			WithIssue("blocked-and-blocker", testutil.Title("Blocked and blocker"), testutil.Status("open")).
+			WithIssue("upstream-blocker", testutil.Title("Upstream blocker"), testutil.Status("open")).
+			WithDependency("blocked-by-blocker", "blocker-only", "blocks").
+			WithDependency("blocked-and-blocker", "upstream-blocker", "blocks").
+			WithDependency("blocked-by-blocker", "blocked-and-blocker", "blocks")
+	})
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("blocked = true")
+	require.NoError(t, err)
+
+	ids := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		ids = append(ids, issue.ID)
+	}
+
+	// blocker-only blocks another issue, but has no blockers itself.
+	// blocked-and-blocker appears because it is itself blocked by upstream-blocker.
+	require.ElementsMatch(t, []string{"blocked-by-blocker", "blocked-and-blocker"}, ids)
+	require.NotContains(t, ids, "blocker-only")
+	require.NotContains(t, ids, "upstream-blocker")
+}
+
+func TestExecutor_DefaultBoardReadyQuery(t *testing.T) {
+	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("status = open and ready = true")
+	require.NoError(t, err)
+
+	// Default board query should return open issues that are not actively blocked.
+	require.Len(t, issues, 4)
+	ids := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		require.Equal(t, beads.StatusOpen, issue.Status)
+		require.NotEqual(t, "test-3", issue.ID, "blocked issue should be excluded")
+		ids = append(ids, issue.ID)
+	}
+	require.ElementsMatch(t, []string{"test-1", "test-2", "test-5", "test-6"}, ids)
+}
+
 func TestExecutor_LabelFilter(t *testing.T) {
 	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
 	defer func() { _ = db.Close() }()
