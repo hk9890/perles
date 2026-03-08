@@ -123,15 +123,15 @@ func parseLabels(raw string) []string {
 
 	seen := make(map[string]struct{})
 	labels := make([]string, 0)
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "- ") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "- "))
+		if trimmed, found := strings.CutPrefix(line, "- "); found {
+			line = strings.TrimSpace(trimmed)
 		}
-		for _, piece := range strings.Split(line, ",") {
+		for piece := range strings.SplitSeq(line, ",") {
 			label := strings.TrimSpace(piece)
 			if label == "" {
 				continue
@@ -158,8 +158,8 @@ func parseStatus(raw string) (beads.Status, error) {
 
 func parsePriority(raw string) (beads.Priority, error) {
 	value := strings.ToLower(strings.TrimSpace(raw))
-	if strings.HasPrefix(value, "p") {
-		value = strings.TrimPrefix(value, "p")
+	if trimmed, found := strings.CutPrefix(value, "p"); found {
+		value = trimmed
 	}
 
 	switch value {

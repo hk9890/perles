@@ -10,7 +10,7 @@ all: build test
 # Build frontend (requires Node.js)
 build-frontend:
 	@echo "Building frontend..."
-	cd frontend && npm install && npm run build
+	cd frontend && npm ci && npm run build
 
 # Go-only build (assumes frontend is pre-built)
 build-go:
