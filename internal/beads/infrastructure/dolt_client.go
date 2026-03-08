@@ -1,6 +1,7 @@
 package infrastructure
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	domain "github.com/hk9890/perles/internal/beads/domain"
@@ -32,6 +34,53 @@ type ConnectionDetails struct {
 	Database string
 }
 
+type StartupErrorKind string
+
+const (
+	// StartupErrorKindNoBeads indicates this repository is not usable as a beads
+	// Dolt server project (missing/invalid metadata or config).
+	StartupErrorKindNoBeads StartupErrorKind = "no_beads"
+	// StartupErrorKindServerStartup indicates server startup/connection failures
+	// (for example dial/open/ping failures, invalid port state, delegated startup failures).
+	StartupErrorKindServerStartup StartupErrorKind = "server_startup"
+)
+
+type StartupError struct {
+	Kind    StartupErrorKind
+	Err     error
+	Details *ConnectionDetails
+}
+
+func (e *StartupError) Error() string {
+	if e == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("startup %s: %v", e.Kind, e.Err)
+}
+
+func (e *StartupError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func IsNoBeadsError(err error) bool {
+	var startupErr *StartupError
+	if !errors.As(err, &startupErr) {
+		return false
+	}
+	return startupErr.Kind == StartupErrorKindNoBeads
+}
+
+func IsServerStartupError(err error) bool {
+	var startupErr *StartupError
+	if !errors.As(err, &startupErr) {
+		return false
+	}
+	return startupErr.Kind == StartupErrorKindServerStartup
+}
+
 type beadsMetadata struct {
 	Backend      string `json:"backend"`
 	DoltMode     string `json:"dolt_mode"`
@@ -45,25 +94,122 @@ type doltServerConfig struct {
 	} `yaml:"listener"`
 }
 
+type doltStartupDelegate interface {
+	Start(ctx context.Context) error
+}
+
+var (
+	connectDoltClient = openDoltClientWithDetails
+
+	newDoltStartupDelegate = func(beadsDir string) doltStartupDelegate {
+		return newBDDoltStarter(beadsDir)
+	}
+
+	postStartReadinessBackoff = []time.Duration{
+		150 * time.Millisecond,
+		300 * time.Millisecond,
+		600 * time.Millisecond,
+	}
+)
+
 func NewDoltClient(beadsDir string) (*DoltClient, error) {
 	details, err := ResolveConnectionDetails(beadsDir)
 	if err != nil {
 		return nil, err
 	}
 
+	client, err := connectDoltClient(beadsDir, details)
+	if err == nil {
+		return client, nil
+	}
+
+	if !shouldAttemptDelegatedStartup(details.Host, err) {
+		return nil, err
+	}
+
+	if startErr := newDoltStartupDelegate(beadsDir).Start(context.Background()); startErr != nil {
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     startErr,
+			Details: copyConnectionDetails(details),
+		}
+	}
+
+	updatedDetails, err := ResolveConnectionDetails(beadsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return retryDoltClientConnection(beadsDir, updatedDetails)
+}
+
+func retryDoltClientConnection(beadsDir string, details ConnectionDetails) (*DoltClient, error) {
+	var lastErr error
+
+	for attempt := 0; attempt <= len(postStartReadinessBackoff); attempt++ {
+		client, err := connectDoltClient(beadsDir, details)
+		if err == nil {
+			return client, nil
+		}
+
+		lastErr = err
+		if !IsServerStartupError(err) {
+			return nil, err
+		}
+
+		if attempt < len(postStartReadinessBackoff) {
+			time.Sleep(postStartReadinessBackoff[attempt])
+		}
+	}
+
+	return nil, lastErr
+}
+
+func shouldAttemptDelegatedStartup(host string, err error) bool {
+	return IsServerStartupError(err) && isLocalDoltHost(host)
+}
+
+func isLocalDoltHost(host string) bool {
+	switch strings.TrimSpace(strings.ToLower(host)) {
+	case "", "localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0":
+		return true
+	default:
+		return false
+	}
+}
+
+func openDoltClientWithDetails(beadsDir string, details ConnectionDetails) (*DoltClient, error) {
+	db, err := openDoltDB(details)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DoltClient{db: db, details: details, beadsDir: beadsDir}, nil
+}
+
+func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
+
 	dsn := fmt.Sprintf("root@tcp(%s:%d)/%s?parseTime=true", details.Host, details.Port, details.Database)
 	log.Debug(log.CatDB, "Opening Dolt database", "host", details.Host, "port", details.Port, "database", details.Database)
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("opening dolt mysql connection: %w", err)
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     fmt.Errorf("opening dolt mysql connection: %w", err),
+			Details: copyConnectionDetails(details),
+		}
 	}
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("pinging dolt mysql connection: %w", err)
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     fmt.Errorf("pinging dolt mysql connection: %w", err),
+			Details: copyConnectionDetails(details),
+		}
 	}
 
-	return &DoltClient{db: db, details: details, beadsDir: beadsDir}, nil
+	return db, nil
 }
 
 func (c *DoltClient) Close() error {
@@ -113,43 +259,84 @@ func ResolveConnectionDetails(beadsDir string) (ConnectionDetails, error) {
 	metadataPath := filepath.Join(beadsDir, "metadata.json")
 	metadataBytes, err := os.ReadFile(metadataPath) //nolint:gosec // metadataPath is a fixed file under the resolved .beads directory
 	if err != nil {
-		return ConnectionDetails{}, fmt.Errorf("reading beads metadata %q: %w", metadataPath, err)
+		// no_beads: repository is missing required beads metadata.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  fmt.Errorf("reading beads metadata %q: %w", metadataPath, err),
+		}
 	}
 
 	var metadata beadsMetadata
 	if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-		return ConnectionDetails{}, fmt.Errorf("parsing beads metadata %q: %w", metadataPath, err)
+		// no_beads: beads metadata exists but is invalid/unreadable.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  fmt.Errorf("parsing beads metadata %q: %w", metadataPath, err),
+		}
 	}
 
 	if metadata.Backend != "dolt" {
-		return ConnectionDetails{}, fmt.Errorf("unsupported beads backend %q; expected dolt", metadata.Backend)
+		// no_beads: backend is not supported by this Dolt client.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  fmt.Errorf("unsupported beads backend %q; expected dolt", metadata.Backend),
+		}
 	}
 	if metadata.DoltMode != "server" {
-		return ConnectionDetails{}, fmt.Errorf("unsupported dolt mode %q; expected server", metadata.DoltMode)
+		// no_beads: project is not configured for Dolt server mode.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  fmt.Errorf("unsupported dolt mode %q; expected server", metadata.DoltMode),
+		}
 	}
 	if strings.TrimSpace(metadata.DoltDatabase) == "" {
-		return ConnectionDetails{}, errors.New("missing dolt_database in beads metadata")
+		// no_beads: metadata is missing required connection fields.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  errors.New("missing dolt_database in beads metadata"),
+		}
 	}
 
 	host, cfgPort, err := readDoltConfig(filepath.Join(beadsDir, "dolt", "config.yaml"))
 	if err != nil {
-		return ConnectionDetails{}, err
-	}
-
-	port, err := readDoltPort(filepath.Join(beadsDir, "dolt-server.port"), cfgPort)
-	if err != nil {
-		return ConnectionDetails{}, err
+		// no_beads: connection config is missing/invalid.
+		return ConnectionDetails{}, &StartupError{
+			Kind: StartupErrorKindNoBeads,
+			Err:  err,
+		}
 	}
 
 	if strings.TrimSpace(host) == "" {
 		host = "127.0.0.1"
 	}
 
-	return ConnectionDetails{
+	configDetails := ConnectionDetails{
 		Host:     host,
-		Port:     port,
+		Port:     cfgPort,
 		Database: metadata.DoltDatabase,
+	}
+
+	port, err := readDoltPort(filepath.Join(beadsDir, "dolt-server.port"), cfgPort)
+	if err != nil {
+		// server_startup: port file parse/validation/read failures indicate
+		// startup/runtime state, not project identity.
+		return ConnectionDetails{}, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     err,
+			Details: copyConnectionDetails(configDetails),
+		}
+	}
+
+	return ConnectionDetails{
+		Host:     configDetails.Host,
+		Port:     port,
+		Database: configDetails.Database,
 	}, nil
+}
+
+func copyConnectionDetails(details ConnectionDetails) *ConnectionDetails {
+	copy := details
+	return &copy
 }
 
 func readDoltConfig(path string) (host string, port int, err error) {

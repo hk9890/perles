@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,38 @@ func TestNoBeadsDirectory_WithBeadsFailsIfServerUnavailable(t *testing.T) {
 
 	_, err := infrabeads.NewDoltClient(beadsPath)
 	require.Error(t, err)
+}
+
+func TestClassifyStartupBehavior(t *testing.T) {
+	t.Run("nil error proceeds", func(t *testing.T) {
+		behavior := classifyStartupBehavior(nil)
+		require.Equal(t, startupBehaviorProceed, behavior)
+	})
+
+	t.Run("no beads error shows no-beads mode", func(t *testing.T) {
+		err := &infrabeads.StartupError{
+			Kind: infrabeads.StartupErrorKindNoBeads,
+			Err:  fmt.Errorf("missing metadata"),
+		}
+
+		behavior := classifyStartupBehavior(err)
+		require.Equal(t, startupBehaviorNoBeadsMode, behavior)
+	})
+
+	t.Run("server startup error returns actionable error", func(t *testing.T) {
+		err := &infrabeads.StartupError{
+			Kind: infrabeads.StartupErrorKindServerStartup,
+			Err:  fmt.Errorf("connection refused"),
+		}
+
+		behavior := classifyStartupBehavior(err)
+		require.Equal(t, startupBehaviorReturnError, behavior)
+	})
+
+	t.Run("non startup errors return actionable error", func(t *testing.T) {
+		behavior := classifyStartupBehavior(fmt.Errorf("unexpected failure"))
+		require.Equal(t, startupBehaviorReturnError, behavior)
+	})
 }
 
 // ============================================================================

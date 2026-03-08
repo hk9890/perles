@@ -45,6 +45,26 @@ var (
 	registryService *appreg.RegistryService
 )
 
+type startupBehavior int
+
+const (
+	startupBehaviorProceed startupBehavior = iota
+	startupBehaviorNoBeadsMode
+	startupBehaviorReturnError
+)
+
+func classifyStartupBehavior(err error) startupBehavior {
+	if err == nil {
+		return startupBehaviorProceed
+	}
+
+	if infrabeads.IsNoBeadsError(err) {
+		return startupBehaviorNoBeadsMode
+	}
+
+	return startupBehaviorReturnError
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "perles",
 	Short:   "A terminal ui for beads issue tracking",
@@ -227,8 +247,15 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	client, err := infrabeads.NewDoltClient(cfg.ResolvedBeadsDir)
 	if err != nil {
-		// Show friendly TUI empty state instead of CLI error
-		return runNoBeadsMode()
+		switch classifyStartupBehavior(err) {
+		case startupBehaviorNoBeadsMode:
+			// Show friendly TUI empty state for genuine no-beads cases.
+			return runNoBeadsMode()
+		case startupBehaviorReturnError:
+			return fmt.Errorf("unable to connect to beads server; verify `bd dolt start` and retry: %w", err)
+		default:
+			return fmt.Errorf("unexpected startup behavior for beads client error: %w", err)
+		}
 	}
 
 	// Version check - query bd_version from database metadata table

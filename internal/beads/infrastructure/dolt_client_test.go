@@ -1,9 +1,14 @@
 package infrastructure
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,6 +46,8 @@ func TestResolveConnectionDetails_UnsupportedBackend(t *testing.T) {
 
 	_, err := ResolveConnectionDetails(beadsDir)
 	require.Error(t, err)
+	require.True(t, IsNoBeadsError(err))
+	require.False(t, IsServerStartupError(err))
 	require.Contains(t, err.Error(), "unsupported beads backend")
 }
 
@@ -52,17 +59,274 @@ func TestResolveConnectionDetails_InvalidPortFile(t *testing.T) {
 
 	_, err := ResolveConnectionDetails(beadsDir)
 	require.Error(t, err)
+	require.True(t, IsServerStartupError(err))
+	require.False(t, IsNoBeadsError(err))
 	require.Contains(t, err.Error(), "parsing dolt server port")
+
+	var startupErr *StartupError
+	require.True(t, errors.As(err, &startupErr))
+	require.NotNil(t, startupErr.Details)
+	require.Equal(t, "127.0.0.1", startupErr.Details.Host)
+	require.Equal(t, 13849, startupErr.Details.Port)
+	require.Equal(t, "perles", startupErr.Details.Database)
 }
 
-func TestDoltClientFailsWhenServerUnavailable(t *testing.T) {
+func TestResolveConnectionDetails_MissingMetadataClassifiedAsNoBeads(t *testing.T) {
+	beadsDir := t.TempDir()
+
+	_, err := ResolveConnectionDetails(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsNoBeadsError(err))
+	require.False(t, IsServerStartupError(err))
+}
+
+func TestResolveConnectionDetails_InvalidConfigClassifiedAsNoBeads(t *testing.T) {
 	beadsDir := t.TempDir()
 	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
-	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 1)
+	require.NoError(t, os.MkdirAll(filepath.Join(beadsDir, "dolt"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(beadsDir, "dolt", "config.yaml"), []byte("listener: ["), 0644))
+
+	_, err := ResolveConnectionDetails(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsNoBeadsError(err))
+	require.False(t, IsServerStartupError(err))
+}
+
+func TestStartupErrorPredicatesUseErrorsAs(t *testing.T) {
+	err := fmt.Errorf("outer: %w", &StartupError{Kind: StartupErrorKindNoBeads, Err: errors.New("boom")})
+	require.True(t, IsNoBeadsError(err))
+	require.False(t, IsServerStartupError(err))
+
+	serverErr := fmt.Errorf("outer: %w", &StartupError{Kind: StartupErrorKindServerStartup, Err: errors.New("boom")})
+	require.True(t, IsServerStartupError(serverErr))
+	require.False(t, IsNoBeadsError(serverErr))
+
+	plain := errors.New("plain")
+	require.False(t, IsNoBeadsError(plain))
+	require.False(t, IsServerStartupError(plain))
+}
+
+func TestDoltClientFailsWhenServerUnavailableWithConnectionDetails(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "192.0.2.10", 3306)
+
+	originalConnect := connectDoltClient
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     errors.New("simulated unavailable server"),
+			Details: copyConnectionDetails(details),
+		}
+	}
+	t.Cleanup(func() { connectDoltClient = originalConnect })
 
 	_, err := NewDoltClient(beadsDir)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "pinging dolt mysql connection")
+	require.True(t, IsServerStartupError(err))
+	require.False(t, IsNoBeadsError(err))
+	require.Contains(t, err.Error(), "simulated unavailable server")
+
+	var startupErr *StartupError
+	require.True(t, errors.As(err, &startupErr))
+	require.NotNil(t, startupErr.Details)
+	require.Equal(t, "192.0.2.10", startupErr.Details.Host)
+	require.Equal(t, 3306, startupErr.Details.Port)
+	require.Equal(t, "perles", startupErr.Details.Database)
+}
+
+func TestNewDoltClient_DelegatesStartupAndRetriesWithReresolvedPort(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	originalBackoff := postStartReadinessBackoff
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+		postStartReadinessBackoff = originalBackoff
+	})
+
+	postStartReadinessBackoff = nil
+
+	var connectCalls []ConnectionDetails
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls = append(connectCalls, details)
+		if len(connectCalls) == 1 {
+			return nil, &StartupError{
+				Kind:    StartupErrorKindServerStartup,
+				Err:     errors.New("initial dial refused"),
+				Details: copyConnectionDetails(details),
+			}
+		}
+		return &DoltClient{details: details}, nil
+	}
+
+	delegateCalled := false
+	newDoltStartupDelegate = func(resolvedBeadsDir string) doltStartupDelegate {
+		require.Equal(t, beadsDir, resolvedBeadsDir)
+		return &fakeDoltStartupDelegate{startFunc: func(_ context.Context) error {
+			delegateCalled = true
+			writeTestPortFile(t, beadsDir, "4020")
+			return nil
+		}}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.True(t, delegateCalled)
+	require.Len(t, connectCalls, 2)
+	require.Equal(t, 4010, connectCalls[0].Port)
+	require.Equal(t, 4020, connectCalls[1].Port)
+	require.Equal(t, 4020, client.details.Port)
+}
+
+func TestNewDoltClient_DoesNotDelegateOnRemoteHost(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "10.23.45.67", 3306)
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+	})
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     errors.New("server unreachable"),
+			Details: copyConnectionDetails(details),
+		}
+	}
+
+	delegateCalled := false
+	newDoltStartupDelegate = func(_ string) doltStartupDelegate {
+		delegateCalled = true
+		return &fakeDoltStartupDelegate{startFunc: func(_ context.Context) error { return nil }}
+	}
+
+	_, err := NewDoltClient(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsServerStartupError(err))
+	require.Equal(t, 1, connectCalls)
+	require.False(t, delegateCalled)
+}
+
+func TestNewDoltClient_MissingBDReturnsActionableError(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "localhost", 3306)
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+	})
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     errors.New("cannot reach local dolt server"),
+			Details: copyConnectionDetails(details),
+		}
+	}
+
+	newDoltStartupDelegate = func(resolvedBeadsDir string) doltStartupDelegate {
+		return &bdDoltStarter{
+			beadsDir: resolvedBeadsDir,
+			timeout:  50 * time.Millisecond,
+			lookPathFunc: func(_ string) (string, error) {
+				return "", exec.ErrNotFound
+			},
+			runFunc: runBeadsCommand,
+		}
+	}
+
+	_, err := NewDoltClient(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsServerStartupError(err))
+	require.Contains(t, err.Error(), "requires 'bd' CLI in PATH")
+}
+
+func TestNewDoltClient_DelegatedStartFailureIncludesOutput(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+	})
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     errors.New("server down"),
+			Details: copyConnectionDetails(details),
+		}
+	}
+
+	newDoltStartupDelegate = func(resolvedBeadsDir string) doltStartupDelegate {
+		return &bdDoltStarter{
+			beadsDir: resolvedBeadsDir,
+			timeout:  50 * time.Millisecond,
+			lookPathFunc: func(_ string) (string, error) {
+				return "bd", nil
+			},
+			runFunc: func(_ context.Context, _ string, _ []string, _ []string) (string, string, error) {
+				return "startup output", "cannot bind port", errors.New("exit status 1")
+			},
+		}
+	}
+
+	_, err := NewDoltClient(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsServerStartupError(err))
+	require.Contains(t, err.Error(), "delegated 'bd dolt start' failed")
+	require.Contains(t, err.Error(), "stdout: startup output")
+	require.Contains(t, err.Error(), "stderr: cannot bind port")
+	require.Equal(t, 1, connectCalls)
+}
+
+func TestBDDoltStarter_StartSetsBeadsDirEnv(t *testing.T) {
+	beadsDir := t.TempDir()
+	starter := &bdDoltStarter{
+		beadsDir: beadsDir,
+		timeout:  50 * time.Millisecond,
+		lookPathFunc: func(_ string) (string, error) {
+			return "bd", nil
+		},
+		runFunc: func(_ context.Context, command string, args []string, env []string) (string, string, error) {
+			require.Equal(t, "bd", command)
+			require.Equal(t, []string{"dolt", "start"}, args)
+
+			foundBeadsDir := false
+			for _, kv := range env {
+				if strings.HasPrefix(kv, "BEADS_DIR=") {
+					require.Equal(t, "BEADS_DIR="+beadsDir, kv)
+					foundBeadsDir = true
+				}
+			}
+			require.True(t, foundBeadsDir)
+
+			return "started", "", nil
+		},
+	}
+
+	require.NoError(t, starter.Start(context.Background()))
 }
 
 func TestDoltClientDBAccessor(t *testing.T) {
@@ -131,4 +395,16 @@ func writeTestPortFile(t *testing.T, beadsDir, content string) {
 	t.Helper()
 	portPath := filepath.Join(beadsDir, "dolt-server.port")
 	require.NoError(t, os.WriteFile(portPath, []byte(content), 0644))
+}
+
+type fakeDoltStartupDelegate struct {
+	startFunc func(ctx context.Context) error
+}
+
+func (f *fakeDoltStartupDelegate) Start(ctx context.Context) error {
+	if f.startFunc != nil {
+		return f.startFunc(ctx)
+	}
+
+	return nil
 }
