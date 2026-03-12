@@ -626,7 +626,7 @@ PERLES_LOG=/tmp/perles.log perles --debug
 
 ### Features
 
-- **Log file**: All log output is written to `debug.log` (or custom path via `PERLES_LOG`)
+- **Log file**: By default, log output is written to `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log` (fallback: `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`). Set `PERLES_LOG` to use a custom path instead.
 - **Log overlay**: Press `ctrl+x` to view logs in-app without leaving the TUI
 - **Lifecycle logging**: Application startup and shutdown events are logged
 
@@ -636,11 +636,11 @@ PERLES_LOG=/tmp/perles.log perles --debug
 
 ### Reporting Issues
 
-When reporting bugs, please include the `debug.log` file to help with diagnosis:
+When reporting bugs, please include the relevant debug log file to help with diagnosis:
 
 1. Run perles with `--debug` flag
 2. Reproduce the issue
-3. Attach `debug.log` to your bug report
+3. Attach the log file from `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/` (or your `PERLES_LOG` override path) to your bug report
 
 ---
 

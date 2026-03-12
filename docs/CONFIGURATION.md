@@ -23,7 +23,7 @@ If no file is found, Perles creates `.perles/config.yaml` with defaults.
 
 - `BEADS_DIR` - beads path fallback when `-b` is not set
 - `PERLES_DEBUG` - enables debug logging
-- `PERLES_LOG` - overrides debug log file path
+- `PERLES_LOG` - overrides the centralized debug log file path (default: `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`, fallback `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`)
 - `UPDATE_GOLDEN` - used by some tests/golden flows
 
 ## Core Config Schema (High-Level)

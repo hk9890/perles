@@ -170,10 +170,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 	// Initialize logging if debug mode enabled (via flag or env var)
 	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
 	if debug {
-		logPath := os.Getenv("PERLES_LOG")
-		if logPath == "" {
-			logPath = "debug.log"
-		}
+		logPath := resolveDebugLogPath()
 
 		cleanup, err := log.InitWithTeaLog(logPath, "perles")
 		if err != nil {
@@ -341,6 +338,14 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("running program: %w", err)
 	}
 	return nil
+}
+
+func resolveDebugLogPath() string {
+	if logPath := os.Getenv("PERLES_LOG"); logPath != "" {
+		return logPath
+	}
+
+	return log.DefaultDebugLogPath()
 }
 
 func cleanupFinalModel(finalModel tea.Model, runErr error, debug bool) error {

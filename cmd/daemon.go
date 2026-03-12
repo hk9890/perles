@@ -67,10 +67,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 	// Initialize logging if debug mode enabled (via flag or env var)
 	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
 	if debug {
-		logPath := os.Getenv("PERLES_LOG")
-		if logPath == "" {
-			logPath = "debug.log"
-		}
+		logPath := resolveDebugLogPath()
 
 		cleanup, err := log.InitWithTeaLog(logPath, "perles-daemon")
 		if err != nil {

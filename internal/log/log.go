@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -98,6 +99,10 @@ func Init(path string) (func(), error) {
 
 // InitWithTeaLog uses tea.LogToFile for initialization.
 func InitWithTeaLog(path string, prefix string) (func(), error) {
+	if err := ensureParentDir(path); err != nil {
+		return nil, err
+	}
+
 	f, err := tea.LogToFile(path, prefix)
 	if err != nil {
 		return nil, err
@@ -115,6 +120,10 @@ func InitWithTeaLog(path string, prefix string) (func(), error) {
 }
 
 func newLogger(path string) (*Logger, error) {
+	if err := ensureParentDir(path); err != nil {
+		return nil, err
+	}
+
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G304: path is user-controlled debug log path
 	if err != nil {
 		return nil, err
@@ -127,6 +136,14 @@ func newLogger(path string) (*Logger, error) {
 		minLevel: LevelDebug,
 		broker:   pubsub.NewBroker[string](),
 	}, nil
+}
+
+func ensureParentDir(path string) error {
+	dir := filepath.Dir(path)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	return os.MkdirAll(dir, 0o755)
 }
 
 // SetEnabled toggles logging on/off.

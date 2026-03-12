@@ -96,6 +96,20 @@ func TestLogger_Init_InvalidPath(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLogger_Init_CreatesParentDirectories(t *testing.T) {
+	resetLogger()
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "nested", "deeper", "test.log")
+
+	cleanup, err := Init(logPath)
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+
+	_, statErr := os.Stat(filepath.Dir(logPath))
+	require.NoError(t, statErr)
+}
+
 func TestLogger_LevelFiltering(t *testing.T) {
 	resetLogger()
 	writer := &captureWriter{}
@@ -395,6 +409,20 @@ func TestLogger_InitWithTeaLog_Integration(t *testing.T) {
 	require.Contains(t, string(content), "[config]")
 	require.Contains(t, string(content), "integration test")
 	require.Contains(t, string(content), "key=value")
+}
+
+func TestLogger_InitWithTeaLog_CreatesParentDirectories(t *testing.T) {
+	resetLogger()
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "nested", "tea", "tea.log")
+
+	cleanup, err := InitWithTeaLog(logPath, "test")
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+
+	_, statErr := os.Stat(filepath.Dir(logPath))
+	require.NoError(t, statErr)
 }
 
 func TestLogger_NilWriter(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -391,4 +392,58 @@ func TestCleanupFinalModel(t *testing.T) {
 		err := cleanupFinalModel(finalModel, nil, true)
 		require.ErrorIs(t, err, closeErr)
 	})
+}
+
+func TestResolveDebugLogPath_UsesPERLESLOGOverride(t *testing.T) {
+	original := os.Getenv("PERLES_LOG")
+	t.Cleanup(func() {
+		if original == "" {
+			_ = os.Unsetenv("PERLES_LOG")
+			return
+		}
+		_ = os.Setenv("PERLES_LOG", original)
+	})
+
+	require.NoError(t, os.Setenv("PERLES_LOG", "/tmp/custom-perles.log"))
+
+	resolved := resolveDebugLogPath()
+	require.Equal(t, "/tmp/custom-perles.log", resolved)
+}
+
+func TestResolveDebugLogPath_UsesCentralizedDefaultWhenUnset(t *testing.T) {
+	originalLog := os.Getenv("PERLES_LOG")
+	originalXDG := os.Getenv("XDG_STATE_HOME")
+	t.Cleanup(func() {
+		if originalLog == "" {
+			_ = os.Unsetenv("PERLES_LOG")
+		} else {
+			_ = os.Setenv("PERLES_LOG", originalLog)
+		}
+
+		if originalXDG == "" {
+			_ = os.Unsetenv("XDG_STATE_HOME")
+		} else {
+			_ = os.Setenv("XDG_STATE_HOME", originalXDG)
+		}
+	})
+
+	projectDir := filepath.Join(t.TempDir(), "test-project")
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+
+	stateRoot := t.TempDir()
+	require.NoError(t, os.Setenv("XDG_STATE_HOME", stateRoot))
+	require.NoError(t, os.Unsetenv("PERLES_LOG"))
+
+	originalWD, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.Chdir(originalWD))
+	})
+	require.NoError(t, os.Chdir(projectDir))
+
+	resolved := resolveDebugLogPath()
+	require.NotContains(t, resolved, string(filepath.Separator)+"debug.log")
+	require.True(t, strings.HasPrefix(resolved, filepath.Join(stateRoot, "perles", "logs")+string(filepath.Separator)))
+	require.Contains(t, resolved, string(filepath.Separator)+"test-project-")
+	require.True(t, strings.HasSuffix(resolved, "-perles.log"))
 }

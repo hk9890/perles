@@ -13,8 +13,16 @@ PERLES_DEBUG=1 ./perles
 
 Log file path:
 
-- Default: `debug.log` in current directory
+- Default: `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`
+- Fallback when `XDG_STATE_HOME` is unset: `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`
 - Override: `PERLES_LOG=/path/to/log ./perles -d`
+
+Perles derives the project log directory from the current working directory:
+
+- `<basename>` is the current folder name
+- `<short-hash>` is a stable short hash of the normalized full path
+
+This keeps logs for same-named folders in different locations from colliding while still making the directories easy to browse.
 
 ## Session Artifacts (Orchestration)
 
@@ -62,7 +70,7 @@ When possible, include:
 
 - `perles --version`
 - `go version`
-- relevant `debug.log` excerpt
+- relevant debug log excerpt or file path
 - reproduction steps and config context
 
 ## Related Docs
