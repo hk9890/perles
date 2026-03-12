@@ -16,6 +16,7 @@ import (
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	domain "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/pubsub"
 
 	_ "github.com/go-sql-driver/mysql"
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,7 @@ import (
 
 var _ appbeads.ReadClient = (*DoltClient)(nil)
 var _ appbeads.Reconnector = (*DoltClient)(nil)
+var _ appbeads.ConnectivityObserver = (*DoltClient)(nil)
 
 type DoltClient struct {
 	mu          sync.RWMutex
@@ -30,6 +32,9 @@ type DoltClient struct {
 	db          *sql.DB
 	details     ConnectionDetails
 	beadsDir    string
+
+	connectivityState  appbeads.ConnectivityState
+	connectivityBroker *pubsub.Broker[appbeads.ConnectivityEvent]
 }
 
 type ConnectionDetails struct {
@@ -192,7 +197,13 @@ func openDoltClientWithDetails(beadsDir string, details ConnectionDetails) (*Dol
 		return nil, err
 	}
 
-	return &DoltClient{db: db, details: details, beadsDir: beadsDir}, nil
+	return &DoltClient{
+		db:                 db,
+		details:            details,
+		beadsDir:           beadsDir,
+		connectivityState:  appbeads.ConnectivityStateHealthy,
+		connectivityBroker: pubsub.NewBroker[appbeads.ConnectivityEvent](),
+	}, nil
 }
 
 func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
@@ -228,6 +239,10 @@ func (c *DoltClient) Close() error {
 	}
 	err := c.db.Close()
 	c.db = nil
+	if c.connectivityBroker != nil {
+		c.connectivityBroker.Close()
+		c.connectivityBroker = nil
+	}
 	return err
 }
 
@@ -235,6 +250,28 @@ func (c *DoltClient) DB() *sql.DB {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.db
+}
+
+func (c *DoltClient) ConnectivityState() appbeads.ConnectivityState {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.connectivityState == "" {
+		return appbeads.ConnectivityStateHealthy
+	}
+	return c.connectivityState
+}
+
+func (c *DoltClient) ConnectivityBroker() *pubsub.Broker[appbeads.ConnectivityEvent] {
+	c.mu.Lock()
+	if c.connectivityBroker == nil {
+		c.connectivityBroker = pubsub.NewBroker[appbeads.ConnectivityEvent]()
+	}
+	if c.connectivityState == "" {
+		c.connectivityState = appbeads.ConnectivityStateHealthy
+	}
+	broker := c.connectivityBroker
+	c.mu.Unlock()
+	return broker
 }
 
 func (c *DoltClient) Version() (string, error) {
@@ -313,7 +350,39 @@ func (c *DoltClient) ReconnectIfRecoverable(err error) (bool, error) {
 		return false, nil
 	}
 
-	return true, c.reconnect()
+	if c.ConnectivityState() == appbeads.ConnectivityStateHealthy {
+		c.setConnectivityState(appbeads.ConnectivityStateReconnecting, nil)
+	}
+
+	reconnectErr := c.reconnect()
+	if reconnectErr != nil {
+		c.setConnectivityState(appbeads.ConnectivityStateDegraded, reconnectErr)
+		return true, reconnectErr
+	}
+
+	c.setConnectivityState(appbeads.ConnectivityStateHealthy, nil)
+
+	return true, nil
+
+}
+
+func (c *DoltClient) setConnectivityState(state appbeads.ConnectivityState, err error) {
+	c.mu.Lock()
+	if c.connectivityState == "" {
+		c.connectivityState = appbeads.ConnectivityStateHealthy
+	}
+	if c.connectivityBroker == nil {
+		c.connectivityBroker = pubsub.NewBroker[appbeads.ConnectivityEvent]()
+	}
+	if c.connectivityState == state {
+		c.mu.Unlock()
+		return
+	}
+	c.connectivityState = state
+	broker := c.connectivityBroker
+	c.mu.Unlock()
+
+	broker.Publish(pubsub.UpdatedEvent, appbeads.ConnectivityEvent{State: state, Err: err})
 }
 
 func (c *DoltClient) reconnect() error {

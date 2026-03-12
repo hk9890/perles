@@ -161,7 +161,7 @@ func TestTreeColumn_View_Error(t *testing.T) {
 	tc.loadError = errTest
 
 	view := tc.View()
-	require.Contains(t, view, "Error")
+	require.Contains(t, view, "Tree unavailable")
 }
 
 func TestTreeColumn_View_NoData(t *testing.T) {

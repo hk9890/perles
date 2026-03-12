@@ -46,7 +46,9 @@ func (m Model) handleEpicTreeLoaded(msg epicTreeLoadedMsg) (mode.Controller, tea
 
 	// Handle errors
 	if msg.Err != nil {
-		// Clear tree on error so UI can show appropriate empty state
+		if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+			return m, nil
+		}
 		m.epicTree = nil
 		m.hasEpicDetail = false
 		return m, nil

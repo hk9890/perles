@@ -10,12 +10,34 @@ import (
 	"syscall"
 
 	mysql "github.com/go-sql-driver/mysql"
+	"github.com/hk9890/perles/internal/pubsub"
 )
 
 // Reconnector can attempt to recover the backing DB connection after
 // recoverable connectivity failures.
 type Reconnector interface {
 	ReconnectIfRecoverable(err error) (attempted bool, reconnectErr error)
+}
+
+// ConnectivityState represents the backend connectivity state exposed to the UI.
+type ConnectivityState string
+
+const (
+	ConnectivityStateHealthy      ConnectivityState = "healthy"
+	ConnectivityStateReconnecting ConnectivityState = "reconnecting"
+	ConnectivityStateDegraded     ConnectivityState = "degraded"
+)
+
+// ConnectivityEvent is emitted when backend connectivity state changes.
+type ConnectivityEvent struct {
+	State ConnectivityState
+	Err   error
+}
+
+// ConnectivityObserver exposes backend connectivity state transitions.
+type ConnectivityObserver interface {
+	ConnectivityState() ConnectivityState
+	ConnectivityBroker() *pubsub.Broker[ConnectivityEvent]
 }
 
 // IsRecoverableConnectivityError returns true for transient connectivity

@@ -15,6 +15,23 @@ import (
 	"github.com/hk9890/perles/internal/ui/shared/toaster"
 )
 
+type BackendState string
+
+const (
+	BackendStateHealthy      BackendState = "healthy"
+	BackendStateReconnecting BackendState = "reconnecting"
+	BackendStateDegraded     BackendState = "degraded"
+)
+
+// BackendStateMsg notifies modes about backend connectivity transitions.
+type BackendStateMsg struct {
+	State BackendState
+}
+
+// BackendRecoveredMsg indicates the backend has transitioned to healthy after
+// reconnect/degraded states; modes can use this to clear stale inline errors.
+type BackendRecoveredMsg struct{}
+
 // AppMode identifies the current application mode.
 type AppMode int
 

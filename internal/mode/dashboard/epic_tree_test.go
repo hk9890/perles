@@ -236,6 +236,28 @@ func TestHandleEpicTreeLoadedHandlesError(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
+func TestHandleEpicTreeLoadedPreservesTreeDuringDegradedError(t *testing.T) {
+	m := createEpicTreeTestModel(t)
+	m.lastLoadedEpicID = "epic-123"
+	m.backendState = mode.BackendStateDegraded
+
+	issueMap := map[string]*beads.Issue{
+		"old-epic": {ID: "old-epic", TitleText: "Old"},
+	}
+	m.epicTree = tree.New("old-epic", issueMap, tree.DirectionDown, tree.ModeDeps, nil)
+	m.hasEpicDetail = true
+
+	msg := epicTreeLoadedMsg{
+		RootID: "epic-123",
+		Err:    errors.New("load failed"),
+	}
+	result, _ := m.handleEpicTreeLoaded(msg)
+	m = result.(Model)
+
+	require.NotNil(t, m.epicTree, "existing tree should be preserved during degraded outage")
+	require.True(t, m.hasEpicDetail)
+}
+
 func TestHandleEpicTreeLoadedHandlesEmptyResults(t *testing.T) {
 	// Setup model
 	m := createEpicTreeTestModel(t)

@@ -449,6 +449,13 @@ func (c Column) RightTitle() string {
 
 // View renders the column content (without border - border applied by board).
 func (c Column) View() string {
+	if c.loadError != nil && len(c.items) == 0 {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(styles.StatusErrorColor).
+			Padding(1, 2)
+		return errorStyle.Render("Column unavailable")
+	}
+
 	if len(c.items) == 0 {
 		emptyStyle := lipgloss.NewStyle().
 			Foreground(styles.TextMutedColor).

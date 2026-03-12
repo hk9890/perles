@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"strings"
@@ -24,10 +25,13 @@ import (
 	"github.com/hk9890/perles/internal/mode/search"
 	"github.com/hk9890/perles/internal/orchestration/client"
 	v2 "github.com/hk9890/perles/internal/orchestration/v2"
+	"github.com/hk9890/perles/internal/pubsub"
 	appreg "github.com/hk9890/perles/internal/registry/application"
 	"github.com/hk9890/perles/internal/ui/shared/chatpanel"
 	"github.com/hk9890/perles/internal/ui/shared/diffviewer"
 	"github.com/hk9890/perles/internal/ui/shared/editor"
+	"github.com/hk9890/perles/internal/ui/shared/toaster"
+	"github.com/hk9890/perles/internal/watcher"
 )
 
 // TestMain initializes the global zone manager for all tests in this package.
@@ -2397,4 +2401,100 @@ func TestApp_ForwardsExternalEditorMessages(t *testing.T) {
 	// We can't easily verify this without exposing internals, but at least
 	// verify the update didn't panic and the model is still valid
 	require.True(t, m.chatPanel.Visible(), "panel should still be visible after editor message")
+}
+
+func TestApp_BackendBannerView_ShowsConnectivityState(t *testing.T) {
+	m := createTestModel(t)
+	m.width = 80
+
+	m.backendState = mode.BackendStateReconnecting
+	require.Contains(t, m.backendBannerView(), "Backend reconnecting", "reconnecting banner should be visible")
+
+	m.backendState = mode.BackendStateDegraded
+	require.Contains(t, m.backendBannerView(), "Backend unavailable", "degraded banner should be visible")
+
+	m.backendState = mode.BackendStateHealthy
+	require.Equal(t, "", m.backendBannerView(), "healthy state should hide banner")
+}
+
+func TestApp_ShowToast_SuppressesOutageSpamWhenDegraded(t *testing.T) {
+	m := createTestModel(t)
+	m.backendState = mode.BackendStateDegraded
+
+	newModel, cmd := m.Update(mode.ShowToastMsg{Message: "failed to load issues", Style: toaster.StyleError})
+	m = newModel.(Model)
+
+	require.Nil(t, cmd, "outage toast should be suppressed during degraded state")
+	require.False(t, m.toaster.Visible(), "suppressed outage toast should not be shown")
+}
+
+func TestApp_ShowToast_AllowsNonOutageErrorsWhenDegraded(t *testing.T) {
+	m := createTestModel(t)
+	m.backendState = mode.BackendStateDegraded
+
+	newModel, cmd := m.Update(mode.ShowToastMsg{Message: "validation failed", Style: toaster.StyleError})
+	m = newModel.(Model)
+
+	require.NotNil(t, cmd, "non-outage errors should still show toast")
+	require.True(t, m.toaster.Visible(), "non-outage errors should remain visible")
+}
+
+func TestApp_WatcherTicksSuppressedDuringDegradedOutage(t *testing.T) {
+	m := createTestModel(t)
+	m.backendState = mode.BackendStateDegraded
+
+	watcherCtx, watcherCancel := context.WithCancel(context.Background())
+	t.Cleanup(watcherCancel)
+	m.watcherCtx = watcherCtx
+	m.watcherCancel = watcherCancel
+	m.watcherListener = pubsub.NewContinuousListener(watcherCtx, pubsub.NewBroker[watcher.WatcherEvent]())
+
+	bqlCache := mocks.NewMockCacheManager[string, []beadsdomain.Issue](t)
+	flushCalls := 0
+	bqlCache.EXPECT().Flush(mock.Anything).RunAndReturn(func(context.Context) error {
+		flushCalls++
+		return nil
+	}).Maybe()
+	m.bqlCache = bqlCache
+
+	event := pubsub.Event[watcher.WatcherEvent]{Payload: watcher.WatcherEvent{Type: watcher.DBChanged}}
+	newModel, _ := m.Update(event)
+	m = newModel.(Model)
+	newModel, _ = m.Update(event)
+	m = newModel.(Model)
+
+	require.Equal(t, 0, flushCalls, "degraded watcher ticks should not trigger refresh flushes")
+}
+
+func TestApp_RecoverySetsSingleSkipTickThenResumesWatcherRefresh(t *testing.T) {
+	m := createTestModel(t)
+	m.currentMode = mode.ModeSearch
+	m.backendState = mode.BackendStateDegraded
+
+	bqlCache := mocks.NewMockCacheManager[string, []beadsdomain.Issue](t)
+	flushCalls := 0
+	bqlCache.EXPECT().Flush(mock.Anything).RunAndReturn(func(context.Context) error {
+		flushCalls++
+		return nil
+	}).Maybe()
+	m.bqlCache = bqlCache
+
+	// Recovery transition should mark exactly one watcher tick to skip.
+	newModel, _ := m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateHealthy},
+	})
+	m = newModel.(Model)
+	require.Equal(t, mode.BackendStateHealthy, m.backendState)
+	require.True(t, m.skipNextWatcherTick, "healthy transition should skip one watcher tick")
+
+	// First watcher tick after recovery is skipped.
+	newModel, _ = m.Update(pubsub.Event[watcher.WatcherEvent]{Payload: watcher.WatcherEvent{Type: watcher.DBChanged}})
+	m = newModel.(Model)
+	require.False(t, m.skipNextWatcherTick, "skip flag should clear after one watcher tick")
+	require.Equal(t, 1, flushCalls, "recovery should perform a single immediate refresh")
+
+	// Next watcher tick resumes normal refresh path (flush happens).
+	newModel, _ = m.Update(pubsub.Event[watcher.WatcherEvent]{Payload: watcher.WatcherEvent{Type: watcher.DBChanged}})
+	m = newModel.(Model)
+	require.Equal(t, 2, flushCalls, "post-recovery watcher tick should resume normal refresh")
 }

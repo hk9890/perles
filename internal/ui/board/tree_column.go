@@ -108,11 +108,11 @@ func renderCompactProgress(closed, total int) string {
 
 // View renders the tree column content.
 func (c TreeColumn) View() string {
-	if c.loadError != nil {
+	if c.loadError != nil && c.tree == nil {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(styles.StatusErrorColor).
 			Padding(1, 2)
-		return errorStyle.Render(fmt.Sprintf("Error: %v", c.loadError))
+		return errorStyle.Render("Tree unavailable")
 	}
 
 	if c.tree == nil {

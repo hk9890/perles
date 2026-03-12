@@ -590,6 +590,10 @@ func (m Model) handleErrMsg(msg errMsg) (Model, tea.Cmd) {
 // This is called by app.go when the centralized watcher detects changes.
 // The app handles re-subscription; this method just triggers the refresh.
 func (m Model) HandleDBChanged() (Model, tea.Cmd) {
+	if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+		return m, nil
+	}
+
 	// Don't refresh if already loading or not in ViewBoard
 	if m.loading || m.view != ViewBoard {
 		return m, nil

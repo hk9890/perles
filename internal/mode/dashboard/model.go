@@ -169,6 +169,8 @@ type Model struct {
 	// Dimensions
 	width  int
 	height int
+
+	backendState mode.BackendState
 }
 
 // WorkflowTableRow wraps a workflow with its display index for table rendering.
@@ -233,6 +235,7 @@ func New(cfg Config) Model {
 		debugMode:          cfg.DebugMode,
 		vimMode:            cfg.VimMode,
 		observerEnabled:    cfg.ObserverEnabled,
+		backendState:       mode.BackendStateHealthy,
 	}
 
 	// Initialize the workflow table with config
@@ -631,6 +634,10 @@ func (m Model) Update(msg tea.Msg) (mode.Controller, tea.Cmd) {
 
 	case epicTreeLoadedMsg:
 		return m.handleEpicTreeLoaded(msg)
+
+	case mode.BackendStateMsg:
+		m.backendState = msg.State
+		return m, nil
 
 	case editor.ExecMsg:
 		// Forward to coordinator panel to execute external editor
@@ -2143,6 +2150,10 @@ func (m *Model) isWorkflowRunning(id controlplane.WorkflowID) bool {
 // This is called by app.go when the centralized watcher detects changes.
 // It triggers a tree refresh if an epic is loaded.
 func (m Model) HandleDBChanged() (Model, tea.Cmd) {
+	if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+		return m, nil
+	}
+
 	// Skip if no epic is loaded
 	if m.lastLoadedEpicID == "" {
 		return m, nil

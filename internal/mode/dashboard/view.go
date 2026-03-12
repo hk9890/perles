@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zone "github.com/lrstanley/bubblezone"
 
+	"github.com/hk9890/perles/internal/mode"
 	"github.com/hk9890/perles/internal/orchestration/controlplane"
 	"github.com/hk9890/perles/internal/orchestration/events"
 	"github.com/hk9890/perles/internal/ui/shared/panes"
@@ -551,6 +552,24 @@ const minWorkflowTableRows = 6
 // renderEpicSection renders the epic tree+details section below the workflow table.
 // It handles empty states (no epic, empty tree, loading) and the 40%/60% horizontal split.
 func (m Model) renderEpicSection(width, height int) string {
+	if m.backendState == mode.BackendStateReconnecting {
+		infoStyle := lipgloss.NewStyle().
+			Foreground(colorDimmed).
+			Italic(true).
+			PaddingLeft(1)
+		if m.epicTree != nil && m.epicTree.Root() != nil {
+			return infoStyle.Render("Backend reconnecting… showing last epic tree")
+		}
+	}
+	if m.backendState == mode.BackendStateDegraded {
+		errStyle := lipgloss.NewStyle().
+			Foreground(styles.StatusErrorColor).
+			PaddingLeft(1)
+		if m.epicTree != nil && m.epicTree.Root() != nil {
+			return errStyle.Render("Backend unavailable — showing last epic tree")
+		}
+	}
+
 	// Check minimum width threshold
 	if width < minEpicSectionWidth {
 		emptyStyle := lipgloss.NewStyle().

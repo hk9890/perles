@@ -118,6 +118,8 @@ type Model struct {
 
 	// User-defined actions (key -> action config)
 	actions map[string]config.ActionConfig
+
+	backendState mode.BackendState
 }
 
 // newViewSaveMsg is sent when creating a new view from search.
@@ -508,14 +510,15 @@ func New(services mode.Services) Model {
 	}
 
 	return Model{
-		services:    services,
-		mode:        SearchInputModeText,
-		input:       input,
-		resultsList: resultsList,
-		focus:       FocusSearch,
-		view:        ViewSearch,
-		help:        help.NewSearch().WithUserActions(userActions),
-		actions:     actions,
+		services:     services,
+		mode:         SearchInputModeText,
+		input:        input,
+		resultsList:  resultsList,
+		focus:        FocusSearch,
+		view:         ViewSearch,
+		help:         help.NewSearch().WithUserActions(userActions),
+		actions:      actions,
+		backendState: mode.BackendStateHealthy,
 	}
 }
 
@@ -662,6 +665,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case treeLoadedMsg:
 		return m.handleTreeLoaded(msg)
+
+	case mode.BackendStateMsg:
+		m.backendState = msg.State
+		return m, nil
 
 	case details.NavigateToDependencyMsg:
 		return m.navigateToDependency(msg.IssueID)
@@ -1759,10 +1766,11 @@ func (m Model) loadTree(rootID string) tea.Cmd {
 func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		m.searchErr = msg.err
-		// Clear results so stale data doesn't show, but keep detail panel
-		// so user can still navigate to it with 'l'
-		m.results = nil
-		m.resultsList.SetItems([]list.Item{})
+		if !(m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded) {
+			// Keep visible stale data during backend outages.
+			m.results = nil
+			m.resultsList.SetItems([]list.Item{})
+		}
 		return m, nil
 	}
 
@@ -1808,6 +1816,9 @@ func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 // handleTreeLoaded processes tree loading results and initializes the tree model.
 func (m Model) handleTreeLoaded(msg treeLoadedMsg) (Model, tea.Cmd) {
 	if msg.Err != nil {
+		if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+			return m, nil
+		}
 		return m, func() tea.Msg {
 			return mode.ShowToastMsg{Message: "Error loading tree: " + msg.Err.Error(), Style: toaster.StyleError}
 		}
@@ -1823,6 +1834,9 @@ func (m Model) handleTreeLoaded(msg treeLoadedMsg) (Model, tea.Cmd) {
 	}
 
 	if root == nil {
+		if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+			return m, nil
+		}
 		return m, func() tea.Msg {
 			return mode.ShowToastMsg{Message: "Root issue not found: " + msg.RootID, Style: toaster.StyleError}
 		}
@@ -1986,7 +2000,18 @@ func (m Model) renderListLeftPanel(width int) string {
 
 	// Build results content
 	var resultsContent string
-	if m.searchErr != nil && m.showSearchErr {
+	if m.backendState == mode.BackendStateReconnecting {
+		infoStyle := lipgloss.NewStyle().
+			Foreground(styles.TextMutedColor).
+			Italic(true).
+			Padding(1, 2)
+		resultsContent = infoStyle.Render("Backend reconnecting… showing last results")
+	} else if m.backendState == mode.BackendStateDegraded {
+		errStyle := lipgloss.NewStyle().
+			Foreground(styles.StatusErrorColor).
+			Padding(1, 2)
+		resultsContent = errStyle.Render("Backend unavailable — showing last results")
+	} else if m.searchErr != nil && m.showSearchErr {
 		// Only show error after blur, not while typing
 		errStyle := lipgloss.NewStyle().
 			Foreground(styles.StatusErrorColor).
@@ -2229,6 +2254,10 @@ func (m Model) saveIssueCmd(issueID string, opts beads.UpdateIssueOptions) tea.C
 // This is called by app.go when the centralized watcher detects changes.
 // The app handles re-subscription; this method just triggers the refresh.
 func (m Model) HandleDBChanged() (Model, tea.Cmd) {
+	if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+		return m, nil
+	}
+
 	switch m.subMode {
 	case mode.SubModeTree:
 		// Reload tree with current root

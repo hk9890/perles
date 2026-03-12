@@ -84,6 +84,8 @@ type Model struct {
 	// UI visibility toggles
 	showStatusBar bool
 
+	backendState mode.BackendState
+
 	// User-defined actions for kanban mode (key -> action config)
 	actions map[string]config.ActionConfig
 }
@@ -117,6 +119,7 @@ func New(services mode.Services) Model {
 		help:                help.New().WithFlags(services.Flags).WithUserActions(userActions),
 		loading:             true,
 		showStatusBar:       services.Config.UI.ShowStatusBar,
+		backendState:        mode.BackendStateHealthy,
 		pendingDeleteColumn: -1,
 		actions:             actions,
 	}
@@ -185,6 +188,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		// Delegate tree column load messages to board
 		m.board, _ = m.board.Update(msg)
 		m.loading = false
+		return m, nil
+
+	case mode.BackendStateMsg:
+		m.backendState = msg.State
 		return m, nil
 
 	case tea.MouseMsg:
@@ -517,6 +524,13 @@ func (m Model) ShowStatusBar() bool {
 }
 
 func (m Model) renderStatusBar() string {
+	if m.backendState == mode.BackendStateReconnecting {
+		return styles.StatusBarStyle.Width(m.width).Render("Backend reconnecting…")
+	}
+	if m.backendState == mode.BackendStateDegraded {
+		return styles.ErrorStyle.Width(m.width).Render("Backend unavailable — board data may be stale")
+	}
+
 	// Build left section with view indicator (if multiple views)
 	var content string
 	if m.board.ViewCount() > 1 {

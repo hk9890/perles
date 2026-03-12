@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -93,6 +94,13 @@ type Model struct {
 	watcherCancel   context.CancelFunc
 	watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
 
+	// Backend connectivity state (driven by reconnect plumbing)
+	backendState         mode.BackendState
+	backendStateCtx      context.Context
+	backendStateCancel   context.CancelFunc
+	backendStateListener *pubsub.ContinuousListener[appbeads.ConnectivityEvent]
+	skipNextWatcherTick  bool
+
 	// Quit confirmation modal (for chat panel Ctrl+C)
 	quitModal quitmodal.Model
 
@@ -151,6 +159,11 @@ func NewWithConfig(
 		watcherCtx      context.Context
 		watcherCancel   context.CancelFunc
 		watcherListener *pubsub.ContinuousListener[watcher.WatcherEvent]
+
+		backendState       = mode.BackendStateHealthy
+		backendStateCtx    context.Context
+		backendStateCancel context.CancelFunc
+		backendStateListen *pubsub.ContinuousListener[appbeads.ConnectivityEvent]
 	)
 
 	if cfg.AutoRefresh {
@@ -166,6 +179,12 @@ func NewWithConfig(
 			}
 		}
 		// Silently ignore watcher init errors - app works fine without auto-refresh
+	}
+
+	if observer, ok := client.(appbeads.ConnectivityObserver); ok {
+		backendState = mapConnectivityState(observer.ConnectivityState())
+		backendStateCtx, backendStateCancel = context.WithCancel(context.Background())
+		backendStateListen = pubsub.NewContinuousListener(backendStateCtx, observer.ConnectivityBroker())
 	}
 
 	// Apply theme colors from config
@@ -251,24 +270,28 @@ func NewWithConfig(
 	cp := chatpanel.New(chatPanelCfg)
 
 	return Model{
-		currentMode:      mode.ModeKanban,
-		kanban:           kanban.New(services),
-		search:           search.New(services),
-		services:         services,
-		bqlCache:         bqlCache,
-		depGraphCache:    depGraphCache,
-		logOverlay:       overlay,
-		debugMode:        debugMode,
-		logListenCmd:     logListenCmd,
-		diffViewer:       dv,
-		chatPanel:        cp,
-		watcherHandle:    watcherHandle,
-		watcherCtx:       watcherCtx,
-		watcherCancel:    watcherCancel,
-		watcherListener:  watcherListener,
-		workflowRegistry: workflowRegistry,
-		registryService:  registryService,
-		workflowCreator:  workflowCreator,
+		currentMode:          mode.ModeKanban,
+		kanban:               kanban.New(services),
+		search:               search.New(services),
+		services:             services,
+		bqlCache:             bqlCache,
+		depGraphCache:        depGraphCache,
+		logOverlay:           overlay,
+		debugMode:            debugMode,
+		logListenCmd:         logListenCmd,
+		diffViewer:           dv,
+		chatPanel:            cp,
+		watcherHandle:        watcherHandle,
+		watcherCtx:           watcherCtx,
+		watcherCancel:        watcherCancel,
+		watcherListener:      watcherListener,
+		backendState:         backendState,
+		backendStateCtx:      backendStateCtx,
+		backendStateCancel:   backendStateCancel,
+		backendStateListener: backendStateListen,
+		workflowRegistry:     workflowRegistry,
+		registryService:      registryService,
+		workflowCreator:      workflowCreator,
 		quitModal: quitmodal.New(quitmodal.Config{
 			Title:   "Exit Application?",
 			Message: "Are you sure you want to quit?",
@@ -288,6 +311,9 @@ func (m Model) Init() tea.Cmd {
 	// Start watcher listener if available
 	if m.watcherListener != nil {
 		cmds = append(cmds, m.watcherListener.Listen())
+	}
+	if m.connectivityListenCmd() != nil {
+		cmds = append(cmds, m.connectivityListenCmd())
 	}
 
 	if m.logListenCmd != nil {
@@ -573,11 +599,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pubsub.Event[watcher.WatcherEvent]:
 		switch msg.Payload.Type {
 		case watcher.DBChanged:
-			if err := m.bqlCache.Flush(context.Background()); err != nil {
-				log.Warn(log.CatCache, "Failed to flush BQL cache on DB change", "error", err)
+			if m.skipNextWatcherTick {
+				m.skipNextWatcherTick = false
+				return m, m.watcherListenCmd()
 			}
-			if err := m.depGraphCache.Flush(context.Background()); err != nil {
-				log.Warn(log.CatCache, "Failed to flush dep graph cache on DB change", "error", err)
+			if m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded {
+				return m, m.watcherListenCmd()
+			}
+			if m.bqlCache != nil {
+				if err := m.bqlCache.Flush(context.Background()); err != nil {
+					log.Warn(log.CatCache, "Failed to flush BQL cache on DB change", "error", err)
+				}
+			}
+			if m.depGraphCache != nil {
+				if err := m.depGraphCache.Flush(context.Background()); err != nil {
+					log.Warn(log.CatCache, "Failed to flush dep graph cache on DB change", "error", err)
+				}
 			}
 
 			log.Debug(log.CatMode, "DB changed, refreshing active mode", "mode", m.currentMode)
@@ -590,15 +627,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case mode.ModeDashboard:
 				m.dashboard, modeCmd = m.dashboard.HandleDBChanged()
 			}
-			return m, tea.Batch(modeCmd, m.watcherListener.Listen())
+			return m, tea.Batch(modeCmd, m.watcherListenCmd())
 
 		case watcher.WatcherError:
 			log.Warn(log.CatWatcher, "Watcher error received", "error", msg.Payload.Error)
-			return m, m.watcherListener.Listen()
+			return m, m.watcherListenCmd()
 		}
 
 		// Continue listening for unknown event types
-		return m, m.watcherListener.Listen()
+		return m, m.watcherListenCmd()
+
+	case pubsub.Event[appbeads.ConnectivityEvent]:
+		prev := m.backendState
+		m.backendState = mapConnectivityState(msg.Payload.State)
+		stateCmd := m.broadcastBackendState(m.backendState)
+
+		if m.backendState == mode.BackendStateHealthy && prev != mode.BackendStateHealthy {
+			m.skipNextWatcherTick = true
+			refreshCmd := m.refreshActiveModeOnce()
+			if m.connectivityListenCmd() != nil {
+				return m, tea.Batch(stateCmd, refreshCmd, m.connectivityListenCmd())
+			}
+			return m, tea.Batch(stateCmd, refreshCmd)
+		}
+
+		if m.connectivityListenCmd() != nil {
+			return m, tea.Batch(stateCmd, m.connectivityListenCmd())
+		}
+		return m, stateCmd
 
 	// Forward vimtextarea.SubmitMsg to chatPanel for processing
 	// This is emitted when user presses Enter in the chat input
@@ -674,6 +730,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.requestAppQuit()
 
 	case mode.ShowToastMsg:
+		if m.shouldSuppressToast(msg) {
+			return m, nil
+		}
 		m.toaster = m.toaster.Show(msg.Message, msg.Style)
 
 		return m, toaster.ScheduleDismiss(3 * time.Second)
@@ -794,6 +853,89 @@ func (m Model) requestAppQuit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, tea.Quit
+}
+
+func (m Model) watcherListenCmd() tea.Cmd {
+	if m.watcherListener == nil {
+		return nil
+	}
+	return m.watcherListener.Listen()
+}
+
+func (m Model) connectivityListenCmd() tea.Cmd {
+	if m.backendStateListener == nil {
+		return nil
+	}
+	return m.backendStateListener.Listen()
+}
+
+func mapConnectivityState(state appbeads.ConnectivityState) mode.BackendState {
+	switch state {
+	case appbeads.ConnectivityStateReconnecting:
+		return mode.BackendStateReconnecting
+	case appbeads.ConnectivityStateDegraded:
+		return mode.BackendStateDegraded
+	default:
+		return mode.BackendStateHealthy
+	}
+}
+
+func (m Model) shouldSuppressToast(msg mode.ShowToastMsg) bool {
+	if m.backendState == mode.BackendStateHealthy {
+		return false
+	}
+	if msg.Style != toaster.StyleError {
+		return false
+	}
+	lower := strings.ToLower(msg.Message)
+	return strings.Contains(lower, "failed to load issues") ||
+		strings.Contains(lower, "error loading tree") ||
+		strings.Contains(lower, "database connection unavailable") ||
+		strings.Contains(lower, "text search unavailable")
+}
+
+func (m Model) backendBannerView() string {
+	switch m.backendState {
+	case mode.BackendStateReconnecting:
+		return styles.StatusBarStyle.Width(m.width).Render("Backend reconnecting… auto-refresh paused")
+	case mode.BackendStateDegraded:
+		return styles.ErrorStyle.Width(m.width).Render("Backend unavailable. Showing cached data until reconnect succeeds.")
+	default:
+		return ""
+	}
+}
+
+func (m Model) broadcastBackendState(state mode.BackendState) tea.Cmd {
+	msg := mode.BackendStateMsg{State: state}
+	m.kanban, _ = m.kanban.Update(msg)
+	m.search, _ = m.search.Update(msg)
+	controller, cmd := m.dashboard.Update(msg)
+	m.dashboard = controller.(dashboard.Model)
+	return cmd
+}
+
+func (m Model) refreshActiveModeOnce() tea.Cmd {
+	if m.bqlCache != nil {
+		if err := m.bqlCache.Flush(context.Background()); err != nil {
+			log.Warn(log.CatCache, "Failed to flush BQL cache on recovery", "error", err)
+		}
+	}
+	if m.depGraphCache != nil {
+		if err := m.depGraphCache.Flush(context.Background()); err != nil {
+			log.Warn(log.CatCache, "Failed to flush dep graph cache on recovery", "error", err)
+		}
+	}
+
+	var cmd tea.Cmd
+	switch m.currentMode {
+	case mode.ModeKanban:
+		m.kanban, cmd = m.kanban.HandleDBChanged()
+	case mode.ModeSearch:
+		m.search, cmd = m.search.HandleDBChanged()
+	case mode.ModeDashboard:
+		m.dashboard, cmd = m.dashboard.HandleDBChanged()
+	}
+	return cmd
 }
 
 // switchMode toggles between Kanban and Search modes.
@@ -1149,6 +1291,10 @@ func (m Model) View() string {
 		view = zone.Scan(lipgloss.JoinHorizontal(lipgloss.Top, view, m.chatPanel.View()))
 	}
 
+	if banner := m.backendBannerView(); banner != "" {
+		view = lipgloss.JoinVertical(lipgloss.Left, banner, view)
+	}
+
 	// Overlay toaster on top of active mode's view
 	if m.toaster.Visible() {
 		view = m.toaster.Overlay(view, m.width, m.height)
@@ -1197,6 +1343,10 @@ func (m *Model) Close() error {
 	// Cancel watcher subscription context (stops listener)
 	if m.watcherCancel != nil {
 		m.watcherCancel()
+	}
+
+	if m.backendStateCancel != nil {
+		m.backendStateCancel()
 	}
 
 	// Close watcher if we own it
