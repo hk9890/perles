@@ -35,6 +35,8 @@ type DoltClient struct {
 
 	connectivityState  appbeads.ConnectivityState
 	connectivityBroker *pubsub.Broker[appbeads.ConnectivityEvent]
+	reconnectWait      chan struct{}
+	reconnectResult    error
 }
 
 type ConnectionDetails struct {
@@ -350,19 +352,63 @@ func (c *DoltClient) ReconnectIfRecoverable(err error) (bool, error) {
 		return false, nil
 	}
 
-	if c.ConnectivityState() == appbeads.ConnectivityStateHealthy {
-		c.setConnectivityState(appbeads.ConnectivityStateReconnecting, nil)
+	waitCh, leader := c.beginReconnectAttempt()
+	if !leader {
+		<-waitCh
+		return true, c.lastReconnectResult()
 	}
+
+	c.setConnectivityState(appbeads.ConnectivityStateReconnecting, nil)
 
 	reconnectErr := c.reconnect()
+	c.finishReconnectAttempt(reconnectErr)
+
+	return true, reconnectErr
+
+}
+
+func (c *DoltClient) beginReconnectAttempt() (<-chan struct{}, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.connectivityState == "" {
+		c.connectivityState = appbeads.ConnectivityStateHealthy
+	}
+	if c.reconnectWait != nil {
+		return c.reconnectWait, false
+	}
+	c.reconnectWait = make(chan struct{})
+	c.reconnectResult = nil
+	return c.reconnectWait, true
+}
+
+func (c *DoltClient) finishReconnectAttempt(reconnectErr error) {
+	state := appbeads.ConnectivityStateHealthy
 	if reconnectErr != nil {
-		c.setConnectivityState(appbeads.ConnectivityStateDegraded, reconnectErr)
-		return true, reconnectErr
+		state = appbeads.ConnectivityStateDegraded
 	}
 
-	c.setConnectivityState(appbeads.ConnectivityStateHealthy, nil)
+	c.mu.Lock()
+	waitCh := c.reconnectWait
+	c.reconnectResult = reconnectErr
+	c.mu.Unlock()
 
-	return true, nil
+	c.setConnectivityState(state, reconnectErr)
+
+	c.mu.Lock()
+	if c.reconnectWait == waitCh {
+		c.reconnectWait = nil
+	}
+	c.mu.Unlock()
+
+	if waitCh != nil {
+		close(waitCh)
+	}
+}
+
+func (c *DoltClient) lastReconnectResult() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.reconnectResult
 
 }
 
@@ -386,14 +432,8 @@ func (c *DoltClient) setConnectivityState(state appbeads.ConnectivityState, err 
 }
 
 func (c *DoltClient) reconnect() error {
-	currentDB := c.DB()
-
 	c.reconnectMu.Lock()
 	defer c.reconnectMu.Unlock()
-
-	if c.DB() != currentDB {
-		return nil
-	}
 
 	details, err := ResolveConnectionDetails(c.beadsDir)
 	if err != nil {

@@ -1766,7 +1766,7 @@ func (m Model) loadTree(rootID string) tea.Cmd {
 func (m Model) handleSearchResults(msg searchResultsMsg) (Model, tea.Cmd) {
 	if msg.err != nil {
 		m.searchErr = msg.err
-		if !(m.backendState == mode.BackendStateReconnecting || m.backendState == mode.BackendStateDegraded) {
+		if m.backendState != mode.BackendStateReconnecting && m.backendState != mode.BackendStateDegraded {
 			// Keep visible stale data during backend outages.
 			m.results = nil
 			m.resultsList.SetItems([]list.Item{})

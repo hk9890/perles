@@ -640,11 +640,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pubsub.Event[appbeads.ConnectivityEvent]:
 		prev := m.backendState
 		m.backendState = mapConnectivityState(msg.Payload.State)
-		stateCmd := m.broadcastBackendState(m.backendState)
+		var stateCmd tea.Cmd
+		m, stateCmd = m.broadcastBackendState(m.backendState)
 
 		if m.backendState == mode.BackendStateHealthy && prev != mode.BackendStateHealthy {
 			m.skipNextWatcherTick = true
-			refreshCmd := m.refreshActiveModeOnce()
+			var refreshCmd tea.Cmd
+			m, refreshCmd = m.refreshActiveModeOnce()
 			if m.connectivityListenCmd() != nil {
 				return m, tea.Batch(stateCmd, refreshCmd, m.connectivityListenCmd())
 			}
@@ -905,16 +907,16 @@ func (m Model) backendBannerView() string {
 	}
 }
 
-func (m Model) broadcastBackendState(state mode.BackendState) tea.Cmd {
+func (m Model) broadcastBackendState(state mode.BackendState) (Model, tea.Cmd) {
 	msg := mode.BackendStateMsg{State: state}
 	m.kanban, _ = m.kanban.Update(msg)
 	m.search, _ = m.search.Update(msg)
 	controller, cmd := m.dashboard.Update(msg)
 	m.dashboard = controller.(dashboard.Model)
-	return cmd
+	return m, cmd
 }
 
-func (m Model) refreshActiveModeOnce() tea.Cmd {
+func (m Model) refreshActiveModeOnce() (Model, tea.Cmd) {
 	if m.bqlCache != nil {
 		if err := m.bqlCache.Flush(context.Background()); err != nil {
 			log.Warn(log.CatCache, "Failed to flush BQL cache on recovery", "error", err)
@@ -935,7 +937,7 @@ func (m Model) refreshActiveModeOnce() tea.Cmd {
 	case mode.ModeDashboard:
 		m.dashboard, cmd = m.dashboard.HandleDBChanged()
 	}
-	return cmd
+	return m, cmd
 }
 
 // switchMode toggles between Kanban and Search modes.
