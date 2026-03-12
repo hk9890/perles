@@ -1707,10 +1707,10 @@ func (m Model) executeSearch() tea.Cmd {
 			err    error
 		)
 		if searchMode == SearchInputModeText {
-			if m.services.Client == nil || m.services.Client.DB() == nil {
+			if m.services.Client == nil {
 				return searchResultsMsg{issues: nil, err: fmt.Errorf("text search unavailable: no database connection")}
 			}
-			issues, err = bql.ExecuteSimpleTextSearch(m.services.Client.DB(), query)
+			issues, err = bql.ExecuteSimpleTextSearch(m.services.Client, query)
 		} else {
 			issues, err = executor.Execute(query)
 		}

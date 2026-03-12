@@ -189,7 +189,7 @@ func NewWithConfig(
 	// Create BQL executor only if client is available (nil when beads DB not present)
 	var bqlExec bql.BQLExecutor
 	if client != nil {
-		bqlExec = bql.NewExecutor(client.DB(), bqlCache, depGraphCache)
+		bqlExec = bql.NewExecutor(client, bqlCache, depGraphCache)
 	}
 
 	services := mode.Services{
@@ -1219,6 +1219,13 @@ func (m *Model) Close() error {
 	if m.db != nil {
 		if err := m.db.Close(); err != nil {
 			log.Error(log.CatDB, "Error closing database", "error", err)
+			return err
+		}
+	}
+
+	if closer, ok := m.services.Client.(interface{ Close() error }); ok && closer != nil {
+		if err := closer.Close(); err != nil {
+			log.Error(log.CatDB, "Error closing beads client", "error", err)
 			return err
 		}
 	}

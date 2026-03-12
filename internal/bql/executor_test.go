@@ -2,13 +2,16 @@ package bql
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
+	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/mocks"
 	"github.com/hk9890/perles/internal/testutil"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -28,17 +31,44 @@ func setupDB(t *testing.T, configure func(*testutil.Builder) *testutil.Builder) 
 // newTestExecutor creates an executor with mock caches for testing.
 // Uses testing.TB interface to work with both *testing.T and *testing.B.
 func newTestExecutor(tb testing.TB, db *sql.DB) *Executor {
+	return newTestExecutorWithProvider(tb, staticDBProvider{db: db})
+}
+
+func newTestExecutorWithProvider(
+	tb testing.TB,
+	provider appbeads.DBProvider,
+) *Executor {
 	bqlCache := mocks.NewMockCacheManager[string, []beads.Issue](tb)
 	bqlCache.On("Get", mock.Anything, mock.Anything).Return(nil, false).Maybe()
 	bqlCache.On("GetWithRefresh", mock.Anything, mock.Anything, mock.Anything).Return(nil, false).Maybe()
 	bqlCache.On("Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	bqlCache.On("Flush", mock.Anything).Return(nil).Maybe()
 
 	depGraphCache := mocks.NewMockCacheManager[string, *DependencyGraph](tb)
 	depGraphCache.On("Get", mock.Anything, mock.Anything).Return(nil, false).Maybe()
 	depGraphCache.On("GetWithRefresh", mock.Anything, mock.Anything, mock.Anything).Return(nil, false).Maybe()
 	depGraphCache.On("Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	depGraphCache.On("Flush", mock.Anything).Return(nil).Maybe()
 
-	return NewExecutor(db, bqlCache, depGraphCache)
+	return NewExecutor(provider, bqlCache, depGraphCache)
+}
+
+type staticDBProvider struct{ db *sql.DB }
+
+func (p staticDBProvider) DB() *sql.DB { return p.db }
+
+type reconnectingProvider struct {
+	currentDB     *sql.DB
+	reconnectFunc func(err error) (bool, error)
+}
+
+func (p *reconnectingProvider) DB() *sql.DB { return p.currentDB }
+
+func (p *reconnectingProvider) ReconnectIfRecoverable(err error) (bool, error) {
+	if p.reconnectFunc != nil {
+		return p.reconnectFunc(err)
+	}
+	return false, nil
 }
 
 func TestExecutor_TypeFilter(t *testing.T) {
@@ -544,7 +574,7 @@ func TestExecuteSimpleTextSearch_MatchesConfiguredFields(t *testing.T) {
 	_, err = db.Exec(`UPDATE issues SET acceptance_criteria = ? WHERE id = ?`, "needle in acceptance", "acceptance-1")
 	require.NoError(t, err)
 
-	issues, err := ExecuteSimpleTextSearch(db, "NEEDLE")
+	issues, err := ExecuteSimpleTextSearch(staticDBProvider{db: db}, "NEEDLE")
 	require.NoError(t, err)
 
 	ids := map[string]bool{}
@@ -567,9 +597,122 @@ func TestExecuteSimpleTextSearch_EmptyInputReturnsEmpty(t *testing.T) {
 	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
 	defer func() { _ = db.Close() }()
 
-	issues, err := ExecuteSimpleTextSearch(db, "   ")
+	issues, err := ExecuteSimpleTextSearch(staticDBProvider{db: db}, "   ")
 	require.NoError(t, err)
 	require.Empty(t, issues)
+}
+
+func TestExecutor_ReconnectsAndRetriesRecoverableQueryFailure(t *testing.T) {
+	goodDB := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = goodDB.Close() }()
+
+	badDB, badMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = badDB.Close() }()
+
+	recoverableErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+
+	provider := &reconnectingProvider{currentDB: badDB}
+	reconnectCalls := 0
+	provider.reconnectFunc = func(err error) (bool, error) {
+		reconnectCalls++
+		require.True(t, appbeads.IsRecoverableConnectivityError(err))
+		provider.currentDB = goodDB
+		return true, nil
+	}
+
+	executor := newTestExecutorWithProvider(t, provider)
+	issues, err := executor.Execute("id = test-1")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "test-1", issues[0].ID)
+	require.Equal(t, 1, reconnectCalls)
+	require.NoError(t, badMock.ExpectationsWereMet())
+}
+
+func TestExecutor_ReconnectFlushesCachesBeforeRetry(t *testing.T) {
+	goodDB := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = goodDB.Close() }()
+
+	badDB, badMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = badDB.Close() }()
+
+	recoverableErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+
+	bqlCache := mocks.NewMockCacheManager[string, []beads.Issue](t)
+	bqlCache.On("Get", mock.Anything, mock.Anything).Return(nil, false).Maybe()
+	bqlCache.On("GetWithRefresh", mock.Anything, mock.Anything, mock.Anything).Return(nil, false).Maybe()
+	bqlCache.On("Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	bqlCache.On("Flush", mock.Anything).Return(nil).Once()
+
+	depGraphCache := mocks.NewMockCacheManager[string, *DependencyGraph](t)
+	depGraphCache.On("Get", mock.Anything, mock.Anything).Return(nil, false).Maybe()
+	depGraphCache.On("GetWithRefresh", mock.Anything, mock.Anything, mock.Anything).Return(nil, false).Maybe()
+	depGraphCache.On("Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return().Maybe()
+	depGraphCache.On("Flush", mock.Anything).Return(nil).Once()
+
+	provider := &reconnectingProvider{currentDB: badDB}
+	provider.reconnectFunc = func(err error) (bool, error) {
+		require.True(t, appbeads.IsRecoverableConnectivityError(err))
+		provider.currentDB = goodDB
+		return true, nil
+	}
+
+	executor := NewExecutor(provider, bqlCache, depGraphCache)
+	issues, err := executor.Execute("id = test-1")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.NoError(t, badMock.ExpectationsWereMet())
+	bqlCache.AssertExpectations(t)
+	depGraphCache.AssertExpectations(t)
+}
+
+func TestExecutor_ParseErrorDoesNotTriggerReconnect(t *testing.T) {
+	provider := &reconnectingProvider{}
+	reconnectCalls := 0
+	provider.reconnectFunc = func(err error) (bool, error) {
+		reconnectCalls++
+		return true, nil
+	}
+
+	executor := newTestExecutorWithProvider(t, provider)
+	_, err := executor.Execute("type = = bug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "parse error")
+	require.Zero(t, reconnectCalls)
+}
+
+func TestExecuteSimpleTextSearch_ReconnectsAfterRecoverableFailure(t *testing.T) {
+	goodDB := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.WithIssue("needle-1", testutil.Title("Needle in title"))
+	})
+	defer func() { _ = goodDB.Close() }()
+
+	badDB, badMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = badDB.Close() }()
+
+	recoverableErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+
+	provider := &reconnectingProvider{currentDB: badDB}
+	reconnectCalls := 0
+	provider.reconnectFunc = func(err error) (bool, error) {
+		reconnectCalls++
+		require.True(t, appbeads.IsRecoverableConnectivityError(err))
+		provider.currentDB = goodDB
+		return true, nil
+	}
+
+	issues, err := ExecuteSimpleTextSearch(provider, "needle")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "needle-1", issues[0].ID)
+	require.Equal(t, 1, reconnectCalls)
+	require.NoError(t, badMock.ExpectationsWereMet())
 }
 
 func TestExecutor_OrderByOnly(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
@@ -21,11 +22,14 @@ import (
 )
 
 var _ appbeads.ReadClient = (*DoltClient)(nil)
+var _ appbeads.Reconnector = (*DoltClient)(nil)
 
 type DoltClient struct {
-	db       *sql.DB
-	details  ConnectionDetails
-	beadsDir string
+	mu          sync.RWMutex
+	reconnectMu sync.Mutex
+	db          *sql.DB
+	details     ConnectionDetails
+	beadsDir    string
 }
 
 type ConnectionDetails struct {
@@ -118,6 +122,10 @@ func NewDoltClient(beadsDir string) (*DoltClient, error) {
 		return nil, err
 	}
 
+	return connectOrDelegateStartup(beadsDir, details)
+}
+
+func connectOrDelegateStartup(beadsDir string, details ConnectionDetails) (*DoltClient, error) {
 	client, err := connectDoltClient(beadsDir, details)
 	if err == nil {
 		return client, nil
@@ -213,16 +221,44 @@ func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
 }
 
 func (c *DoltClient) Close() error {
-	return c.db.Close()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.db == nil {
+		return nil
+	}
+	err := c.db.Close()
+	c.db = nil
+	return err
 }
 
 func (c *DoltClient) DB() *sql.DB {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.db
 }
 
 func (c *DoltClient) Version() (string, error) {
-	var version string
-	err := c.db.QueryRow("SELECT value FROM metadata WHERE `key` = ?", "bd_version").Scan(&version)
+	readVersion := func() (string, error) {
+		db := c.DB()
+		if db == nil {
+			return "", errors.New("database connection unavailable")
+		}
+
+		var version string
+		err := db.QueryRow("SELECT value FROM metadata WHERE `key` = ?", "bd_version").Scan(&version)
+		if err != nil {
+			return "", err
+		}
+		return version, nil
+	}
+
+	version, err := readVersion()
+	if attempted, reconnectErr := c.ReconnectIfRecoverable(err); attempted {
+		if reconnectErr != nil {
+			return "", fmt.Errorf("reading bd_version from metadata: %w", reconnectErr)
+		}
+		version, err = readVersion()
+	}
 	if err != nil {
 		return "", fmt.Errorf("reading bd_version from metadata: %w", err)
 	}
@@ -237,22 +273,82 @@ func (c *DoltClient) GetComments(issueID string) ([]domain.Comment, error) {
 		ORDER BY created_at ASC
 	`
 
-	rows, err := c.db.Query(query, issueID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
+	readComments := func() ([]domain.Comment, error) {
+		db := c.DB()
+		if db == nil {
+			return nil, errors.New("database connection unavailable")
+		}
 
-	var comments []domain.Comment
-	for rows.Next() {
-		var comment domain.Comment
-		if err := rows.Scan(&comment.ID, &comment.Author, &comment.Text, &comment.CreatedAt); err != nil {
+		rows, err := db.Query(query, issueID)
+		if err != nil {
 			return nil, err
 		}
-		comments = append(comments, comment)
+		defer func() { _ = rows.Close() }()
+
+		var comments []domain.Comment
+		for rows.Next() {
+			var comment domain.Comment
+			if err := rows.Scan(&comment.ID, &comment.Author, &comment.Text, &comment.CreatedAt); err != nil {
+				return nil, err
+			}
+			comments = append(comments, comment)
+		}
+
+		return comments, rows.Err()
 	}
 
-	return comments, rows.Err()
+	comments, err := readComments()
+	if attempted, reconnectErr := c.ReconnectIfRecoverable(err); attempted {
+		if reconnectErr != nil {
+			return nil, reconnectErr
+		}
+		return readComments()
+	}
+
+	return comments, err
+}
+
+func (c *DoltClient) ReconnectIfRecoverable(err error) (bool, error) {
+	if !appbeads.IsRecoverableConnectivityError(err) {
+		return false, nil
+	}
+
+	return true, c.reconnect()
+}
+
+func (c *DoltClient) reconnect() error {
+	currentDB := c.DB()
+
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+
+	if c.DB() != currentDB {
+		return nil
+	}
+
+	details, err := ResolveConnectionDetails(c.beadsDir)
+	if err != nil {
+		return err
+	}
+
+	newClient, err := connectOrDelegateStartup(c.beadsDir, details)
+	if err != nil {
+		return err
+	}
+
+	newDB := newClient.DB()
+
+	c.mu.Lock()
+	oldDB := c.db
+	c.db = newDB
+	c.details = details
+	c.mu.Unlock()
+
+	if oldDB != nil {
+		_ = oldDB.Close()
+	}
+
+	return nil
 }
 
 func ResolveConnectionDetails(beadsDir string) (ConnectionDetails, error) {

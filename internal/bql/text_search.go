@@ -1,17 +1,22 @@
 package bql
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
+	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 )
 
 // ExecuteSimpleTextSearch performs a broad LIKE-based search for v1 text mode.
 // It intentionally stays simple (no FTS index) and searches across:
 // title, description, notes, labels, id, comments, design, acceptance criteria.
-func ExecuteSimpleTextSearch(db *sql.DB, input string) ([]beads.Issue, error) {
+func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]beads.Issue, error) {
+	if provider == nil {
+		return nil, errors.New("database provider unavailable")
+	}
+
 	query := strings.TrimSpace(input)
 	if query == "" {
 		return []beads.Issue{}, nil
@@ -72,56 +77,76 @@ func ExecuteSimpleTextSearch(db *sql.DB, input string) ([]beads.Issue, error) {
 		ORDER BY i.updated_at DESC
 	`
 
-	rows, err := db.Query(sqlQuery, like, like, like, like, like, like, like, like)
-	if err != nil {
-		return nil, fmt.Errorf("text search query error: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	executeOnce := func() ([]beads.Issue, error) {
+		db := provider.DB()
+		if db == nil {
+			return nil, errors.New("database connection unavailable")
+		}
 
-	executor := &Executor{db: db}
-	issues, err := executor.scanIssuesBase(rows)
-	if err != nil {
-		return nil, err
-	}
-	if len(issues) == 0 {
+		rows, err := db.Query(sqlQuery, like, like, like, like, like, like, like, like)
+		if err != nil {
+			return nil, fmt.Errorf("text search query error: %w", err)
+		}
+		defer func() { _ = rows.Close() }()
+
+		executor := &Executor{provider: provider}
+		issues, err := executor.scanIssuesBase(rows)
+		if err != nil {
+			return nil, err
+		}
+		if len(issues) == 0 {
+			return issues, nil
+		}
+
+		ids := make([]string, len(issues))
+		for i, issue := range issues {
+			ids[i] = issue.ID
+		}
+
+		labels, err := executor.loadLabelsForIssues(ids)
+		if err != nil {
+			return nil, fmt.Errorf("load labels: %w", err)
+		}
+		commentCounts, err := executor.loadCommentCountsForIssues(ids)
+		if err != nil {
+			return nil, fmt.Errorf("load comment counts: %w", err)
+		}
+		deps, err := executor.loadDependenciesForIssues(ids)
+		if err != nil {
+			return nil, fmt.Errorf("load dependencies: %w", err)
+		}
+
+		for i := range issues {
+			id := issues[i].ID
+			if l, ok := labels[id]; ok {
+				issues[i].Labels = l
+			}
+			if c, ok := commentCounts[id]; ok {
+				issues[i].CommentCount = c
+			}
+			if d, ok := deps[id]; ok {
+				issues[i].ParentID = d.ParentID
+				issues[i].BlockedBy = d.BlockedBy
+				issues[i].Blocks = d.Blocks
+				issues[i].Children = d.Children
+				issues[i].DiscoveredFrom = d.DiscoveredFrom
+				issues[i].Discovered = d.Discovered
+			}
+		}
+
 		return issues, nil
 	}
 
-	ids := make([]string, len(issues))
-	for i, issue := range issues {
-		ids[i] = issue.ID
-	}
-
-	labels, err := executor.loadLabelsForIssues(ids)
+	issues, err := executeOnce()
 	if err != nil {
-		return nil, fmt.Errorf("load labels: %w", err)
-	}
-	commentCounts, err := executor.loadCommentCountsForIssues(ids)
-	if err != nil {
-		return nil, fmt.Errorf("load comment counts: %w", err)
-	}
-	deps, err := executor.loadDependenciesForIssues(ids)
-	if err != nil {
-		return nil, fmt.Errorf("load dependencies: %w", err)
-	}
-
-	for i := range issues {
-		id := issues[i].ID
-		if l, ok := labels[id]; ok {
-			issues[i].Labels = l
-		}
-		if c, ok := commentCounts[id]; ok {
-			issues[i].CommentCount = c
-		}
-		if d, ok := deps[id]; ok {
-			issues[i].ParentID = d.ParentID
-			issues[i].BlockedBy = d.BlockedBy
-			issues[i].Blocks = d.Blocks
-			issues[i].Children = d.Children
-			issues[i].DiscoveredFrom = d.DiscoveredFrom
-			issues[i].Discovered = d.Discovered
+		reconnector, ok := provider.(appbeads.Reconnector)
+		if ok && appbeads.IsRecoverableConnectivityError(err) {
+			if _, reconnectErr := reconnector.ReconnectIfRecoverable(err); reconnectErr != nil {
+				return nil, reconnectErr
+			}
+			return executeOnce()
 		}
 	}
 
-	return issues, nil
+	return issues, err
 }

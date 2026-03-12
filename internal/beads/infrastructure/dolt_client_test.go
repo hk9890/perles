@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -375,6 +377,222 @@ func TestDoltClientGetCommentsReadsRows(t *testing.T) {
 	require.Equal(t, 1, comments[0].ID)
 	require.Equal(t, "bob", comments[1].Author)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDoltClientReconnect_ReReadsPortAndClosesOldDB(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	oldDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	newDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = newDB.Close() }()
+
+	originalConnect := connectDoltClient
+	t.Cleanup(func() { connectDoltClient = originalConnect })
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		switch connectCalls {
+		case 1:
+			require.Equal(t, 4010, details.Port)
+			return &DoltClient{db: oldDB, details: details, beadsDir: beadsDir}, nil
+		case 2:
+			require.Equal(t, 4020, details.Port)
+			return &DoltClient{db: newDB, details: details, beadsDir: beadsDir}, nil
+		default:
+			return nil, fmt.Errorf("unexpected connect call: %d", connectCalls)
+		}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	writeTestPortFile(t, beadsDir, "4020")
+	attempted, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4020: connect: connection refused"))
+	require.True(t, attempted)
+	require.NoError(t, reconnectErr)
+
+	require.Equal(t, 2, connectCalls)
+	require.Equal(t, newDB, client.DB())
+	require.Equal(t, 4020, client.details.Port)
+
+	// Verify old handle was closed during swap.
+	require.Error(t, oldDB.Ping())
+}
+
+func TestDoltClientReconnect_LocalOnlyDelegatedRestart(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	firstDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	secondDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() {
+		_ = firstDB.Close()
+		_ = secondDB.Close()
+	}()
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	originalBackoff := postStartReadinessBackoff
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+		postStartReadinessBackoff = originalBackoff
+	})
+
+	postStartReadinessBackoff = nil
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		if connectCalls == 1 {
+			return &DoltClient{db: firstDB, details: details, beadsDir: beadsDir}, nil
+		}
+		if connectCalls == 2 {
+			return nil, &StartupError{Kind: StartupErrorKindServerStartup, Err: errors.New("connection refused"), Details: copyConnectionDetails(details)}
+		}
+		return &DoltClient{db: secondDB, details: details, beadsDir: beadsDir}, nil
+	}
+
+	delegateCalls := 0
+	newDoltStartupDelegate = func(_ string) doltStartupDelegate {
+		return &fakeDoltStartupDelegate{startFunc: func(_ context.Context) error {
+			delegateCalls++
+			return nil
+		}}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	attempted, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4010: connect: connection refused"))
+	require.True(t, attempted)
+	require.NoError(t, reconnectErr)
+	require.Equal(t, 1, delegateCalls)
+	require.Equal(t, secondDB, client.DB())
+}
+
+func TestDoltClientReconnect_RemoteHostDoesNotDelegate(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "10.20.30.40", 3306)
+
+	firstDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = firstDB.Close() }()
+
+	originalConnect := connectDoltClient
+	originalDelegateFactory := newDoltStartupDelegate
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		newDoltStartupDelegate = originalDelegateFactory
+	})
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		if connectCalls == 1 {
+			return &DoltClient{db: firstDB, details: details, beadsDir: beadsDir}, nil
+		}
+		return nil, &StartupError{Kind: StartupErrorKindServerStartup, Err: errors.New("connection refused"), Details: copyConnectionDetails(details)}
+	}
+
+	delegateCalled := false
+	newDoltStartupDelegate = func(_ string) doltStartupDelegate {
+		delegateCalled = true
+		return &fakeDoltStartupDelegate{}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	attempted, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 10.20.30.40:3306: connect: connection refused"))
+	require.True(t, attempted)
+	require.Error(t, reconnectErr)
+	require.False(t, delegateCalled)
+}
+
+func TestDoltClientReconnect_NonRecoverableErrorDoesNotReconnect(t *testing.T) {
+	client := &DoltClient{db: &sql.DB{}}
+
+	attempted, err := client.ReconnectIfRecoverable(errors.New("Error 1064: You have an error in your SQL syntax"))
+	require.False(t, attempted)
+	require.NoError(t, err)
+}
+
+func TestDoltClientReconnect_DeduplicatesConcurrentReconnects(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	oldDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	newDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = newDB.Close() }()
+
+	originalConnect := connectDoltClient
+	t.Cleanup(func() { connectDoltClient = originalConnect })
+
+	var mu sync.Mutex
+	connectCalls := 0
+	reconnectStarted := make(chan struct{})
+	releaseReconnect := make(chan struct{})
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		mu.Lock()
+		connectCalls++
+		call := connectCalls
+		mu.Unlock()
+
+		switch call {
+		case 1:
+			return &DoltClient{db: oldDB, details: details, beadsDir: beadsDir}, nil
+		case 2:
+			close(reconnectStarted)
+			<-releaseReconnect
+			return &DoltClient{db: newDB, details: details, beadsDir: beadsDir}, nil
+		default:
+			return nil, fmt.Errorf("unexpected connect call: %d", call)
+		}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4010: connect: connection refused"))
+			errCh <- reconnectErr
+		}()
+	}
+
+	<-reconnectStarted
+	close(releaseReconnect)
+	wg.Wait()
+	close(errCh)
+
+	for reconnectErr := range errCh {
+		require.NoError(t, reconnectErr)
+	}
+
+	require.Equal(t, newDB, client.DB())
+	require.Equal(t, 2, connectCalls)
+	require.Error(t, oldDB.Ping())
 }
 
 func writeTestMetadata(t *testing.T, beadsDir, content string) {

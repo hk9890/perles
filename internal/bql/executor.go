@@ -3,10 +3,12 @@ package bql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/cachemanager"
 	"github.com/hk9890/perles/internal/log"
@@ -23,7 +25,8 @@ var _ BQLExecutor = (*Executor)(nil)
 
 // Executor runs BQL queries against the database.
 type Executor struct {
-	db            *sql.DB
+	provider      appbeads.DBProvider
+	reconnector   appbeads.Reconnector
 	cacheManager  cachemanager.CacheManager[string, []beads.Issue]
 	depGraphCache cachemanager.CacheManager[string, *DependencyGraph]
 }
@@ -33,12 +36,18 @@ const depGraphCacheKey = "__dependency_graph__"
 
 // NewExecutor creates a new query executor.
 func NewExecutor(
-	db *sql.DB,
+	provider appbeads.DBProvider,
 	cacheManager cachemanager.CacheManager[string, []beads.Issue],
 	depGraphCache cachemanager.CacheManager[string, *DependencyGraph],
 ) *Executor {
+	var reconnector appbeads.Reconnector
+	if r, ok := provider.(appbeads.Reconnector); ok {
+		reconnector = r
+	}
+
 	return &Executor{
-		db:            db,
+		provider:      provider,
+		reconnector:   reconnector,
 		cacheManager:  cacheManager,
 		depGraphCache: depGraphCache,
 	}
@@ -105,6 +114,14 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 		false,
 	)
 	issues, err := cache.GetWithRefresh(context.Background(), input, query, cachemanager.DefaultExpiration)
+	if e.shouldRetryAfterReconnect(err) {
+		if reconnectErr := e.retryReconnect(err); reconnectErr != nil {
+			log.ErrorErr(log.CatBQL, "reconnect failed after query error", reconnectErr, "query", input)
+			return nil, reconnectErr
+		}
+
+		issues, err = cache.GetWithRefresh(context.Background(), input, query, cachemanager.DefaultExpiration)
+	}
 	if err != nil {
 		log.ErrorErr(log.CatBQL, "failed to load issues", err, "query", input)
 		return nil, err
@@ -113,6 +130,42 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 	log.Debug(log.CatBQL, "query complete", "duration", time.Since(start), "count", len(issues), "query", input)
 
 	return issues, nil
+}
+
+func (e *Executor) shouldRetryAfterReconnect(err error) bool {
+	return err != nil && e.reconnector != nil && appbeads.IsRecoverableConnectivityError(err)
+}
+
+func (e *Executor) retryReconnect(queryErr error) error {
+	_, reconnectErr := e.reconnector.ReconnectIfRecoverable(queryErr)
+	if reconnectErr != nil {
+		return reconnectErr
+	}
+
+	ctx := context.Background()
+	if e.cacheManager != nil {
+		if err := e.cacheManager.Flush(ctx); err != nil {
+			return fmt.Errorf("flush query cache after reconnect: %w", err)
+		}
+	}
+	if e.depGraphCache != nil {
+		if err := e.depGraphCache.Flush(ctx); err != nil {
+			return fmt.Errorf("flush dependency cache after reconnect: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (e *Executor) db() (*sql.DB, error) {
+	if e.provider == nil {
+		return nil, errors.New("database provider unavailable")
+	}
+	db := e.provider.DB()
+	if db == nil {
+		return nil, errors.New("database connection unavailable")
+	}
+	return db, nil
 }
 
 // IssueDeps holds all dependency data for an issue, grouped by type.
@@ -180,7 +233,12 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 	}
 
 	// Execute main query
-	rows, err := e.db.Query(sqlQuery, params...)
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(sqlQuery, params...)
 	if err != nil {
 		log.ErrorErr(log.CatDB, "Query failed", err)
 		return nil, fmt.Errorf("query error: %w", err)
@@ -406,7 +464,12 @@ func (e *Executor) loadDependenciesForIssues(ids []string) (map[string]IssueDeps
 		  AND i.status NOT IN ('deleted', 'tombstone')
 	`, inClause, inClause)
 
-	rows, err := e.db.Query(query, params...)
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(query, params...)
 	if err != nil {
 		log.ErrorErr(log.CatDB, "Failed to batch load dependencies", err)
 		return nil, fmt.Errorf("batch load dependencies: %w", err)
@@ -503,7 +566,12 @@ func (e *Executor) loadLabelsForIssues(ids []string) (map[string][]string, error
 		WHERE issue_id IN (%s)
 	`, inClause)
 
-	rows, err := e.db.Query(query, params...)
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(query, params...)
 	if err != nil {
 		log.ErrorErr(log.CatDB, "Failed to batch load labels", err)
 		return nil, fmt.Errorf("batch load labels: %w", err)
@@ -552,7 +620,12 @@ func (e *Executor) loadCommentCountsForIssues(ids []string) (map[string]int, err
 		GROUP BY issue_id
 	`, inClause)
 
-	rows, err := e.db.Query(query, params...)
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(query, params...)
 	if err != nil {
 		log.ErrorErr(log.CatDB, "Failed to batch load comment counts", err)
 		return nil, fmt.Errorf("batch load comment counts: %w", err)
@@ -710,7 +783,12 @@ func (e *Executor) loadDependencyGraphFromDB() (*DependencyGraph, error) {
 		  AND i2.status NOT IN ('deleted', 'tombstone')
 	`
 
-	rows, err := e.db.Query(query)
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query(query)
 	if err != nil {
 		log.ErrorErr(log.CatDB, "Failed to load dependency graph", err)
 		return nil, fmt.Errorf("load dependency graph: %w", err)
