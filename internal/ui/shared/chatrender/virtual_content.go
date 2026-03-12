@@ -135,6 +135,16 @@ func (vc *ChatVirtualContent) Messages() []Message {
 	return vc.messages
 }
 
+// rolePlainText builds the plain text for a role line, including the timestamp
+// prefix if the message has one. This ensures plainLines[] contain the full
+// selectable text (e.g., "18:06 Coordinator") matching what RenderLine displays.
+func (vc *ChatVirtualContent) rolePlainText(roleLabel string, msg Message) string {
+	if !msg.Timestamp.IsZero() {
+		return msg.Timestamp.Format("15:04") + " " + roleLabel
+	}
+	return roleLabel
+}
+
 // buildLines converts the source messages into virtual lines.
 // It processes each message to produce role lines, content lines, tool call lines, and blank separators.
 // Tool call sequences are detected to apply correct tree prefixes (├╴ vs ╰╴).
@@ -163,12 +173,12 @@ func (vc *ChatVirtualContent) buildLines() {
 		lineIndexInMessage := 0
 
 		if msg.Role == "user" {
-			// Add role line
+			// Add role line (plainText includes timestamp if present)
 			vc.addLine(ChatVirtualLine{
 				MessageIndex: i,
 				LineIndex:    lineIndexInMessage,
 				LineType:     LineTypeRole,
-				PlainText:    userLabel,
+				PlainText:    vc.rolePlainText(userLabel, msg),
 			})
 			lineIndexInMessage++
 
@@ -199,7 +209,7 @@ func (vc *ChatVirtualContent) buildLines() {
 					MessageIndex: i,
 					LineIndex:    lineIndexInMessage,
 					LineType:     LineTypeRole,
-					PlainText:    vc.cfg.AgentLabel,
+					PlainText:    vc.rolePlainText(vc.cfg.AgentLabel, msg),
 				})
 				lineIndexInMessage++
 			}
@@ -256,12 +266,12 @@ func (vc *ChatVirtualContent) buildLines() {
 				roleLabel = vc.cfg.AgentLabel
 			}
 
-			// Add role line
+			// Add role line (plainText includes timestamp if present)
 			vc.addLine(ChatVirtualLine{
 				MessageIndex: i,
 				LineIndex:    lineIndexInMessage,
 				LineType:     LineTypeRole,
-				PlainText:    roleLabel,
+				PlainText:    vc.rolePlainText(roleLabel, msg),
 			})
 			lineIndexInMessage++
 
@@ -535,12 +545,12 @@ func (vc *ChatVirtualContent) AppendMessage(msg Message) int {
 	lineIndexInMessage := 0
 
 	if msg.Role == "user" {
-		// Add role line
+		// Add role line (plainText includes timestamp if present)
 		vc.addLine(ChatVirtualLine{
 			MessageIndex: msgIndex,
 			LineIndex:    lineIndexInMessage,
 			LineType:     LineTypeRole,
-			PlainText:    userLabel,
+			PlainText:    vc.rolePlainText(userLabel, msg),
 		})
 		lineIndexInMessage++
 
@@ -571,7 +581,7 @@ func (vc *ChatVirtualContent) AppendMessage(msg Message) int {
 				MessageIndex: msgIndex,
 				LineIndex:    lineIndexInMessage,
 				LineType:     LineTypeRole,
-				PlainText:    vc.cfg.AgentLabel,
+				PlainText:    vc.rolePlainText(vc.cfg.AgentLabel, msg),
 			})
 			lineIndexInMessage++
 		}
@@ -634,12 +644,12 @@ func (vc *ChatVirtualContent) AppendMessage(msg Message) int {
 			roleLabel = vc.cfg.AgentLabel
 		}
 
-		// Add role line
+		// Add role line (plainText includes timestamp if present)
 		vc.addLine(ChatVirtualLine{
 			MessageIndex: msgIndex,
 			LineIndex:    lineIndexInMessage,
 			LineType:     LineTypeRole,
-			PlainText:    roleLabel,
+			PlainText:    vc.rolePlainText(roleLabel, msg),
 		})
 		lineIndexInMessage++
 
@@ -751,13 +761,42 @@ func (vc *ChatVirtualContent) RenderLine(index int) string {
 	return rendered
 }
 
+// roleLabel extracts the role label for a given message index.
+// This derives the label the same way buildLines() does, ensuring consistency
+// between PlainText content and rendered output.
+func (vc *ChatVirtualContent) roleLabel(msgIndex int) string {
+	if msgIndex >= len(vc.messages) {
+		return vc.cfg.AgentLabel
+	}
+
+	msg := vc.messages[msgIndex]
+	switch {
+	case msg.Role == "user":
+		userLabel := vc.cfg.UserLabel
+		if userLabel == "" {
+			userLabel = "You"
+		}
+		return userLabel
+	case msg.Role == "system":
+		return "System"
+	case vc.cfg.ShowCoordinatorInWorker && msg.Role == "coordinator":
+		return "Coordinator"
+	default:
+		return vc.cfg.AgentLabel
+	}
+}
+
 // renderRoleLine renders a role line with appropriate styling.
-// If ShowTimestamps is enabled and the message has a timestamp, prepends HH:MM.
+// It derives the role label from the message (not from PlainText, which includes
+// the timestamp) to apply correct styling, then builds the full styled output
+// matching the structure of PlainText: "HH:MM RoleLabel" or just "RoleLabel".
 func (vc *ChatVirtualContent) renderRoleLine(line ChatVirtualLine) string {
+	// Get the role label from the message to determine styling
+	label := vc.roleLabel(line.MessageIndex)
+
 	// Determine color based on role label
 	var style lipgloss.Style
-
-	switch line.PlainText {
+	switch label {
 	case "You", vc.cfg.UserLabel:
 		style = RoleStyle.Foreground(UserColor)
 	case "System":
@@ -769,9 +808,9 @@ func (vc *ChatVirtualContent) renderRoleLine(line ChatVirtualLine) string {
 		style = RoleStyle.Foreground(vc.cfg.AgentColor)
 	}
 
-	roleText := style.Render(line.PlainText)
+	roleText := style.Render(label)
 
-	// Prepend timestamp if available
+	// Prepend timestamp if available (matches the plain text structure from rolePlainText)
 	if line.MessageIndex < len(vc.messages) {
 		msg := vc.messages[line.MessageIndex]
 		if !msg.Timestamp.IsZero() {
@@ -824,6 +863,32 @@ func (vc *ChatVirtualContent) getBorderColorForMessage(messageIndex int) lipglos
 		// Use agent color from config (handles "assistant" and custom roles)
 		return vc.cfg.AgentColor
 	}
+}
+
+// RenderLinePrefix returns the styled left border prefix for a given line index.
+// Returns the colored "│ " prefix for non-blank lines, or "" for blank lines.
+// This is used by the selection overlay to preserve the border when highlighting
+// text, since plainLines[] don't include the border prefix.
+func (vc *ChatVirtualContent) RenderLinePrefix(index int) string {
+	if index < 0 || index >= len(vc.lines) {
+		return ""
+	}
+
+	line := vc.lines[index]
+
+	// Blank lines have no border
+	if line.LineType == LineTypeBlank {
+		return ""
+	}
+
+	// Non-blank lines get colored border
+	if line.MessageIndex < len(vc.messages) {
+		borderColor := vc.getBorderColorForMessage(line.MessageIndex)
+		leftBorder := lipgloss.NewStyle().Foreground(borderColor).Render("│")
+		return leftBorder + " "
+	}
+
+	return ""
 }
 
 // SetWidth updates the render width and clears the cache if width changed.

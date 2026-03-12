@@ -570,12 +570,9 @@ func TestDoltClientReconnect_DeduplicatesConcurrentReconnects(t *testing.T) {
 	client, err := NewDoltClient(beadsDir)
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
 	for range 2 {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			_, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4010: connect: connection refused"))
 			errCh <- reconnectErr
 		}()
@@ -583,12 +580,8 @@ func TestDoltClientReconnect_DeduplicatesConcurrentReconnects(t *testing.T) {
 
 	<-reconnectStarted
 	close(releaseReconnect)
-	wg.Wait()
-	close(errCh)
-
-	for reconnectErr := range errCh {
-		require.NoError(t, reconnectErr)
-	}
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
 
 	require.Equal(t, newDB, client.DB())
 	require.Equal(t, 2, connectCalls)

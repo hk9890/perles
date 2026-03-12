@@ -362,7 +362,9 @@ func (p *VirtualSelectablePane) View() string {
 //
 // Key design: Selection uses plain text, not styled text, for accurate column positioning.
 // The plain text is used to calculate selection bounds, then highlighting is applied
-// using the plain text segments, resulting in consistent selection behavior.
+// using the plain text segments. The left border prefix (│ + space) is preserved from
+// the rendered line so that selected lines maintain the same visual structure as
+// non-selected lines.
 func (p *VirtualSelectablePane) applySelectionOverlay(lineIndex int, rendered string, selStart, selEnd *Point) string {
 	// If no selection active, return rendered as-is
 	if selStart == nil || selEnd == nil {
@@ -403,14 +405,20 @@ func (p *VirtualSelectablePane) applySelectionOverlay(lineIndex int, rendered st
 		return rendered
 	}
 
-	// Build: before + selectionBgStyle.Render(selected) + after
-	// Using plain text for accurate positioning, which matches the existing pattern
-	// in renderLineWithSelection in coordinator_panel.go
+	// Build: linePrefix + before + selectionBgStyle.Render(selected) + after
+	// The line prefix (border "│ " + timestamp for role lines) is rendered separately
+	// by the virtual content and prepended to preserve the visual structure during
+	// selection, since plainLines[] don't include these prefixes.
+	linePrefix := ""
+	if p.virtualContent != nil {
+		linePrefix = p.virtualContent.RenderLinePrefix(lineIndex)
+	}
+
 	before := sliceToDisplayCol(plainLine, startCol)
 	selected := sliceByDisplayCols(plainLine, startCol, endCol)
 	after := sliceFromDisplayCol(plainLine, endCol)
 
-	return before + selectionBgStyle.Render(selected) + after
+	return linePrefix + before + selectionBgStyle.Render(selected) + after
 }
 
 // renderEmptyState renders appropriate placeholder for empty content.

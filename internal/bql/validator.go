@@ -54,13 +54,19 @@ var ValidTypeValues = map[string]bool{
 	"chore":   true,
 }
 
-// ValidStatusValues are the valid values for the status field.
-var ValidStatusValues = map[string]bool{
+// KnownStatusValues are built-in status values used by current beads versions.
+//
+// Validation intentionally allows custom status strings for compatibility, but this
+// list is kept for discoverability and error messaging where a status-like value is
+// required.
+var KnownStatusValues = map[string]bool{
 	"open":        true,
 	"in_progress": true,
 	"closed":      true,
 	"blocked":     true,
 	"deferred":    true,
+	"pinned":      true,
+	"hooked":      true,
 }
 
 // ValidPriorityValues are the valid values for the priority field.
@@ -220,9 +226,11 @@ func validateValue(field string, fieldType FieldType, value Value) error {
 				return fmt.Errorf("invalid value %q for field %q (valid: bug, feature, task, epic, chore)", value.String, field)
 			}
 		case "status":
-			if !ValidStatusValues[value.String] {
-				return fmt.Errorf("invalid value %q for field %q (valid: open, in_progress, closed, blocked, deferred)", value.String, field)
+			if value.Type != ValueString {
+				return fmt.Errorf("field %q requires a status string value (known built-ins: %s), got %q", field, knownStatusNames(), value.Raw)
 			}
+			// Intentionally accept any string status for compatibility with custom
+			// statuses from newer beads versions and project-specific workflows.
 		}
 
 	case FieldString:
@@ -230,6 +238,15 @@ func validateValue(field string, fieldType FieldType, value Value) error {
 	}
 
 	return nil
+}
+
+// knownStatusNames returns a comma-separated list of known built-in status names.
+func knownStatusNames() string {
+	names := make([]string, 0, len(KnownStatusValues))
+	for name := range KnownStatusValues {
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // validateOrderField checks if a field can be used in ORDER BY.

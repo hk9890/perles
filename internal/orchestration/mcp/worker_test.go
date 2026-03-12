@@ -660,9 +660,9 @@ func TestValidateAccountabilitySummaryArgs_PathTraversal(t *testing.T) {
 			wantErr: "invalid task_id format",
 		},
 		{
-			name:    "too short suffix",
+			name:    "single char prefix with single char suffix",
 			taskID:  "t-a",
-			wantErr: "invalid task_id format",
+			wantErr: "invalid task_id format", // suffix remains 2+ chars even with 1-char prefix
 		},
 	}
 
@@ -683,6 +683,8 @@ func TestValidateAccountabilitySummaryArgs_PathTraversal(t *testing.T) {
 func TestValidateAccountabilitySummaryArgs_ValidTaskIDFormats(t *testing.T) {
 	validTaskIDs := []string{
 		"perles-abc123",
+		"p-abc1",
+		"p-abc1.1",
 		"ms-e52",
 		"task-abc",
 		"bd-12345",

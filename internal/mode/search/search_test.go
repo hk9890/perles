@@ -134,6 +134,109 @@ func TestSearch_ModeTabClick_SwitchesMode(t *testing.T) {
 	require.Equal(t, SearchInputModeBQL, m.mode, "clicking BQL tab should switch mode")
 }
 
+func TestSearch_ModeTabClick_TakesPriorityOverGenericSearchPaneFocus(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.subMode = mode.SubModeList
+	m.focus = FocusResults
+	m.mode = SearchInputModeText
+	m.input.Blur()
+
+	// Register zones.
+	_ = m.View()
+
+	var bqlZone *zone.ZoneInfo
+	var inputZone *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		bqlZone = zone.Get(searchModeTabZoneID(SearchInputModeBQL))
+		inputZone = zone.Get(zoneSearchInput)
+		if bqlZone != nil && !bqlZone.IsZero() && inputZone != nil && !inputZone.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, bqlZone, "expected BQL tab zone")
+	require.False(t, bqlZone.IsZero(), "expected BQL tab zone to be non-zero")
+	require.NotNil(t, inputZone, "expected search input zone")
+	require.False(t, inputZone.IsZero(), "expected search input zone to be non-zero")
+	require.True(t, inputZone.InBounds(tea.MouseMsg{X: bqlZone.StartX + 1, Y: bqlZone.StartY}), "tab click point should also be in input pane zone")
+
+	m, _ = m.Update(tea.MouseMsg{
+		X:      bqlZone.StartX + 1,
+		Y:      bqlZone.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	// If generic pane handling ran first, mode would remain Text and only focus would change.
+	require.Equal(t, SearchInputModeBQL, m.mode, "mode-tab click should win over generic pane focus handling")
+}
+
+func TestSearch_MouseClick_SearchInputFocusesAndClearsSearchErrorDisplay(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.subMode = mode.SubModeList
+	m.focus = FocusResults
+	m.input.Blur()
+	m.showSearchErr = true
+
+	_ = m.View()
+
+	var inputZone *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		inputZone = zone.Get(zoneSearchInput)
+		if inputZone != nil && !inputZone.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, inputZone, "expected search input zone")
+	require.False(t, inputZone.IsZero(), "expected search input zone to be non-zero")
+
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      inputZone.StartX + 1,
+		Y:      inputZone.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd)
+	require.Equal(t, FocusSearch, m.focus)
+	require.True(t, m.input.Focused(), "search input should be focused")
+	require.False(t, m.showSearchErr, "clicking search input should clear error display")
+}
+
+func TestSearch_MouseClick_DetailsPaneFocusesAndBlursInput(t *testing.T) {
+	m := createTestModelWithResults(t)
+	m.focus = FocusSearch
+	m.input.Focus()
+
+	_ = m.View()
+
+	var detailsZone *zone.ZoneInfo
+	for retries := 0; retries < 10; retries++ {
+		detailsZone = zone.Get(zoneSearchDetails)
+		if detailsZone != nil && !detailsZone.IsZero() {
+			break
+		}
+		_ = m.View()
+		time.Sleep(time.Millisecond)
+	}
+	require.NotNil(t, detailsZone, "expected details pane zone")
+	require.False(t, detailsZone.IsZero(), "expected details pane zone to be non-zero")
+
+	m, cmd := m.Update(tea.MouseMsg{
+		X:      detailsZone.StartX + 1,
+		Y:      detailsZone.StartY,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionRelease,
+	})
+
+	require.Nil(t, cmd)
+	require.Equal(t, FocusDetails, m.focus)
+	require.False(t, m.input.Focused(), "clicking details pane should blur search input")
+}
+
 func TestSearch_TextMode_UsesSimpleTextSearch(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	builder := testutil.NewBuilder(t, db)

@@ -335,6 +335,8 @@ func TestIsValidTaskID(t *testing.T) {
 	}{
 		// Valid formats
 		{"simple task", "perles-abc", true},
+		{"single char prefix", "p-abc1", true},
+		{"single char prefix with subtask", "p-abc1.2", true},
 		{"4 char suffix", "perles-abcd", true},
 		{"mixed case prefix", "Perles-abc", false}, // regex only allows lowercase
 		{"numeric suffix", "perles-1234", true},
@@ -348,7 +350,7 @@ func TestIsValidTaskID(t *testing.T) {
 		{"empty", "", false},
 		{"no prefix", "-abc", false},
 		{"no suffix", "perles-", false},
-		{"single char suffix", "perles-a", false},
+		{"single char suffix", "perles-a", false},       // explicit rule: suffix segments must be 2+ chars
 		{"too long suffix", "perles-abcdefghijk", true}, // no max length in regex
 		{"spaces", "perles abc", false},
 		{"shell injection attempt", "perles-abc; rm -rf /", false},

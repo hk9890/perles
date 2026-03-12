@@ -1419,7 +1419,7 @@ func (m Model) handleNavUp() (Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleMouseClick handles left-click release events on issues.
+// handleMouseClick handles left-click release events on tabs, panes, and issues.
 func (m Model) handleMouseClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 	// Search mode tabs in list sub-mode.
 	if m.subMode == mode.SubModeList {
@@ -1439,6 +1439,20 @@ func (m Model) handleMouseClick(msg tea.MouseMsg) (Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	}
+
+	// Generic pane focus clicks (processed after tabs so tab behavior wins on overlap).
+	if z := zone.Get(zoneSearchInput); z != nil && z.InBounds(msg) {
+		m.focus = FocusSearch
+		m.input.Focus()
+		m.showSearchErr = false
+		return m, nil
+	}
+
+	if z := zone.Get(zoneSearchDetails); z != nil && z.InBounds(msg) {
+		m.focus = FocusDetails
+		m.input.Blur()
+		return m, nil
 	}
 
 	switch m.subMode {
@@ -1941,7 +1955,7 @@ func (m Model) renderMainView() string {
 	leftPanel := m.renderLeftPanel(leftWidth)
 
 	// Right panel: details
-	rightPanel := m.renderRightPanel(rightWidth)
+	rightPanel := zone.Mark(zoneSearchDetails, m.renderRightPanel(rightWidth))
 
 	// Join horizontally with gap
 	content := lipgloss.JoinHorizontal(
@@ -1995,7 +2009,7 @@ func (m Model) renderListLeftPanel(width int) string {
 		TitleColor:         styles.OverlayTitleColor,
 		FocusedBorderColor: styles.BorderHighlightFocusColor,
 	})
-	sb.WriteString(inputBorder)
+	sb.WriteString(zone.Mark(zoneSearchInput, inputBorder))
 	sb.WriteString("\n")
 
 	// Build results content
@@ -2385,6 +2399,8 @@ func (m Model) yankDetailsIssueID() (Model, tea.Cmd) {
 // Zone ID prefixes for mouse click detection.
 // Search mode uses unique prefixes to avoid collisions with board zones.
 const (
+	zoneSearchInput      = "search:input"
+	zoneSearchDetails    = "search:details"
 	zoneSearchListPrefix = "search:list:"
 	zoneSearchTreePrefix = "search:tree:"
 	zoneSearchModePrefix = "search:mode:"

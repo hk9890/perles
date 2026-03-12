@@ -23,6 +23,9 @@ func TestValidate_ValidQueries(t *testing.T) {
 		"status = open",
 		"status = in_progress",
 		"status = closed",
+		"status = pinned",
+		"status = hooked",
+		"status = waiting_review",
 		"blocked = true",
 		"blocked = false",
 		"ready = true",
@@ -41,6 +44,7 @@ func TestValidate_ValidQueries(t *testing.T) {
 		"type = bug and priority = P0",
 		"type in (bug, task)",
 		"status in (open, in_progress)",
+		"status in (pinned, hooked, custom_status)",
 		"priority in (P0, P1)",
 		"label not in (backlog)",
 		"not blocked = true",
@@ -116,7 +120,8 @@ func TestValidate_InvalidValue(t *testing.T) {
 		query string
 	}{
 		{"invalid type value", "type = invalid"},
-		{"invalid status value", "status = pending"},
+		{"status must be string (bool)", "status = true"},
+		{"status must be string (int)", "status = 1"},
 		{"boolean field with string", "blocked = yes"},
 		{"priority field with string", "priority = high"},
 		{"priority integer too high", "priority = 5"},
@@ -131,6 +136,9 @@ func TestValidate_InvalidValue(t *testing.T) {
 
 			err = Validate(q)
 			require.Error(t, err)
+			if tc.name == "status must be string (bool)" || tc.name == "status must be string (int)" {
+				require.Contains(t, err.Error(), "status string value")
+			}
 		})
 	}
 }
