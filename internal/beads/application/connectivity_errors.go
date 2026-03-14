@@ -47,7 +47,7 @@ func IsRecoverableConnectivityError(err error) bool {
 		return false
 	}
 
-	if errors.Is(err, sql.ErrConnDone) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.EOF) {
+	if errors.Is(err, sql.ErrConnDone) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
 
@@ -71,9 +71,12 @@ func IsRecoverableConnectivityError(err error) bool {
 		"connection refused",
 		"broken pipe",
 		"connection reset",
+		"unexpected eof",
 		"server has gone away",
 		"invalid connection",
 		"bad connection",
+		"connection is already closed",
+		"database is closed",
 		"use of closed network connection",
 	} {
 		if strings.Contains(msg, needle) {

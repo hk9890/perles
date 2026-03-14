@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,7 +19,7 @@ import (
 	"github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/pubsub"
 
-	_ "github.com/go-sql-driver/mysql"
+	mysql "github.com/go-sql-driver/mysql"
 	"gopkg.in/yaml.v3"
 )
 
@@ -123,6 +124,22 @@ var (
 	}
 )
 
+func init() {
+	if err := mysql.SetLogger(doltMySQLLogger{}); err != nil {
+		log.Warn(log.CatDB, "Failed to install MySQL driver logger", "error", err)
+	}
+}
+
+const (
+	doltDBDialTimeout     = 5 * time.Second
+	doltDBReadTimeout     = 5 * time.Second
+	doltDBWriteTimeout    = 5 * time.Second
+	doltDBConnMaxIdleTime = 30 * time.Second
+	doltDBConnMaxLifetime = 5 * time.Minute
+	doltDBMaxIdleConns    = 1
+	doltDBMaxOpenConns    = 4
+)
+
 func NewDoltClient(beadsDir string) (*DoltClient, error) {
 	details, err := ResolveConnectionDetails(beadsDir)
 	if err != nil {
@@ -208,19 +225,54 @@ func openDoltClientWithDetails(beadsDir string, details ConnectionDetails) (*Dol
 	}, nil
 }
 
-func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
+type doltMySQLLogger struct{}
 
-	dsn := fmt.Sprintf("root@tcp(%s:%d)/%s?parseTime=true", details.Host, details.Port, details.Database)
+func (doltMySQLLogger) Print(v ...any) {
+	msg := strings.TrimSpace(fmt.Sprintln(v...))
+	if msg == "" {
+		return
+	}
+	log.Debug(log.CatDB, "mysql driver", "message", msg)
+}
+
+func newDoltMySQLConfig(details ConnectionDetails) *mysql.Config {
+	cfg := mysql.NewConfig()
+	cfg.User = "root"
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(details.Host, strconv.Itoa(details.Port))
+	cfg.DBName = details.Database
+	cfg.ParseTime = true
+	cfg.Timeout = doltDBDialTimeout
+	cfg.ReadTimeout = doltDBReadTimeout
+	cfg.WriteTimeout = doltDBWriteTimeout
+	cfg.Logger = doltMySQLLogger{}
+	return cfg
+}
+
+func configureDoltDBPool(db *sql.DB) {
+	if db == nil {
+		return
+	}
+	db.SetMaxIdleConns(doltDBMaxIdleConns)
+	db.SetMaxOpenConns(doltDBMaxOpenConns)
+	db.SetConnMaxIdleTime(doltDBConnMaxIdleTime)
+	db.SetConnMaxLifetime(doltDBConnMaxLifetime)
+}
+
+func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
+	cfg := newDoltMySQLConfig(details)
 	log.Debug(log.CatDB, "Opening Dolt database", "host", details.Host, "port", details.Port, "database", details.Database)
 
-	db, err := sql.Open("mysql", dsn)
+	connector, err := mysql.NewConnector(cfg)
 	if err != nil {
 		return nil, &StartupError{
 			Kind:    StartupErrorKindServerStartup,
-			Err:     fmt.Errorf("opening dolt mysql connection: %w", err),
+			Err:     fmt.Errorf("creating dolt mysql connector: %w", err),
 			Details: copyConnectionDetails(details),
 		}
 	}
+	db := sql.OpenDB(connector)
+	configureDoltDBPool(db)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, &StartupError{

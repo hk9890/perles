@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	mysql "github.com/go-sql-driver/mysql"
+	"github.com/hk9890/perles/internal/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -570,22 +574,193 @@ func TestDoltClientReconnect_DeduplicatesConcurrentReconnects(t *testing.T) {
 	client, err := NewDoltClient(beadsDir)
 	require.NoError(t, err)
 
-	errCh := make(chan error, 2)
-	for range 2 {
-		go func() {
-			_, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4010: connect: connection refused"))
-			errCh <- reconnectErr
-		}()
-	}
+	resultCh := make(chan struct {
+		attempted bool
+		err       error
+	}, 1)
+	go func() {
+		attempted, reconnectErr := client.ReconnectIfRecoverable(errors.New("dial tcp 127.0.0.1:4010: connect: connection refused"))
+		resultCh <- struct {
+			attempted bool
+			err       error
+		}{attempted: attempted, err: reconnectErr}
+	}()
 
 	<-reconnectStarted
+	waitCh, leader := client.beginReconnectAttempt()
+	require.False(t, leader)
+	require.NotNil(t, waitCh)
 	close(releaseReconnect)
-	require.NoError(t, <-errCh)
-	require.NoError(t, <-errCh)
+	result := <-resultCh
+	require.True(t, result.attempted)
+	require.NoError(t, result.err)
+	<-waitCh
+	require.NoError(t, client.lastReconnectResult())
 
 	require.Equal(t, newDB, client.DB())
 	require.Equal(t, 2, connectCalls)
 	require.Error(t, oldDB.Ping())
+}
+
+func TestNewDoltMySQLConfig_UsesSafeDefaults(t *testing.T) {
+	details := ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"}
+
+	cfg := newDoltMySQLConfig(details)
+
+	require.Equal(t, "root", cfg.User)
+	require.Equal(t, "tcp", cfg.Net)
+	require.Equal(t, "127.0.0.1:3306", cfg.Addr)
+	require.Equal(t, "perles", cfg.DBName)
+	require.True(t, cfg.ParseTime)
+	require.Equal(t, doltDBDialTimeout, cfg.Timeout)
+	require.Equal(t, doltDBReadTimeout, cfg.ReadTimeout)
+	require.Equal(t, doltDBWriteTimeout, cfg.WriteTimeout)
+	require.NotNil(t, cfg.Logger)
+}
+
+func TestConfigureDoltDBPool_SetsConnectionBounds(t *testing.T) {
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	configureDoltDBPool(db)
+
+	stats := db.Stats()
+	require.Equal(t, doltDBMaxOpenConns, stats.MaxOpenConnections)
+
+	// MaxIdleConns is not exposed directly in stats, but idle count should never exceed it.
+	for range doltDBMaxIdleConns + 2 {
+		require.NoError(t, db.Ping())
+	}
+	require.LessOrEqual(t, db.Stats().Idle, doltDBMaxIdleConns)
+}
+
+func TestDoltMySQLLogger_RoutesDriverMessagesToPerlesLog(t *testing.T) {
+	cleanup, err := log.InitWithTeaLog(t.TempDir()+"/driver.log", "")
+	require.NoError(t, err)
+	defer cleanup()
+
+	logger := doltMySQLLogger{}
+	require.NotPanics(t, func() {
+		logger.Print("connection.go:706 ", "closing bad idle connection: ", io.EOF)
+	})
+}
+
+func TestNewDoltMySQLConfig_LoggerSuppressesDefaultStderrLeak(t *testing.T) {
+	cfg := newDoltMySQLConfig(ConnectionDetails{Host: "localhost", Port: 3306, Database: "perles"})
+	require.IsType(t, doltMySQLLogger{}, cfg.Logger)
+	require.NotEqual(t, mysql.NopLogger{}, cfg.Logger)
+}
+
+func TestDoltClientReconnect_RecoversFromEOFAsRecoverableIdleFailure(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	oldDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	newDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = newDB.Close() }()
+
+	originalConnect := connectDoltClient
+	t.Cleanup(func() { connectDoltClient = originalConnect })
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		switch connectCalls {
+		case 1:
+			return &DoltClient{db: oldDB, details: details, beadsDir: beadsDir}, nil
+		case 2:
+			return &DoltClient{db: newDB, details: details, beadsDir: beadsDir}, nil
+		default:
+			return nil, fmt.Errorf("unexpected connect call: %d", connectCalls)
+		}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	attempted, reconnectErr := client.ReconnectIfRecoverable(io.EOF)
+	require.True(t, attempted)
+	require.NoError(t, reconnectErr)
+	require.Equal(t, 2, connectCalls)
+	require.Equal(t, newDB, client.DB())
+}
+
+func TestDoltClientReconnect_RecoversFromMySQLInvalidConnectionError(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	oldDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	newDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = newDB.Close() }()
+
+	originalConnect := connectDoltClient
+	t.Cleanup(func() { connectDoltClient = originalConnect })
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		if connectCalls == 1 {
+			return &DoltClient{db: oldDB, details: details, beadsDir: beadsDir}, nil
+		}
+		return &DoltClient{db: newDB, details: details, beadsDir: beadsDir}, nil
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	attempted, reconnectErr := client.ReconnectIfRecoverable(errors.New("invalid connection"))
+	require.True(t, attempted)
+	require.NoError(t, reconnectErr)
+	require.Equal(t, 2, connectCalls)
+	require.Equal(t, newDB, client.DB())
+}
+
+func TestDoltClientReconnect_RecoversFromUnexpectedEOF(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	oldDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	newDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = newDB.Close() }()
+
+	originalConnect := connectDoltClient
+	t.Cleanup(func() { connectDoltClient = originalConnect })
+
+	connectCalls := 0
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		connectCalls++
+		if connectCalls == 1 {
+			return &DoltClient{db: oldDB, details: details, beadsDir: beadsDir}, nil
+		}
+		return &DoltClient{db: newDB, details: details, beadsDir: beadsDir}, nil
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+
+	attempted, reconnectErr := client.ReconnectIfRecoverable(io.ErrUnexpectedEOF)
+	require.True(t, attempted)
+	require.NoError(t, reconnectErr)
+	require.Equal(t, 2, connectCalls)
+	require.Equal(t, newDB, client.DB())
+}
+
+func TestDoltMySQLConfig_UsesJoinedTCPAddress(t *testing.T) {
+	cfg := newDoltMySQLConfig(ConnectionDetails{Host: "::1", Port: 3306, Database: "perles"})
+	require.Equal(t, net.JoinHostPort("::1", "3306"), cfg.Addr)
 }
 
 func writeTestMetadata(t *testing.T, beadsDir, content string) {
