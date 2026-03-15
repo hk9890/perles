@@ -140,10 +140,7 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 	}
 
 	retryPolicy := infrastructure.DefaultQueryRetryPolicy()
-	maxAttempts := retryPolicy.MaxAttempts
-	if maxAttempts < 1 {
-		maxAttempts = 1
-	}
+	maxAttempts := max(1, retryPolicy.MaxAttempts)
 	attempt := 0
 
 	var issues []beads.Issue

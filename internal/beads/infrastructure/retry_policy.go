@@ -83,10 +83,7 @@ func (p RetryPolicy) backoffForAttempt(attempt int) time.Duration {
 		attempt = 1
 	}
 
-	backoff := p.InitialBackoff
-	if backoff < 0 {
-		backoff = 0
-	}
+	backoff := max(time.Duration(0), p.InitialBackoff)
 
 	for i := 1; i < attempt; i++ {
 		if p.MaxBackoff > 0 && backoff >= p.MaxBackoff {
@@ -127,10 +124,7 @@ func (p RetryPolicy) applyJitter(backoff time.Duration) time.Duration {
 	}
 
 	multiplier := 1 + ((v*2)-1)*jitter
-	jittered := time.Duration(float64(backoff) * multiplier)
-	if jittered < 0 {
-		jittered = 0
-	}
+	jittered := max(time.Duration(0), time.Duration(float64(backoff)*multiplier))
 	if p.MaxBackoff > 0 && jittered > p.MaxBackoff {
 		jittered = p.MaxBackoff
 	}

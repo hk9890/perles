@@ -115,10 +115,7 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 		false,
 	)
 	retryPolicy := infrastructure.DefaultQueryRetryPolicy()
-	maxAttempts := retryPolicy.MaxAttempts
-	if maxAttempts < 1 {
-		maxAttempts = 1
-	}
+	maxAttempts := max(1, retryPolicy.MaxAttempts)
 	attempt := 0
 
 	var issues []beads.Issue

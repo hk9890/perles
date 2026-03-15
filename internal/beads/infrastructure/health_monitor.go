@@ -67,6 +67,7 @@ func newHealthMonitor(
 		}
 	}
 
+	//nolint:gosec // cancel is stored on the monitor and invoked by Stop().
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &HealthMonitor{
 		client:    client,
