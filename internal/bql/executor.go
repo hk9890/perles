@@ -10,6 +10,7 @@ import (
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/beads/infrastructure"
 	"github.com/hk9890/perles/internal/cachemanager"
 	"github.com/hk9890/perles/internal/log"
 )
@@ -113,15 +114,36 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 		},
 		false,
 	)
-	issues, err := cache.GetWithRefresh(context.Background(), input, query, cachemanager.DefaultExpiration)
-	if e.shouldRetryAfterReconnect(err) {
-		if reconnectErr := e.retryReconnect(err); reconnectErr != nil {
-			log.ErrorErr(log.CatBQL, "reconnect failed after query error", reconnectErr, "query", input)
-			return nil, reconnectErr
+	retryPolicy := infrastructure.DefaultQueryRetryPolicy()
+	maxAttempts := retryPolicy.MaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	attempt := 0
+
+	var issues []beads.Issue
+	err = retryPolicy.Execute(context.Background(), func() error {
+		attempt++
+
+		loaded, queryErr := cache.GetWithRefresh(context.Background(), input, query, cachemanager.DefaultExpiration)
+		if queryErr == nil {
+			issues = loaded
+			return nil
 		}
 
-		issues, err = cache.GetWithRefresh(context.Background(), input, query, cachemanager.DefaultExpiration)
-	}
+		if e.reconnector == nil || !appbeads.IsRecoverableConnectivityError(queryErr) {
+			return queryErr
+		}
+
+		if attempt < maxAttempts {
+			if reconnectErr := e.retryReconnect(queryErr); reconnectErr != nil {
+				log.ErrorErr(log.CatBQL, "reconnect failed after query error", reconnectErr, "query", input)
+				return reconnectErr
+			}
+		}
+
+		return queryErr
+	})
 	if err != nil {
 		log.ErrorErr(log.CatBQL, "failed to load issues", err, "query", input)
 		return nil, err
@@ -130,10 +152,6 @@ func (e *Executor) Execute(input string) ([]beads.Issue, error) {
 	log.Debug(log.CatBQL, "query complete", "duration", time.Since(start), "count", len(issues), "query", input)
 
 	return issues, nil
-}
-
-func (e *Executor) shouldRetryAfterReconnect(err error) bool {
-	return err != nil && e.reconnector != nil && appbeads.IsRecoverableConnectivityError(err)
 }
 
 func (e *Executor) retryReconnect(queryErr error) error {

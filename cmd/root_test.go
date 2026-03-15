@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/hk9890/perles/internal/app"
@@ -446,4 +447,113 @@ func TestResolveDebugLogPath_UsesCentralizedDefaultWhenUnset(t *testing.T) {
 	require.True(t, strings.HasPrefix(resolved, filepath.Join(stateRoot, "perles", "logs")+string(filepath.Separator)))
 	require.Contains(t, resolved, string(filepath.Separator)+"test-project-")
 	require.True(t, strings.HasSuffix(resolved, "-perles.log"))
+}
+
+func TestDoltHealthCheckIntervalFromEnv(t *testing.T) {
+	original := os.Getenv(doltHealthCheckIntervalEnv)
+	t.Cleanup(func() {
+		if original == "" {
+			_ = os.Unsetenv(doltHealthCheckIntervalEnv)
+			return
+		}
+		_ = os.Setenv(doltHealthCheckIntervalEnv, original)
+	})
+
+	t.Run("unset uses default startup behavior", func(t *testing.T) {
+		require.NoError(t, os.Unsetenv(doltHealthCheckIntervalEnv))
+
+		interval, configured, err := doltHealthCheckIntervalFromEnv()
+		require.NoError(t, err)
+		require.False(t, configured)
+		require.Zero(t, interval)
+	})
+
+	t.Run("valid duration configures custom interval", func(t *testing.T) {
+		require.NoError(t, os.Setenv(doltHealthCheckIntervalEnv, "7s"))
+
+		interval, configured, err := doltHealthCheckIntervalFromEnv()
+		require.NoError(t, err)
+		require.True(t, configured)
+		require.Equal(t, 7*time.Second, interval)
+	})
+
+	t.Run("invalid duration returns clear startup error", func(t *testing.T) {
+		require.NoError(t, os.Setenv(doltHealthCheckIntervalEnv, "not-a-duration"))
+
+		_, configured, err := doltHealthCheckIntervalFromEnv()
+		require.Error(t, err)
+		require.False(t, configured)
+		require.Contains(t, err.Error(), "invalid "+doltHealthCheckIntervalEnv)
+		require.Contains(t, err.Error(), "expected Go duration")
+	})
+
+	t.Run("non-positive duration returns clear startup error", func(t *testing.T) {
+		require.NoError(t, os.Setenv(doltHealthCheckIntervalEnv, "0s"))
+
+		_, configured, err := doltHealthCheckIntervalFromEnv()
+		require.Error(t, err)
+		require.False(t, configured)
+		require.Contains(t, err.Error(), "duration must be greater than zero")
+	})
+}
+
+func TestCreateDoltClient_WiresHealthCheckIntervalOptionFromStartupInput(t *testing.T) {
+	originalEnv := os.Getenv(doltHealthCheckIntervalEnv)
+	originalFactory := newDoltClient
+	t.Cleanup(func() {
+		if originalEnv == "" {
+			_ = os.Unsetenv(doltHealthCheckIntervalEnv)
+		} else {
+			_ = os.Setenv(doltHealthCheckIntervalEnv, originalEnv)
+		}
+		newDoltClient = originalFactory
+	})
+
+	t.Run("default path when interval is not configured", func(t *testing.T) {
+		require.NoError(t, os.Unsetenv(doltHealthCheckIntervalEnv))
+
+		called := 0
+		newDoltClient = func(_ string, opts ...infrabeads.DoltClientOption) (*infrabeads.DoltClient, error) {
+			called++
+			require.Len(t, opts, 0)
+			return &infrabeads.DoltClient{}, nil
+		}
+
+		client, err := createDoltClient(t.TempDir())
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		require.Equal(t, 1, called)
+	})
+
+	t.Run("configured interval passes startup option", func(t *testing.T) {
+		require.NoError(t, os.Setenv(doltHealthCheckIntervalEnv, "11s"))
+
+		called := 0
+		newDoltClient = func(_ string, opts ...infrabeads.DoltClientOption) (*infrabeads.DoltClient, error) {
+			called++
+			require.Len(t, opts, 1)
+			return &infrabeads.DoltClient{}, nil
+		}
+
+		client, err := createDoltClient(t.TempDir())
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		require.Equal(t, 1, called)
+	})
+
+	t.Run("invalid interval fails before client startup", func(t *testing.T) {
+		require.NoError(t, os.Setenv(doltHealthCheckIntervalEnv, "bad"))
+
+		called := 0
+		newDoltClient = func(_ string, opts ...infrabeads.DoltClientOption) (*infrabeads.DoltClient, error) {
+			called++
+			return &infrabeads.DoltClient{}, nil
+		}
+
+		client, err := createDoltClient(t.TempDir())
+		require.Error(t, err)
+		require.Nil(t, client)
+		require.Zero(t, called)
+		require.Contains(t, err.Error(), "invalid "+doltHealthCheckIntervalEnv)
+	})
 }

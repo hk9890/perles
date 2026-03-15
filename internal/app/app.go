@@ -100,6 +100,12 @@ type Model struct {
 	backendStateCancel   context.CancelFunc
 	backendStateListener *pubsub.ContinuousListener[appbeads.ConnectivityEvent]
 	skipNextWatcherTick  bool
+	connectivityErr      error
+	connectivityDiag     *appbeads.DiagnosticContext
+	reconnectDebounceID  int
+	showReconnecting     bool
+	showRecoveredBanner  bool
+	recoveryBannerID     int
 
 	// Quit confirmation modal (for chat panel Ctrl+C)
 	quitModal quitmodal.Model
@@ -117,6 +123,19 @@ type Model struct {
 
 	// SQLite database for session persistence (owned by app, closed on shutdown)
 	db *sqlite.DB
+}
+
+const (
+	reconnectBannerDebounce = 550 * time.Millisecond
+	recoveryBannerDuration  = 2 * time.Second
+)
+
+type reconnectDebounceElapsedMsg struct {
+	id int
+}
+
+type recoveryBannerDismissMsg struct {
+	id int
 }
 
 // NewWithConfig creates a new application model with the provided configuration.
@@ -640,23 +659,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pubsub.Event[appbeads.ConnectivityEvent]:
 		prev := m.backendState
 		m.backendState = mapConnectivityState(msg.Payload.State)
+		m.connectivityErr = msg.Payload.Err
+		m.connectivityDiag = msg.Payload.Diagnostics
+
+		var timerCmd tea.Cmd
+		switch m.backendState {
+		case mode.BackendStateReconnecting:
+			m.reconnectDebounceID++
+			m.showReconnecting = false
+			m.showRecoveredBanner = false
+			timerCmd = reconnectDebounceCmd(m.reconnectDebounceID)
+		case mode.BackendStateDegraded:
+			m.reconnectDebounceID++ // invalidate pending reconnect debounce ticks
+			m.showReconnecting = false
+			m.showRecoveredBanner = false
+		case mode.BackendStateHealthy:
+			m.reconnectDebounceID++ // invalidate pending reconnect debounce ticks
+			m.showReconnecting = false
+			if prev != mode.BackendStateHealthy {
+				m.showRecoveredBanner = true
+				m.recoveryBannerID++
+				timerCmd = recoveryBannerDismissCmd(m.recoveryBannerID)
+			} else {
+				m.showRecoveredBanner = false
+			}
+		}
+
 		var stateCmd tea.Cmd
 		m, stateCmd = m.broadcastBackendState(m.backendState)
+		cmds := []tea.Cmd{stateCmd}
+		if timerCmd != nil {
+			cmds = append(cmds, timerCmd)
+		}
 
 		if m.backendState == mode.BackendStateHealthy && prev != mode.BackendStateHealthy {
 			m.skipNextWatcherTick = true
 			var refreshCmd tea.Cmd
 			m, refreshCmd = m.refreshActiveModeOnce()
-			if m.connectivityListenCmd() != nil {
-				return m, tea.Batch(stateCmd, refreshCmd, m.connectivityListenCmd())
-			}
-			return m, tea.Batch(stateCmd, refreshCmd)
+			cmds = append(cmds, refreshCmd)
 		}
 
 		if m.connectivityListenCmd() != nil {
-			return m, tea.Batch(stateCmd, m.connectivityListenCmd())
+			cmds = append(cmds, m.connectivityListenCmd())
 		}
-		return m, stateCmd
+		return m, tea.Batch(cmds...)
+
+	case reconnectDebounceElapsedMsg:
+		if msg.id == m.reconnectDebounceID && m.backendState == mode.BackendStateReconnecting {
+			m.showReconnecting = true
+		}
+		return m, nil
+
+	case recoveryBannerDismissMsg:
+		if msg.id == m.recoveryBannerID {
+			m.showRecoveredBanner = false
+		}
+		return m, nil
 
 	// Forward vimtextarea.SubmitMsg to chatPanel for processing
 	// This is emitted when user presses Enter in the chat input
@@ -897,14 +955,73 @@ func (m Model) shouldSuppressToast(msg mode.ShowToastMsg) bool {
 }
 
 func (m Model) backendBannerView() string {
+	if m.showRecoveredBanner {
+		return styles.StatusBarStyle.Width(m.width).Render("✓ Reconnected")
+	}
+
 	switch m.backendState {
 	case mode.BackendStateReconnecting:
-		return styles.StatusBarStyle.Width(m.width).Render("Backend reconnecting… auto-refresh paused")
+		if !m.showReconnecting {
+			return ""
+		}
+		return styles.StatusBarStyle.Width(m.width).Render("⟳ Reconnecting... auto-refresh paused")
 	case mode.BackendStateDegraded:
-		return styles.ErrorStyle.Width(m.width).Render("Backend unavailable. Showing cached data until reconnect succeeds.")
+		return styles.ErrorStyle.Width(m.width).Render(m.degradedBannerText())
 	default:
 		return ""
 	}
+}
+
+func (m Model) degradedBannerText() string {
+	const fallback = "Backend unavailable. Showing cached data until reconnect succeeds."
+	if m.connectivityDiag == nil {
+		if m.connectivityErr == nil {
+			return fallback
+		}
+		return fallback + " Error: " + m.connectivityErr.Error()
+	}
+
+	parts := []string{"Backend unavailable."}
+	if m.connectivityDiag.Suggestion != "" {
+		parts = append(parts, "Suggestion: "+m.connectivityDiag.Suggestion)
+	} else {
+		parts = append(parts, "Showing cached data until reconnect succeeds.")
+	}
+
+	details := make([]string, 0, 4)
+	if m.connectivityDiag.Host != "" && m.connectivityDiag.Port > 0 {
+		details = append(details, fmt.Sprintf("%s:%d", m.connectivityDiag.Host, m.connectivityDiag.Port))
+	} else if m.connectivityDiag.Host != "" {
+		details = append(details, m.connectivityDiag.Host)
+	} else if m.connectivityDiag.Port > 0 {
+		details = append(details, fmt.Sprintf("port %d", m.connectivityDiag.Port))
+	}
+	if m.connectivityDiag.Database != "" {
+		details = append(details, "db "+m.connectivityDiag.Database)
+	}
+	if m.connectivityDiag.PortSource != "" {
+		details = append(details, "port source "+m.connectivityDiag.PortSource)
+	}
+	if len(details) > 0 {
+		parts = append(parts, "Details: "+strings.Join(details, ", "))
+	}
+	if m.connectivityErr != nil {
+		parts = append(parts, "Error: "+m.connectivityErr.Error())
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func reconnectDebounceCmd(id int) tea.Cmd {
+	return tea.Tick(reconnectBannerDebounce, func(time.Time) tea.Msg {
+		return reconnectDebounceElapsedMsg{id: id}
+	})
+}
+
+func recoveryBannerDismissCmd(id int) tea.Cmd {
+	return tea.Tick(recoveryBannerDuration, func(time.Time) tea.Msg {
+		return recoveryBannerDismissMsg{id: id}
+	})
 }
 
 func (m Model) broadcastBackendState(state mode.BackendState) (Model, tea.Cmd) {

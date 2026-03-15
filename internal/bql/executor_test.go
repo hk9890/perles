@@ -715,6 +715,71 @@ func TestExecuteSimpleTextSearch_ReconnectsAfterRecoverableFailure(t *testing.T)
 	require.NoError(t, badMock.ExpectationsWereMet())
 }
 
+func TestExecutor_RetriesMultipleRecoverableFailuresBeforeSuccess(t *testing.T) {
+	goodDB := setupDB(t, (*testutil.Builder).WithStandardTestData)
+	defer func() { _ = goodDB.Close() }()
+
+	badDB, badMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = badDB.Close() }()
+
+	recoverableErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+
+	provider := &reconnectingProvider{currentDB: badDB}
+	reconnectCalls := 0
+	provider.reconnectFunc = func(err error) (bool, error) {
+		reconnectCalls++
+		require.True(t, appbeads.IsRecoverableConnectivityError(err))
+		if reconnectCalls == 2 {
+			provider.currentDB = goodDB
+		}
+		return true, nil
+	}
+
+	executor := newTestExecutorWithProvider(t, provider)
+	issues, err := executor.Execute("id = test-1")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "test-1", issues[0].ID)
+	require.Equal(t, 2, reconnectCalls)
+	require.NoError(t, badMock.ExpectationsWereMet())
+}
+
+func TestExecuteSimpleTextSearch_RetriesMultipleRecoverableFailuresBeforeSuccess(t *testing.T) {
+	goodDB := setupDB(t, func(b *testutil.Builder) *testutil.Builder {
+		return b.WithIssue("needle-1", testutil.Title("Needle in title"))
+	})
+	defer func() { _ = goodDB.Close() }()
+
+	badDB, badMock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = badDB.Close() }()
+
+	recoverableErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+	badMock.ExpectQuery("FROM issues").WillReturnError(recoverableErr)
+
+	provider := &reconnectingProvider{currentDB: badDB}
+	reconnectCalls := 0
+	provider.reconnectFunc = func(err error) (bool, error) {
+		reconnectCalls++
+		require.True(t, appbeads.IsRecoverableConnectivityError(err))
+		if reconnectCalls == 2 {
+			provider.currentDB = goodDB
+		}
+		return true, nil
+	}
+
+	issues, err := ExecuteSimpleTextSearch(provider, "needle")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "needle-1", issues[0].ID)
+	require.Equal(t, 2, reconnectCalls)
+	require.NoError(t, badMock.ExpectationsWereMet())
+}
+
 func TestExecutor_OrderByOnly(t *testing.T) {
 	db := setupDB(t, (*testutil.Builder).WithStandardTestData)
 	defer func() { _ = db.Close() }()

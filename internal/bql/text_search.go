@@ -1,12 +1,14 @@
 package bql
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/beads/infrastructure"
 )
 
 // ExecuteSimpleTextSearch performs a broad LIKE-based search for v1 text mode.
@@ -137,16 +139,36 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 		return issues, nil
 	}
 
-	issues, err := executeOnce()
-	if err != nil {
-		reconnector, ok := provider.(appbeads.Reconnector)
-		if ok && appbeads.IsRecoverableConnectivityError(err) {
-			if _, reconnectErr := reconnector.ReconnectIfRecoverable(err); reconnectErr != nil {
-				return nil, reconnectErr
-			}
-			return executeOnce()
-		}
+	retryPolicy := infrastructure.DefaultQueryRetryPolicy()
+	maxAttempts := retryPolicy.MaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
 	}
+	attempt := 0
+
+	var issues []beads.Issue
+	err := retryPolicy.Execute(context.Background(), func() error {
+		attempt++
+
+		loaded, queryErr := executeOnce()
+		if queryErr == nil {
+			issues = loaded
+			return nil
+		}
+
+		reconnector, ok := provider.(appbeads.Reconnector)
+		if !ok || !appbeads.IsRecoverableConnectivityError(queryErr) {
+			return queryErr
+		}
+
+		if attempt < maxAttempts {
+			if _, reconnectErr := reconnector.ReconnectIfRecoverable(queryErr); reconnectErr != nil {
+				return reconnectErr
+			}
+		}
+
+		return queryErr
+	})
 
 	return issues, err
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -2408,13 +2409,117 @@ func TestApp_BackendBannerView_ShowsConnectivityState(t *testing.T) {
 	m.width = 80
 
 	m.backendState = mode.BackendStateReconnecting
-	require.Contains(t, m.backendBannerView(), "Backend reconnecting", "reconnecting banner should be visible")
+	m.showReconnecting = true
+	require.Contains(t, m.backendBannerView(), "Reconnecting", "reconnecting banner should be visible")
 
 	m.backendState = mode.BackendStateDegraded
 	require.Contains(t, m.backendBannerView(), "Backend unavailable", "degraded banner should be visible")
 
 	m.backendState = mode.BackendStateHealthy
+	m.showRecoveredBanner = false
 	require.Equal(t, "", m.backendBannerView(), "healthy state should hide banner")
+}
+
+func TestApp_BackendBannerView_DegradedUsesDiagnostics(t *testing.T) {
+	m := createTestModel(t)
+	m.width = 120
+	m.backendState = mode.BackendStateDegraded
+	m.connectivityErr = context.DeadlineExceeded
+	m.connectivityDiag = &beadsapp.DiagnosticContext{
+		Host:       "127.0.0.1",
+		Port:       3306,
+		Database:   "perles",
+		PortSource: "config.yaml",
+		Suggestion: "Run 'bd dolt start'",
+	}
+
+	banner := m.backendBannerView()
+	require.Contains(t, banner, "Backend unavailable.")
+	require.Contains(t, banner, "Suggestion: Run 'bd dolt start'")
+	require.Contains(t, banner, "127.0.0.1:3306")
+	require.Contains(t, banner, "db perles")
+	require.Contains(t, banner, "port source config.yaml")
+	require.Contains(t, banner, "Error:")
+}
+
+func TestApp_ReconnectingBanner_Debounced(t *testing.T) {
+	m := createTestModel(t)
+
+	newModel, cmd := m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateReconnecting},
+	})
+	m = newModel.(Model)
+
+	require.False(t, m.showReconnecting, "reconnecting should be hidden until debounce elapses")
+	require.Equal(t, "", m.backendBannerView(), "banner should stay hidden before debounce")
+	require.NotNil(t, cmd, "debounce/listen command should be returned")
+
+	// Simulate debounce timer firing while still reconnecting.
+	newModel, _ = m.Update(reconnectDebounceElapsedMsg{id: m.reconnectDebounceID})
+	m = newModel.(Model)
+	require.True(t, m.showReconnecting, "reconnecting banner should appear after debounce")
+	require.Contains(t, m.backendBannerView(), "⟳ Reconnecting...", "debounced reconnecting banner should be visible")
+
+	// Regression guard: stale debounce tick should not show reconnecting once healthy.
+	currentDebounceID := m.reconnectDebounceID
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateHealthy},
+	})
+	m = newModel.(Model)
+	require.False(t, m.showReconnecting, "healthy transition should clear reconnecting banner")
+
+	newModel, _ = m.Update(reconnectDebounceElapsedMsg{id: currentDebounceID})
+	m = newModel.(Model)
+	require.False(t, m.showReconnecting, "stale debounce message must be ignored")
+}
+
+func TestApp_HealthyRecovery_ShowsTemporaryBannerAndPreservesRefreshBehavior(t *testing.T) {
+	m := createTestModel(t)
+	m.currentMode = mode.ModeSearch
+	m.backendState = mode.BackendStateDegraded
+
+	bqlCache := mocks.NewMockCacheManager[string, []beadsdomain.Issue](t)
+	flushCalls := 0
+	bqlCache.EXPECT().Flush(mock.Anything).RunAndReturn(func(context.Context) error {
+		flushCalls++
+		return nil
+	}).Maybe()
+	m.bqlCache = bqlCache
+
+	newModel, _ := m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateHealthy},
+	})
+	m = newModel.(Model)
+
+	require.Equal(t, mode.BackendStateHealthy, m.backendState)
+	require.True(t, m.skipNextWatcherTick, "healthy transition should still skip one watcher tick")
+	require.Equal(t, 1, flushCalls, "healthy recovery should still trigger one immediate refresh")
+	require.True(t, m.showRecoveredBanner, "healthy recovery should show temporary recovered banner")
+	require.Contains(t, m.backendBannerView(), "✓ Reconnected", "recovered banner should be visible")
+
+	currentRecoveryID := m.recoveryBannerID
+	newModel, _ = m.Update(recoveryBannerDismissMsg{id: currentRecoveryID})
+	m = newModel.(Model)
+	require.False(t, m.showRecoveredBanner, "recovery banner should auto-dismiss")
+	require.Equal(t, "", m.backendBannerView(), "healthy banner should clear after dismiss")
+
+	// Regression guard: stale dismiss must not clear a newer recovery banner.
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateDegraded},
+	})
+	m = newModel.(Model)
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateHealthy},
+	})
+	m = newModel.(Model)
+	require.True(t, m.showRecoveredBanner, "new recovery should show banner")
+
+	newModel, _ = m.Update(recoveryBannerDismissMsg{id: currentRecoveryID})
+	m = newModel.(Model)
+	require.True(t, m.showRecoveredBanner, "stale dismiss should be ignored")
+
+	// Keep linter happy and assert intended duration constant is near ticket target.
+	require.GreaterOrEqual(t, recoveryBannerDuration, 2*time.Second)
 }
 
 func TestApp_ShowToast_SuppressesOutageSpamWhenDegraded(t *testing.T) {

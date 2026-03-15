@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"syscall"
+	"time"
 
 	mysql "github.com/go-sql-driver/mysql"
 	"github.com/hk9890/perles/internal/pubsub"
@@ -30,8 +31,21 @@ const (
 
 // ConnectivityEvent is emitted when backend connectivity state changes.
 type ConnectivityEvent struct {
-	State ConnectivityState
-	Err   error
+	State       ConnectivityState
+	Err         error
+	Diagnostics *DiagnosticContext
+}
+
+// DiagnosticContext is structured connectivity context for UI diagnostics.
+type DiagnosticContext struct {
+	Host                    string
+	Port                    int
+	Database                string
+	LastState               ConnectivityState
+	LastStateChange         time.Time
+	DelegatedStartAttempted bool
+	PortSource              string
+	Suggestion              string
 }
 
 // ConnectivityObserver exposes backend connectivity state transitions.
@@ -40,10 +54,44 @@ type ConnectivityObserver interface {
 	ConnectivityBroker() *pubsub.Broker[ConnectivityEvent]
 }
 
+// IsProjectMismatchError returns true when the selected DB does not match
+// the expected project identity.
+func IsProjectMismatchError(err error) bool {
+	return hasErrorSubstring(err,
+		"project identity mismatch",
+		"wrong database",
+	)
+}
+
+// IsCircuitBreakerError returns true when the backend is refusing work due to
+// an open circuit breaker.
+func IsCircuitBreakerError(err error) bool {
+	return hasErrorSubstring(err,
+		"circuit breaker",
+		"circuit_breaker",
+		"breaker open",
+	)
+}
+
+// IsDoltPanicError returns true for upstream Dolt panic/crash indicators.
+func IsDoltPanicError(err error) bool {
+	return hasErrorSubstring(err,
+		"runtime error",
+		"panic",
+		"nil pointer dereference",
+		"concurrent map",
+	)
+}
+
 // IsRecoverableConnectivityError returns true for transient connectivity
 // failures where a reconnect+single retry may succeed.
 func IsRecoverableConnectivityError(err error) bool {
 	if err == nil {
+		return false
+	}
+
+	// Explicitly do not retry known non-transient categories.
+	if IsCircuitBreakerError(err) || IsProjectMismatchError(err) || hasErrorSubstring(err, "no such database") {
 		return false
 	}
 
@@ -80,6 +128,21 @@ func IsRecoverableConnectivityError(err error) bool {
 		"use of closed network connection",
 	} {
 		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasErrorSubstring(err error, needles ...string) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	for _, needle := range needles {
+		if strings.Contains(msg, strings.ToLower(needle)) {
 			return true
 		}
 	}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -43,7 +45,10 @@ var (
 	debugFlag       bool
 	apiPortFlag     int
 	registryService *appreg.RegistryService
+	newDoltClient   = infrabeads.NewDoltClient
 )
+
+const doltHealthCheckIntervalEnv = "PERLES_DOLT_HEALTH_CHECK_INTERVAL"
 
 type startupBehavior int
 
@@ -250,7 +255,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 	cfg.ResolvedBeadsDir = paths.ResolveBeadsDir(beadsPathInput)
 	log.Info(log.CatConfig, "resolved beads dir", "path", cfg.ResolvedBeadsDir)
 
-	client, err := infrabeads.NewDoltClient(cfg.ResolvedBeadsDir)
+	client, err := createDoltClient(cfg.ResolvedBeadsDir)
 	if err != nil {
 		switch classifyStartupBehavior(err) {
 		case startupBehaviorNoBeadsMode:
@@ -338,6 +343,36 @@ func runApp(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("running program: %w", err)
 	}
 	return nil
+}
+
+func createDoltClient(beadsDir string) (*infrabeads.DoltClient, error) {
+	interval, configured, err := doltHealthCheckIntervalFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	if !configured {
+		return newDoltClient(beadsDir)
+	}
+
+	return newDoltClient(beadsDir, infrabeads.WithHealthCheckInterval(interval))
+}
+
+func doltHealthCheckIntervalFromEnv() (time.Duration, bool, error) {
+	raw := strings.TrimSpace(os.Getenv(doltHealthCheckIntervalEnv))
+	if raw == "" {
+		return 0, false, nil
+	}
+
+	interval, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid %s=%q: expected Go duration (for example 5s, 1m): %w", doltHealthCheckIntervalEnv, raw, err)
+	}
+	if interval <= 0 {
+		return 0, false, fmt.Errorf("invalid %s=%q: duration must be greater than zero", doltHealthCheckIntervalEnv, raw)
+	}
+
+	return interval, true, nil
 }
 
 func resolveDebugLogPath() string {

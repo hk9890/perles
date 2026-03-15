@@ -18,7 +18,9 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	mysql "github.com/go-sql-driver/mysql"
+	appbeads "github.com/hk9890/perles/internal/beads/application"
 	"github.com/hk9890/perles/internal/log"
+	"github.com/hk9890/perles/internal/pubsub"
 	"github.com/stretchr/testify/require"
 )
 
@@ -149,14 +151,19 @@ func TestNewDoltClient_DelegatesStartupAndRetriesWithReresolvedPort(t *testing.T
 
 	originalConnect := connectDoltClient
 	originalDelegateFactory := newDoltStartupDelegate
-	originalBackoff := postStartReadinessBackoff
+	originalRetryPolicyFactory := startupRetryPolicyFactory
+	originalSleepWithContext := startupSleepWithContext
 	t.Cleanup(func() {
 		connectDoltClient = originalConnect
 		newDoltStartupDelegate = originalDelegateFactory
-		postStartReadinessBackoff = originalBackoff
+		startupRetryPolicyFactory = originalRetryPolicyFactory
+		startupSleepWithContext = originalSleepWithContext
 	})
 
-	postStartReadinessBackoff = nil
+	startupRetryPolicyFactory = func() RetryPolicy {
+		return RetryPolicy{MaxAttempts: 2, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Jitter: 0}
+	}
+	startupSleepWithContext = func(context.Context, time.Duration) error { return nil }
 
 	var connectCalls []ConnectionDetails
 	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
@@ -446,14 +453,19 @@ func TestDoltClientReconnect_LocalOnlyDelegatedRestart(t *testing.T) {
 
 	originalConnect := connectDoltClient
 	originalDelegateFactory := newDoltStartupDelegate
-	originalBackoff := postStartReadinessBackoff
+	originalRetryPolicyFactory := startupRetryPolicyFactory
+	originalSleepWithContext := startupSleepWithContext
 	t.Cleanup(func() {
 		connectDoltClient = originalConnect
 		newDoltStartupDelegate = originalDelegateFactory
-		postStartReadinessBackoff = originalBackoff
+		startupRetryPolicyFactory = originalRetryPolicyFactory
+		startupSleepWithContext = originalSleepWithContext
 	})
 
-	postStartReadinessBackoff = nil
+	startupRetryPolicyFactory = func() RetryPolicy {
+		return RetryPolicy{MaxAttempts: 2, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Jitter: 0}
+	}
+	startupSleepWithContext = func(context.Context, time.Duration) error { return nil }
 
 	connectCalls := 0
 	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
@@ -600,6 +612,97 @@ func TestDoltClientReconnect_DeduplicatesConcurrentReconnects(t *testing.T) {
 	require.Equal(t, newDB, client.DB())
 	require.Equal(t, 2, connectCalls)
 	require.Error(t, oldDB.Ping())
+}
+
+func TestNewDoltClient_StartsHealthMonitorOnSuccessfulConnection(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	originalConnect := connectDoltClient
+	originalCreateHealthMonitor := createHealthMonitor
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		createHealthMonitor = originalCreateHealthMonitor
+	})
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return &DoltClient{db: db, details: details, beadsDir: beadsDir}, nil
+	}
+
+	called := 0
+	var usedInterval time.Duration
+	createHealthMonitor = func(client healthMonitorClient, ping healthPingFunc, interval time.Duration) clientHealthMonitor {
+		called++
+		require.NotNil(t, client)
+		require.NotNil(t, ping)
+		usedInterval = interval
+		return &fakeClientHealthMonitor{}
+	}
+
+	client, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.Equal(t, 1, called)
+	require.Equal(t, defaultHealthMonitorInterval, usedInterval)
+}
+
+func TestDoltClientClose_StopsHealthMonitor(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	mock.ExpectClose()
+
+	healthMon := &fakeClientHealthMonitor{}
+	client := &DoltClient{db: db, connectivityBroker: nil, healthMon: healthMon}
+
+	require.NoError(t, client.Close())
+	require.Equal(t, 1, healthMon.stopCalls)
+	require.Error(t, db.Ping())
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	require.NoError(t, client.Close())
+	require.Equal(t, 1, healthMon.stopCalls)
+}
+
+func TestNewDoltClient_ConstructorOptionsRemainBackwardCompatible(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	originalConnect := connectDoltClient
+	originalCreateHealthMonitor := createHealthMonitor
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		createHealthMonitor = originalCreateHealthMonitor
+	})
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return &DoltClient{db: db, details: details, beadsDir: beadsDir}, nil
+	}
+
+	var intervals []time.Duration
+	createHealthMonitor = func(_ healthMonitorClient, _ healthPingFunc, interval time.Duration) clientHealthMonitor {
+		intervals = append(intervals, interval)
+		return &fakeClientHealthMonitor{}
+	}
+
+	legacyClient, err := NewDoltClient(beadsDir)
+	require.NoError(t, err)
+	require.NotNil(t, legacyClient)
+
+	optionClient, err := NewDoltClient(beadsDir, WithHealthCheckInterval(7*time.Second))
+	require.NoError(t, err)
+	require.NotNil(t, optionClient)
+
+	require.Equal(t, []time.Duration{defaultHealthMonitorInterval, 7 * time.Second}, intervals)
 }
 
 func TestNewDoltMySQLConfig_UsesSafeDefaults(t *testing.T) {
@@ -763,6 +866,249 @@ func TestDoltMySQLConfig_UsesJoinedTCPAddress(t *testing.T) {
 	require.Equal(t, net.JoinHostPort("::1", "3306"), cfg.Addr)
 }
 
+func TestDiagnosticContext_ReturnsClientSnapshot(t *testing.T) {
+	now := time.Now().Add(-time.Minute)
+	client := &DoltClient{
+		details:                     ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"},
+		connectivityState:           appbeads.ConnectivityStateDegraded,
+		lastConnectivityStateChange: now,
+		delegatedStartAttempted:     true,
+		portSource:                  "dolt-server.port",
+		lastConnectivityErr:         errors.New("project identity mismatch"),
+	}
+
+	d := client.DiagnosticContext()
+	require.Equal(t, "127.0.0.1", d.Host)
+	require.Equal(t, 3306, d.Port)
+	require.Equal(t, "perles", d.Database)
+	require.Equal(t, appbeads.ConnectivityStateDegraded, d.LastState)
+	require.Equal(t, now, d.LastStateChange)
+	require.True(t, d.DelegatedStartAttempted)
+	require.Equal(t, "dolt-server.port", d.PortSource)
+	require.Equal(t, "Run 'bd init --force' to re-initialize the database connection", d.Suggestion)
+}
+
+func TestResolveConnectionDetailsWithSource_TracksPortSource(t *testing.T) {
+	t.Run("config fallback", func(t *testing.T) {
+		beadsDir := t.TempDir()
+		writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+		writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3810)
+
+		resolved, err := resolveConnectionDetailsWithSource(beadsDir)
+		require.NoError(t, err)
+		require.Equal(t, 3810, resolved.details.Port)
+		require.Equal(t, "config.yaml", resolved.portSource)
+	})
+
+	t.Run("port override", func(t *testing.T) {
+		beadsDir := t.TempDir()
+		writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+		writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3810)
+		writeTestPortFile(t, beadsDir, "3920")
+
+		resolved, err := resolveConnectionDetailsWithSource(beadsDir)
+		require.NoError(t, err)
+		require.Equal(t, 3920, resolved.details.Port)
+		require.Equal(t, "dolt-server.port", resolved.portSource)
+	})
+}
+
+func TestDiagnosticSuggestionGeneration(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "server unreachable", err: errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"), want: "Run 'bd dolt start' to start the server, or check if the server process is running"},
+		{name: "project mismatch", err: errors.New("project identity mismatch for workspace"), want: "Run 'bd init --force' to re-initialize the database connection"},
+		{name: "circuit breaker", err: errors.New("circuit breaker open"), want: "Remove stale circuit breaker state and restart with 'bd dolt start --force'"},
+		{name: "port mismatch", err: errors.New("parsing dolt server port file \"x/dolt-server.port\": invalid syntax"), want: "Check dolt-server.port matches the running server; try 'bd dolt restart'"},
+		{name: "dolt panic", err: errors.New("panic: concurrent map writes"), want: "Restart the Dolt server and inspect upstream logs before retrying"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, suggestionForError(tt.err))
+		})
+	}
+}
+
+func TestDiagnosticStateSnapshotAndEventPublishing(t *testing.T) {
+	client := &DoltClient{
+		details:            ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"},
+		portSource:         "config.yaml",
+		connectivityBroker: pubsub.NewBroker[appbeads.ConnectivityEvent](),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := client.ConnectivityBroker().Subscribe(ctx)
+
+	client.setConnectivityState(appbeads.ConnectivityStateReconnecting, errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"))
+
+	var event pubsub.Event[appbeads.ConnectivityEvent]
+	select {
+	case event = <-ch:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for connectivity event")
+	}
+
+	require.Equal(t, appbeads.ConnectivityStateReconnecting, event.Payload.State)
+	require.NotNil(t, event.Payload.Diagnostics)
+	require.Equal(t, "127.0.0.1", event.Payload.Diagnostics.Host)
+	require.Equal(t, 3306, event.Payload.Diagnostics.Port)
+	require.Equal(t, "perles", event.Payload.Diagnostics.Database)
+	require.Equal(t, appbeads.ConnectivityStateReconnecting, event.Payload.Diagnostics.LastState)
+	require.False(t, event.Payload.Diagnostics.LastStateChange.IsZero())
+	require.Equal(t, "config.yaml", event.Payload.Diagnostics.PortSource)
+	require.Equal(t, "Run 'bd dolt start' to start the server, or check if the server process is running", event.Payload.Diagnostics.Suggestion)
+
+	snapshot := client.DiagnosticContext()
+	require.Equal(t, snapshot, *event.Payload.Diagnostics)
+}
+
+func TestStartupErrorsIncludeSuggestion(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "192.0.2.10", 3306)
+
+	originalConnect := connectDoltClient
+	defer func() { connectDoltClient = originalConnect }()
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return nil, &StartupError{
+			Kind:    StartupErrorKindServerStartup,
+			Err:     errors.New("dial tcp 192.0.2.10:3306: connect: connection refused"),
+			Details: copyConnectionDetails(details),
+		}
+	}
+
+	_, err := NewDoltClient(beadsDir)
+	require.Error(t, err)
+
+	var startupErr *StartupError
+	require.True(t, errors.As(err, &startupErr))
+	require.Equal(t, "Run 'bd dolt start' to start the server, or check if the server process is running", startupErr.Suggestion)
+}
+
+func TestRetryDoltClientConnection_ReResolvesConnectionDetailsOnEachRetry(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+	writeTestPortFile(t, beadsDir, "4010")
+
+	originalConnect := connectDoltClient
+	originalRetryPolicyFactory := startupRetryPolicyFactory
+	originalSleepWithContext := startupSleepWithContext
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		startupRetryPolicyFactory = originalRetryPolicyFactory
+		startupSleepWithContext = originalSleepWithContext
+	})
+
+	startupRetryPolicyFactory = func() RetryPolicy {
+		return RetryPolicy{MaxAttempts: 5, InitialBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Jitter: 0}
+	}
+	startupSleepWithContext = func(context.Context, time.Duration) error { return nil }
+
+	var seenPorts []int
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		seenPorts = append(seenPorts, details.Port)
+		switch len(seenPorts) {
+		case 1:
+			writeTestPortFile(t, beadsDir, "4020")
+			return nil, &StartupError{Kind: StartupErrorKindServerStartup, Err: errors.New("first failure"), Details: copyConnectionDetails(details)}
+		case 2:
+			writeTestPortFile(t, beadsDir, "4030")
+			return nil, &StartupError{Kind: StartupErrorKindServerStartup, Err: errors.New("second failure"), Details: copyConnectionDetails(details)}
+		default:
+			return &DoltClient{details: details}, nil
+		}
+	}
+
+	client, err := retryDoltClientConnection(beadsDir)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.Equal(t, []int{4010, 4020, 4030}, seenPorts)
+	require.Equal(t, 4030, client.details.Port)
+}
+
+func TestRetryDoltClientConnection_UsesStartupRetryPolicyBackoff(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)
+	writeTestDoltConfig(t, beadsDir, "127.0.0.1", 3306)
+
+	originalConnect := connectDoltClient
+	originalRetryPolicyFactory := startupRetryPolicyFactory
+	originalSleepWithContext := startupSleepWithContext
+	t.Cleanup(func() {
+		connectDoltClient = originalConnect
+		startupRetryPolicyFactory = originalRetryPolicyFactory
+		startupSleepWithContext = originalSleepWithContext
+	})
+
+	policy := RetryPolicy{MaxAttempts: 4, InitialBackoff: 111 * time.Millisecond, MaxBackoff: 333 * time.Millisecond, Jitter: 0}
+	startupRetryPolicyFactory = func() RetryPolicy { return policy }
+
+	var slept []time.Duration
+	startupSleepWithContext = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	connectDoltClient = func(_ string, details ConnectionDetails) (*DoltClient, error) {
+		return nil, &StartupError{Kind: StartupErrorKindServerStartup, Err: fmt.Errorf("still unavailable on %d", details.Port), Details: copyConnectionDetails(details)}
+	}
+
+	_, err := retryDoltClientConnection(beadsDir)
+	require.Error(t, err)
+	require.Equal(t, []time.Duration{111 * time.Millisecond, 222 * time.Millisecond, 333 * time.Millisecond}, slept)
+}
+
+func TestPollForDoltPortFile_PollsEvery50msUpTo500ms(t *testing.T) {
+	beadsDir := t.TempDir()
+
+	originalSleepWithContext := startupSleepWithContext
+	t.Cleanup(func() {
+		startupSleepWithContext = originalSleepWithContext
+	})
+
+	var slept []time.Duration
+	startupSleepWithContext = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	pollForDoltPortFile(context.Background(), beadsDir)
+
+	require.Len(t, slept, 10)
+	for _, d := range slept {
+		require.Equal(t, 50*time.Millisecond, d)
+	}
+}
+
+func TestPollForDoltPortFile_StopsWhenFileAppears(t *testing.T) {
+	beadsDir := t.TempDir()
+
+	originalSleepWithContext := startupSleepWithContext
+	t.Cleanup(func() {
+		startupSleepWithContext = originalSleepWithContext
+	})
+
+	var slept []time.Duration
+	startupSleepWithContext = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		if len(slept) == 3 {
+			writeTestPortFile(t, beadsDir, "4020")
+		}
+		return nil
+	}
+
+	pollForDoltPortFile(context.Background(), beadsDir)
+
+	require.Equal(t, []time.Duration{50 * time.Millisecond, 50 * time.Millisecond, 50 * time.Millisecond}, slept)
+}
+
 func writeTestMetadata(t *testing.T, beadsDir, content string) {
 	t.Helper()
 	metadataPath := filepath.Join(beadsDir, "metadata.json")
@@ -793,4 +1139,12 @@ func (f *fakeDoltStartupDelegate) Start(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+type fakeClientHealthMonitor struct {
+	stopCalls int
+}
+
+func (f *fakeClientHealthMonitor) Stop() {
+	f.stopCalls++
 }
