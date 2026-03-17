@@ -87,6 +87,8 @@ func init() {
 		"path to beads database directory")
 	rootCmd.Flags().StringP("markdown-style", "", "",
 		"markdown rendering style: \"dark\" (default) or \"light\"")
+	rootCmd.Flags().Bool("no-auto-refresh", false,
+		"disable auto-refresh (overrides config)")
 	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false,
 		"enable debug mode with verbose runtime logging (also: PERLES_DEBUG=1)")
 	rootCmd.Flags().IntVarP(&apiPortFlag, "port", "p", 0,

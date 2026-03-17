@@ -122,8 +122,10 @@ func IsRecoverableConnectivityError(err error) bool {
 		return false
 	}
 
+	msg := strings.ToLower(err.Error())
+
 	// Explicitly do not retry known non-transient categories.
-	if IsCircuitBreakerError(err) || IsProjectMismatchError(err) || IsMissingDatabaseError(err) {
+	if isCircuitBreakerErrorMessage(msg) || isProjectMismatchErrorMessage(msg) || isMissingDatabaseError(err, msg) {
 		return false
 	}
 
@@ -146,7 +148,6 @@ func IsRecoverableConnectivityError(err error) bool {
 		}
 	}
 
-	msg := strings.ToLower(err.Error())
 	for _, needle := range []string{
 		"connection refused",
 		"broken pipe",
@@ -173,6 +174,37 @@ func hasErrorSubstring(err error, needles ...string) bool {
 	}
 
 	msg := strings.ToLower(err.Error())
+	return hasSubstringInLoweredMessage(msg, needles...)
+}
+
+func isProjectMismatchErrorMessage(msg string) bool {
+	return hasSubstringInLoweredMessage(msg,
+		"project identity mismatch",
+		"wrong database",
+	)
+}
+
+func isCircuitBreakerErrorMessage(msg string) bool {
+	return hasSubstringInLoweredMessage(msg,
+		"circuit breaker",
+		"circuit_breaker",
+		"breaker open",
+	)
+}
+
+func isMissingDatabaseError(err error, msg string) bool {
+	if code, ok := ExtractMySQLErrorCode(err); ok && code == 1049 {
+		return true
+	}
+
+	return hasSubstringInLoweredMessage(msg,
+		"unknown database",
+		"no such database",
+		"database not found",
+	)
+}
+
+func hasSubstringInLoweredMessage(msg string, needles ...string) bool {
 	for _, needle := range needles {
 		if strings.Contains(msg, strings.ToLower(needle)) {
 			return true

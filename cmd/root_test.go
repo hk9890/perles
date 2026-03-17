@@ -102,6 +102,21 @@ func TestClassifyStartupBehavior(t *testing.T) {
 	})
 }
 
+func TestRootCommand_NoAutoRefreshFlagIsRegistered(t *testing.T) {
+	flag := rootCmd.Flags().Lookup("no-auto-refresh")
+	require.NotNil(t, flag)
+	require.Equal(t, "false", flag.DefValue)
+
+	t.Cleanup(func() {
+		require.NoError(t, rootCmd.Flags().Set("no-auto-refresh", "false"))
+	})
+
+	require.NoError(t, rootCmd.Flags().Set("no-auto-refresh", "true"))
+	value, err := rootCmd.Flags().GetBool("no-auto-refresh")
+	require.NoError(t, err)
+	require.True(t, value)
+}
+
 // ============================================================================
 // Keybinding Startup Integration Tests
 // ============================================================================
