@@ -32,6 +32,33 @@ const (
 	columnGap         = 3   // Gap between columns (matches " │ " divider width)
 )
 
+var (
+	emptyDescriptionStyle = lipgloss.NewStyle().Foreground(styles.TextMutedColor).Italic(true)
+	commentsErrorStyle    = lipgloss.NewStyle().Foreground(styles.StatusErrorColor)
+	sectionHeaderStyle    = lipgloss.NewStyle().Bold(true)
+	secondaryTextStyle    = lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
+	metadataLabelStyle    = lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(10)
+	metadataDividerStyle  = lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
+	metadataValueStyle    = lipgloss.NewStyle()
+	closeReasonLabelStyle = lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+	footerStyle           = lipgloss.NewStyle().Foreground(styles.TextDescriptionColor)
+	defaultStatusStyle    = lipgloss.NewStyle()
+	statusStyles          = map[beads.Status]lipgloss.Style{
+		beads.StatusOpen:       lipgloss.NewStyle().Foreground(styles.StatusOpenColor),
+		beads.StatusInProgress: lipgloss.NewStyle().Foreground(styles.StatusInProgressColor),
+		beads.StatusClosed:     lipgloss.NewStyle().Foreground(styles.StatusClosedColor),
+		beads.StatusDeferred:   lipgloss.NewStyle().Foreground(styles.StatusDeferredColor),
+		beads.StatusBlocked:    lipgloss.NewStyle().Foreground(styles.StatusBlockedColor),
+	}
+	statusIndicatorGlyphs = map[beads.Status]string{
+		beads.StatusOpen:       "○",
+		beads.StatusInProgress: "●",
+		beads.StatusClosed:     "✓",
+		beads.StatusDeferred:   "⏸",
+		beads.StatusBlocked:    "⊘",
+	}
+)
+
 // metadataContentWidth returns the usable content width in metadata column.
 // This is the width available for dividers, labels+values, and wrapped text.
 func metadataContentWidth() int {
@@ -505,8 +532,7 @@ func (m Model) renderLeftColumn() string {
 		sb.WriteString("\n")
 	} else {
 		// Empty state for no description
-		emptyStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor).Italic(true)
-		sb.WriteString(emptyStyle.Render("No description"))
+		sb.WriteString(emptyDescriptionStyle.Render("No description"))
 		sb.WriteString("\n")
 	}
 
@@ -522,16 +548,14 @@ func (m Model) renderLeftColumn() string {
 	// Comments error handling
 	if m.commentsError != nil {
 		sb.WriteString("\n")
-		errorStyle := lipgloss.NewStyle().Foreground(styles.StatusErrorColor)
-		sb.WriteString(errorStyle.Render("Failed to load comments"))
+		sb.WriteString(commentsErrorStyle.Render("Failed to load comments"))
 		sb.WriteString("\n")
 	}
 
 	// Comments section
 	if len(m.comments) > 0 {
 		sb.WriteString("\n")
-		headerStyle := lipgloss.NewStyle().Bold(true)
-		sb.WriteString(headerStyle.Render("Comments"))
+		sb.WriteString(sectionHeaderStyle.Render("Comments"))
 		sb.WriteString("\n\n")
 
 		// Calculate wrap width based on content column
@@ -540,15 +564,13 @@ func (m Model) renderLeftColumn() string {
 			wrapWidth = m.width - 4
 		}
 
-		commentHeaderStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor)
-
 		for _, c := range m.comments {
 			// [author] timestamp - styled with secondary color
 			// Use same format as metadata timestamps for consistency
 			header := fmt.Sprintf("[%s] %s",
 				c.Author,
 				c.CreatedAt.Format("2006-01-02 15:04:05"))
-			sb.WriteString(commentHeaderStyle.Render(header))
+			sb.WriteString(secondaryTextStyle.Render(header))
 			sb.WriteString("\n")
 			// Wrap comment text to fit column width
 			wrappedText := wordwrap.String(c.Text, wrapWidth)
@@ -566,14 +588,9 @@ func (m Model) renderMetadataColumn() string {
 	issue := m.issue
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().
-		Foreground(styles.TextSecondaryColor).
-		Width(10)
-
-	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
-	divider := dividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
-
-	valueStyle := lipgloss.NewStyle()
+	labelStyle := metadataLabelStyle
+	divider := metadataDividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
+	valueStyle := metadataValueStyle
 
 	indent := " "
 	indentedDivider := indent + divider
@@ -639,7 +656,7 @@ func (m Model) renderMetadataColumn() string {
 		sb.WriteString("\n")
 	}
 
-	// MolType (if set)
+	// RoleType (if set)
 	if issue.RoleType != "" {
 		sb.WriteString(indent)
 		sb.WriteString(labelStyle.Render("Role Type"))
@@ -691,12 +708,10 @@ func (m Model) renderMetadataColumn() string {
 		if issue.CloseReason != "" {
 			// Use a label style without fixed width since "Close Reason" is longer
 			// and the value is on its own line anyway
-			sectionLabelStyle := lipgloss.NewStyle().
-				Foreground(styles.TextDescriptionColor)
 			sb.WriteString(indentedDivider)
 			sb.WriteString("\n")
 			sb.WriteString(indent)
-			sb.WriteString(sectionLabelStyle.Render("Close Reason"))
+			sb.WriteString(closeReasonLabelStyle.Render("Close Reason"))
 			sb.WriteString("\n")
 			// Wrap long reasons to fit metadata column
 			reasonIndent := indent + " "
@@ -769,8 +784,7 @@ func (m Model) renderMarkdownSection(title, content string) string {
 	sb.WriteString("\n")
 
 	// Header
-	headerStyle := lipgloss.NewStyle().Bold(true)
-	sb.WriteString(headerStyle.Render(title))
+	sb.WriteString(sectionHeaderStyle.Render(title))
 	sb.WriteString("\n\n")
 
 	// Content
@@ -827,12 +841,8 @@ func (m Model) renderDependenciesSection() string {
 
 	var sb strings.Builder
 
-	labelStyle := lipgloss.NewStyle().
-		Foreground(styles.TextSecondaryColor).
-		Width(10)
-
-	dividerStyle := lipgloss.NewStyle().Foreground(styles.BorderDefaultColor)
-	divider := dividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
+	labelStyle := metadataLabelStyle
+	divider := metadataDividerStyle.Render(strings.Repeat("─", metadataContentWidth()))
 
 	indent := " "
 	indentedDivider := indent + divider
@@ -926,9 +936,6 @@ func (m Model) renderDependenciesSection() string {
 
 // renderFooter renders the keybinding hints.
 func (m Model) renderFooter() string {
-	footerStyle := lipgloss.NewStyle().
-		Foreground(styles.TextDescriptionColor)
-
 	scrollPercent := ""
 	if m.viewport.TotalLineCount() > m.viewport.Height {
 		scrollPercent = fmt.Sprintf(" %3.0f%%", m.viewport.ScrollPercent()*100)
@@ -956,48 +963,27 @@ func getPriorityStyle(p beads.Priority) lipgloss.Style {
 	case beads.PriorityBacklog:
 		return styles.PriorityBacklogStyle
 	default:
-		return lipgloss.NewStyle()
+		return defaultStatusStyle
 	}
 }
 
 // getStatusStyle returns the style for a status value.
 func getStatusStyle(s beads.Status) lipgloss.Style {
-	switch s {
-	case beads.StatusOpen:
-		return lipgloss.NewStyle().Foreground(styles.StatusOpenColor)
-	case beads.StatusInProgress:
-		return lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
-	case beads.StatusClosed:
-		return lipgloss.NewStyle().Foreground(styles.StatusClosedColor)
-	case beads.StatusDeferred:
-		return lipgloss.NewStyle().Foreground(styles.StatusDeferredColor)
-	case beads.StatusBlocked:
-		return lipgloss.NewStyle().Foreground(styles.StatusBlockedColor)
-	default:
-		return lipgloss.NewStyle()
+	if style, ok := statusStyles[s]; ok {
+		return style
 	}
+	return defaultStatusStyle
 }
 
 // renderStatusIndicator renders the status badge for dependency items.
 // Matches the tree view format: ○ (open), ● (in progress), ✓ (closed), ⏸ (deferred), ⊘ (blocked).
 func renderStatusIndicator(status beads.Status) string {
-	switch status {
-	case beads.StatusClosed:
-		style := lipgloss.NewStyle().Foreground(styles.StatusClosedColor)
-		return style.Render("✓")
-	case beads.StatusInProgress:
-		style := lipgloss.NewStyle().Foreground(styles.StatusInProgressColor)
-		return style.Render("●")
-	case beads.StatusDeferred:
-		style := lipgloss.NewStyle().Foreground(styles.StatusDeferredColor)
-		return style.Render("⏸")
-	case beads.StatusBlocked:
-		style := lipgloss.NewStyle().Foreground(styles.StatusBlockedColor)
-		return style.Render("⊘")
-	default:
-		style := lipgloss.NewStyle().Foreground(styles.StatusOpenColor)
-		return style.Render("○")
+	style := getStatusStyle(status)
+	glyph, ok := statusIndicatorGlyphs[status]
+	if !ok {
+		glyph = statusIndicatorGlyphs[beads.StatusOpen]
 	}
+	return style.Render(glyph)
 }
 
 // formatStatus returns the display name for a status (Title Case).

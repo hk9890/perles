@@ -332,8 +332,8 @@ func (m Model) Init() tea.Cmd {
 	if m.watcherListener != nil {
 		cmds = append(cmds, m.watcherListener.Listen())
 	}
-	if m.connectivityListenCmd() != nil {
-		cmds = append(cmds, m.connectivityListenCmd())
+	if cmd := m.connectivityListenCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 
 	if m.logListenCmd != nil {
@@ -701,8 +701,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, refreshCmd)
 		}
 
-		if m.connectivityListenCmd() != nil {
-			cmds = append(cmds, m.connectivityListenCmd())
+		if cmd := m.connectivityListenCmd(); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 		return m, tea.Batch(cmds...)
 
