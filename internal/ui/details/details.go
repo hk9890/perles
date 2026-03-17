@@ -11,6 +11,7 @@ import (
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/bql"
 	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/ui/shared/markdown"
 	"github.com/hk9890/perles/internal/ui/styles"
 
@@ -1151,10 +1152,19 @@ func (m *Model) loadComments() {
 	if m.commentsLoaded {
 		return
 	}
+	prevHadError := m.commentsError != nil
 	comments, err := m.commentLoader.GetComments(m.issue.ID)
 	m.comments = comments
 	m.commentsError = err
 	m.commentsLoaded = true
+	if err != nil && !prevHadError {
+		log.Error(log.CatUIError, "Failed to load comments",
+			"ui_message", "Failed to load comments",
+			"issue_id", m.issue.ID,
+			"operation", "load_comments",
+			"error", err.Error(),
+		)
+	}
 }
 
 // formatDuration returns a human-readable duration string.

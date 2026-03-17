@@ -88,7 +88,7 @@ func init() {
 	rootCmd.Flags().StringP("markdown-style", "", "",
 		"markdown rendering style: \"dark\" (default) or \"light\"")
 	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false,
-		"enable debug mode with logging (also: PERLES_DEBUG=1)")
+		"enable debug mode with verbose runtime logging (also: PERLES_DEBUG=1)")
 	rootCmd.Flags().IntVarP(&apiPortFlag, "port", "p", 0,
 		"API server port (0 = auto-assign, overrides config)")
 
@@ -172,19 +172,14 @@ func initServices() {
 }
 
 func runApp(cmd *cobra.Command, args []string) error {
-	// Initialize logging if debug mode enabled (via flag or env var)
-	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
+	debug, cleanupLogging, err := initRuntimeLogging("perles")
+	if err != nil {
+		return err
+	}
+	defer cleanupLogging()
+
 	if debug {
-		logPath := resolveDebugLogPath()
-
-		cleanup, err := log.InitWithTeaLog(logPath, "perles")
-		if err != nil {
-			return fmt.Errorf("initializing logging: %w", err)
-		}
-		defer cleanup()
-
-		// Log application startup
-		log.Info(log.CatConfig, "Perles starting", "version", version, "debug", true, "logPath", logPath)
+		log.Info(log.CatConfig, "Perles starting", "version", version, "debug", true, "logPath", resolveDebugLogPath())
 	}
 
 	// Initialize registry service after logging so debug output is captured
@@ -228,6 +223,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 	// Working directory is always the current directory (where perles was invoked)
 	workDir, err := os.Getwd()
 	if err != nil {
+		log.Error(log.CatConfig, "Getting current directory failed", "error", err)
 		return fmt.Errorf("getting current directory: %w", err)
 	}
 
@@ -257,6 +253,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	client, err := createDoltClient(cfg.ResolvedBeadsDir)
 	if err != nil {
+		log.Error(log.CatBeads, "Creating Dolt client failed", "error", err, "beadsDir", cfg.ResolvedBeadsDir)
 		switch classifyStartupBehavior(err) {
 		case startupBehaviorNoBeadsMode:
 			// Show friendly TUI empty state for genuine no-beads cases.
@@ -272,7 +269,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 	currentVersion, err := client.Version()
 	if err != nil {
 		// Very old database without bd_version metadata - show outdated view
-		log.Debug(log.CatBeads, "Version check failed", "error", err)
+		log.Error(log.CatBeads, "Version check failed", "error", err)
 		return runOutdatedMode("unknown", beads.MinBeadsVersion)
 	}
 
@@ -318,6 +315,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		registryService,
 	)
 	if err != nil {
+		log.Error(log.CatConfig, "Application initialization failed", "error", err)
 		return fmt.Errorf("initializing application: %w", err)
 	}
 	p := tea.NewProgram(
@@ -328,13 +326,11 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	finalModel, err := p.Run()
 
-	// Log shutdown (only in debug mode - log is initialized)
-	if debug {
-		if err != nil {
-			log.Error(log.CatConfig, "Perles shutting down with error", "error", err)
-		} else {
-			log.Info(log.CatConfig, "Perles shutting down")
-		}
+	// Keep shutdown/info noise debug-only, but preserve error visibility for normal runs.
+	if err != nil {
+		log.Error(log.CatConfig, "Perles shutting down with error", "error", err)
+	} else if debug {
+		log.Info(log.CatConfig, "Perles shutting down")
 	}
 
 	err = cleanupFinalModel(finalModel, err, debug)
@@ -383,6 +379,32 @@ func resolveDebugLogPath() string {
 	return log.DefaultDebugLogPath()
 }
 
+func runtimeDebugEnabled() bool {
+	return os.Getenv("PERLES_DEBUG") != "" || debugFlag
+}
+
+func runtimeLogLevel(debug bool) log.Level {
+	if debug {
+		return log.LevelDebug
+	}
+
+	return log.LevelError
+}
+
+func initRuntimeLogging(prefix string) (bool, func(), error) {
+	debug := runtimeDebugEnabled()
+	logPath := resolveDebugLogPath()
+
+	cleanup, err := log.InitWithTeaLog(logPath, prefix)
+	if err != nil {
+		return false, nil, fmt.Errorf("initializing logging: %w", err)
+	}
+
+	log.SetMinLevel(runtimeLogLevel(debug))
+
+	return debug, cleanup, nil
+}
+
 func cleanupFinalModel(finalModel tea.Model, runErr error, debug bool) error {
 	if finalModel == nil {
 		return runErr
@@ -390,9 +412,7 @@ func cleanupFinalModel(finalModel tea.Model, runErr error, debug bool) error {
 
 	closeErr := closeModel(finalModel, debug)
 	if closeErr != nil {
-		if debug {
-			log.Error(log.CatConfig, "Error during cleanup", "error", closeErr)
-		}
+		log.Error(log.CatConfig, "Error during cleanup", "error", closeErr)
 		if runErr == nil {
 			return closeErr
 		}

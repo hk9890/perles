@@ -1109,6 +1109,87 @@ func TestPollForDoltPortFile_StopsWhenFileAppears(t *testing.T) {
 	require.Equal(t, []time.Duration{50 * time.Millisecond, 50 * time.Millisecond, 50 * time.Millisecond}, slept)
 }
 
+func TestGetCommentsFailureAfterReconnectLogsFinalRootCause(t *testing.T) {
+	logPath := setupTestLogger(t)
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	issueID := "perles-123"
+	queryErr := errors.New("dial tcp 127.0.0.1:3306: connect: connection refused")
+	mock.ExpectQuery("FROM comments").WithArgs(issueID).WillReturnError(queryErr)
+
+	client := &DoltClient{
+		db:       db,
+		beadsDir: filepath.Join(t.TempDir(), "missing-beads"),
+		details:  ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"},
+	}
+
+	_, err = client.GetComments(issueID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "reading beads metadata")
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	content := readLogFile(t, logPath)
+	require.Contains(t, content, "[ERROR] [db] Reconnect exhausted; connectivity degraded")
+	require.Contains(t, content, "operation=reconnect")
+	require.Contains(t, content, "state_transition=degraded")
+	require.Contains(t, content, "host=127.0.0.1")
+	require.Contains(t, content, "port=3306")
+	require.Contains(t, content, "database=perles")
+
+	require.Contains(t, content, "[ERROR] [db] GetComments failed")
+	require.Contains(t, content, "operation=get_comments")
+	require.Contains(t, content, "issue_id=perles-123")
+	require.Contains(t, content, "reconnect_attempted=true")
+	require.Contains(t, content, "connectivity_state=degraded")
+	require.Contains(t, content, "error=startup no_beads: reading beads metadata")
+}
+
+func TestLogStartupFailureIncludesActionableMissingDatabaseContext(t *testing.T) {
+	logPath := setupTestLogger(t)
+
+	startupErr := &StartupError{
+		Kind: StartupErrorKindServerStartup,
+		Err:  &mysql.MySQLError{Number: 1049, Message: "Unknown database 'perles'"},
+		Details: &ConnectionDetails{
+			Host:     "127.0.0.1",
+			Port:     3306,
+			Database: "perles",
+		},
+	}
+
+	logStartupFailure("open_dolt_db_ping", startupErr, ConnectionDetails{})
+
+	content := readLogFile(t, logPath)
+	require.Contains(t, content, "[ERROR] [db] Dolt startup failed")
+	require.Contains(t, content, "operation=open_dolt_db_ping")
+	require.Contains(t, content, "host=127.0.0.1")
+	require.Contains(t, content, "port=3306")
+	require.Contains(t, content, "database=perles")
+	require.Contains(t, content, "mysql_error_code=1049")
+	require.Contains(t, content, "missing_database=true")
+	require.Contains(t, content, "suggestion=Run 'bd init --force' to re-initialize the database connection")
+	require.Contains(t, content, "error=startup server_startup: Error 1049")
+}
+
+func setupTestLogger(t *testing.T) string {
+	t.Helper()
+	logPath := filepath.Join(t.TempDir(), "perles.log")
+	cleanup, err := log.InitWithTeaLog(logPath, "")
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	return logPath
+}
+
+func readLogFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return string(content)
+}
+
 func writeTestMetadata(t *testing.T, beadsDir, content string) {
 	t.Helper()
 	metadataPath := filepath.Join(beadsDir, "metadata.json")

@@ -16,14 +16,20 @@ If no file is found, Perles creates `.perles/config.yaml` with defaults.
 
 - `--beads-dir`, `-b` - beads directory override
 - `--config`, `-c` - config path override
-- `--debug`, `-d` - enable debug logging
+- `--debug`, `-d` - enable developer/debug mode (runtime log level DEBUG)
 - `--port`, `-p` - orchestration API port override
 
 ## Important Environment Variables
 
 - `BEADS_DIR` - beads path fallback when `-b` is not set
-- `PERLES_DEBUG` - enables debug logging
-- `PERLES_LOG` - overrides the centralized debug log file path (default: `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`, fallback `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`)
+- `PERLES_DEBUG` - enables developer/debug mode and raises runtime log level to DEBUG
+- `PERLES_LOG` - overrides the centralized runtime log file path (default: `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`, fallback `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`)
+
+## Runtime Logging Behavior
+
+- Normal runs initialize Perles runtime logging at `ERROR` level.
+- Debug runs (`--debug` or `PERLES_DEBUG=1`) raise runtime logging to `DEBUG`.
+- The log path is the same in both modes unless `PERLES_LOG` overrides it.
 - `UPDATE_GOLDEN` - used by some tests/golden flows
 
 ## Core Config Schema (High-Level)

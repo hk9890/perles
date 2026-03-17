@@ -186,11 +186,13 @@ func NewDoltClient(beadsDir string, opts ...DoltClientOption) (*DoltClient, erro
 
 	resolved, err := resolveConnectionDetailsWithSource(beadsDir)
 	if err != nil {
+		logStartupFailure("resolve_connection_details", err, ConnectionDetails{})
 		return nil, err
 	}
 
 	client, _, err := connectOrDelegateStartup(beadsDir, resolved)
 	if err != nil {
+		logStartupFailure("connect_or_delegate_startup", err, resolved.details)
 		return nil, err
 	}
 
@@ -246,6 +248,7 @@ func retryDoltClientConnection(beadsDir string) (*DoltClient, error) {
 			err = enrichStartupError(err, ConnectionDetails{})
 			lastErr = err
 			if !IsServerStartupError(err) || attempt == maxAttempts {
+				logStartupFailure("retry_startup_resolve_connection_details", err, ConnectionDetails{})
 				return nil, err
 			}
 
@@ -268,6 +271,7 @@ func retryDoltClientConnection(beadsDir string) (*DoltClient, error) {
 		err = enrichStartupError(err, resolved.details)
 		lastErr = err
 		if !IsServerStartupError(err) {
+			logStartupFailure("retry_startup_connect", err, resolved.details)
 			return nil, err
 		}
 
@@ -278,6 +282,9 @@ func retryDoltClientConnection(beadsDir string) (*DoltClient, error) {
 		}
 	}
 
+	if lastErr != nil {
+		logStartupFailure("retry_startup_exhausted", lastErr, ConnectionDetails{})
+	}
 	return nil, lastErr
 }
 
@@ -396,23 +403,27 @@ func openDoltDB(details ConnectionDetails) (*sql.DB, error) {
 
 	connector, err := mysql.NewConnector(cfg)
 	if err != nil {
-		return nil, &StartupError{
+		startupErr := &StartupError{
 			Kind:       StartupErrorKindServerStartup,
 			Err:        fmt.Errorf("creating dolt mysql connector: %w", err),
 			Details:    copyConnectionDetails(details),
 			Suggestion: suggestionForError(err),
 		}
+		logStartupFailure("open_dolt_db_connector", startupErr, details)
+		return nil, startupErr
 	}
 	db := sql.OpenDB(connector)
 	configureDoltDBPool(db)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
-		return nil, &StartupError{
+		startupErr := &StartupError{
 			Kind:       StartupErrorKindServerStartup,
 			Err:        fmt.Errorf("pinging dolt mysql connection: %w", err),
 			Details:    copyConnectionDetails(details),
 			Suggestion: suggestionForError(err),
 		}
+		logStartupFailure("open_dolt_db_ping", startupErr, details)
+		return nil, startupErr
 	}
 
 	return db, nil
@@ -579,9 +590,18 @@ func (c *DoltClient) GetComments(issueID string) ([]domain.Comment, error) {
 	comments, err := readComments()
 	if attempted, reconnectErr := c.ReconnectIfRecoverable(err); attempted {
 		if reconnectErr != nil {
+			c.logGetCommentsFailure(issueID, reconnectErr, true)
 			return nil, reconnectErr
 		}
-		return readComments()
+		comments, err = readComments()
+		if err != nil {
+			c.logGetCommentsFailure(issueID, err, true)
+		}
+		return comments, err
+	}
+
+	if err != nil {
+		c.logGetCommentsFailure(issueID, err, false)
 	}
 
 	return comments, err
@@ -633,6 +653,9 @@ func (c *DoltClient) finishReconnectAttempt(reconnectErr error) {
 	c.mu.Unlock()
 
 	c.setConnectivityState(state, reconnectErr)
+	if reconnectErr != nil {
+		c.logReconnectFailure(reconnectErr)
+	}
 
 	c.mu.Lock()
 	if c.reconnectWait == waitCh {
@@ -717,7 +740,7 @@ func suggestionForError(err error) string {
 		return ""
 	}
 
-	if appbeads.IsProjectMismatchError(err) || strings.Contains(strings.ToLower(err.Error()), "no such database") {
+	if appbeads.IsProjectMismatchError(err) || appbeads.IsMissingDatabaseError(err) {
 		return "Run 'bd init --force' to re-initialize the database connection"
 	}
 	if appbeads.IsCircuitBreakerError(err) {
@@ -734,6 +757,105 @@ func suggestionForError(err error) string {
 	}
 
 	return ""
+}
+
+func startupErrorContext(err error, fallback ConnectionDetails) (ConnectionDetails, string) {
+	details := fallback
+	suggestion := suggestionForError(err)
+
+	var startupErr *StartupError
+	if errors.As(err, &startupErr) {
+		if startupErr.Details != nil {
+			details = *startupErr.Details
+		}
+		if startupErr.Suggestion != "" {
+			suggestion = startupErr.Suggestion
+		}
+	}
+
+	return details, suggestion
+}
+
+func startupLogFields(operation string, details ConnectionDetails, err error, suggestion string) []any {
+	fields := []any{
+		"operation", operation,
+		"host", details.Host,
+		"port", details.Port,
+		"database", details.Database,
+	}
+
+	if suggestion != "" {
+		fields = append(fields, "suggestion", suggestion)
+	}
+	if code, ok := appbeads.ExtractMySQLErrorCode(err); ok {
+		fields = append(fields, "mysql_error_code", code)
+	}
+	if appbeads.IsMissingDatabaseError(err) {
+		fields = append(fields, "missing_database", true)
+	}
+	if err != nil {
+		fields = append(fields, "error", err)
+	}
+
+	return fields
+}
+
+func logStartupFailure(operation string, err error, fallback ConnectionDetails) {
+	if err == nil {
+		return
+	}
+
+	details, suggestion := startupErrorContext(err, fallback)
+	log.Error(log.CatDB, "Dolt startup failed", startupLogFields(operation, details, err, suggestion)...)
+}
+
+func (c *DoltClient) logGetCommentsFailure(issueID string, err error, reconnectAttempted bool) {
+	diagnostics := c.DiagnosticContext()
+	fields := []any{
+		"operation", "get_comments",
+		"issue_id", issueID,
+		"host", diagnostics.Host,
+		"port", diagnostics.Port,
+		"database", diagnostics.Database,
+		"reconnect_attempted", reconnectAttempted,
+		"connectivity_state", diagnostics.LastState,
+	}
+	if diagnostics.Suggestion != "" {
+		fields = append(fields, "suggestion", diagnostics.Suggestion)
+	}
+	if code, ok := appbeads.ExtractMySQLErrorCode(err); ok {
+		fields = append(fields, "mysql_error_code", code)
+	}
+	if appbeads.IsMissingDatabaseError(err) {
+		fields = append(fields, "missing_database", true)
+	}
+	fields = append(fields, "error", err)
+
+	log.Error(log.CatDB, "GetComments failed", fields...)
+}
+
+func (c *DoltClient) logReconnectFailure(err error) {
+	diagnostics := c.DiagnosticContext()
+	fields := []any{
+		"operation", "reconnect",
+		"host", diagnostics.Host,
+		"port", diagnostics.Port,
+		"database", diagnostics.Database,
+		"connectivity_state", diagnostics.LastState,
+		"state_transition", "degraded",
+	}
+	if diagnostics.Suggestion != "" {
+		fields = append(fields, "suggestion", diagnostics.Suggestion)
+	}
+	if code, ok := appbeads.ExtractMySQLErrorCode(err); ok {
+		fields = append(fields, "mysql_error_code", code)
+	}
+	if appbeads.IsMissingDatabaseError(err) {
+		fields = append(fields, "missing_database", true)
+	}
+	fields = append(fields, "error", err)
+
+	log.Error(log.CatDB, "Reconnect exhausted; connectivity degraded", fields...)
 }
 
 func enrichStartupError(err error, details ConnectionDetails) error {

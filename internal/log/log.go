@@ -1,6 +1,7 @@
 // Package log provides structured logging for Perles.
-// It wraps tea.LogToFile with structured fields (level, category, timestamp)
-// and conditionally enables logging via --debug flag or PERLES_DEBUG env.
+// It wraps tea.LogToFile with structured fields (level, category, timestamp).
+// Runtime logging is always initialized by Perles; normal runs typically use
+// ERROR level while debug mode raises verbosity to DEBUG.
 package log
 
 import (
@@ -52,6 +53,7 @@ const (
 	CatConfig   Category = "config"            // Configuration loading/saving
 	CatWatcher  Category = "watcher"           // File watcher events
 	CatUI       Category = "ui"                // UI component updates
+	CatUIError  Category = "ui-error"          // User-visible UI errors
 	CatMode     Category = "mode"              // Mode controller events
 	CatBeads    Category = "beads"             // Beads CLI interactions
 	CatOrch     Category = "orch"              // Orchestration: coordinator, pool, amp, claude processes
@@ -124,7 +126,7 @@ func newLogger(path string) (*Logger, error) {
 		return nil, err
 	}
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G304: path is user-controlled debug log path
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) //nolint:gosec // G304: path is a user-controlled runtime log path
 	if err != nil {
 		return nil, err
 	}

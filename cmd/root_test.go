@@ -13,6 +13,7 @@ import (
 	infrabeads "github.com/hk9890/perles/internal/beads/infrastructure"
 	"github.com/hk9890/perles/internal/config"
 	"github.com/hk9890/perles/internal/keys"
+	"github.com/hk9890/perles/internal/log"
 
 	"github.com/stretchr/testify/require"
 )
@@ -447,6 +448,85 @@ func TestResolveDebugLogPath_UsesCentralizedDefaultWhenUnset(t *testing.T) {
 	require.True(t, strings.HasPrefix(resolved, filepath.Join(stateRoot, "perles", "logs")+string(filepath.Separator)))
 	require.Contains(t, resolved, string(filepath.Separator)+"test-project-")
 	require.True(t, strings.HasSuffix(resolved, "-perles.log"))
+}
+
+func TestRuntimeLogLevel(t *testing.T) {
+	require.Equal(t, log.LevelDebug, runtimeLogLevel(true))
+	require.Equal(t, log.LevelError, runtimeLogLevel(false))
+}
+
+func TestInitRuntimeLogging_NormalMode_UsesErrorLevelAndPERLESLOG(t *testing.T) {
+	originalDebugFlag := debugFlag
+	originalDebugEnv := os.Getenv("PERLES_DEBUG")
+	originalLogEnv := os.Getenv("PERLES_LOG")
+	t.Cleanup(func() {
+		debugFlag = originalDebugFlag
+		if originalDebugEnv == "" {
+			_ = os.Unsetenv("PERLES_DEBUG")
+		} else {
+			_ = os.Setenv("PERLES_DEBUG", originalDebugEnv)
+		}
+		if originalLogEnv == "" {
+			_ = os.Unsetenv("PERLES_LOG")
+		} else {
+			_ = os.Setenv("PERLES_LOG", originalLogEnv)
+		}
+	})
+
+	debugFlag = false
+	require.NoError(t, os.Unsetenv("PERLES_DEBUG"))
+	logPath := filepath.Join(t.TempDir(), "runtime-normal.log")
+	require.NoError(t, os.Setenv("PERLES_LOG", logPath))
+
+	debug, cleanup, err := initRuntimeLogging("test-normal")
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+	require.False(t, debug)
+
+	log.Info(log.CatConfig, "info should be filtered")
+	log.Error(log.CatConfig, "error should be logged")
+
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(content), "info should be filtered")
+	require.Contains(t, string(content), "error should be logged")
+}
+
+func TestInitRuntimeLogging_DebugMode_UsesDebugLevel(t *testing.T) {
+	originalDebugFlag := debugFlag
+	originalDebugEnv := os.Getenv("PERLES_DEBUG")
+	originalLogEnv := os.Getenv("PERLES_LOG")
+	t.Cleanup(func() {
+		debugFlag = originalDebugFlag
+		if originalDebugEnv == "" {
+			_ = os.Unsetenv("PERLES_DEBUG")
+		} else {
+			_ = os.Setenv("PERLES_DEBUG", originalDebugEnv)
+		}
+		if originalLogEnv == "" {
+			_ = os.Unsetenv("PERLES_LOG")
+		} else {
+			_ = os.Setenv("PERLES_LOG", originalLogEnv)
+		}
+	})
+
+	debugFlag = false
+	require.NoError(t, os.Setenv("PERLES_DEBUG", "1"))
+	logPath := filepath.Join(t.TempDir(), "runtime-debug.log")
+	require.NoError(t, os.Setenv("PERLES_LOG", logPath))
+
+	debug, cleanup, err := initRuntimeLogging("test-debug")
+	require.NoError(t, err)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+	require.True(t, debug)
+
+	log.Debug(log.CatConfig, "debug should be logged")
+
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	require.Contains(t, string(content), "debug should be logged")
 }
 
 func TestDoltHealthCheckIntervalFromEnv(t *testing.T) {

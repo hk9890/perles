@@ -84,7 +84,7 @@ perles
 | `--no-auto-refresh` | | Disable automatic board refresh |
 | `--version` | `-v` | Print version |
 | `--help` | `-h` | Print help |
-| `--debug` | `-d` | Enable developer/debug mode |
+| `--debug` | `-d` | Enable developer/debug mode (runtime log level DEBUG) |
 
 ### CLI Commands
 
@@ -607,9 +607,9 @@ See `internal/ui/styles/tokens.go` for the complete list of color tokens.
 
 ---
 
-## Developer Mode
+## Runtime Logging and Developer Mode
 
-Developer mode provides logging and debugging tools for troubleshooting and development.
+Perles always writes runtime logs. Normal runs log at `ERROR` level, while developer/debug mode raises runtime logging to `DEBUG` and enables extra troubleshooting signal.
 
 ### Enabling Debug Mode
 
@@ -621,12 +621,13 @@ perles --debug
 PERLES_DEBUG=1 perles
 
 # With custom log path
+PERLES_LOG=/tmp/perles.log perles
 PERLES_LOG=/tmp/perles.log perles --debug
 ```
 
 ### Features
 
-- **Log file**: By default, log output is written to `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log` (fallback: `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`). Set `PERLES_LOG` to use a custom path instead.
+- **Runtime log file**: By default, log output is written to `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log` (fallback: `~/.local/state/perles/logs/<basename>-<short-hash>/YYYY-MM-DD-perles.log`). Normal runs record `ERROR` entries; debug runs record `DEBUG` and above. Set `PERLES_LOG` to use a custom path instead.
 - **Log overlay**: Press `ctrl+x` to view logs in-app without leaving the TUI
 - **Lifecycle logging**: Application startup and shutdown events are logged
 
@@ -636,9 +637,9 @@ PERLES_LOG=/tmp/perles.log perles --debug
 
 ### Reporting Issues
 
-When reporting bugs, please include the relevant debug log file to help with diagnosis:
+When reporting bugs, please include the relevant Perles log file to help with diagnosis:
 
-1. Run perles with `--debug` flag
+1. Run `perles` (or `perles --debug` if lower-severity diagnostics are needed)
 2. Reproduce the issue
 3. Attach the log file from `$XDG_STATE_HOME/perles/logs/<basename>-<short-hash>/` (or your `PERLES_LOG` override path) to your bug report
 

@@ -18,7 +18,7 @@ const (
 	logSubdirName      = "logs"
 )
 
-// DefaultDebugLogPath returns the centralized default debug log path.
+// DefaultDebugLogPath returns the centralized default runtime log path.
 //
 // Path shape:
 //

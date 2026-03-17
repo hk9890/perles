@@ -2,6 +2,7 @@ package details
 
 import (
 	"errors"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/mocks"
 )
 
@@ -1136,6 +1138,43 @@ func TestDetails_View_Golden_WithCommentsError(t *testing.T) {
 
 	view := m.View()
 	teatest.RequireEqualOutput(t, []byte(view))
+}
+
+func TestDetails_LoadComments_LogsUiErrorOnceOnTransition(t *testing.T) {
+	logPath := t.TempDir() + "/perles.log"
+	cleanup, err := log.InitWithTeaLog(logPath, "")
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	commentLoader := mocks.NewMockBeadsClient(t)
+	commentLoader.EXPECT().GetComments("error-task").Return(nil, errors.New("database connection failed"))
+
+	issue := beads.Issue{
+		ID:              "error-task",
+		TitleText:       "Task with Comments Error",
+		DescriptionText: "This task should show an error message for comments.",
+		Type:            beads.TypeTask,
+		Priority:        beads.PriorityMedium,
+		Status:          beads.StatusOpen,
+		CreatedAt:       time.Date(2024, 4, 10, 9, 0, 0, 0, time.UTC),
+	}
+
+	m := New(issue, nil, commentLoader).SetSize(120, 30)
+
+	beforeRender, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	logTextBeforeRender := string(beforeRender)
+	require.Contains(t, logTextBeforeRender, "[ui-error] Failed to load comments")
+	require.Contains(t, logTextBeforeRender, "ui_message=Failed to load comments")
+	require.Contains(t, logTextBeforeRender, "issue_id=error-task")
+	require.Contains(t, logTextBeforeRender, "error=database connection failed")
+
+	_ = m.View()
+	_ = m.View()
+
+	afterRender, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(afterRender), "ui_message=Failed to load comments"), "rendering should not re-log inline error")
 }
 
 // TestDetails_View_Golden_WithExtraFields tests rendering with acceptance criteria, design, and notes fields.

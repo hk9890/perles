@@ -19,6 +19,7 @@ import (
 	beadsdomain "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/config"
 	"github.com/hk9890/perles/internal/flags"
+	perleslog "github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/mocks"
 	"github.com/hk9890/perles/internal/mode"
 	"github.com/hk9890/perles/internal/mode/dashboard"
@@ -102,6 +103,20 @@ func createTestModel(t *testing.T) Model {
 		width:       100,
 		height:      40,
 	}
+}
+
+func setupTestLogger(t *testing.T) string {
+	t.Helper()
+
+	logPath := t.TempDir() + "/perles.log"
+	cleanup, err := perleslog.InitWithTeaLog(logPath, "test")
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	perleslog.SetEnabled(true)
+	perleslog.SetMinLevel(perleslog.LevelDebug)
+
+	return logPath
 }
 
 func createWorkflowCreatorConfigFS(templateContent string) fstest.MapFS {
@@ -2523,6 +2538,8 @@ func TestApp_HealthyRecovery_ShowsTemporaryBannerAndPreservesRefreshBehavior(t *
 }
 
 func TestApp_ShowToast_SuppressesOutageSpamWhenDegraded(t *testing.T) {
+	logPath := setupTestLogger(t)
+
 	m := createTestModel(t)
 	m.backendState = mode.BackendStateDegraded
 
@@ -2531,9 +2548,19 @@ func TestApp_ShowToast_SuppressesOutageSpamWhenDegraded(t *testing.T) {
 
 	require.Nil(t, cmd, "outage toast should be suppressed during degraded state")
 	require.False(t, m.toaster.Visible(), "suppressed outage toast should not be shown")
+
+	logContent, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	entry := string(logContent)
+	require.Contains(t, entry, "[ui-error] UI error toast")
+	require.Contains(t, entry, "ui_message=failed to load issues")
+	require.Contains(t, entry, "backend_state=degraded")
+	require.Contains(t, entry, "toast_suppressed=true")
 }
 
 func TestApp_ShowToast_AllowsNonOutageErrorsWhenDegraded(t *testing.T) {
+	logPath := setupTestLogger(t)
+
 	m := createTestModel(t)
 	m.backendState = mode.BackendStateDegraded
 
@@ -2542,6 +2569,28 @@ func TestApp_ShowToast_AllowsNonOutageErrorsWhenDegraded(t *testing.T) {
 
 	require.NotNil(t, cmd, "non-outage errors should still show toast")
 	require.True(t, m.toaster.Visible(), "non-outage errors should remain visible")
+
+	logContent, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	entry := string(logContent)
+	require.Contains(t, entry, "[ui-error] UI error toast")
+	require.Contains(t, entry, "ui_message=validation failed")
+	require.Contains(t, entry, "backend_state=degraded")
+	require.Contains(t, entry, "toast_suppressed=false")
+}
+
+func TestApp_ShowToast_DoesNotLogNonErrorToastsAsUIErrors(t *testing.T) {
+	logPath := setupTestLogger(t)
+
+	m := createTestModel(t)
+	newModel, _ := m.Update(mode.ShowToastMsg{Message: "all good", Style: toaster.StyleSuccess})
+	m = newModel.(Model)
+
+	require.True(t, m.toaster.Visible(), "success toast should still be shown")
+
+	logContent, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	require.NotContains(t, string(logContent), "[ui-error] UI error toast")
 }
 
 func TestApp_WatcherTicksSuppressedDuringDegradedOutage(t *testing.T) {
@@ -2602,4 +2651,64 @@ func TestApp_RecoverySetsSingleSkipTickThenResumesWatcherRefresh(t *testing.T) {
 	newModel, _ = m.Update(pubsub.Event[watcher.WatcherEvent]{Payload: watcher.WatcherEvent{Type: watcher.DBChanged}})
 	m = newModel.(Model)
 	require.Equal(t, 2, flushCalls, "post-recovery watcher tick should resume normal refresh")
+}
+
+func TestApp_ConnectivityTransitions_LogUiErrorBannersOncePerStateTransition(t *testing.T) {
+	logPath := t.TempDir() + "/perles.log"
+	cleanup, err := perleslog.InitWithTeaLog(logPath, "")
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	m := createTestModel(t)
+
+	newModel, _ := m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateReconnecting},
+	})
+	m = newModel.(Model)
+
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateReconnecting},
+	})
+	m = newModel.(Model)
+
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{
+			State: beadsapp.ConnectivityStateDegraded,
+			Err:   context.DeadlineExceeded,
+			Diagnostics: &beadsapp.DiagnosticContext{
+				Host:       "127.0.0.1",
+				Port:       3306,
+				Database:   "perles",
+				PortSource: "config.yaml",
+				Suggestion: "Run 'bd dolt start'",
+			},
+		},
+	})
+	m = newModel.(Model)
+
+	newModel, _ = m.Update(pubsub.Event[beadsapp.ConnectivityEvent]{
+		Payload: beadsapp.ConnectivityEvent{State: beadsapp.ConnectivityStateDegraded, Err: context.DeadlineExceeded},
+	})
+	m = newModel.(Model)
+
+	logBytes, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	logText := string(logBytes)
+
+	require.Equal(t, 1, strings.Count(logText, "Backend reconnecting banner state entered"), "reconnecting should log once on transition")
+	require.Equal(t, 1, strings.Count(logText, "Backend degraded banner state entered"), "degraded should log once on transition")
+
+	require.Contains(t, logText, "[ui-error] Backend reconnecting banner state entered")
+	require.Contains(t, logText, "ui_message=⟳ Reconnecting... auto-refresh paused")
+	require.Contains(t, logText, "backend_state=reconnecting")
+
+	require.Contains(t, logText, "[ui-error] Backend degraded banner state entered")
+	require.Contains(t, logText, "ui_message=Backend unavailable.")
+	require.Contains(t, logText, "backend_state=degraded")
+	require.Contains(t, logText, "diag_host=127.0.0.1")
+	require.Contains(t, logText, "diag_port=3306")
+	require.Contains(t, logText, "diag_database=perles")
+	require.Contains(t, logText, "diag_port_source=config.yaml")
+	require.Contains(t, logText, "diag_suggestion=Run 'bd dolt start'")
+	require.Contains(t, logText, "error=context deadline exceeded")
 }

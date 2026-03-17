@@ -128,6 +128,7 @@ type Model struct {
 const (
 	reconnectBannerDebounce = 550 * time.Millisecond
 	recoveryBannerDuration  = 2 * time.Second
+	reconnectingBannerText  = "⟳ Reconnecting... auto-refresh paused"
 )
 
 type reconnectDebounceElapsedMsg struct {
@@ -661,6 +662,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.backendState = mapConnectivityState(msg.Payload.State)
 		m.connectivityErr = msg.Payload.Err
 		m.connectivityDiag = msg.Payload.Diagnostics
+		m.logConnectivityBannerTransition(prev)
 
 		var timerCmd tea.Cmd
 		switch m.backendState {
@@ -790,7 +792,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.requestAppQuit()
 
 	case mode.ShowToastMsg:
-		if m.shouldSuppressToast(msg) {
+		suppressed := m.shouldSuppressToast(msg)
+		m.logToast(msg, suppressed)
+		if suppressed {
 			return m, nil
 		}
 		m.toaster = m.toaster.Show(msg.Message, msg.Style)
@@ -954,6 +958,21 @@ func (m Model) shouldSuppressToast(msg mode.ShowToastMsg) bool {
 		strings.Contains(lower, "text search unavailable")
 }
 
+func (m Model) logToast(msg mode.ShowToastMsg, suppressed bool) {
+	if msg.Style != toaster.StyleError {
+		return
+	}
+
+	log.Error(
+		log.CatUIError,
+		"UI error toast",
+		"ui_message", msg.Message,
+		"toast_style", msg.Style,
+		"toast_suppressed", suppressed,
+		"backend_state", m.backendState,
+	)
+}
+
 func (m Model) backendBannerView() string {
 	if m.showRecoveredBanner {
 		return styles.StatusBarStyle.Width(m.width).Render("✓ Reconnected")
@@ -964,12 +983,54 @@ func (m Model) backendBannerView() string {
 		if !m.showReconnecting {
 			return ""
 		}
-		return styles.StatusBarStyle.Width(m.width).Render("⟳ Reconnecting... auto-refresh paused")
+		return styles.StatusBarStyle.Width(m.width).Render(reconnectingBannerText)
 	case mode.BackendStateDegraded:
 		return styles.ErrorStyle.Width(m.width).Render(m.degradedBannerText())
 	default:
 		return ""
 	}
+}
+
+func (m Model) logConnectivityBannerTransition(prev mode.BackendState) {
+	if m.backendState == prev {
+		return
+	}
+
+	switch m.backendState {
+	case mode.BackendStateReconnecting:
+		fields := m.connectivityLogFields(prev, reconnectingBannerText)
+		log.Warn(log.CatUIError, "Backend reconnecting banner state entered", fields...)
+	case mode.BackendStateDegraded:
+		fields := m.connectivityLogFields(prev, m.degradedBannerText())
+		log.Error(log.CatUIError, "Backend degraded banner state entered", fields...)
+	}
+}
+
+func (m Model) connectivityLogFields(prev mode.BackendState, uiMessage string) []any {
+	fields := []any{
+		"ui_message", uiMessage,
+		"backend_state", m.backendState,
+		"previous_backend_state", prev,
+	}
+
+	if m.connectivityErr != nil {
+		fields = append(fields, "error", m.connectivityErr.Error())
+	}
+
+	if m.connectivityDiag != nil {
+		fields = append(fields,
+			"diag_host", m.connectivityDiag.Host,
+			"diag_port", m.connectivityDiag.Port,
+			"diag_database", m.connectivityDiag.Database,
+			"diag_port_source", m.connectivityDiag.PortSource,
+			"diag_suggestion", m.connectivityDiag.Suggestion,
+			"diag_last_state", m.connectivityDiag.LastState,
+			"diag_last_state_change", m.connectivityDiag.LastStateChange.Format(time.RFC3339),
+			"diag_start_attempted", m.connectivityDiag.DelegatedStartAttempted,
+		)
+	}
+
+	return fields
 }
 
 func (m Model) degradedBannerText() string {

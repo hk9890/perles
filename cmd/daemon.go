@@ -64,23 +64,20 @@ func init() {
 }
 
 func runDaemon(_ *cobra.Command, _ []string) error {
-	// Initialize logging if debug mode enabled (via flag or env var)
-	debug := os.Getenv("PERLES_DEBUG") != "" || debugFlag
+	debug, cleanupLogging, err := initRuntimeLogging("perles-daemon")
+	if err != nil {
+		return err
+	}
+	defer cleanupLogging()
+
 	if debug {
-		logPath := resolveDebugLogPath()
-
-		cleanup, err := log.InitWithTeaLog(logPath, "perles-daemon")
-		if err != nil {
-			return fmt.Errorf("initializing logging: %w", err)
-		}
-		defer cleanup()
-
-		log.Info(log.CatConfig, "Perles daemon starting", "debug", true, "logPath", logPath)
+		log.Info(log.CatConfig, "Perles daemon starting", "debug", true, "logPath", resolveDebugLogPath())
 	}
 
 	// Get working directory
 	workDir, err := os.Getwd()
 	if err != nil {
+		log.Error(log.CatConfig, "Getting working directory failed", "error", err)
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
@@ -126,6 +123,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 	// Create control plane
 	cp, err := createDaemonControlPlane(&cfg, workDir)
 	if err != nil {
+		log.Error(log.CatOrch, "Creating control plane failed", "error", err)
 		return fmt.Errorf("creating control plane: %w", err)
 	}
 
@@ -146,6 +144,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 		FrontendFS:      frontend.DistFS(),
 	})
 	if err != nil {
+		log.Error(log.CatOrch, "Creating API server failed", "error", err)
 		return fmt.Errorf("creating API server: %w", err)
 	}
 
@@ -171,6 +170,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 		fmt.Printf("\nReceived %s, shutting down...\n", sig)
 	case err := <-errCh:
 		if err != nil {
+			log.Error(log.CatOrch, "Daemon server returned error", "error", err)
 			return fmt.Errorf("server error: %w", err)
 		}
 	}

@@ -83,6 +83,38 @@ func IsDoltPanicError(err error) bool {
 	)
 }
 
+// IsMissingDatabaseError returns true when the configured database does not
+// exist in the target Dolt/MySQL server.
+func IsMissingDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if code, ok := ExtractMySQLErrorCode(err); ok && code == 1049 {
+		return true
+	}
+
+	return hasErrorSubstring(err,
+		"unknown database",
+		"no such database",
+		"database not found",
+	)
+}
+
+// ExtractMySQLErrorCode returns the wrapped MySQL error code, when present.
+func ExtractMySQLErrorCode(err error) (uint16, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		return mysqlErr.Number, true
+	}
+
+	return 0, false
+}
+
 // IsRecoverableConnectivityError returns true for transient connectivity
 // failures where a reconnect+single retry may succeed.
 func IsRecoverableConnectivityError(err error) bool {
@@ -91,7 +123,7 @@ func IsRecoverableConnectivityError(err error) bool {
 	}
 
 	// Explicitly do not retry known non-transient categories.
-	if IsCircuitBreakerError(err) || IsProjectMismatchError(err) || hasErrorSubstring(err, "no such database") {
+	if IsCircuitBreakerError(err) || IsProjectMismatchError(err) || IsMissingDatabaseError(err) {
 		return false
 	}
 

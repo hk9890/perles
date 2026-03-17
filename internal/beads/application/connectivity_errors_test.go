@@ -118,3 +118,41 @@ func TestIsDoltPanicError(t *testing.T) {
 		})
 	}
 }
+
+func TestIsMissingDatabaseError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "mysql 1049", err: &mysql.MySQLError{Number: 1049, Message: "Unknown database 'perles'"}, want: true},
+		{name: "unknown database text", err: errors.New("Error 1049 (42000): Unknown database 'perles'"), want: true},
+		{name: "no such database text", err: errors.New("no such database: perles"), want: true},
+		{name: "database not found", err: errors.New("database not found: perles"), want: true},
+		{name: "wrapped", err: fmt.Errorf("query failed: %w", &mysql.MySQLError{Number: 1049, Message: "unknown database"}), want: true},
+		{name: "different mysql code", err: &mysql.MySQLError{Number: 1064, Message: "syntax error"}, want: false},
+		{name: "unrelated", err: errors.New("connection refused"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsMissingDatabaseError(tt.err))
+		})
+	}
+}
+
+func TestExtractMySQLErrorCode(t *testing.T) {
+	code, ok := ExtractMySQLErrorCode(&mysql.MySQLError{Number: 2013, Message: "lost connection"})
+	require.True(t, ok)
+	require.Equal(t, uint16(2013), code)
+
+	wrapped := fmt.Errorf("wrapped: %w", &mysql.MySQLError{Number: 1049, Message: "unknown database"})
+	code, ok = ExtractMySQLErrorCode(wrapped)
+	require.True(t, ok)
+	require.Equal(t, uint16(1049), code)
+
+	code, ok = ExtractMySQLErrorCode(errors.New("plain error"))
+	require.False(t, ok)
+	require.Equal(t, uint16(0), code)
+}
