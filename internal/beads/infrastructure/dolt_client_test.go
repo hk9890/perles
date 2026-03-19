@@ -385,8 +385,30 @@ func TestDoltClientGetCommentsReadsRows(t *testing.T) {
 	comments, err := client.GetComments("perles-1")
 	require.NoError(t, err)
 	require.Len(t, comments, 2)
-	require.Equal(t, 1, comments[0].ID)
+	require.Equal(t, "1", comments[0].ID)
+	require.Equal(t, "2", comments[1].ID)
 	require.Equal(t, "bob", comments[1].Author)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDoltClientGetCommentsReadsUUIDBackedRows(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	ts := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	uuid := "019cfd8a-be96-774b-b1d6-bd02aef1880a"
+	rows := sqlmock.NewRows([]string{"id", "author", "text", "created_at"}).
+		AddRow([]byte(uuid), "alice", "first", ts)
+
+	mock.ExpectQuery("FROM comments").WithArgs("perles-uuid").WillReturnRows(rows)
+
+	client := &DoltClient{db: db}
+	comments, err := client.GetComments("perles-uuid")
+	require.NoError(t, err)
+	require.Len(t, comments, 1)
+	require.Equal(t, uuid, comments[0].ID)
+	require.Equal(t, "alice", comments[0].Author)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

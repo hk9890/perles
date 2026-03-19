@@ -577,9 +577,15 @@ func (c *DoltClient) GetComments(issueID string) ([]domain.Comment, error) {
 
 		var comments []domain.Comment
 		for rows.Next() {
+			var rawCommentID any
 			var comment domain.Comment
-			if err := rows.Scan(&comment.ID, &comment.Author, &comment.Text, &comment.CreatedAt); err != nil {
+			if err := rows.Scan(&rawCommentID, &comment.Author, &comment.Text, &comment.CreatedAt); err != nil {
 				return nil, err
+			}
+
+			comment.ID, err = normalizeCommentID(rawCommentID)
+			if err != nil {
+				return nil, fmt.Errorf("normalize comment id: %w", err)
 			}
 			comments = append(comments, comment)
 		}
@@ -605,6 +611,39 @@ func (c *DoltClient) GetComments(issueID string) ([]domain.Comment, error) {
 	}
 
 	return comments, err
+}
+
+func normalizeCommentID(raw any) (string, error) {
+	switch v := raw.(type) {
+	case nil:
+		return "", errors.New("comment id is NULL")
+	case string:
+		return v, nil
+	case []byte:
+		return string(v), nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int8:
+		return strconv.FormatInt(int64(v), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(v), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(v), 10), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10), nil
+	case uint64:
+		return strconv.FormatUint(v, 10), nil
+	default:
+		return "", fmt.Errorf("unsupported comment id type %T", raw)
+	}
 }
 
 func (c *DoltClient) ReconnectIfRecoverable(err error) (bool, error) {

@@ -1032,13 +1032,13 @@ func TestDetails_View_Golden_WithComments(t *testing.T) {
 	commentLoader := mocks.NewMockBeadsClient(t)
 	commentLoader.EXPECT().GetComments("commented-task").Return([]beads.Comment{
 		{
-			ID:        1,
+			ID:        "1",
 			Author:    "alice",
 			Text:      "First comment on this task.",
 			CreatedAt: time.Date(2024, 4, 2, 14, 30, 0, 0, time.UTC),
 		},
 		{
-			ID:        2,
+			ID:        "2",
 			Author:    "bob",
 			Text:      "Second comment with some feedback.",
 			CreatedAt: time.Date(2024, 4, 2, 15, 45, 0, 0, time.UTC),
@@ -1066,7 +1066,7 @@ func TestDetails_View_Golden_WithAssigneeAndComments(t *testing.T) {
 	commentLoader := mocks.NewMockBeadsClient(t)
 	commentLoader.EXPECT().GetComments("full-task").Return([]beads.Comment{
 		{
-			ID:        1,
+			ID:        "1",
 			Author:    "code-reviewer",
 			Text:      "APPROVED: Implementation looks good.",
 			CreatedAt: time.Date(2024, 4, 3, 16, 0, 0, 0, time.UTC),
@@ -1097,7 +1097,7 @@ func TestDetails_View_Golden_WithLongComment(t *testing.T) {
 	commentLoader := mocks.NewMockBeadsClient(t)
 	commentLoader.EXPECT().GetComments("long-comment-task").Return([]beads.Comment{
 		{
-			ID:        1,
+			ID:        "1",
 			Author:    "reviewer",
 			Text:      "This is a very long comment that should wrap to multiple lines within the content column. It contains enough text to demonstrate that the word wrapping is working correctly and that long comments don't overflow past the column boundary.",
 			CreatedAt: time.Date(2024, 4, 5, 10, 0, 0, 0, time.UTC),
