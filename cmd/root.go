@@ -324,6 +324,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		&model,
 		tea.WithAltScreen(),
 		tea.WithMouseAllMotion(),
+		tea.WithReportFocus(),
 	)
 
 	finalModel, err := p.Run()

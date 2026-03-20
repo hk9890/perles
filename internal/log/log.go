@@ -75,27 +75,50 @@ type Logger struct {
 }
 
 var (
-	defaultLogger *Logger
-	once          sync.Once
+	defaultLogger   *Logger
+	defaultLoggerMu sync.RWMutex
+	once            sync.Once
 )
+
+func getDefaultLogger() *Logger {
+	defaultLoggerMu.RLock()
+	defer defaultLoggerMu.RUnlock()
+	return defaultLogger
+}
+
+func setDefaultLogger(l *Logger) {
+	defaultLoggerMu.Lock()
+	defaultLogger = l
+	defaultLoggerMu.Unlock()
+}
 
 // Init initializes the global logger.
 // Returns a cleanup function to close the log file.
 func Init(path string) (func(), error) {
 	var initErr error
 	once.Do(func() {
-		defaultLogger, initErr = newLogger(path)
+		var logger *Logger
+		logger, initErr = newLogger(path)
+		if initErr == nil {
+			setDefaultLogger(logger)
+		}
 	})
 	if initErr != nil {
 		return nil, initErr
 	}
 	// Check if logger was initialized (handles case where once.Do already ran)
-	if defaultLogger == nil {
+	logger := getDefaultLogger()
+	if logger == nil {
 		return nil, fmt.Errorf("logger initialization failed or already attempted")
 	}
 	return func() {
-		if defaultLogger != nil && defaultLogger.file != nil {
-			_ = defaultLogger.file.Close()
+		logger.mu.Lock()
+		defer logger.mu.Unlock()
+		if logger.file != nil {
+			_ = logger.file.Close()
+			logger.file = nil
+			logger.writer = nil
+			logger.enabled = false
 		}
 	}, nil
 }
@@ -111,7 +134,7 @@ func InitWithTeaLog(path string, prefix string) (func(), error) {
 		return nil, err
 	}
 
-	defaultLogger = &Logger{
+	logger := &Logger{
 		file:     f,
 		writer:   f,
 		enabled:  true,
@@ -119,7 +142,25 @@ func InitWithTeaLog(path string, prefix string) (func(), error) {
 		broker:   pubsub.NewBroker[string](),
 	}
 
-	return func() { _ = f.Close() }, nil
+	setDefaultLogger(logger)
+
+	return func() {
+		logger.mu.Lock()
+		defer logger.mu.Unlock()
+
+		logger.enabled = false
+		if logger.file != nil {
+			_ = logger.file.Close()
+			logger.file = nil
+			logger.writer = nil
+		}
+
+		defaultLoggerMu.Lock()
+		if defaultLogger == logger {
+			defaultLogger = nil
+		}
+		defaultLoggerMu.Unlock()
+	}, nil
 }
 
 func newLogger(path string) (*Logger, error) {
@@ -151,19 +192,19 @@ func ensureParentDir(path string) error {
 
 // SetEnabled toggles logging on/off.
 func SetEnabled(enabled bool) {
-	if defaultLogger != nil {
-		defaultLogger.mu.Lock()
-		defaultLogger.enabled = enabled
-		defaultLogger.mu.Unlock()
+	if logger := getDefaultLogger(); logger != nil {
+		logger.mu.Lock()
+		logger.enabled = enabled
+		logger.mu.Unlock()
 	}
 }
 
 // SetMinLevel sets the minimum log level.
 func SetMinLevel(level Level) {
-	if defaultLogger != nil {
-		defaultLogger.mu.Lock()
-		defaultLogger.minLevel = level
-		defaultLogger.mu.Unlock()
+	if logger := getDefaultLogger(); logger != nil {
+		logger.mu.Lock()
+		logger.minLevel = level
+		logger.mu.Unlock()
 	}
 }
 
@@ -198,15 +239,17 @@ func ErrorErr(cat Category, msg string, err error, fields ...any) {
 }
 
 func log(level Level, cat Category, msg string, fields ...any) {
-	if defaultLogger == nil || !defaultLogger.enabled {
-		return
-	}
-	if level < defaultLogger.minLevel {
+	logger := getDefaultLogger()
+	if logger == nil {
 		return
 	}
 
-	defaultLogger.mu.Lock()
-	defer defaultLogger.mu.Unlock()
+	logger.mu.Lock()
+	defer logger.mu.Unlock()
+
+	if !logger.enabled || level < logger.minLevel {
+		return
+	}
 
 	// Format: 2025-12-06T10:45:00 [ERROR] [bql] message key=value key2=value2
 	timestamp := time.Now().Format("2006-01-02T15:04:05")
@@ -227,13 +270,13 @@ func log(level Level, cat Category, msg string, fields ...any) {
 	entry := entryBuilder.String()
 
 	// Write to file
-	if defaultLogger.writer != nil {
-		_, _ = defaultLogger.writer.Write([]byte(entry))
+	if logger.writer != nil {
+		_, _ = logger.writer.Write([]byte(entry))
 	}
 
 	// Publish event to subscribers (non-blocking)
-	if defaultLogger.broker != nil {
-		defaultLogger.broker.Publish(pubsub.CreatedEvent, entry)
+	if logger.broker != nil {
+		logger.broker.Publish(pubsub.CreatedEvent, entry)
 	}
 }
 
@@ -246,10 +289,11 @@ type LogListener = pubsub.ContinuousListener[string]
 // NewListener creates a new log event listener.
 // The listener is automatically cleaned up when the context is cancelled.
 func NewListener(ctx context.Context) *LogListener {
-	if defaultLogger == nil || defaultLogger.broker == nil {
+	logger := getDefaultLogger()
+	if logger == nil || logger.broker == nil {
 		return nil
 	}
-	return pubsub.NewContinuousListener(ctx, defaultLogger.broker)
+	return pubsub.NewContinuousListener(ctx, logger.broker)
 }
 
 // SafeGo runs a function in a goroutine with panic recovery.

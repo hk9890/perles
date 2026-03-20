@@ -187,7 +187,12 @@ func NewWithConfig(
 	)
 
 	if cfg.AutoRefresh {
-		w, err := watcher.New(watcher.DefaultConfig())
+		watcherCfg := watcher.DefaultConfig()
+		if client != nil {
+			watcherCfg.Detector = watcher.NewDoltFingerprintDetector(client.DB())
+		}
+
+		w, err := watcher.New(watcherCfg)
 		if err == nil {
 			if err := w.Start(); err == nil {
 				watcherHandle = w
@@ -430,6 +435,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dashboard = result.(dashboard.Model)
 			return m, cmd
 		}
+
+	case tea.FocusMsg:
+		if m.watcherHandle != nil {
+			m.watcherHandle.SetFocused(true)
+		}
+		return m, nil
+
+	case tea.BlurMsg:
+		if m.watcherHandle != nil {
+			m.watcherHandle.SetFocused(false)
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		if m.debugMode && key.Matches(msg, keys.Component.Close) {

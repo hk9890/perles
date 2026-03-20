@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"reflect"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	tea "github.com/charmbracelet/bubbletea"
 	zone "github.com/lrstanley/bubblezone"
 	"github.com/stretchr/testify/mock"
@@ -2711,4 +2713,131 @@ func TestApp_ConnectivityTransitions_LogUiErrorBannersOncePerStateTransition(t *
 	require.Contains(t, logText, "diag_port_source=config.yaml")
 	require.Contains(t, logText, "diag_suggestion=Run 'bd dolt start'")
 	require.Contains(t, logText, "error=context deadline exceeded")
+}
+
+func TestApp_NewWithConfig_AutoRefreshInjectsDoltDetectorAndNoStartupRefresh(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.AutoRefresh = true
+
+	mockClient := mocks.NewMockBeadsClient(t)
+	db, sqlMock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	baselineRows := sqlmock.NewRows([]string{"branch", "working_hash", "head_hash"}).
+		AddRow("main", "w1", "h1")
+	sqlMock.ExpectQuery("SELECT\\s+active_branch\\(\\)").WillReturnRows(baselineRows)
+
+	mockClient.On("DB").Return(db)
+	mockClient.EXPECT().Version().Return("0.0.0", nil).Maybe()
+	mockClient.EXPECT().GetComments(mock.Anything).Return([]beadsdomain.Comment{}, nil).Maybe()
+
+	model, err := NewWithConfig(
+		mockClient,
+		cfg,
+		nil,
+		nil,
+		"",
+		"",
+		t.TempDir(),
+		false,
+		nil,
+	)
+	require.NoError(t, err)
+	defer func() { _ = model.Close() }()
+
+	require.NotNil(t, model.watcherHandle, "watcher should be initialized when auto-refresh enabled")
+
+	// Baseline should be consumed at startup and not publish an immediate event.
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
+	defer cancel()
+	sub := model.watcherHandle.Broker().Subscribe(ctx)
+	select {
+	case evt := <-sub:
+		require.Failf(t, "unexpected startup watcher event", "got %v", evt)
+	case <-time.After(80 * time.Millisecond):
+	}
+
+	require.NoError(t, sqlMock.ExpectationsWereMet())
+}
+
+func TestApp_NewWithConfig_AutoRefreshWithoutClientSkipsWatcher(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.AutoRefresh = true
+
+	model, err := NewWithConfig(
+		nil,
+		cfg,
+		nil,
+		nil,
+		"",
+		"",
+		t.TempDir(),
+		false,
+		nil,
+	)
+	require.NoError(t, err)
+	defer func() { _ = model.Close() }()
+
+	require.Nil(t, model.watcherHandle, "watcher should not initialize without DB-backed detector")
+	require.Nil(t, model.watcherListener, "listener should not initialize without watcher")
+}
+
+func TestApp_WatcherErrorEvent_DoesNotTriggerRefresh(t *testing.T) {
+	m := createTestModel(t)
+	m.currentMode = mode.ModeSearch
+
+	bqlCache := mocks.NewMockCacheManager[string, []beadsdomain.Issue](t)
+	flushCalls := 0
+	bqlCache.EXPECT().Flush(mock.Anything).RunAndReturn(func(context.Context) error {
+		flushCalls++
+		return nil
+	}).Maybe()
+	m.bqlCache = bqlCache
+
+	event := pubsub.Event[watcher.WatcherEvent]{Payload: watcher.WatcherEvent{Type: watcher.WatcherError, Error: sql.ErrConnDone}}
+	newModel, _ := m.Update(event)
+	m = newModel.(Model)
+
+	require.Equal(t, 0, flushCalls, "watcher errors should not trigger refresh cache flush")
+	require.Equal(t, mode.ModeSearch, m.currentMode)
+}
+
+func TestApp_BlurMsg_SetsWatcherUnfocused(t *testing.T) {
+	m := createTestModel(t)
+
+	w, err := watcher.New(watcher.Config{
+		PollInterval:          10 * time.Millisecond,
+		UnfocusedPollInterval: 50 * time.Millisecond,
+		Detector: watcher.FingerprintDetectorFunc(func(context.Context) (watcher.Fingerprint, error) {
+			return watcher.Fingerprint{Branch: "main", WorkingHash: "w1", HeadHash: "h1"}, nil
+		}),
+	})
+	require.NoError(t, err)
+	m.watcherHandle = w
+
+	newModel, _ := m.Update(tea.BlurMsg{})
+	m = newModel.(Model)
+
+	require.False(t, m.watcherHandle.IsFocused(), "blur should switch watcher to unfocused cadence")
+}
+
+func TestApp_FocusMsg_SetsWatcherFocused(t *testing.T) {
+	m := createTestModel(t)
+
+	w, err := watcher.New(watcher.Config{
+		PollInterval:          10 * time.Millisecond,
+		UnfocusedPollInterval: 50 * time.Millisecond,
+		Detector: watcher.FingerprintDetectorFunc(func(context.Context) (watcher.Fingerprint, error) {
+			return watcher.Fingerprint{Branch: "main", WorkingHash: "w1", HeadHash: "h1"}, nil
+		}),
+	})
+	require.NoError(t, err)
+	m.watcherHandle = w
+	m.watcherHandle.SetFocused(false)
+
+	newModel, _ := m.Update(tea.FocusMsg{})
+	m = newModel.(Model)
+
+	require.True(t, m.watcherHandle.IsFocused(), "focus should switch watcher back to focused cadence")
 }
