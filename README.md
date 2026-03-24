@@ -122,7 +122,8 @@ Organize issues into customizable columns powered by BQL queries or dependency t
 
 ### Features
 
-- Four-column default layout: Blocked, Ready, In Progress, Closed
+- Built-in `Default` workflow board: Not Ready, Ready, In Progress, Done
+- Built-in `Deferred` board for postponed work (`status = deferred`)
 - Fully customizable columns with BQL queries or dependency trees
 - Multi-view support — create unlimited board views
 - Real-time auto-refresh when database changes
@@ -183,16 +184,26 @@ https://github.com/user-attachments/assets/8ce16144-15dd-4509-8cd9-aa8e07477b5d
 | `ctrl+e` | Edit issue                 |
 | `ctrl+d` | Delete issue               |
 
-### Default Columns
+### Built-in Views
 
-The default view includes these columns (all configurable via BQL):
+Perles ships with these built-in views (all configurable):
+
+#### `Default` workflow view
 
 | Column | BQL Query |
 |--------|-----------|
-| **Blocked** | `status = open and blocked = true` |
-| **Ready** | `status = open and ready = true` |
+| **Not Ready** | `status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))` |
+| **Ready** | `status = open and ready = true and label not in (needs:discussion, has:open-questions)` |
 | **In Progress** | `status = in_progress` |
-| **Closed** | `status = closed` |
+| **Done** | `status = closed` |
+
+`Not Ready` is intentionally scoped to open issues (plus explicit `status = blocked`) so closed/deferred work does not leak into the actionable workflow lane.
+
+#### `Deferred` view
+
+| Column | BQL Query |
+|--------|-----------|
+| **Deferred** | `status = deferred` |
 
 ---
 
@@ -484,21 +495,28 @@ theme:
 views:
   - name: Default
     columns:
-      - name: Blocked
+      - name: Not Ready
         type: bql
-        query: "status = open and blocked = true"
+        query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
         color: "#FF8787"
       - name: Ready
-        query: "status = open and ready = true"
+        type: bql
+        query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)"
         color: "#73F59F"
       - name: In Progress
         type: bql
         query: "status = in_progress"
         color: "#54A0FF"
-      - name: Closed
+      - name: Done
         type: bql
         query: "status = closed"
         color: "#BBBBBB"
+
+  - name: Deferred
+    columns:
+      - name: Deferred
+        type: bql
+        query: "status = deferred"
 
   - name: Bugs Only
     columns:

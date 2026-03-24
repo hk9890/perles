@@ -4,6 +4,7 @@ package issuebadge
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
@@ -24,6 +25,39 @@ type Config struct {
 	// Selected indicates whether this item is currently selected.
 	// Only has effect when ShowSelection is true.
 	Selected bool
+
+	// ShowReadinessReason enables a tiny not-ready indicator glyph between the
+	// badge and title. Callers should enable this only in not-ready board columns.
+	ShowReadinessReason bool
+}
+
+const (
+	readinessGlyphDependencyBlocked = "⊘"
+	readinessGlyphNeedsDiscussion   = "…"
+	readinessGlyphOpenQuestions     = "?"
+)
+
+// readinessReasonGlyph returns a compact glyph describing why an issue is not
+// ready. Returns empty string when no reason applies.
+//
+// Precedence (highest first):
+//  1. has:open-questions ("?")
+//  2. needs:discussion ("…")
+//  3. dependency/status blocked ("⊘")
+func readinessReasonGlyph(issue beads.Issue) string {
+	if slices.Contains(issue.Labels, "has:open-questions") {
+		return readinessGlyphOpenQuestions
+	}
+
+	if slices.Contains(issue.Labels, "needs:discussion") {
+		return readinessGlyphNeedsDiscussion
+	}
+
+	if len(issue.BlockedBy) > 0 || issue.Status == beads.StatusBlocked {
+		return readinessGlyphDependencyBlocked
+	}
+
+	return ""
 }
 
 // RenderBadge returns the issue badge without the title: [T][Pn][id]
@@ -73,6 +107,12 @@ func Render(issue beads.Issue, cfg Config) string {
 	}
 
 	parts = append(parts, badge)
+
+	if cfg.ShowReadinessReason {
+		if glyph := readinessReasonGlyph(issue); glyph != "" {
+			parts = append(parts, glyph)
+		}
+	}
 
 	// Calculate available width for title
 	if cfg.MaxWidth > 0 {

@@ -260,6 +260,82 @@ func TestRender_NoTruncationWhenFits(t *testing.T) {
 	require.NotContains(t, stripped, "...", "Render() = %q, should not truncate short title", stripped)
 }
 
+func TestReadinessReasonGlyph(t *testing.T) {
+	tests := []struct {
+		name  string
+		issue beads.Issue
+		want  string
+	}{
+		{
+			name: "dependency blocked",
+			issue: beads.Issue{
+				BlockedBy: []string{"dep-1"},
+			},
+			want: "⊘",
+		},
+		{
+			name: "status blocked",
+			issue: beads.Issue{
+				Status: beads.StatusBlocked,
+			},
+			want: "⊘",
+		},
+		{
+			name: "needs discussion",
+			issue: beads.Issue{
+				Labels: []string{"needs:discussion"},
+			},
+			want: "…",
+		},
+		{
+			name: "open questions",
+			issue: beads.Issue{
+				Labels: []string{"has:open-questions"},
+			},
+			want: "?",
+		},
+		{
+			name: "none",
+			issue: beads.Issue{
+				Status: beads.StatusOpen,
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, readinessReasonGlyph(tt.issue))
+		})
+	}
+}
+
+func TestReadinessReasonGlyph_Precedence(t *testing.T) {
+	issue := beads.Issue{
+		Status:    beads.StatusBlocked,
+		BlockedBy: []string{"dep-1"},
+		Labels:    []string{"needs:discussion", "has:open-questions"},
+	}
+
+	require.Equal(t, "?", readinessReasonGlyph(issue), "open questions should take precedence over discussion and blocked")
+}
+
+func TestRender_ShowReadinessReason(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-123",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		TitleText: "My test title",
+		BlockedBy: []string{"dep-1"},
+	}
+
+	withoutGlyph := stripANSI(Render(issue, Config{ShowReadinessReason: false}))
+	withGlyph := stripANSI(Render(issue, Config{ShowReadinessReason: true}))
+
+	require.NotContains(t, withoutGlyph, "⊘")
+	require.Contains(t, withGlyph, "⊘")
+}
+
 func TestRender_ZeroMaxWidthNoTruncation(t *testing.T) {
 	issue := beads.Issue{
 		ID:        "test-123",
@@ -438,5 +514,22 @@ func TestRenderBadge_Pinned_Golden(t *testing.T) {
 	}
 
 	got := RenderBadge(issue)
+	teatest.RequireEqualOutput(t, []byte(got))
+}
+
+func TestRender_WithReadinessReason_Golden(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "task-2",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		TitleText: "Clarify spec with team",
+		Labels:    []string{"needs:discussion"},
+	}
+
+	got := Render(issue, Config{
+		ShowSelection:       true,
+		Selected:            false,
+		ShowReadinessReason: true,
+	})
 	teatest.RequireEqualOutput(t, []byte(got))
 }

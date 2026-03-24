@@ -3,6 +3,7 @@ package board
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1493,4 +1494,49 @@ func TestBoard_MouseClick_PerformanceWithManyIssues(t *testing.T) {
 	clickedMsg, ok := result.(IssueClickedMsg)
 	require.True(t, ok, "should emit IssueClickedMsg")
 	require.Equal(t, targetIssueID, clickedMsg.IssueID, "correct issue should be clicked")
+}
+
+func TestIsNotReadyColumn(t *testing.T) {
+	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Not Ready", Query: "status = open"}))
+	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Blocked", Query: "status = open"}))
+	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Whatever", Query: "blocked = true order by priority"}))
+	require.False(t, isNotReadyColumn(config.ColumnConfig{Name: "Ready", Query: "status = open and ready = true"}))
+}
+
+func TestBoard_ReadinessGlyphs_RenderOnlyInNotReadyColumns(t *testing.T) {
+	views := []config.ViewConfig{
+		{
+			Name: "Test",
+			Columns: []config.ColumnConfig{
+				{Name: "Not Ready", Query: "blocked = true"},
+				{Name: "Ready", Query: "status = open"},
+			},
+		},
+	}
+
+	m := NewFromViews(views, nil, nil).SetSize(120, 20)
+	issue := beads.Issue{
+		ID:        "task-1",
+		TitleText: "Blocked task",
+		Type:      beads.TypeTask,
+		Priority:  beads.PriorityMedium,
+		BlockedBy: []string{"dep-1"},
+		Status:    beads.StatusOpen,
+	}
+
+	m, _ = m.Update(ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 0,
+		ColumnTitle: "Not Ready",
+		Issues:      []beads.Issue{issue},
+	})
+	m, _ = m.Update(ColumnLoadedMsg{
+		ViewIndex:   0,
+		ColumnIndex: 1,
+		ColumnTitle: "Ready",
+		Issues:      []beads.Issue{issue},
+	})
+
+	view := m.View()
+	require.Equal(t, 1, strings.Count(view, "⊘"), "readiness glyph should appear only in Not Ready column")
 }

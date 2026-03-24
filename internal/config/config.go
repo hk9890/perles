@@ -477,13 +477,16 @@ func DefaultDatabasePath() string {
 func DefaultColumns() []ColumnConfig {
 	return []ColumnConfig{
 		{
-			Name:  "Blocked",
-			Query: "blocked = true",
+			Name: "Not Ready",
+			// Keep `not ready = true` guarded by `status = open`; without that guard,
+			// deferred/closed issues can also satisfy `not ready`, which breaks the
+			// Not Ready column's intent as actionable-open work that still needs input.
+			Query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))",
 			Color: "#FF8787",
 		},
 		{
 			Name:  "Ready",
-			Query: "status = open and ready = true",
+			Query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)",
 			Color: "#73F59F",
 		},
 		{
@@ -492,7 +495,7 @@ func DefaultColumns() []ColumnConfig {
 			Color: "#54A0FF",
 		},
 		{
-			Name:  "Closed",
+			Name:  "Done",
 			Query: "status = closed",
 			Color: "#BBBBBB",
 		},
@@ -507,23 +510,11 @@ func DefaultViews() []ViewConfig {
 			Columns: DefaultColumns(),
 		},
 		{
-			Name: "Planning",
+			Name: "Deferred",
 			Columns: []ColumnConfig{
 				{
-					Name:  "Needs Discussion",
-					Query: "label = needs:discussion",
-				},
-				{
-					Name:  "Blocked Status",
-					Query: "status = blocked and label != needs:discussion",
-				},
-				{
-					Name:  "Open",
-					Query: "status = open and label != needs:discussion",
-				},
-				{
-					Name:  "Closed",
-					Query: "status = closed",
+					Name:  "Deferred",
+					Query: "status = deferred",
 				},
 			},
 		},
@@ -1111,14 +1102,14 @@ theme:
 views:
   - name: Default
     columns:
-      - name: Blocked
+      - name: Not Ready
         type: bql
-        query: "blocked = true"
+        query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
         color: "#FF8787"
 
       - name: Ready
         type: bql
-        query: "status = open and ready = true"
+        query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)"
         color: "#73F59F"
 
       - name: In Progress
@@ -1126,28 +1117,16 @@ views:
         query: "status = in_progress"
         color: "#54A0FF"
 
-      - name: Closed
+      - name: Done
         type: bql
         query: "status = closed"
         color: "#BBBBBB"
 
-  - name: Planning
+  - name: Deferred
     columns:
-      - name: Needs Discussion
+      - name: Deferred
         type: bql
-        query: "label = needs:discussion"
-
-      - name: Blocked Status
-        type: bql
-        query: "status = blocked and label != needs:discussion"
-
-      - name: Open
-        type: bql
-        query: "status = open and label != needs:discussion"
-
-      - name: Closed
-        type: bql
-        query: "status = closed"
+        query: "status = deferred"
 
 # View options:
 #   name: Display name for the view (required)

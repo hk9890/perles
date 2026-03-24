@@ -173,8 +173,11 @@ func New(columnIndex int, allColumns []config.ColumnConfig, executor bql.BQLExec
 	// Initialize color picker
 	picker := colorpicker.New().SetSelected(cfg.Color)
 
-	// Determine if this is the "blocked" column based on query
-	isBlocked := columnIndex == 0 && strings.Contains(cfg.Query, "blocked = true")
+	// Determine if this is the built-in first workflow column.
+	// Historically this was the "Blocked" column (`blocked = true`), now it is
+	// "Not Ready" with a broader query. Keep both patterns for backward
+	// compatibility with user configs that still use the old default.
+	isBlocked := columnIndex == 0 && isDefaultNotReadyColumn(cfg)
 
 	m := Model{
 		mode:            ModeEdit,
@@ -1118,6 +1121,20 @@ func addCmd(insertAfter int, cfg config.ColumnConfig) tea.Cmd {
 	return func() tea.Msg {
 		return AddMsg{InsertAfterIndex: insertAfter, Config: cfg}
 	}
+}
+
+func isDefaultNotReadyColumn(cfg config.ColumnConfig) bool {
+	name := strings.ToLower(strings.TrimSpace(cfg.Name))
+	if name == "not ready" || name == "blocked" {
+		return true
+	}
+
+	query := strings.ToLower(strings.TrimSpace(cfg.Query))
+	if strings.Contains(query, "blocked = true") {
+		return true
+	}
+
+	return query == "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
 }
 
 // Focused returns the currently focused field (for testing).

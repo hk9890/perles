@@ -66,15 +66,17 @@ type BoardColumn interface {
 
 // issueDelegate is a custom delegate for rendering issues with priority colors and type indicators.
 type issueDelegate struct {
-	focused     *bool // pointer to column's focused state
-	columnIndex *int  // pointer to column index for zone ID construction (survives value copies)
+	focused             *bool // pointer to column's focused state
+	columnIndex         *int  // pointer to column index for zone ID construction (survives value copies)
+	showReadinessReason *bool // pointer to whether readiness glyphs are shown
 }
 
 // newIssueDelegate creates a new issue delegate.
-func newIssueDelegate(focused *bool, columnIndex *int) issueDelegate {
+func newIssueDelegate(focused *bool, columnIndex *int, showReadinessReason *bool) issueDelegate {
 	return issueDelegate{
-		focused:     focused,
-		columnIndex: columnIndex,
+		focused:             focused,
+		columnIndex:         columnIndex,
+		showReadinessReason: showReadinessReason,
 	}
 }
 
@@ -94,16 +96,17 @@ func (d issueDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd {
 }
 
 // renderIssueLine returns the rendered line for an issue (used by both Render and width calculation).
-func renderIssueLine(issue beads.Issue, isSelected bool) string {
+func renderIssueLine(issue beads.Issue, isSelected bool, showReadinessReason bool) string {
 	return issuebadge.Render(issue, issuebadge.Config{
-		ShowSelection: true,
-		Selected:      isSelected,
+		ShowSelection:       true,
+		Selected:            isSelected,
+		ShowReadinessReason: showReadinessReason,
 	})
 }
 
 // itemRenderedLines returns how many lines an issue takes when rendered at the given width.
-func itemRenderedLines(issue beads.Issue, width int) int {
-	line := renderIssueLine(issue, false)
+func itemRenderedLines(issue beads.Issue, width int, showReadinessReason bool) int {
+	line := renderIssueLine(issue, false, showReadinessReason)
 	lineWidth := lipgloss.Width(line)
 	if lineWidth <= width || width <= 0 {
 		return 1
@@ -121,7 +124,8 @@ func (d issueDelegate) Render(w io.Writer, m list.Model, index int, item list.It
 	issue := *issueItem.Issue
 
 	isSelected := index == m.Index() && d.focused != nil && *d.focused
-	line := renderIssueLine(issue, isSelected)
+	showReadinessReason := d.showReadinessReason != nil && *d.showReadinessReason
+	line := renderIssueLine(issue, isSelected, showReadinessReason)
 
 	// Constrain to list width so lines wrap properly within column bounds
 	if m.Width() > 0 {
@@ -149,6 +153,7 @@ type Column struct {
 	height         int
 	focused        *bool // pointer so it survives value copies
 	showCounts     *bool // pointer so it survives value copies (nil = default true)
+	showReadiness  *bool // pointer so it survives value copies (nil = default false)
 
 	// BQL self-loading fields
 	executor  bql.BQLExecutor // BQL executor for loading issues
@@ -161,9 +166,10 @@ func NewColumn(title string) Column {
 	// Allocate state on heap so pointers survive value copies
 	focused := new(bool)
 	columnIndexPtr := new(int)
+	showReadiness := new(bool)
 
 	// Create delegate with pointers to column state
-	delegate := newIssueDelegate(focused, columnIndexPtr)
+	delegate := newIssueDelegate(focused, columnIndexPtr, showReadiness)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.SetShowTitle(false)
@@ -177,6 +183,7 @@ func NewColumn(title string) Column {
 		list:           l,
 		focused:        focused,
 		columnIndexPtr: columnIndexPtr,
+		showReadiness:  showReadiness,
 	}
 }
 
@@ -357,7 +364,8 @@ func (c *Column) updatePerPage() {
 	usedLines := 0
 	itemsThatFit := 0
 	for _, issue := range c.items {
-		lines := itemRenderedLines(issue, innerWidth)
+		showReadinessReason := c.showReadiness != nil && *c.showReadiness
+		lines := itemRenderedLines(issue, innerWidth, showReadinessReason)
 		if usedLines+lines > availableLines {
 			break
 		}
@@ -373,6 +381,16 @@ func (c *Column) updatePerPage() {
 	c.list.Paginator.PerPage = itemsThatFit
 	// Also update TotalPages to match our custom PerPage
 	c.list.Paginator.SetTotalPages(len(c.items))
+}
+
+// SetShowReadinessReason controls whether compact not-ready reason glyphs are
+// rendered for items in this column.
+func (c Column) SetShowReadinessReason(show bool) Column {
+	if c.showReadiness == nil {
+		c.showReadiness = new(bool)
+	}
+	*c.showReadiness = show
+	return c
 }
 
 // SetShowCounts sets whether to display counts in the column title.

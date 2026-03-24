@@ -2,6 +2,8 @@
 package board
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -81,6 +83,7 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor bql.BQLExecutor, clo
 			} else {
 				// Default: BQL column (existing logic)
 				col := NewColumnWithExecutor(cc.Name, cc.Query, executor)
+				col = col.SetShowReadinessReason(isNotReadyColumn(cc))
 				col = col.SetColumnIndex(j) // Set column index for message routing
 				if cc.Color != "" {
 					col = col.SetColor(lipgloss.Color(cc.Color))
@@ -119,6 +122,20 @@ func NewFromViews(viewConfigs []config.ViewConfig, executor bql.BQLExecutor, clo
 		focused:      focusIdx,
 		boardFocused: true, // Board has focus by default
 	}
+}
+
+func isNotReadyColumn(cfg config.ColumnConfig) bool {
+	name := strings.ToLower(strings.TrimSpace(cfg.Name))
+	if name == "not ready" || name == "blocked" {
+		return true
+	}
+
+	query := strings.ToLower(strings.TrimSpace(cfg.Query))
+	if strings.Contains(query, "blocked = true") {
+		return true
+	}
+
+	return query == "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
 }
 
 // ColCount returns the number of columns.

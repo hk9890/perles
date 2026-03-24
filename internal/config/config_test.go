@@ -71,16 +71,16 @@ func TestDefaultColumns(t *testing.T) {
 	cols := DefaultColumns()
 	require.Len(t, cols, 4)
 
-	require.Equal(t, "Blocked", cols[0].Name)
-	require.Equal(t, "blocked = true", cols[0].Query)
+	require.Equal(t, "Not Ready", cols[0].Name)
+	require.Equal(t, "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", cols[0].Query)
 
 	require.Equal(t, "Ready", cols[1].Name)
-	require.Equal(t, "status = open and ready = true", cols[1].Query)
+	require.Equal(t, "status = open and ready = true and label not in (needs:discussion, has:open-questions)", cols[1].Query)
 
 	require.Equal(t, "In Progress", cols[2].Name)
 	require.Equal(t, "status = in_progress", cols[2].Query)
 
-	require.Equal(t, "Closed", cols[3].Name)
+	require.Equal(t, "Done", cols[3].Name)
 	require.Equal(t, "status = closed", cols[3].Query)
 }
 
@@ -91,8 +91,8 @@ func TestDefaults(t *testing.T) {
 	require.Len(t, cfg.Views, 2)
 	require.Equal(t, "Default", cfg.Views[0].Name)
 	require.Len(t, cfg.Views[0].Columns, 4)
-	require.Equal(t, "Planning", cfg.Views[1].Name)
-	require.Len(t, cfg.Views[1].Columns, 4)
+	require.Equal(t, "Deferred", cfg.Views[1].Name)
+	require.Len(t, cfg.Views[1].Columns, 1)
 }
 
 func TestDefaultViews(t *testing.T) {
@@ -100,44 +100,42 @@ func TestDefaultViews(t *testing.T) {
 	require.Len(t, views, 2)
 	require.Equal(t, "Default", views[0].Name)
 	require.Len(t, views[0].Columns, 4)
-	require.Equal(t, "Planning", views[1].Name)
-	require.Len(t, views[1].Columns, 4)
+	require.Equal(t, "Deferred", views[1].Name)
+	require.Len(t, views[1].Columns, 1)
 }
 
-func TestDefaultViews_PlanningColumns(t *testing.T) {
+func TestDefaultViews_DeferredColumns(t *testing.T) {
 	views := DefaultViews()
 	require.Len(t, views, 2)
 
-	planning := views[1]
-	require.Equal(t, "Planning", planning.Name)
+	deferred := views[1]
+	require.Equal(t, "Deferred", deferred.Name)
 	require.Equal(t, []ColumnConfig{
-		{Name: "Needs Discussion", Query: "label = needs:discussion"},
-		{Name: "Blocked Status", Query: "status = blocked and label != needs:discussion"},
-		{Name: "Open", Query: "status = open and label != needs:discussion"},
-		{Name: "Closed", Query: "status = closed"},
-	}, planning.Columns)
+		{Name: "Deferred", Query: "status = deferred"},
+	}, deferred.Columns)
 }
 
-func TestDefaultViews_PlanningOpenDoesNotOverlapNeedsDiscussion(t *testing.T) {
+func TestDefaultViews_DefaultColumnsUseWorkflowQueries(t *testing.T) {
 	views := DefaultViews()
-	planning := views[1]
-	require.Len(t, planning.Columns, 4)
+	workflow := views[0]
+	require.Equal(t, "Default", workflow.Name)
+	require.Len(t, workflow.Columns, 4)
 
-	needsDiscussion := planning.Columns[0]
-	open := planning.Columns[2]
-
-	require.Equal(t, "Needs Discussion", needsDiscussion.Name)
-	require.Equal(t, "label = needs:discussion", needsDiscussion.Query)
-	require.Equal(t, "Open", open.Name)
-	require.Equal(t, "status = open and label != needs:discussion", open.Query)
-	require.Contains(t, open.Query, "label != needs:discussion")
+	require.Equal(t, "Not Ready", workflow.Columns[0].Name)
+	require.Equal(t, "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", workflow.Columns[0].Query)
+	require.Equal(t, "Ready", workflow.Columns[1].Name)
+	require.Equal(t, "status = open and ready = true and label not in (needs:discussion, has:open-questions)", workflow.Columns[1].Query)
+	require.Equal(t, "In Progress", workflow.Columns[2].Name)
+	require.Equal(t, "status = in_progress", workflow.Columns[2].Query)
+	require.Equal(t, "Done", workflow.Columns[3].Name)
+	require.Equal(t, "status = closed", workflow.Columns[3].Query)
 }
 
 func TestConfig_GetColumns(t *testing.T) {
 	cfg := Defaults()
 	cols := cfg.GetColumns()
 	require.Len(t, cols, 4)
-	require.Equal(t, "Blocked", cols[0].Name)
+	require.Equal(t, "Not Ready", cols[0].Name)
 }
 
 func TestConfig_GetColumns_Empty(t *testing.T) {
@@ -165,8 +163,8 @@ func TestConfig_GetViews_Empty(t *testing.T) {
 	require.Len(t, views, 2)
 	require.Equal(t, "Default", views[0].Name)
 	require.Len(t, views[0].Columns, 4)
-	require.Equal(t, "Planning", views[1].Name)
-	require.Len(t, views[1].Columns, 4)
+	require.Equal(t, "Deferred", views[1].Name)
+	require.Len(t, views[1].Columns, 1)
 }
 
 func TestConfig_SetColumns(t *testing.T) {
