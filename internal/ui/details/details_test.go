@@ -276,6 +276,9 @@ func TestDetails_View_AllTypes(t *testing.T) {
 		beads.TypeEpic,
 		beads.TypeChore,
 		beads.TypeDecision,
+		beads.TypeSpike,
+		beads.TypeStory,
+		beads.TypeMilestone,
 	}
 
 	for _, issueType := range types {
@@ -294,8 +297,17 @@ func TestDetails_View_AllTypes(t *testing.T) {
 
 func TestFormatType_CustomReadable(t *testing.T) {
 	require.Equal(t, "Decision", formatType(beads.TypeDecision))
+	require.Equal(t, "Spike", formatType(beads.TypeSpike))
+	require.Equal(t, "Story", formatType(beads.TypeStory))
+	require.Equal(t, "Milestone", formatType(beads.TypeMilestone))
 	require.Equal(t, "Ml Model", formatType(beads.IssueType("ml_model")))
 	require.Equal(t, "Unknown", formatType(beads.IssueType("")))
+}
+
+func TestFormatStatus_V1AndCustomReadable(t *testing.T) {
+	require.Equal(t, "Pinned", formatStatus(beads.StatusPinned))
+	require.Equal(t, "Hooked", formatStatus(beads.StatusHooked))
+	require.Equal(t, "In Review", formatStatus(beads.Status("in_review")))
 }
 
 func TestDetails_View_AllPriorities(t *testing.T) {

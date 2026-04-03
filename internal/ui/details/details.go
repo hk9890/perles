@@ -46,6 +46,8 @@ var (
 	statusStyles          = map[beads.Status]lipgloss.Style{
 		beads.StatusOpen:       lipgloss.NewStyle().Foreground(styles.StatusOpenColor),
 		beads.StatusInProgress: lipgloss.NewStyle().Foreground(styles.StatusInProgressColor),
+		beads.StatusHooked:     lipgloss.NewStyle().Foreground(styles.StatusHookedColor),
+		beads.StatusPinned:     lipgloss.NewStyle().Foreground(styles.StatusPinnedColor),
 		beads.StatusClosed:     lipgloss.NewStyle().Foreground(styles.StatusClosedColor),
 		beads.StatusDeferred:   lipgloss.NewStyle().Foreground(styles.StatusDeferredColor),
 		beads.StatusBlocked:    lipgloss.NewStyle().Foreground(styles.StatusBlockedColor),
@@ -53,6 +55,8 @@ var (
 	statusIndicatorGlyphs = map[beads.Status]string{
 		beads.StatusOpen:       "○",
 		beads.StatusInProgress: "●",
+		beads.StatusHooked:     "↪",
+		beads.StatusPinned:     "📌",
 		beads.StatusClosed:     "✓",
 		beads.StatusDeferred:   "⏸",
 		beads.StatusBlocked:    "⊘",
@@ -999,8 +1003,12 @@ func formatStatus(s beads.Status) string {
 		return "Blocked"
 	case beads.StatusDeferred:
 		return "Deferred"
+	case beads.StatusPinned:
+		return "Pinned"
+	case beads.StatusHooked:
+		return "Hooked"
 	default:
-		return string(s)
+		return formatCustomTypeLabel(beads.IssueType(s))
 	}
 }
 
@@ -1019,6 +1027,12 @@ func formatType(t beads.IssueType) string {
 		return "Chore"
 	case beads.TypeDecision:
 		return "Decision"
+	case beads.TypeSpike:
+		return "Spike"
+	case beads.TypeStory:
+		return "Story"
+	case beads.TypeMilestone:
+		return "Milestone"
 	case beads.TypeMolecule:
 		return "Molecule"
 	case beads.TypeConvoy:

@@ -6,6 +6,18 @@
 │ │Test Issue Title                                │ │
 │ ╰────────────────────────────────────────────────╯ │
 │                                                    │
+│ ╭─ Type (Space to toggle) ───────────────────────╮ │
+│ │ (●) Task                                       │ │
+│ │ ( ) Bug                                        │ │
+│ │ ( ) Feature                                    │ │
+│ │ ( ) Chore                                      │ │
+│ │ ( ) Epic                                       │ │
+│ │ ( ) Decision                                   │ │
+│ │ ( ) Spike                                      │ │
+│ │ ( ) Story                                      │ │
+│ │ ( ) Milestone                                  │ │
+│ ╰────────────────────────────────────────────────╯ │
+│                                                    │
 │ ╭─ Priority (Space to toggle) ───────────────────╮ │
 │ │ ( ) P0 - Critical                              │ │
 │ │ ( ) P1 - High                                  │ │
@@ -17,9 +29,11 @@
 │ ╭─ Status (Space to toggle) ─────────────────────╮ │
 │ │ ( ) Open                                       │ │
 │ │ (●) In Progress                                │ │
-│ │ ( ) Closed                                     │ │
-│ │ ( ) Deferred                                   │ │
 │ │ ( ) Blocked                                    │ │
+│ │ ( ) Hooked                                     │ │
+│ │ ( ) Pinned                                     │ │
+│ │ ( ) Deferred                                   │ │
+│ │ ( ) Closed                                     │ │
 │ ╰────────────────────────────────────────────────╯ │
 │                                                    │
 │ ╭─ Labels (Space to toggle) ─────────────────────╮ │
@@ -29,20 +43,6 @@
 │ ╭─ Add Label (Enter to add) ─────────────────────╮ │
 │ │ Enter label name...                            │ │
 │ ╰────────────────────────────────────────────────╯ │
-│                                                    │
-│ ╭─ Description (ctrl+shift+e for editor) ────────╮ │
-│ │Issue description...                            │ │
-│ │                                                │ │
-│ │                                                │ │
-│ │                                                │ │
-│ │                                                │ │
-│ │                                                │ │
-│ │                                                │ │
-│ │                                                │ │
-│ ╰────────────────────────────────────────────────╯ │
-│                                                    │
-│ ╭─ Notes (ctrl+shift+e for editor) ──────────────╮ │
-│ │Issue notes...                                  │ │
 │                                                    │
 │    Save      Cancel                                │
 │                                                    │

@@ -14,6 +14,8 @@ const (
 	StatusClosed     Status = "closed"
 	StatusDeferred   Status = "deferred"
 	StatusBlocked    Status = "blocked"
+	StatusPinned     Status = "pinned"
+	StatusHooked     Status = "hooked"
 )
 
 // Priority levels (0-4, lower is more urgent).
@@ -31,12 +33,15 @@ const (
 type IssueType string
 
 const (
-	TypeBug      IssueType = "bug"
-	TypeFeature  IssueType = "feature"
-	TypeTask     IssueType = "task"
-	TypeEpic     IssueType = "epic"
-	TypeChore    IssueType = "chore"
-	TypeDecision IssueType = "decision"
+	TypeBug       IssueType = "bug"
+	TypeFeature   IssueType = "feature"
+	TypeTask      IssueType = "task"
+	TypeEpic      IssueType = "epic"
+	TypeChore     IssueType = "chore"
+	TypeDecision  IssueType = "decision"
+	TypeSpike     IssueType = "spike"
+	TypeStory     IssueType = "story"
+	TypeMilestone IssueType = "milestone"
 
 	// Legacy/custom issue types retained for compatibility.
 	// These are not treated as guaranteed built-in core types in UI rendering.

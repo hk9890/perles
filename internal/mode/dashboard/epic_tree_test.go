@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -47,6 +48,7 @@ func createEpicTreeTestModel(t *testing.T) Model {
 	// Create mock client that handles GetComments
 	mockClient := mocks.NewMockBeadsClient(t)
 	mockClient.EXPECT().GetComments(mock.Anything).Return([]beads.Comment{}, nil).Maybe()
+	mockClient.On("DB").Return((*sql.DB)(nil)).Maybe()
 
 	// Create mock executor
 	mockExecutor := mocks.NewMockBQLExecutor(t)
@@ -781,7 +783,7 @@ func createIssueEditorTestModel(t *testing.T) Model {
 		Status:   beads.StatusOpen,
 		Labels:   []string{"test"},
 	}
-	editor := issueeditor.New(issue).SetSize(100, 40)
+	editor := issueeditor.New(issue, nil).SetSize(100, 40)
 	m.issueEditor = &editor
 
 	return m
@@ -1112,7 +1114,7 @@ func TestEditIssue_WorkflowSwitchClosesModal(t *testing.T) {
 		Status:   beads.StatusOpen,
 		Labels:   []string{"test"},
 	}
-	editor := issueeditor.New(issue).SetSize(100, 40)
+	editor := issueeditor.New(issue, nil).SetSize(100, 40)
 	m.issueEditor = &editor
 
 	require.NotNil(t, m.issueEditor, "issue editor should be open before workflow switch")

@@ -15,6 +15,7 @@ func TestIssueMarkdown_RoundTrip(t *testing.T) {
 		DescriptionText: "Line 1\n\nLine 2",
 		Notes:           "Note line A\nNote line B",
 		Labels:          []string{"bug", "needs:discussion"},
+		Type:            beads.TypeStory,
 		Status:          beads.StatusInProgress,
 		Priority:        beads.PriorityHigh,
 	}
@@ -26,6 +27,7 @@ func TestIssueMarkdown_RoundTrip(t *testing.T) {
 	require.Equal(t, issue.TitleText, parsed.Title)
 	require.Equal(t, issue.DescriptionText, parsed.Description)
 	require.Equal(t, issue.Notes, parsed.Notes)
+	require.Equal(t, issue.Type, parsed.Type)
 	require.Equal(t, issue.Status, parsed.Status)
 	require.Equal(t, issue.Priority, parsed.Priority)
 	require.Equal(t, issue.Labels, parsed.Labels)
@@ -50,12 +52,92 @@ Z
 ## Labels
 - bug
 
+## Type
+task
+
+## Status
+hooked
+
+## Priority
+P2
+`)
+	require.NoError(t, err)
+
+	_, err = ParseIssueMarkdown(`# Perles Issue External Edit
+
+## Title
+X
+
+## Description
+Y
+
+## Notes
+Z
+
+## Labels
+- bug
+
+## Type
+task
+
 ## Status
 invalid
 
 ## Priority
 P2
 `)
+	require.NoError(t, err)
+
+	_, err = ParseIssueMarkdown(`# Perles Issue External Edit
+
+## Title
+X
+
+## Description
+Y
+
+## Notes
+Z
+
+## Labels
+- bug
+
+## Type
+task
+
+## Status
+
+
+## Priority
+P2
+`)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid status")
+
+	parsed, err := ParseIssueMarkdown(`# Perles Issue External Edit
+
+## Title
+X
+
+## Description
+Y
+
+## Notes
+Z
+
+## Labels
+- bug
+
+## Type
+custom_flow
+
+## Status
+qa_testing
+
+## Priority
+P2
+`)
+	require.NoError(t, err)
+	require.Equal(t, beads.IssueType("custom_flow"), parsed.Type)
+	require.Equal(t, beads.Status("qa_testing"), parsed.Status)
 }

@@ -858,7 +858,7 @@ func TestDashboard_View_Golden_WithIssueEditorModal(t *testing.T) {
 		Type:      beads.TypeTask,
 		Labels:    []string{"auth", "feature"},
 	}
-	editor := issueeditor.New(testIssue).SetSize(m.width, m.height)
+	editor := issueeditor.New(testIssue, nil).SetSize(m.width, m.height)
 	m.issueEditor = &editor
 
 	view := m.View()

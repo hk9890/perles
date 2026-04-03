@@ -262,6 +262,12 @@ func TestHelp_SearchView_ContainsBQLFields(t *testing.T) {
 	require.Contains(t, view, "label", "expected view to contain label field")
 	require.Contains(t, view, "title", "expected view to contain title field")
 	require.Contains(t, view, "created", "expected view to contain created field")
+	require.Contains(t, view, "hooked", "expected status built-ins to include hooked")
+	require.Contains(t, view, "pinned", "expected status built-ins to include pinned")
+	require.Contains(t, view, "decision", "expected type built-ins to include decision")
+	require.Contains(t, view, "spike", "expected type built-ins to include spike")
+	require.Contains(t, view, "story", "expected type built-ins to include story")
+	require.Contains(t, view, "milestone", "expected type built-ins to include milestone")
 }
 
 func TestHelp_SearchView_ContainsBQLOperators(t *testing.T) {

@@ -2,6 +2,7 @@
 package search
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"strconv"
@@ -793,7 +794,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case details.OpenEditMenuMsg:
 		issue := msg.Issue
 		m.selectedIssue = &issue // Store for title/description comparison on save
-		m.issueEditor = issueeditor.New(msg.Issue).
+		var db *sql.DB
+		if m.services.Client != nil {
+			db = m.services.Client.DB()
+		}
+		m.issueEditor = issueeditor.New(msg.Issue, db).
 			SetSize(m.width, m.height)
 		m.view = ViewEditIssue
 		return m, m.issueEditor.Init()

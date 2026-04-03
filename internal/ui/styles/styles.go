@@ -110,6 +110,8 @@ var (
 	StatusClosedColor     = lipgloss.AdaptiveColor{Light: "#AAAAAA", Dark: "#BBBBBB"}
 	StatusDeferredColor   = lipgloss.AdaptiveColor{Light: "#9B59B6", Dark: "#B07CC6"}
 	StatusBlockedColor    = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"}
+	StatusPinnedColor     = lipgloss.AdaptiveColor{Light: "#A569BD", Dark: "#C39BD3"}
+	StatusHookedColor     = lipgloss.AdaptiveColor{Light: "#2E86DE", Dark: "#5DADE2"}
 
 	// Issue priority colors
 	PriorityCriticalColor = lipgloss.AdaptiveColor{Light: "#FF6B6B", Dark: "#FF8787"}
@@ -125,25 +127,31 @@ var (
 	PriorityBacklogStyle  = lipgloss.NewStyle().Foreground(PriorityBacklogColor)
 
 	// Issue type colors
-	IssueTaskColor     = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"}
-	IssueChoreColor    = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#777777"}
-	IssueEpicColor     = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	IssueBugColor      = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	IssueFeatureColor  = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
-	IssueDecisionColor = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#7C8CF8"}
-	IssueMoleculeColor = lipgloss.AdaptiveColor{Light: "#FF731A", Dark: "#FF731A"}
-	IssueConvoyColor   = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#888888"}
-	IssueAgentColor    = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#5C6BC0"}
+	IssueTaskColor      = lipgloss.AdaptiveColor{Light: "#54A0FF", Dark: "#54A0FF"}
+	IssueChoreColor     = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#777777"}
+	IssueEpicColor      = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	IssueBugColor       = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
+	IssueFeatureColor   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	IssueDecisionColor  = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#7C8CF8"}
+	IssueSpikeColor     = lipgloss.AdaptiveColor{Light: "#1ABC9C", Dark: "#48C9B0"}
+	IssueStoryColor     = lipgloss.AdaptiveColor{Light: "#27AE60", Dark: "#52BE80"}
+	IssueMilestoneColor = lipgloss.AdaptiveColor{Light: "#F39C12", Dark: "#F5B041"}
+	IssueMoleculeColor  = lipgloss.AdaptiveColor{Light: "#FF731A", Dark: "#FF731A"}
+	IssueConvoyColor    = lipgloss.AdaptiveColor{Light: "#888888", Dark: "#888888"}
+	IssueAgentColor     = lipgloss.AdaptiveColor{Light: "#5C6BC0", Dark: "#5C6BC0"}
 
-	TypeBugStyle      = lipgloss.NewStyle().Foreground(StatusErrorColor)
-	TypeFeatureStyle  = lipgloss.NewStyle().Foreground(IssueFeatureColor)
-	TypeTaskStyle     = lipgloss.NewStyle().Foreground(IssueTaskColor)
-	TypeEpicStyle     = lipgloss.NewStyle().Foreground(IssueEpicColor)
-	TypeChoreStyle    = lipgloss.NewStyle().Foreground(IssueChoreColor)
-	TypeDecisionStyle = lipgloss.NewStyle().Foreground(IssueDecisionColor)
-	TypeMoleculeStyle = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
-	TypeConvoyStyle   = lipgloss.NewStyle().Foreground(IssueConvoyColor)
-	TypeAgentStyle    = lipgloss.NewStyle().Foreground(IssueAgentColor)
+	TypeBugStyle       = lipgloss.NewStyle().Foreground(StatusErrorColor)
+	TypeFeatureStyle   = lipgloss.NewStyle().Foreground(IssueFeatureColor)
+	TypeTaskStyle      = lipgloss.NewStyle().Foreground(IssueTaskColor)
+	TypeEpicStyle      = lipgloss.NewStyle().Foreground(IssueEpicColor)
+	TypeChoreStyle     = lipgloss.NewStyle().Foreground(IssueChoreColor)
+	TypeDecisionStyle  = lipgloss.NewStyle().Foreground(IssueDecisionColor)
+	TypeSpikeStyle     = lipgloss.NewStyle().Foreground(IssueSpikeColor)
+	TypeStoryStyle     = lipgloss.NewStyle().Foreground(IssueStoryColor)
+	TypeMilestoneStyle = lipgloss.NewStyle().Foreground(IssueMilestoneColor)
+	TypeMoleculeStyle  = lipgloss.NewStyle().Foreground(IssueMoleculeColor)
+	TypeConvoyStyle    = lipgloss.NewStyle().Foreground(IssueConvoyColor)
+	TypeAgentStyle     = lipgloss.NewStyle().Foreground(IssueAgentColor)
 
 	// Status bar
 	StatusBarStyle = lipgloss.NewStyle().
@@ -191,6 +199,12 @@ func GetTypeIndicator(t beads.IssueType) string {
 		return "[C]"
 	case beads.TypeDecision:
 		return "[D]"
+	case beads.TypeSpike:
+		return "[S]"
+	case beads.TypeStory:
+		return "[ST]"
+	case beads.TypeMilestone:
+		return "[M]"
 	case "":
 		return "[?]"
 	default:
@@ -213,8 +227,60 @@ func GetTypeStyle(t beads.IssueType) lipgloss.Style {
 		return TypeChoreStyle
 	case beads.TypeDecision:
 		return TypeDecisionStyle
+	case beads.TypeSpike:
+		return TypeSpikeStyle
+	case beads.TypeStory:
+		return TypeStoryStyle
+	case beads.TypeMilestone:
+		return TypeMilestoneStyle
 	default:
 		return lipgloss.NewStyle()
+	}
+}
+
+func GetStatusColor(status beads.Status) lipgloss.TerminalColor {
+	switch status {
+	case beads.StatusOpen:
+		return StatusOpenColor
+	case beads.StatusInProgress:
+		return StatusInProgressColor
+	case beads.StatusBlocked:
+		return StatusBlockedColor
+	case beads.StatusHooked:
+		return StatusHookedColor
+	case beads.StatusPinned:
+		return StatusPinnedColor
+	case beads.StatusDeferred:
+		return StatusDeferredColor
+	case beads.StatusClosed:
+		return StatusClosedColor
+	default:
+		return TextSecondaryColor
+	}
+}
+
+func GetTypeColor(issueType beads.IssueType) lipgloss.TerminalColor {
+	switch issueType {
+	case beads.TypeBug:
+		return IssueBugColor
+	case beads.TypeFeature:
+		return IssueFeatureColor
+	case beads.TypeTask:
+		return IssueTaskColor
+	case beads.TypeEpic:
+		return IssueEpicColor
+	case beads.TypeChore:
+		return IssueChoreColor
+	case beads.TypeDecision:
+		return IssueDecisionColor
+	case beads.TypeSpike:
+		return IssueSpikeColor
+	case beads.TypeStory:
+		return IssueStoryColor
+	case beads.TypeMilestone:
+		return IssueMilestoneColor
+	default:
+		return TextSecondaryColor
 	}
 }
 

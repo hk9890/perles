@@ -66,6 +66,8 @@ func TestCreateResult_FieldAccess(t *testing.T) {
 func TestStatus_Values(t *testing.T) {
 	require.Equal(t, Status("open"), StatusOpen)
 	require.Equal(t, Status("in_progress"), StatusInProgress)
+	require.Equal(t, Status("hooked"), StatusHooked)
+	require.Equal(t, Status("pinned"), StatusPinned)
 	require.Equal(t, Status("closed"), StatusClosed)
 }
 
@@ -84,6 +86,9 @@ func TestIssueType_Values(t *testing.T) {
 	require.Equal(t, IssueType("epic"), TypeEpic)
 	require.Equal(t, IssueType("chore"), TypeChore)
 	require.Equal(t, IssueType("decision"), TypeDecision)
+	require.Equal(t, IssueType("spike"), TypeSpike)
+	require.Equal(t, IssueType("story"), TypeStory)
+	require.Equal(t, IssueType("milestone"), TypeMilestone)
 	require.Equal(t, IssueType("molecule"), TypeMolecule)
 	require.Equal(t, IssueType("convoy"), TypeConvoy)
 	require.Equal(t, IssueType("agent"), TypeAgent)

@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -257,7 +258,11 @@ func (m Model) handleEpicTreeKeysFocusTree(msg tea.KeyMsg) (mode.Controller, tea
 			if node := m.epicTree.SelectedNode(); node != nil {
 				issue := node.Issue
 				m.editingIssue = &issue // Store for comparison on save
-				editor := issueeditor.New(issue).SetSize(m.width, m.height)
+				var db *sql.DB
+				if m.services.Client != nil {
+					db = m.services.Client.DB()
+				}
+				editor := issueeditor.New(issue, db).SetSize(m.width, m.height)
 				m.issueEditor = &editor
 				return m, m.issueEditor.Init()
 			}
@@ -300,7 +305,11 @@ func (m Model) handleEpicTreeKeysFocusDetails(msg tea.KeyMsg) (mode.Controller, 
 			if node := m.epicTree.SelectedNode(); node != nil {
 				issue := node.Issue
 				m.editingIssue = &issue // Store for comparison on save
-				editor := issueeditor.New(issue).SetSize(m.width, m.height)
+				var db *sql.DB
+				if m.services.Client != nil {
+					db = m.services.Client.DB()
+				}
+				editor := issueeditor.New(issue, db).SetSize(m.width, m.height)
 				m.issueEditor = &editor
 				return m, m.issueEditor.Init()
 			}

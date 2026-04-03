@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stretchr/testify/require"
 	beads "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/hk9890/perles/internal/orchestration/controlplane"
 	"github.com/hk9890/perles/internal/orchestration/events"
 	"github.com/hk9890/perles/internal/ui/modals/issueeditor"
 	"github.com/hk9890/perles/internal/ui/styles"
+	"github.com/stretchr/testify/require"
 )
 
 // === Unit Tests: getStatusTextAndColor ===
@@ -397,7 +397,7 @@ func TestView_IssueEditorOverlay_ReturnsModalWhenNonNil(t *testing.T) {
 		Status:    beads.StatusOpen,
 		Priority:  beads.PriorityMedium,
 	}
-	editor := issueeditor.New(testIssue).SetSize(100, 40)
+	editor := issueeditor.New(testIssue, nil).SetSize(100, 40)
 	m.issueEditor = &editor
 
 	// Render the view

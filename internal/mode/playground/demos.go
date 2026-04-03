@@ -1666,7 +1666,7 @@ func (m *IssueeditorDemoModel) Update(msg tea.Msg) (DemoModel, tea.Cmd, string) 
 					Priority:  beads.PriorityMedium,
 					Status:    beads.StatusOpen,
 				}
-				editor := issueeditor.New(issue).SetSize(m.width, m.height)
+				editor := issueeditor.New(issue, nil).SetSize(m.width, m.height)
 				m.issueeditor = &editor
 				m.showingMenu = false
 				return m, editor.Init(), ""

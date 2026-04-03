@@ -28,8 +28,8 @@ type BQLOperator struct {
 // BQLFields returns the list of BQL fields for help text.
 func BQLFields() []BQLField {
 	return []BQLField{
-		{Name: "status", Values: "open, in_progress, closed, blocked, deferred"},
-		{Name: "type", Values: "bug, feature, task, epic, chore"},
+		{Name: "status", Values: "open, in_progress, blocked, hooked, pinned, deferred, closed (+ custom)"},
+		{Name: "type", Values: "bug, feature, task, epic, chore, decision, spike, story, milestone (+ custom)"},
 		{Name: "priority", Values: "p0, p1, p2, p3, p4"},
 		{Name: "blocked", Values: "true, false"},
 		{Name: "ready", Values: "true, false"},

@@ -6,31 +6,33 @@
 │ │Multi-Column Issue                         │   │This description appears in column 1        │ │
 │ ╰───────────────────────────────────────────╯   │                                            │ │
 │                                                 │                                            │ │
+│ ╭─ Type (Space to toggle) ──────────────────╮   │                                            │ │
+│ │ (●) Task                                  │   │                                            │ │
+│ │ ( ) Bug                                   │   │                                            │ │
+│ │ ( ) Feature                               │   │                                            │ │
+│ │ ( ) Chore                                 │   │                                            │ │
+│ │ ( ) Epic                                  │   ╰────────────────────────────────────────────╯ │
+│ │ ( ) Decision                              │                                                  │
+│ │ ( ) Spike                                 │   ╭─ Notes (ctrl+shift+e for editor) ──────────╮ │
+│ │ ( ) Story                                 │   │Internal notes here                         │ │
+│ │ ( ) Milestone                             │   │                                            │ │
+│ ╰───────────────────────────────────────────╯   │                                            │ │
+│                                                 │                                            │ │
 │ ╭─ Priority (Space to toggle) ──────────────╮   │                                            │ │
 │ │ ( ) P0 - Critical                         │   │                                            │ │
 │ │ (●) P1 - High                             │   │                                            │ │
 │ │ ( ) P2 - Medium                           │   │                                            │ │
-│ │ ( ) P3 - Low                              │   │                                            │ │
-│ │ ( ) P4 - Backlog                          │   ╰────────────────────────────────────────────╯ │
-│ ╰───────────────────────────────────────────╯                                                  │
-│                                                 ╭─ Notes (ctrl+shift+e for editor) ──────────╮ │
-│ ╭─ Status (Space to toggle) ────────────────╮   │Internal notes here                         │ │
-│ │ (●) Open                                  │   │                                            │ │
-│ │ ( ) In Progress                           │   │                                            │ │
-│ │ ( ) Closed                                │   │                                            │ │
-│ │ ( ) Deferred                              │   │                                            │ │
-│ │ ( ) Blocked                               │   │                                            │ │
-│ ╰───────────────────────────────────────────╯   │                                            │ │
-│                                                 │                                            │ │
-│ ╭─ Labels (Space to toggle) ────────────────╮   ╰────────────────────────────────────────────╯ │
-│ │ [x] bug                                   │                                                  │
-│ │ [x] feature                               │                                                  │
+│ │ ( ) P3 - Low                              │   ╰────────────────────────────────────────────╯ │
+│ │ ( ) P4 - Backlog                          │                                                  │
 │ ╰───────────────────────────────────────────╯                                                  │
 │                                                                                                │
-│ ╭─ Add Label (Enter to add) ────────────────╮                                                  │
-│ │ Enter label name...                       │                                                  │
-│ ╰───────────────────────────────────────────╯                                                  │
-│                                                                                                │
+│ ╭─ Status (Space to toggle) ────────────────╮                                                  │
+│ │ (●) Open                                  │                                                  │
+│ │ ( ) In Progress                           │                                                  │
+│ │ ( ) Blocked                               │                                                  │
+│ │ ( ) Hooked                                │                                                  │
+│ │ ( ) Pinned                                │                                                  │
+│ │ ( ) Deferred                              │                                                  │
 │                                                                                                │
 │    Save      Cancel                                                                            │
 │                                                                                                │

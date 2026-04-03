@@ -1,6 +1,7 @@
 package issueeditor
 
 import (
+	"database/sql"
 	"os"
 	"regexp"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/testutil"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
@@ -217,6 +219,7 @@ func TestBuildUpdateOptionsFromIssueMarkdown_NoChanges(t *testing.T) {
 		TitleText:       "Title",
 		DescriptionText: "Desc",
 		Notes:           "Notes",
+		Type:            beads.TypeTask,
 		Priority:        beads.PriorityMedium,
 		Status:          beads.StatusOpen,
 		Labels:          []string{"bug"},
@@ -237,6 +240,9 @@ Notes
 
 ## Labels
 - bug
+
+## Type
+task
 
 ## Status
 open
@@ -298,7 +304,7 @@ func testIssueWithNotes(id, title, description, notes string, labels []string, p
 func TestNew_InitializesFormModalWithCorrectFields(t *testing.T) {
 	labels := []string{"bug", "feature"}
 	issue := testIssue("test-123", labels, beads.PriorityHigh, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	require.Equal(t, "test-123", m.issue.ID, "expected issue ID to be set")
 
@@ -365,13 +371,13 @@ func TestPriorityListOptions_SelectsCorrectPriority(t *testing.T) {
 }
 
 func TestStatusListOptions_Returns3Options(t *testing.T) {
-	opts := statusListOptions(beads.StatusOpen)
+	opts := statusListOptions(testIssue("id", nil, beads.PriorityMedium, beads.StatusOpen), nil)
 
-	require.Len(t, opts, 5, "expected 5 status options")
+	require.Len(t, opts, 7, "expected 7 built-in status options")
 
 	// Verify labels and values
-	expectedLabels := []string{"Open", "In Progress", "Closed", "Deferred", "Blocked"}
-	expectedValues := []string{"open", "in_progress", "closed", "deferred", "blocked"}
+	expectedLabels := []string{"Open", "In Progress", "Blocked", "Hooked", "Pinned", "Deferred", "Closed"}
+	expectedValues := []string{"open", "in_progress", "blocked", "hooked", "pinned", "deferred", "closed"}
 
 	for i, opt := range opts {
 		require.Equal(t, expectedLabels[i], opt.Label, "expected label for option %d", i)
@@ -381,9 +387,11 @@ func TestStatusListOptions_Returns3Options(t *testing.T) {
 	// Verify Open (index 0) is selected
 	require.True(t, opts[0].Selected, "expected Open to be selected")
 	require.False(t, opts[1].Selected, "expected In Progress to not be selected")
-	require.False(t, opts[2].Selected, "expected Closed to not be selected")
-	require.False(t, opts[3].Selected, "expected Deferred to not be selected")
-	require.False(t, opts[4].Selected, "expected Blocked to not be selected")
+	require.False(t, opts[2].Selected, "expected Blocked to not be selected")
+	require.False(t, opts[3].Selected, "expected Hooked to not be selected")
+	require.False(t, opts[4].Selected, "expected Pinned to not be selected")
+	require.False(t, opts[5].Selected, "expected Deferred to not be selected")
+	require.False(t, opts[6].Selected, "expected Closed to not be selected")
 }
 
 func TestStatusListOptions_SelectsCorrectStatus(t *testing.T) {
@@ -393,11 +401,15 @@ func TestStatusListOptions_SelectsCorrectStatus(t *testing.T) {
 	}{
 		{beads.StatusOpen, 0},
 		{beads.StatusInProgress, 1},
-		{beads.StatusClosed, 2},
+		{beads.StatusBlocked, 2},
+		{beads.StatusHooked, 3},
+		{beads.StatusPinned, 4},
+		{beads.StatusDeferred, 5},
+		{beads.StatusClosed, 6},
 	}
 
 	for _, tc := range tests {
-		opts := statusListOptions(tc.status)
+		opts := statusListOptions(testIssue("id", nil, beads.PriorityMedium, tc.status), nil)
 		for i, opt := range opts {
 			if i == tc.expectedIndex {
 				require.True(t, opt.Selected, "expected index %d to be selected for status %s", tc.expectedIndex, tc.status)
@@ -406,6 +418,42 @@ func TestStatusListOptions_SelectsCorrectStatus(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestStatusAndTypeOptions_IncludeCustomValuesFromDB(t *testing.T) {
+	db := testutil.NewBeadsV1TestDB(t)
+	_, err := db.Exec(`INSERT INTO custom_statuses (name, category) VALUES ('qa_testing', 'wip')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO custom_types (name) VALUES ('custom_flow')`)
+	require.NoError(t, err)
+
+	issue := beads.Issue{
+		ID:        "test-custom-1",
+		TitleText: "Custom values",
+		Type:      beads.IssueType("custom_flow"),
+		Status:    beads.Status("qa_testing"),
+		Priority:  beads.PriorityMedium,
+	}
+
+	m := New(issue, db)
+	view := m.View()
+	require.Contains(t, view, "Qa Testing")
+	require.Contains(t, view, "Custom Flow")
+}
+
+func TestStatusAndTypeOptions_KeepCurrentCustomValuesWhenNoDB(t *testing.T) {
+	issue := beads.Issue{
+		ID:        "test-custom-2",
+		TitleText: "Current custom preserved",
+		Type:      beads.IssueType("my_custom_type"),
+		Status:    beads.Status("my_custom_status"),
+		Priority:  beads.PriorityMedium,
+	}
+
+	m := New(issue, (*sql.DB)(nil))
+	view := m.View()
+	require.Contains(t, view, "My Custom Status")
+	require.Contains(t, view, "My Custom Type")
 }
 
 func TestLabelsListOptions_MarksAllSelected(t *testing.T) {
@@ -429,10 +477,11 @@ func TestLabelsListOptions_EmptyLabels(t *testing.T) {
 
 func TestSaveMsg_ContainsCorrectParsedValues(t *testing.T) {
 	issue := testIssue("test-123", []string{"existing"}, beads.PriorityHigh, beads.StatusInProgress)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Navigate to submit button and press Enter
-	// Tab through Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit button
+	// Tab through Title -> Type -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // to Labels
@@ -458,7 +507,7 @@ func TestSaveMsg_ContainsCorrectParsedValues(t *testing.T) {
 
 func TestCancelMsg_ProducedOnEsc(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Press Esc
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -493,7 +542,7 @@ func TestParsePriority(t *testing.T) {
 
 func TestNew_EmptyLabels_ProducesValidConfig(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// View should still render without errors
 	view := m.View()
@@ -506,7 +555,7 @@ func TestNew_EmptyLabels_ProducesValidConfig(t *testing.T) {
 func TestNew_LabelsWithSpaces(t *testing.T) {
 	labels := []string{"hello world", "multi word label"}
 	issue := testIssue("test-123", labels, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	view := m.View()
 	require.Contains(t, view, "hello world", "expected label with spaces")
@@ -515,14 +564,14 @@ func TestNew_LabelsWithSpaces(t *testing.T) {
 
 func TestInit_ReturnsNil(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	cmd := m.Init()
 	require.Nil(t, cmd, "expected Init to return nil")
 }
 
 func TestSetSize_ReturnsNewModel(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	m = m.SetSize(120, 40)
 	// Verify it doesn't panic and returns a model
@@ -532,7 +581,7 @@ func TestSetSize_ReturnsNewModel(t *testing.T) {
 
 func TestOverlay_RendersOverBackground(t *testing.T) {
 	issue := testIssue("test-123", []string{"bug"}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(80, 24)
 
 	background := "This is the background content"
@@ -543,7 +592,7 @@ func TestOverlay_RendersOverBackground(t *testing.T) {
 
 func TestView_ContainsAllPriorityOptions(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityCritical, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	view := m.View()
 
 	// All priority options should be visible
@@ -556,21 +605,26 @@ func TestView_ContainsAllPriorityOptions(t *testing.T) {
 
 func TestView_ContainsAllStatusOptions(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	view := m.View()
 
 	// All status options should be visible
 	require.Contains(t, view, "Open", "expected Open option")
 	require.Contains(t, view, "In Progress", "expected In Progress option")
+	require.Contains(t, view, "Blocked", "expected Blocked option")
+	require.Contains(t, view, "Hooked", "expected Hooked option")
+	require.Contains(t, view, "Pinned", "expected Pinned option")
+	require.Contains(t, view, "Deferred", "expected Deferred option")
 	require.Contains(t, view, "Closed", "expected Closed option")
 }
 
 func TestSaveMsg_PriorityChange(t *testing.T) {
 	// Start with P0 (Critical)
 	issue := testIssue("test-123", []string{}, beads.PriorityCritical, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
-	// Tab to Priority field first (starts on Title)
+	// Tab to Priority field first (starts on Title -> Type -> Priority)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
 	// Navigate down in priority list to P2 (Medium)
@@ -600,9 +654,10 @@ func TestSaveMsg_PriorityChange(t *testing.T) {
 func TestSaveMsg_StatusChange(t *testing.T) {
 	// Start with Open status
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
-	// Tab to Status field (Title -> Priority -> Status)
+	// Tab to Status field (Title -> Type -> Priority -> Status)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 
@@ -631,9 +686,10 @@ func TestSaveMsg_StatusChange(t *testing.T) {
 func TestSaveMsg_LabelsToggle(t *testing.T) {
 	labels := []string{"bug", "feature", "ui"}
 	issue := testIssue("test-123", labels, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
-	// Tab to Labels (Title -> Priority -> Status -> Labels)
+	// Tab to Labels (Title -> Type -> Priority -> Status -> Labels)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -661,9 +717,10 @@ func TestSaveMsg_LabelsToggle(t *testing.T) {
 
 func TestSaveMsg_AddNewLabel(t *testing.T) {
 	issue := testIssue("test-123", []string{"existing"}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
-	// Tab to Add Label input (Title -> Priority -> Status -> Labels -> Add Label input)
+	// Tab to Add Label input (Title -> Type -> Priority -> Status -> Labels -> Add Label input)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -697,7 +754,7 @@ func TestSaveMsg_AddNewLabel(t *testing.T) {
 
 func TestNew_InitializesTitleField(t *testing.T) {
 	issue := testIssueWithDescription("test-123", "My Custom Title", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	view := m.View()
 	require.Contains(t, view, "Title", "expected Title field label")
@@ -706,7 +763,7 @@ func TestNew_InitializesTitleField(t *testing.T) {
 
 func TestNew_InitializesDescriptionField(t *testing.T) {
 	issue := testIssueWithDescription("test-123", "Title", "This is the description", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	view := m.View()
 	require.Contains(t, view, "Description", "expected Description field label")
@@ -715,10 +772,11 @@ func TestNew_InitializesDescriptionField(t *testing.T) {
 
 func TestSaveMsg_ContainsTitleValue(t *testing.T) {
 	issue := testIssueWithDescription("test-123", "Original Title", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Tab through all fields to Submit button
-	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
+	// Title -> Type -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -738,10 +796,11 @@ func TestSaveMsg_ContainsTitleValue(t *testing.T) {
 
 func TestSaveMsg_ContainsDescriptionValue(t *testing.T) {
 	issue := testIssueWithDescription("test-123", "Title", "Original Description", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Tab through all fields to Submit button
-	// Title -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
+	// Title -> Type -> Priority -> Status -> Labels -> Add Label -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -761,24 +820,22 @@ func TestSaveMsg_ContainsDescriptionValue(t *testing.T) {
 
 func TestView_FieldOrder(t *testing.T) {
 	issue := testIssueWithNotes("test-123", "My Title", "My Description", "My Notes", []string{"label1"}, beads.PriorityHigh, beads.StatusOpen)
-	m := New(issue)
-	m = m.SetSize(80, 50)
+	m := New(issue, nil)
+	m = m.SetSize(120, 50)
 
 	view := m.View()
 
-	// Verify field order: Title -> Priority -> Status -> Labels -> Description -> Notes
+	// Verify stable metadata field order in left column.
 	titleIdx := len(view) - len(view[findIndex(view, "Title"):])
+	typeIdx := len(view) - len(view[findIndex(view, "Type"):])
 	priorityIdx := len(view) - len(view[findIndex(view, "Priority"):])
 	statusIdx := len(view) - len(view[findIndex(view, "Status"):])
 	labelsIdx := len(view) - len(view[findIndex(view, "Labels"):])
-	descriptionIdx := len(view) - len(view[findIndex(view, "Description"):])
-	notesIdx := len(view) - len(view[findIndex(view, "Notes"):])
 
-	require.Less(t, titleIdx, priorityIdx, "Title should come before Priority")
+	require.Less(t, titleIdx, typeIdx, "Title should come before Type")
+	require.Less(t, typeIdx, priorityIdx, "Type should come before Priority")
 	require.Less(t, priorityIdx, statusIdx, "Priority should come before Status")
 	require.Less(t, statusIdx, labelsIdx, "Status should come before Labels")
-	require.Less(t, labelsIdx, descriptionIdx, "Labels should come before Description")
-	require.Less(t, descriptionIdx, notesIdx, "Description should come before Notes")
 }
 
 // findIndex returns the index of the first occurrence of substr in s, or len(s) if not found.
@@ -793,7 +850,7 @@ func findIndex(s, substr string) int {
 
 func TestView_ContainsTitleField(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	view := m.View()
 
 	require.Contains(t, view, "Title", "expected Title field in view")
@@ -801,7 +858,7 @@ func TestView_ContainsTitleField(t *testing.T) {
 
 func TestView_ContainsDescriptionField(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	view := m.View()
 
 	require.Contains(t, view, "Description", "expected Description field in view")
@@ -812,7 +869,7 @@ func TestView_ContainsDescriptionField(t *testing.T) {
 
 func TestNew_InitializesNotesField(t *testing.T) {
 	issue := testIssueWithNotes("test-123", "Title", "Description", "My notes here", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	view := m.View()
 	require.Contains(t, view, "Notes", "expected Notes field label")
@@ -821,7 +878,7 @@ func TestNew_InitializesNotesField(t *testing.T) {
 
 func TestView_ContainsNotesField(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	view := m.View()
 
 	require.Contains(t, view, "Notes", "expected Notes field in view")
@@ -830,10 +887,11 @@ func TestView_ContainsNotesField(t *testing.T) {
 
 func TestSaveMsg_ContainsNotesValue(t *testing.T) {
 	issue := testIssueWithNotes("test-123", "Title", "Description", "Original Notes", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Tab through all fields to Submit button
-	// Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit
+	// Title -> Type -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes -> Submit
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -853,9 +911,10 @@ func TestSaveMsg_ContainsNotesValue(t *testing.T) {
 
 func TestIssueeditor_SaveMsg_IncludesNotes(t *testing.T) {
 	issue := testIssueWithNotes("test-123", "Title", "Desc", "Test notes content", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	// Tab through all fields to Submit button
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -876,9 +935,10 @@ func TestIssueeditor_SaveMsg_IncludesNotes(t *testing.T) {
 func TestIssueeditor_NotesField_VimEnabled(t *testing.T) {
 	// VimEnabled starts in insert mode by default, so we can type directly
 	issue := testIssueWithNotes("test-123", "Title", "Desc", "", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
-	// Tab to Notes field (Title -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes)
+	// Tab to Notes field (Title -> Type -> Priority -> Status -> Labels -> Add Label input -> Description -> Notes)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab}) // Labels
@@ -909,7 +969,7 @@ func TestIssueeditor_NotesField_VimEnabled(t *testing.T) {
 
 func TestIssueeditor_EmptyNotes_DisplaysPlaceholder(t *testing.T) {
 	issue := testIssue("test-123", []string{}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 
 	view := m.View()
 	require.Contains(t, view, "Issue notes...", "expected placeholder for empty notes field")
@@ -920,7 +980,7 @@ func TestIssueeditor_EmptyNotes_DisplaysPlaceholder(t *testing.T) {
 
 func TestIssueEditor_View_Golden(t *testing.T) {
 	issue := testIssue("test-123", []string{"bug", "feature"}, beads.PriorityHigh, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(80, 50) // Large enough to avoid scrolling
 	view := stripZoneMarkers(m.View())
 
@@ -929,7 +989,7 @@ func TestIssueEditor_View_Golden(t *testing.T) {
 
 func TestIssueEditor_View_EmptyLabels_Golden(t *testing.T) {
 	issue := testIssue("test-456", []string{}, beads.PriorityMedium, beads.StatusInProgress)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(80, 50) // Large enough to avoid scrolling
 	view := stripZoneMarkers(m.View())
 
@@ -939,7 +999,7 @@ func TestIssueEditor_View_EmptyLabels_Golden(t *testing.T) {
 func TestIssueEditor_View_ManyLabels_Golden(t *testing.T) {
 	labels := []string{"bug", "feature", "ui", "backend", "api", "database"}
 	issue := testIssue("test-789", labels, beads.PriorityCritical, beads.StatusClosed)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(80, 50) // Large enough to avoid scrolling
 	view := stripZoneMarkers(m.View())
 
@@ -958,7 +1018,7 @@ func stripZoneMarkers(s string) string {
 func TestIssueEditor_TwoColumn_120x40_Golden(t *testing.T) {
 	// Two-column layout is enabled when width >= 100
 	issue := testIssueWithNotes("test-layout", "Multi-Column Issue", "This description appears in column 1", "Internal notes here", []string{"bug", "feature"}, beads.PriorityHigh, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(120, 40) // Wide enough for two columns
 	view := stripZoneMarkers(m.View())
 
@@ -968,7 +1028,7 @@ func TestIssueEditor_TwoColumn_120x40_Golden(t *testing.T) {
 func TestIssueEditor_SingleColumn_80x40_Golden(t *testing.T) {
 	// Single-column fallback when width < 100
 	issue := testIssueWithNotes("test-narrow", "Narrow Issue", "Description in single column", "Notes in single column", []string{"bug"}, beads.PriorityMedium, beads.StatusInProgress)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(80, 40) // Narrow: single column fallback
 	view := stripZoneMarkers(m.View())
 
@@ -978,13 +1038,15 @@ func TestIssueEditor_SingleColumn_80x40_Golden(t *testing.T) {
 // Tab order tests verify that Tab/Shift-Tab traverse fields in array order regardless of column
 
 func TestTabOrder_TraversesFieldsInArrayOrder(t *testing.T) {
-	// Tab order should be: title -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
+	// Tab order should be: title -> type -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
 	issue := testIssueWithNotes("test-tab", "Tab Order Test", "Description", "Notes", []string{"label1"}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(120, 40) // Two-column mode
 
 	// Starting position: title field is focused
 
+	// Tab to type
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	// Tab to priority
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	// Tab to status
@@ -1011,21 +1073,22 @@ func TestTabOrder_TraversesFieldsInArrayOrder(t *testing.T) {
 func TestShiftTabOrder_ReversesCorrectly(t *testing.T) {
 	// Shift-Tab from submit should go back through fields in reverse order
 	issue := testIssueWithNotes("test-shift-tab", "Shift-Tab Test", "Description", "Notes", []string{"label1"}, beads.PriorityMedium, beads.StatusOpen)
-	m := New(issue)
+	m := New(issue, nil)
 	m = m.SetSize(120, 40) // Two-column mode
 
 	// Navigate to submit button first
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
 
-	// Now Shift-Tab should go back: notes -> description -> add-label -> labels -> status -> priority -> title
+	// Now Shift-Tab should go back: notes -> description -> add-label -> labels -> status -> priority -> type -> title
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to notes
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to description
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to add-label input
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to labels
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to status
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to priority
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to type
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab}) // to title
 
 	// Type in title field to verify we're there
@@ -1034,7 +1097,7 @@ func TestShiftTabOrder_ReversesCorrectly(t *testing.T) {
 	}
 
 	// Tab forward to submit and save
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 8; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -1051,16 +1114,16 @@ func TestTabOrder_ConsistentBetweenSingleAndTwoColumn(t *testing.T) {
 	issue := testIssueWithNotes("test-consistent", "Consistent Tab", "Desc", "Notes", []string{"label1"}, beads.PriorityLow, beads.StatusClosed)
 
 	// Test narrow width (single column)
-	mNarrow := New(issue)
+	mNarrow := New(issue, nil)
 	mNarrow = mNarrow.SetSize(80, 40)
 
 	// Test wide width (two column)
-	mWide := New(issue)
+	mWide := New(issue, nil)
 	mWide = mWide.SetSize(120, 40)
 
 	// Both should take the same number of tabs to reach submit
-	// title -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
-	tabsToSubmit := 7
+	// title -> type -> priority -> status -> labels -> add-label-input -> description -> notes -> submit
+	tabsToSubmit := 8
 
 	// Navigate narrow version to submit
 	for i := 0; i < tabsToSubmit; i++ {

@@ -5,6 +5,7 @@
 package issueeditor
 
 import (
+	"database/sql"
 	"slices"
 	"strconv"
 
@@ -22,6 +23,7 @@ import (
 type Model struct {
 	issue beads.Issue
 	form  formmodal.Model
+	db    *sql.DB
 }
 
 // SaveMsg is sent when the user confirms issue changes.
@@ -32,6 +34,7 @@ type SaveMsg struct {
 	Notes       string
 	Priority    beads.Priority
 	Status      beads.Status
+	Type        beads.IssueType
 	Labels      []string
 }
 
@@ -51,6 +54,10 @@ func (m SaveMsg) BuildUpdateOptions(original *beads.Issue) beads.UpdateIssueOpti
 		opts.Priority = &p
 		s := m.Status
 		opts.Status = &s
+		if m.Type != "" {
+			t := m.Type
+			opts.Type = &t
+		}
 		labels := m.Labels
 		opts.Labels = &labels
 		return opts
@@ -71,6 +78,10 @@ func (m SaveMsg) BuildUpdateOptions(original *beads.Issue) beads.UpdateIssueOpti
 	if m.Status != original.Status {
 		s := m.Status
 		opts.Status = &s
+	}
+	if m.Type != "" && m.Type != original.Type {
+		t := m.Type
+		opts.Type = &t
 	}
 	if !slices.Equal(m.Labels, original.Labels) {
 		labels := m.Labels
@@ -94,6 +105,7 @@ func BuildUpdateOptionsFromIssueMarkdown(original *beads.Issue, content string) 
 		Notes:       parsed.Notes,
 		Priority:    parsed.Priority,
 		Status:      parsed.Status,
+		Type:        parsed.Type,
 		Labels:      parsed.Labels,
 	}
 
@@ -108,8 +120,8 @@ func issueID(original *beads.Issue) string {
 }
 
 // New creates a new issue editor with the given issue.
-func New(issue beads.Issue) Model {
-	m := Model{issue: issue}
+func New(issue beads.Issue, db *sql.DB) Model {
+	m := Model{issue: issue, db: db}
 
 	cfg := formmodal.FormConfig{
 		Title: "Edit Issue",
@@ -131,6 +143,14 @@ func New(issue beads.Issue) Model {
 				Column:       0,
 			},
 			{
+				Key:     "type",
+				Type:    formmodal.FieldTypeSelect,
+				Label:   "Type",
+				Hint:    "Space to toggle",
+				Options: typeListOptions(issue, m.db),
+				Column:  0,
+			},
+			{
 				Key:     "priority",
 				Type:    formmodal.FieldTypeSelect,
 				Label:   "Priority",
@@ -143,7 +163,7 @@ func New(issue beads.Issue) Model {
 				Type:    formmodal.FieldTypeSelect,
 				Label:   "Status",
 				Hint:    "Space to toggle",
-				Options: statusListOptions(issue.Status),
+				Options: statusListOptions(issue, m.db),
 				Column:  0,
 			},
 			{
@@ -189,6 +209,7 @@ func New(issue beads.Issue) Model {
 				Title:       values["title"].(string),
 				Description: values["description"].(string),
 				Notes:       values["notes"].(string),
+				Type:        beads.IssueType(values["type"].(string)),
 				Priority:    parsePriority(values["priority"].(string)),
 				Status:      beads.Status(values["status"].(string)),
 				Labels:      values["labels"].([]string),
@@ -219,14 +240,30 @@ func priorityListOptions(current beads.Priority) []formmodal.ListOption {
 
 // statusListOptions converts shared.StatusOptions to formmodal.ListOption
 // with the current status pre-selected, preserving colors.
-func statusListOptions(current beads.Status) []formmodal.ListOption {
-	opts := shared.StatusOptions()
+func statusListOptions(issue beads.Issue, db *sql.DB) []formmodal.ListOption {
+	opts := shared.StatusOptions(issue, db)
 	result := make([]formmodal.ListOption, len(opts))
 	for i, opt := range opts {
 		result[i] = formmodal.ListOption{
 			Label:    opt.Label,
 			Value:    opt.Value,
-			Selected: opt.Value == string(current),
+			Selected: opt.Value == string(issue.Status),
+			Color:    opt.Color,
+		}
+	}
+	return result
+}
+
+// typeListOptions converts shared.TypeOptions to formmodal.ListOption
+// with the current type pre-selected, preserving colors.
+func typeListOptions(issue beads.Issue, db *sql.DB) []formmodal.ListOption {
+	opts := shared.TypeOptions(issue, db)
+	result := make([]formmodal.ListOption, len(opts))
+	for i, opt := range opts {
+		result[i] = formmodal.ListOption{
+			Label:    opt.Label,
+			Value:    opt.Value,
+			Selected: opt.Value == string(issue.Type),
 			Color:    opt.Color,
 		}
 	}
