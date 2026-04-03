@@ -15,13 +15,15 @@ import (
 
 // Model holds the nobeads view state.
 type Model struct {
-	width  int
-	height int
+	width      int
+	height     int
+	problem    string
+	suggestion string
 }
 
 // New creates a new nobeads view.
-func New() Model {
-	return Model{}
+func New(problem, suggestion string) Model {
+	return Model{problem: problem, suggestion: suggestion}
 }
 
 // Init returns the initial command.
@@ -73,17 +75,27 @@ func (m Model) View() string {
 	content.WriteString("\n\n")
 	content.WriteString(titleStyle.Render("Oh no! Looks like there's a break in the chain!"))
 	content.WriteString("\n\n")
-	content.WriteString(messageStyle.Render("No .beads directory found in the current directory."))
+	content.WriteString(messageStyle.Render("Perles could not discover a supported beads runtime from this project."))
+	content.WriteString("\n\n")
+	if strings.TrimSpace(m.problem) != "" {
+		content.WriteString(messageStyle.Render("Detected issue: " + m.problem))
+		content.WriteString("\n\n")
+	}
+	content.WriteString(messageStyle.Render("Perles support policy: beads v1+ with backend=dolt and dolt_mode=server."))
 	content.WriteString("\n\n")
 	content.WriteString(messageStyle.Render("Try one of these options:"))
 	content.WriteString("\n\n")
-	content.WriteString(messageStyle.Render("  1. (Recommended) Run perles from a directory containing .beads/"))
+	content.WriteString(messageStyle.Render("  1. (Recommended) Run 'bd bootstrap' in this project"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  2. Use the --beads-dir flag: perles --beads-dir /path/to/project"))
+	content.WriteString(messageStyle.Render("  2. Ensure metadata.json has backend=dolt and dolt_mode=server"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  3. Run 'perles init' to create a local config file, then set beads_dir"))
+	content.WriteString(messageStyle.Render("  3. If the project is embedded/shared mode, switch it to server mode"))
 	content.WriteString("\n")
-	content.WriteString(messageStyle.Render("  4. Set beads_dir in your config file (~/.config/perles/config.yaml)"))
+	content.WriteString(messageStyle.Render("  4. Then retry Perles from this repository root"))
+	if strings.TrimSpace(m.suggestion) != "" {
+		content.WriteString("\n\n")
+		content.WriteString(messageStyle.Render("Suggested next step: " + m.suggestion))
+	}
 	content.WriteString("\n\n")
 	content.WriteString(hintStyle.Render("Press q to quit"))
 

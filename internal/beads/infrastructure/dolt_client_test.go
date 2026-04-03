@@ -21,6 +21,7 @@ import (
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	"github.com/hk9890/perles/internal/log"
 	"github.com/hk9890/perles/internal/pubsub"
+	"github.com/hk9890/perles/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -918,7 +919,7 @@ func TestDiagnosticContext_ReturnsClientSnapshot(t *testing.T) {
 	require.Equal(t, now, d.LastStateChange)
 	require.True(t, d.DelegatedStartAttempted)
 	require.Equal(t, "dolt-server.port", d.PortSource)
-	require.Equal(t, "Run 'bd init --force' to re-initialize the database connection", d.Suggestion)
+	require.Equal(t, "Run 'bd bootstrap' to repair project configuration and database wiring, then retry.", d.Suggestion)
 }
 
 func TestResolveConnectionDetailsWithSource_TracksPortSource(t *testing.T) {
@@ -952,11 +953,11 @@ func TestDiagnosticSuggestionGeneration(t *testing.T) {
 		err  error
 		want string
 	}{
-		{name: "server unreachable", err: errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"), want: "Run 'bd dolt start' to start the server, or check if the server process is running"},
-		{name: "project mismatch", err: errors.New("project identity mismatch for workspace"), want: "Run 'bd init --force' to re-initialize the database connection"},
-		{name: "circuit breaker", err: errors.New("circuit breaker open"), want: "Remove stale circuit breaker state and restart with 'bd dolt start --force'"},
-		{name: "port mismatch", err: errors.New("parsing dolt server port file \"x/dolt-server.port\": invalid syntax"), want: "Check dolt-server.port matches the running server; try 'bd dolt restart'"},
-		{name: "dolt panic", err: errors.New("panic: concurrent map writes"), want: "Restart the Dolt server and inspect upstream logs before retrying"},
+		{name: "server unreachable", err: errors.New("dial tcp 127.0.0.1:3306: connect: connection refused"), want: "Ensure this project is using beads v1 server mode and run 'bd bootstrap'; if the server is stopped, run 'bd dolt start'."},
+		{name: "project mismatch", err: errors.New("project identity mismatch for workspace"), want: "Run 'bd bootstrap' to repair project configuration and database wiring, then retry."},
+		{name: "circuit breaker", err: errors.New("circuit breaker open"), want: "Run 'bd bootstrap' to repair runtime state; if needed, restart the Dolt server and retry."},
+		{name: "port mismatch", err: errors.New("parsing dolt server port file \"x/dolt-server.port\": invalid syntax"), want: "Run 'bd bootstrap' to refresh server connection metadata, then retry Perles."},
+		{name: "dolt panic", err: errors.New("panic: concurrent map writes"), want: "Restart the Dolt server for this project, then run 'bd bootstrap' and retry."},
 	}
 
 	for _, tt := range tests {
@@ -994,7 +995,7 @@ func TestDiagnosticStateSnapshotAndEventPublishing(t *testing.T) {
 	require.Equal(t, appbeads.ConnectivityStateReconnecting, event.Payload.Diagnostics.LastState)
 	require.False(t, event.Payload.Diagnostics.LastStateChange.IsZero())
 	require.Equal(t, "config.yaml", event.Payload.Diagnostics.PortSource)
-	require.Equal(t, "Run 'bd dolt start' to start the server, or check if the server process is running", event.Payload.Diagnostics.Suggestion)
+	require.Equal(t, "Ensure this project is using beads v1 server mode and run 'bd bootstrap'; if the server is stopped, run 'bd dolt start'.", event.Payload.Diagnostics.Suggestion)
 
 	snapshot := client.DiagnosticContext()
 	require.Equal(t, snapshot, *event.Payload.Diagnostics)
@@ -1021,7 +1022,41 @@ func TestStartupErrorsIncludeSuggestion(t *testing.T) {
 
 	var startupErr *StartupError
 	require.True(t, errors.As(err, &startupErr))
-	require.Equal(t, "Run 'bd dolt start' to start the server, or check if the server process is running", startupErr.Suggestion)
+	require.Equal(t, "Ensure this project is using beads v1 server mode and run 'bd bootstrap'; if the server is stopped, run 'bd dolt start'.", startupErr.Suggestion)
+}
+
+func TestValidateBeadsV1Compatibility_SucceedsForBeadsV1Schema(t *testing.T) {
+	db := testutil.NewBeadsV1TestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	client := &DoltClient{db: db, details: ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"}}
+	require.NoError(t, client.ValidateBeadsV1Compatibility())
+}
+
+func TestValidateBeadsV1Compatibility_FailsOnStaleSchema(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	t.Cleanup(func() { _ = db.Close() })
+
+	client := &DoltClient{db: db, details: ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"}}
+	err := client.ValidateBeadsV1Compatibility()
+	require.Error(t, err)
+	require.True(t, IsCompatibilityError(err))
+	require.Contains(t, err.Error(), "missing required tables/views")
+	require.Contains(t, err.Error(), "custom_statuses")
+	require.Contains(t, err.Error(), "custom_types")
+	require.Contains(t, err.Error(), "config")
+	require.Contains(t, err.Error(), "metadata")
+}
+
+func TestResolveConnectionDetails_SharedServerModeClassifiedAsNoBeads(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"shared-server","dolt_database":"perlesv1spec"}`)
+
+	_, err := ResolveConnectionDetails(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsNoBeadsError(err))
+	require.Contains(t, err.Error(), `unsupported dolt mode "shared-server"`)
+	require.Contains(t, StartupSuggestion(err), "supports beads v1+ only in dolt_mode=server")
 }
 
 func TestRetryDoltClientConnection_ReResolvesConnectionDetailsOnEachRetry(t *testing.T) {
@@ -1203,7 +1238,7 @@ func TestLogStartupFailureIncludesActionableMissingDatabaseContext(t *testing.T)
 	require.Contains(t, content, "database=perles")
 	require.Contains(t, content, "mysql_error_code=1049")
 	require.Contains(t, content, "missing_database=true")
-	require.Contains(t, content, "suggestion=Run 'bd init --force' to re-initialize the database connection")
+	require.Contains(t, content, "suggestion=Run 'bd bootstrap' to repair project configuration and database wiring, then retry.")
 	require.Contains(t, content, "error=startup server_startup: Error 1049")
 }
 

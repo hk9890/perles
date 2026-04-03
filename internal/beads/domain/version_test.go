@@ -41,10 +41,10 @@ func TestCheckVersion(t *testing.T) {
 		wantErr bool
 	}{
 		{"exact match", MinBeadsVersion, false},
-		{"newer patch", "0.41.1", false},
-		{"newer minor", "0.42.0", false},
+		{"newer patch", "1.0.1", false},
+		{"newer minor", "1.1.0", false},
 		{"newer major", "1.0.0", false},
-		{"older patch", "0.40.9", true},
+		{"older patch", "0.99.9", true},
 		{"older minor", "0.40.0", true},
 		{"much older", "0.9.0", true},
 		{"with v prefix newer", "v1.0.0", false},

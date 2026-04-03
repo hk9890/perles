@@ -9,7 +9,7 @@ import (
 )
 
 func TestNoBeads_New(t *testing.T) {
-	m := New()
+	m := New("", "")
 
 	// Verify model is created with zero dimensions (not set yet)
 	require.Equal(t, 0, m.width, "expected width to be 0")
@@ -17,7 +17,7 @@ func TestNoBeads_New(t *testing.T) {
 }
 
 func TestNoBeads_Init(t *testing.T) {
-	m := New()
+	m := New("", "")
 
 	// Init should return nil (no initial command)
 	cmd := m.Init()
@@ -25,7 +25,7 @@ func TestNoBeads_Init(t *testing.T) {
 }
 
 func TestNoBeads_SetSize(t *testing.T) {
-	m := New()
+	m := New("", "")
 
 	// Set dimensions
 	m = m.SetSize(120, 40)
@@ -41,7 +41,7 @@ func TestNoBeads_SetSize(t *testing.T) {
 }
 
 func TestNoBeads_WindowSizeMsg(t *testing.T) {
-	m := New()
+	m := New("", "")
 
 	// Send WindowSizeMsg
 	msg := tea.WindowSizeMsg{Width: 80, Height: 24}
@@ -66,7 +66,7 @@ func TestNoBeads_QuitKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := New().SetSize(80, 24)
+			m := New("", "").SetSize(80, 24)
 			_, cmd := m.Update(tt.key)
 
 			// Should return tea.Quit command
@@ -81,7 +81,7 @@ func TestNoBeads_QuitKeys(t *testing.T) {
 }
 
 func TestNoBeads_OtherKeyMsg(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 
 	// Send a random key
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
@@ -104,7 +104,7 @@ func TestNoBeads_EmptyDimensions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := New().SetSize(tt.width, tt.height)
+			m := New("", "").SetSize(tt.width, tt.height)
 			view := m.View()
 
 			require.Equal(t, "", view, "expected empty string for zero dimensions")
@@ -113,28 +113,28 @@ func TestNoBeads_EmptyDimensions(t *testing.T) {
 }
 
 func TestNoBeads_View_ContainsTitle(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 	view := m.View()
 
 	require.Contains(t, view, "Looks like there's a break in the chain!", "expected view to contain title")
 }
 
 func TestNoBeads_View_ContainsBeadsText(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 	view := m.View()
 
-	require.Contains(t, view, ".beads", "expected view to contain .beads text")
+	require.Contains(t, view, "supported beads runtime", "expected view to contain runtime support text")
 }
 
 func TestNoBeads_View_ContainsHint(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 	view := m.View()
 
 	require.Contains(t, view, "Press q to quit", "expected view to contain quit hint")
 }
 
 func TestNoBeads_View_ContainsChainArt(t *testing.T) {
-	m := New().SetSize(120, 40)
+	m := New("", "").SetSize(120, 40)
 	view := m.View()
 
 	// Chain links use box-drawing characters
@@ -143,7 +143,7 @@ func TestNoBeads_View_ContainsChainArt(t *testing.T) {
 }
 
 func TestNoBeads_View_Stability(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 	view1 := m.View()
 	view2 := m.View()
 
@@ -169,12 +169,12 @@ func TestNoBeads_View_VariousSizes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := New().SetSize(tt.width, tt.height)
+			m := New("", "").SetSize(tt.width, tt.height)
 			view := m.View()
 
 			// All sizes should render the core content
 			require.Contains(t, view, "break in the chain", "expected title")
-			require.Contains(t, view, ".beads", "expected beads text")
+			require.Contains(t, view, "supported beads runtime", "expected beads text")
 			require.Contains(t, view, "Press q to quit", "expected quit hint")
 		})
 	}
@@ -183,7 +183,7 @@ func TestNoBeads_View_VariousSizes(t *testing.T) {
 // TestNoBeads_View_Golden_Standard uses teatest golden file comparison for 80x24
 // Run with -update flag to update golden files: go test -update ./internal/ui/nobeads/...
 func TestNoBeads_View_Golden_Standard(t *testing.T) {
-	m := New().SetSize(80, 24)
+	m := New("", "").SetSize(80, 24)
 	view := m.View()
 
 	// teatest's RequireEqualOutput compares against golden files in testdata/
@@ -192,7 +192,7 @@ func TestNoBeads_View_Golden_Standard(t *testing.T) {
 
 // TestNoBeads_View_Golden_Large uses teatest golden file comparison for 120x40
 func TestNoBeads_View_Golden_Large(t *testing.T) {
-	m := New().SetSize(120, 40)
+	m := New("", "").SetSize(120, 40)
 	view := m.View()
 
 	teatest.RequireEqualOutput(t, []byte(view))

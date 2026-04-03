@@ -1,6 +1,4 @@
                                                                                 
-                                                                                
-                                                                                
                                                         \│/                     
           ╔═══════╗   ╔═══════╗   ╔════╲   │   ╱════╗   ╔═══════╗   ╔═══════╗   
           ║       ╠═══╣       ╠═══╣     ╲  │  ╱     ╠═══╣       ╠═══╣       ║   
@@ -11,14 +9,16 @@
                                                                                 
                          Oh no! Looks like there's a break in the chain!        
                                                                                 
-  Your beads database version (0.29.0) is older than required version (0.41.0). 
+    Your beads database version (0.29.0) is older than required version (1.0.0).
                                                                                 
-    Upgrade your beads instance and run `bd migrate` to update your database    
-                                    version.                                    
+     Perles supports beads v1+ in Dolt server mode with a v1-compatible schema. 
+  Run `bd bootstrap` to repair/upgrade project runtime and schema, then retry   
+                                    Perles.                                     
+   If this project is in embedded/shared mode, switch to dolt_mode=server first.
+                                                                                
+                                                                                
                                                                                 
                                                                                 
                                                  Press q to quit                
-                                                                                
-                                                                                
                                                                                 
                                                                                 

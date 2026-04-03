@@ -156,3 +156,47 @@ func TestExtractMySQLErrorCode(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, uint16(0), code)
 }
+
+func TestIsMissingTableError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "mysql 1146", err: &mysql.MySQLError{Number: 1146, Message: "Table 'x.issues' doesn't exist"}, want: true},
+		{name: "unknown table text", err: errors.New("Error 1146: unknown table issues"), want: true},
+		{name: "sqlite no such table", err: errors.New("no such table: custom_statuses"), want: true},
+		{name: "wrapped", err: fmt.Errorf("query failed: %w", &mysql.MySQLError{Number: 1146, Message: "table doesn't exist"}), want: true},
+		{name: "different mysql code", err: &mysql.MySQLError{Number: 1054, Message: "unknown column"}, want: false},
+		{name: "unrelated", err: errors.New("connection refused"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsMissingTableError(tt.err))
+		})
+	}
+}
+
+func TestIsMissingColumnError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "mysql 1054", err: &mysql.MySQLError{Number: 1054, Message: "Unknown column 'foo' in 'field list'"}, want: true},
+		{name: "unknown column text", err: errors.New("Error 1054: unknown column foo"), want: true},
+		{name: "sqlite no such column", err: errors.New("no such column: defer_until"), want: true},
+		{name: "wrapped", err: fmt.Errorf("query failed: %w", &mysql.MySQLError{Number: 1054, Message: "unknown column"}), want: true},
+		{name: "different mysql code", err: &mysql.MySQLError{Number: 1146, Message: "table missing"}, want: false},
+		{name: "unrelated", err: errors.New("connection refused"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, IsMissingColumnError(tt.err))
+		})
+	}
+}

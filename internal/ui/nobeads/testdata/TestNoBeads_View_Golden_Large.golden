@@ -6,7 +6,6 @@
                                                                                                                         
                                                                                                                         
                                                                                                                         
-                                                                                                                        
                                                       \│/                                                               
                           ╔═══════╗   ╔═══════╗   ╔════╲   │   ╱════╗   ╔═══════╗   ╔═══════╗                           
                           ║       ╠═══╣       ╠═══╣     ╲  │  ╱     ╠═══╣       ╠═══╣       ║                           
@@ -17,19 +16,20 @@
                                                                                                                         
                                     Oh no! Looks like there's a break in the chain!                                     
                                                                                                                         
-                                  No .beads directory found in the current directory.                                   
+                         Perles could not discover a supported beads runtime from this project.                         
+                                                                                                                        
+                        Perles support policy: beads v1+ with backend=dolt and dolt_mode=server.                        
                                                                                                                         
                                                Try one of these options:                                                
                                                                                                                         
-                             1. (Recommended) Run perles from a directory containing .beads/                            
-                             2. Use the --beads-dir flag: perles --beads-dir /path/to/project                           
-                          3. Run 'perles init' to create a local config file, then set beads_dir                        
-                           4. Set beads_dir in your config file (~/.config/perles/config.yaml)                          
+                                   1. (Recommended) Run 'bd bootstrap' in this project                                  
+                              2. Ensure metadata.json has backend=dolt and dolt_mode=server                             
+                           3. If the project is embedded/shared mode, switch it to server mode                          
+                                      4. Then retry Perles from this repository root                                    
                                                                                                                         
                                                                                                                         
                                                                                                                         
                                                     Press q to quit                                                     
-                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

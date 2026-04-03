@@ -55,6 +55,7 @@ type startupBehavior int
 const (
 	startupBehaviorProceed startupBehavior = iota
 	startupBehaviorNoBeadsMode
+	startupBehaviorCompatibilityMode
 	startupBehaviorReturnError
 )
 
@@ -65,6 +66,9 @@ func classifyStartupBehavior(err error) startupBehavior {
 
 	if infrabeads.IsNoBeadsError(err) {
 		return startupBehaviorNoBeadsMode
+	}
+	if infrabeads.IsCompatibilityError(err) {
+		return startupBehaviorCompatibilityMode
 	}
 
 	return startupBehaviorReturnError
@@ -256,15 +260,25 @@ func runApp(cmd *cobra.Command, args []string) error {
 	client, err := createDoltClient(cfg.ResolvedBeadsDir)
 	if err != nil {
 		log.Error(log.CatBeads, "Creating Dolt client failed", "error", err, "beadsDir", cfg.ResolvedBeadsDir)
+		suggestion := infrabeads.StartupSuggestion(err)
 		switch classifyStartupBehavior(err) {
 		case startupBehaviorNoBeadsMode:
-			// Show friendly TUI empty state for genuine no-beads cases.
-			return runNoBeadsMode()
+			return runNoBeadsMode(err.Error(), suggestion)
+		case startupBehaviorCompatibilityMode:
+			return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), suggestion)
 		case startupBehaviorReturnError:
-			return fmt.Errorf("unable to connect to beads server; verify `bd dolt start` and retry: %w", err)
+			if suggestion != "" {
+				return fmt.Errorf("unable to connect to beads runtime: %s: %w", suggestion, err)
+			}
+			return fmt.Errorf("unable to connect to beads runtime; run 'bd bootstrap' and retry: %w", err)
 		default:
 			return fmt.Errorf("unexpected startup behavior for beads client error: %w", err)
 		}
+	}
+
+	if err := client.ValidateBeadsV1Compatibility(); err != nil {
+		log.Error(log.CatBeads, "Beads schema/layout compatibility check failed", "error", err)
+		return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), infrabeads.StartupSuggestion(err))
 	}
 
 	// Version check - query bd_version from database metadata table
@@ -272,12 +286,12 @@ func runApp(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Very old database without bd_version metadata - show outdated view
 		log.Error(log.CatBeads, "Version check failed", "error", err)
-		return runOutdatedMode("unknown", beads.MinBeadsVersion)
+		return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), infrabeads.StartupSuggestion(err))
 	}
 
 	log.Debug(log.CatBeads, "Beads Database Version", "version", currentVersion, "minRequiredVersion", beads.MinBeadsVersion)
 	if err := beads.CheckVersion(currentVersion); err != nil {
-		return runOutdatedMode(currentVersion, beads.MinBeadsVersion)
+		return runOutdatedMode(currentVersion, beads.MinBeadsVersion, err.Error(), "Upgrade beads to v1+ and run 'bd bootstrap', then retry Perles.")
 	}
 
 	// Handle --no-auto-refresh flag (negated logic)
@@ -460,8 +474,8 @@ func SetVersion(v string) {
 
 // runNoBeadsMode launches the TUI in "no database" mode, showing a friendly
 // empty state view when no .beads directory is found.
-func runNoBeadsMode() error {
-	model := nobeads.New()
+func runNoBeadsMode(problem, suggestion string) error {
+	model := nobeads.New(problem, suggestion)
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),
@@ -475,8 +489,8 @@ func runNoBeadsMode() error {
 }
 
 // runOutdatedMode launches the TUI showing the version upgrade screen.
-func runOutdatedMode(currentVersion, requiredVersion string) error {
-	model := outdated.New(currentVersion, requiredVersion)
+func runOutdatedMode(currentVersion, requiredVersion, problem, suggestion string) error {
+	model := outdated.New(currentVersion, requiredVersion, problem, suggestion)
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),

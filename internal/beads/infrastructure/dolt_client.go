@@ -85,6 +85,9 @@ const (
 	// StartupErrorKindServerStartup indicates server startup/connection failures
 	// (for example dial/open/ping failures, invalid port state, delegated startup failures).
 	StartupErrorKindServerStartup StartupErrorKind = "server_startup"
+	// StartupErrorKindCompatibility indicates a beads project that is discoverable
+	// but incompatible with Perles' supported beads runtime/schema contract.
+	StartupErrorKindCompatibility StartupErrorKind = "compatibility"
 )
 
 type StartupError struct {
@@ -124,10 +127,67 @@ func IsServerStartupError(err error) bool {
 	return startupErr.Kind == StartupErrorKindServerStartup
 }
 
+func IsCompatibilityError(err error) bool {
+	var startupErr *StartupError
+	if !errors.As(err, &startupErr) {
+		return false
+	}
+	return startupErr.Kind == StartupErrorKindCompatibility
+}
+
+func StartupSuggestion(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	var startupErr *StartupError
+	if errors.As(err, &startupErr) && startupErr.Suggestion != "" {
+		return startupErr.Suggestion
+	}
+
+	return suggestionForError(err)
+}
+
 type beadsMetadata struct {
 	Backend      string `json:"backend"`
 	DoltMode     string `json:"dolt_mode"`
 	DoltDatabase string `json:"dolt_database"`
+}
+
+var requiredBeadsV1Relations = []string{
+	"issues",
+	"dependencies",
+	"labels",
+	"comments",
+	"config",
+	"metadata",
+	"custom_statuses",
+	"custom_types",
+	"blocked_issues",
+	"ready_issues",
+}
+
+var requiredBeadsV1IssueColumns = []string{
+	"id",
+	"title",
+	"description",
+	"design",
+	"acceptance_criteria",
+	"notes",
+	"status",
+	"priority",
+	"issue_type",
+	"assignee",
+	"created_at",
+	"created_by",
+	"updated_at",
+	"closed_at",
+	"close_reason",
+	"ephemeral",
+	"pinned",
+	"is_template",
+	"defer_until",
+	"due_at",
 }
 
 type doltServerConfig struct {
@@ -555,6 +615,95 @@ func (c *DoltClient) Version() (string, error) {
 	return version, nil
 }
 
+func (c *DoltClient) ValidateBeadsV1Compatibility() error {
+	db := c.DB()
+	if db == nil {
+		return &StartupError{
+			Kind:       StartupErrorKindCompatibility,
+			Err:        errors.New("database connection unavailable"),
+			Details:    copyConnectionDetails(c.details),
+			Suggestion: "Run 'bd bootstrap' to repair your beads v1 project, then retry Perles.",
+		}
+	}
+
+	missingRelations := make([]string, 0)
+	for _, relation := range requiredBeadsV1Relations {
+		query := fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", relation)
+		if _, err := db.Exec(query); err != nil {
+			if appbeads.IsMissingTableError(err) {
+				missingRelations = append(missingRelations, relation)
+				continue
+			}
+
+			return &StartupError{
+				Kind:       StartupErrorKindCompatibility,
+				Err:        fmt.Errorf("checking required relation %q: %w", relation, err),
+				Details:    copyConnectionDetails(c.details),
+				Suggestion: "Run 'bd bootstrap' to repair your beads v1 project, then retry Perles.",
+			}
+		}
+	}
+
+	rows, err := db.Query("SELECT * FROM issues LIMIT 0")
+	if err != nil {
+		if appbeads.IsMissingTableError(err) {
+			missingRelations = append(missingRelations, "issues")
+		} else {
+			return &StartupError{
+				Kind:       StartupErrorKindCompatibility,
+				Err:        fmt.Errorf("checking required issues columns: %w", err),
+				Details:    copyConnectionDetails(c.details),
+				Suggestion: "Run 'bd bootstrap' to repair your beads v1 project, then retry Perles.",
+			}
+		}
+	}
+
+	missingColumns := make([]string, 0)
+	if rows != nil {
+		defer func() { _ = rows.Close() }()
+
+		available, colErr := rows.Columns()
+		if colErr != nil {
+			return &StartupError{
+				Kind:       StartupErrorKindCompatibility,
+				Err:        fmt.Errorf("reading issues column metadata: %w", colErr),
+				Details:    copyConnectionDetails(c.details),
+				Suggestion: "Run 'bd bootstrap' to repair your beads v1 project, then retry Perles.",
+			}
+		}
+
+		availableSet := make(map[string]struct{}, len(available))
+		for _, col := range available {
+			availableSet[strings.ToLower(col)] = struct{}{}
+		}
+
+		for _, requiredCol := range requiredBeadsV1IssueColumns {
+			if _, ok := availableSet[strings.ToLower(requiredCol)]; !ok {
+				missingColumns = append(missingColumns, requiredCol)
+			}
+		}
+	}
+
+	if len(missingRelations) == 0 && len(missingColumns) == 0 {
+		return nil
+	}
+
+	reasons := make([]string, 0, 2)
+	if len(missingRelations) > 0 {
+		reasons = append(reasons, fmt.Sprintf("missing required tables/views: %s", strings.Join(missingRelations, ", ")))
+	}
+	if len(missingColumns) > 0 {
+		reasons = append(reasons, fmt.Sprintf("missing required issues columns: %s", strings.Join(missingColumns, ", ")))
+	}
+
+	return &StartupError{
+		Kind:       StartupErrorKindCompatibility,
+		Err:        errors.New(strings.Join(reasons, "; ")),
+		Details:    copyConnectionDetails(c.details),
+		Suggestion: "Run 'bd bootstrap' to apply/repair the beads v1 schema, then retry Perles.",
+	}
+}
+
 func (c *DoltClient) GetComments(issueID string) ([]domain.Comment, error) {
 	query := `
 		SELECT id, author, text, created_at
@@ -780,19 +929,22 @@ func suggestionForError(err error) string {
 	}
 
 	if appbeads.IsProjectMismatchError(err) || appbeads.IsMissingDatabaseError(err) {
-		return "Run 'bd init --force' to re-initialize the database connection"
+		return "Run 'bd bootstrap' to repair project configuration and database wiring, then retry."
 	}
 	if appbeads.IsCircuitBreakerError(err) {
-		return "Remove stale circuit breaker state and restart with 'bd dolt start --force'"
+		return "Run 'bd bootstrap' to repair runtime state; if needed, restart the Dolt server and retry."
 	}
 	if appbeads.IsDoltPanicError(err) {
-		return "Restart the Dolt server and inspect upstream logs before retrying"
+		return "Restart the Dolt server for this project, then run 'bd bootstrap' and retry."
 	}
 	if strings.Contains(strings.ToLower(err.Error()), "dolt-server.port") {
-		return "Check dolt-server.port matches the running server; try 'bd dolt restart'"
+		return "Run 'bd bootstrap' to refresh server connection metadata, then retry Perles."
+	}
+	if appbeads.IsMissingTableError(err) || appbeads.IsMissingColumnError(err) || IsCompatibilityError(err) {
+		return "Run 'bd bootstrap' to apply/repair the beads v1 schema, then retry Perles."
 	}
 	if appbeads.IsRecoverableConnectivityError(err) || IsServerStartupError(err) {
-		return "Run 'bd dolt start' to start the server, or check if the server process is running"
+		return "Ensure this project is using beads v1 server mode and run 'bd bootstrap'; if the server is stopped, run 'bd dolt start'."
 	}
 
 	return ""
@@ -953,22 +1105,25 @@ func resolveConnectionDetailsWithSource(beadsDir string) (resolvedConnectionDeta
 	if metadata.Backend != "dolt" {
 		// no_beads: backend is not supported by this Dolt client.
 		return resolvedConnectionDetails{}, &StartupError{
-			Kind: StartupErrorKindNoBeads,
-			Err:  fmt.Errorf("unsupported beads backend %q; expected dolt", metadata.Backend),
+			Kind:       StartupErrorKindNoBeads,
+			Err:        fmt.Errorf("unsupported beads backend %q; expected dolt", metadata.Backend),
+			Suggestion: "Perles supports beads v1+ projects backed by Dolt. Run 'bd bootstrap' in a Dolt-backed beads project.",
 		}
 	}
 	if metadata.DoltMode != "server" {
 		// no_beads: project is not configured for Dolt server mode.
 		return resolvedConnectionDetails{}, &StartupError{
-			Kind: StartupErrorKindNoBeads,
-			Err:  fmt.Errorf("unsupported dolt mode %q; expected server", metadata.DoltMode),
+			Kind:       StartupErrorKindNoBeads,
+			Err:        fmt.Errorf("unsupported dolt mode %q; expected server", metadata.DoltMode),
+			Suggestion: fmt.Sprintf("Perles currently supports beads v1+ only in dolt_mode=server (detected %q). Reconfigure to server mode, then run 'bd bootstrap'.", metadata.DoltMode),
 		}
 	}
 	if strings.TrimSpace(metadata.DoltDatabase) == "" {
 		// no_beads: metadata is missing required connection fields.
 		return resolvedConnectionDetails{}, &StartupError{
-			Kind: StartupErrorKindNoBeads,
-			Err:  errors.New("missing dolt_database in beads metadata"),
+			Kind:       StartupErrorKindNoBeads,
+			Err:        errors.New("missing dolt_database in beads metadata"),
+			Suggestion: "Run 'bd bootstrap' to regenerate missing beads metadata for this project.",
 		}
 	}
 

@@ -109,6 +109,16 @@ func TestClassifyStartupBehavior(t *testing.T) {
 		require.Equal(t, startupBehaviorReturnError, behavior)
 	})
 
+	t.Run("compatibility error shows compatibility mode", func(t *testing.T) {
+		err := &infrabeads.StartupError{
+			Kind: infrabeads.StartupErrorKindCompatibility,
+			Err:  fmt.Errorf("missing required tables/views: custom_statuses"),
+		}
+
+		behavior := classifyStartupBehavior(err)
+		require.Equal(t, startupBehaviorCompatibilityMode, behavior)
+	})
+
 	t.Run("non startup errors return actionable error", func(t *testing.T) {
 		behavior := classifyStartupBehavior(fmt.Errorf("unexpected failure"))
 		require.Equal(t, startupBehaviorReturnError, behavior)

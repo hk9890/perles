@@ -17,13 +17,17 @@ type Model struct {
 	height          int
 	currentVersion  string
 	requiredVersion string
+	problem         string
+	suggestion      string
 }
 
 // New creates a new outdated view with version information.
-func New(currentVersion, requiredVersion string) Model {
+func New(currentVersion, requiredVersion, problem, suggestion string) Model {
 	return Model{
 		currentVersion:  currentVersion,
 		requiredVersion: requiredVersion,
+		problem:         problem,
+		suggestion:      suggestion,
 	}
 }
 
@@ -87,7 +91,21 @@ func (m Model) View() string {
 		"",
 		versionMsg,
 		"",
-		messageStyle.Render("Upgrade your beads instance and run `bd migrate` to update your database version."),
+		messageStyle.Render("Perles supports beads v1+ in Dolt server mode with a v1-compatible schema."),
+		messageStyle.Render("Run `bd bootstrap` to repair/upgrade project runtime and schema, then retry Perles."),
+		messageStyle.Render("If this project is in embedded/shared mode, switch to dolt_mode=server first."),
+		func() string {
+			if m.problem == "" {
+				return ""
+			}
+			return messageStyle.Render("Detected compatibility issue: " + m.problem)
+		}(),
+		func() string {
+			if m.suggestion == "" {
+				return ""
+			}
+			return messageStyle.Render("Suggested fix: " + m.suggestion)
+		}(),
 		"\n",
 		hintStyle.Render("Press q to quit"),
 	)

@@ -101,6 +101,41 @@ func IsMissingDatabaseError(err error) bool {
 	)
 }
 
+// IsMissingTableError returns true when SQL execution fails because a required
+// table/view is missing from the current schema.
+func IsMissingTableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if code, ok := ExtractMySQLErrorCode(err); ok && code == 1146 {
+		return true
+	}
+
+	return hasErrorSubstring(err,
+		"table doesn't exist",
+		"unknown table",
+		"no such table",
+	)
+}
+
+// IsMissingColumnError returns true when SQL execution fails because a required
+// column is missing from an expected table.
+func IsMissingColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if code, ok := ExtractMySQLErrorCode(err); ok && code == 1054 {
+		return true
+	}
+
+	return hasErrorSubstring(err,
+		"unknown column",
+		"no such column",
+	)
+}
+
 // ExtractMySQLErrorCode returns the wrapped MySQL error code, when present.
 func ExtractMySQLErrorCode(err error) (uint16, bool) {
 	if err == nil {
