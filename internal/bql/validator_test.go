@@ -13,6 +13,11 @@ func TestValidate_ValidQueries(t *testing.T) {
 		"type = task",
 		"type = epic",
 		"type = chore",
+		"type = decision",
+		"type = spike",
+		"type = story",
+		"type = milestone",
+		"type = convoy",
 		"priority = P0",
 		"priority < P2",
 		"priority >= P1",
@@ -23,6 +28,8 @@ func TestValidate_ValidQueries(t *testing.T) {
 		"status = open",
 		"status = in_progress",
 		"status = closed",
+		"status_category = wip",
+		"status_category in (active, frozen)",
 		"status = pinned",
 		"status = hooked",
 		"status = waiting_review",
@@ -119,9 +126,9 @@ func TestValidate_InvalidValue(t *testing.T) {
 		name  string
 		query string
 	}{
-		{"invalid type value", "type = invalid"},
 		{"status must be string (bool)", "status = true"},
 		{"status must be string (int)", "status = 1"},
+		{"status category invalid", "status_category = unknown"},
 		{"boolean field with string", "blocked = yes"},
 		{"priority field with string", "priority = high"},
 		{"priority integer too high", "priority = 5"},
@@ -150,7 +157,6 @@ func TestValidate_InvalidIn(t *testing.T) {
 	}{
 		{"in with boolean field", "blocked in (true, false)"},
 		{"in with date field", "created in (today, yesterday)"},
-		{"in with invalid type values", "type in (invalid, unknown)"},
 	}
 
 	for _, tc := range tests {

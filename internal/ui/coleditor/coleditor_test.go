@@ -1019,3 +1019,11 @@ func TestTreeModeSelector_SaveIncludesTreeMode(t *testing.T) {
 	require.True(t, ok, "Expected SaveMsg but got %T", msg)
 	require.Equal(t, "child", saveMsg.Config.TreeMode)
 }
+
+func TestIsDefaultNotReadyColumn(t *testing.T) {
+	require.True(t, isDefaultNotReadyColumn(config.ColumnConfig{Name: "Not Ready", Query: "status = open"}))
+	require.True(t, isDefaultNotReadyColumn(config.ColumnConfig{Name: "Blocked", Query: "status = open"}))
+	require.True(t, isDefaultNotReadyColumn(config.ColumnConfig{Name: "Whatever", Query: "blocked = true"}))
+	require.True(t, isDefaultNotReadyColumn(config.ColumnConfig{Name: "Not Ready", Query: "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"}))
+	require.False(t, isDefaultNotReadyColumn(config.ColumnConfig{Name: "Ready", Query: "ready = true"}))
+}

@@ -5,6 +5,14 @@ import (
 	"strings"
 )
 
+const unresolvedBlockerExpr = `(blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))`
+
 // SQLBuilder converts a BQL AST to SQL.
 type SQLBuilder struct {
 	query  *Query
@@ -59,7 +67,9 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 	// Handle special fields
 	switch e.Field {
 	case "blocked":
-		// blocked = true means issue has an active blocker.
+		// blocked = true means issue has an unresolved blocker dependency.
+		// Unresolved blockers are active/wip work (built-ins + categorized custom
+		// statuses). Done/frozen blockers are treated as resolved.
 		// Use direct dependency predicates instead of blocked_issues view to avoid
 		// Dolt field-index errors when selecting through wide i.* views.
 		blockedExpr := `EXISTS (
@@ -71,7 +81,7 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 				SELECT 1
 				FROM issues blocker
 				WHERE blocker.id = d.depends_on_id
-				  AND blocker.status NOT IN ('closed', 'pinned')
+				  AND ` + unresolvedBlockerExpr + `
 			  )
 		)`
 		if e.Value.Bool {
@@ -80,9 +90,41 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 		return "NOT " + blockedExpr
 
 	case "ready":
-		// ready = true means issue is active and has no active blockers.
+		// ready = true tracks beads v1 ready semantics:
+		//   - status is open OR a custom status in category=active
+		//   - not ephemeral
+		//   - not deferred by defer_until
+		//   - not explicitly deferred status
+		//   - parent is not deferred/frozen
+		//   - no unresolved blockers (active/wip blockers)
 		// Keep this independent of ready_issues view to avoid Dolt view-scan bugs.
-		readyExpr := `((i.status = 'open' OR i.status = 'in_progress')
+		readyExpr := `((i.status = 'open'
+			OR EXISTS (
+				SELECT 1
+				FROM custom_statuses issue_status
+				WHERE issue_status.name = i.status
+				  AND issue_status.category = 'active'
+			))
+			AND COALESCE(i.ephemeral, 0) = 0
+			AND (i.defer_until IS NULL OR i.defer_until <= CURRENT_TIMESTAMP)
+			AND i.status != 'deferred'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM dependencies pd
+				JOIN issues parent ON parent.id = pd.depends_on_id
+				WHERE pd.issue_id = i.id
+				  AND pd.type = 'parent-child'
+				  AND (
+					parent.status IN ('deferred', 'pinned')
+					OR EXISTS (
+						SELECT 1
+						FROM custom_statuses parent_status
+						WHERE parent_status.name = parent.status
+						  AND parent_status.category = 'frozen'
+					)
+					OR (parent.defer_until IS NOT NULL AND parent.defer_until > CURRENT_TIMESTAMP)
+				  )
+			)
 			AND NOT EXISTS (
 				SELECT 1
 				FROM dependencies d
@@ -92,7 +134,7 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 					SELECT 1
 					FROM issues blocker
 					WHERE blocker.id = d.depends_on_id
-					  AND blocker.status NOT IN ('closed', 'pinned')
+					  AND ` + unresolvedBlockerExpr + `
 				  )
 			)
 		)`
@@ -128,6 +170,12 @@ func (b *SQLBuilder) buildCompare(e *CompareExpr) string {
 			b.params = append(b.params, e.Value.String)
 			return "i.id IN (SELECT issue_id FROM labels WHERE label = ?)"
 		}
+	}
+
+	if e.Field == "status_category" {
+		categoryExpr := b.statusCategoryExpr()
+		b.params = append(b.params, e.Value.String)
+		return fmt.Sprintf("%s %s ?", categoryExpr, b.opToSQL(e.Op))
 	}
 
 	// Map BQL fields to SQL columns
@@ -192,6 +240,19 @@ func (b *SQLBuilder) buildIn(e *InExpr) string {
 		return subquery
 	}
 
+	if e.Field == "status_category" {
+		placeholders := make([]string, len(e.Values))
+		for i, v := range e.Values {
+			placeholders[i] = "?"
+			b.params = append(b.params, v.String)
+		}
+		op := "IN"
+		if e.Not {
+			op = "NOT IN"
+		}
+		return fmt.Sprintf("%s %s (%s)", b.statusCategoryExpr(), op, strings.Join(placeholders, ", "))
+	}
+
 	column := b.fieldToColumn(e.Field)
 	placeholders := make([]string, len(e.Values))
 
@@ -210,6 +271,24 @@ func (b *SQLBuilder) buildIn(e *InExpr) string {
 	}
 
 	return fmt.Sprintf("%s %s (%s)", column, op, strings.Join(placeholders, ", "))
+}
+
+func (b *SQLBuilder) statusCategoryExpr() string {
+	return `COALESCE((CASE
+		WHEN i.status = 'open' THEN 'active'
+		WHEN i.status = 'in_progress' THEN 'wip'
+		WHEN i.status = 'blocked' THEN 'wip'
+		WHEN i.status = 'hooked' THEN 'wip'
+		WHEN i.status = 'deferred' THEN 'frozen'
+		WHEN i.status = 'pinned' THEN 'frozen'
+		WHEN i.status = 'closed' THEN 'done'
+		ELSE NULL
+	END), (
+		SELECT cs.category
+		FROM custom_statuses cs
+		WHERE cs.name = i.status
+		LIMIT 1
+	), '')`
 }
 
 // fieldToColumn maps BQL field names to SQL column names.

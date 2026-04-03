@@ -70,6 +70,15 @@ CREATE TABLE comments (
 	FOREIGN KEY (issue_id) REFERENCES issues(id)
 );
 
+CREATE TABLE custom_statuses (
+	name TEXT PRIMARY KEY,
+	category TEXT NOT NULL
+);
+
+CREATE TABLE custom_types (
+	name TEXT PRIMARY KEY
+);
+
 CREATE TABLE blocked_issues (
 	id TEXT PRIMARY KEY,
 	blocked_by_count INTEGER NOT NULL DEFAULT 1

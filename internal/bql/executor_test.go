@@ -8,6 +8,7 @@ import (
 
 	appbeads "github.com/hk9890/perles/internal/beads/application"
 	beads "github.com/hk9890/perles/internal/beads/domain"
+	"github.com/hk9890/perles/internal/config"
 	"github.com/hk9890/perles/internal/mocks"
 	"github.com/hk9890/perles/internal/testutil"
 
@@ -204,19 +205,176 @@ func TestExecutor_BeadsV1_ReadyViewFixtureSemantics(t *testing.T) {
 	require.ElementsMatch(t, []string{"v1-blocker", "v1-convoy", "v1-custom-active", "v1-open-ready"}, ids)
 }
 
+func TestExecutor_BeadsV1_ReadyFilterSemantics(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("ready = true")
+	require.NoError(t, err)
+
+	ids := make(map[string]bool, len(issues))
+	for _, issue := range issues {
+		ids[issue.ID] = true
+	}
+
+	// Included: open/custom-active work that is actionable.
+	require.True(t, ids["v1-open-ready"])
+	require.True(t, ids["v1-custom-active"])
+	require.True(t, ids["v1-blocker"])
+
+	// Excluded intentionally by v1 readiness semantics.
+	require.False(t, ids["v1-in-progress"], "wip built-ins are not ready")
+	require.False(t, ids["v1-hooked"], "hooked (wip) is not ready")
+	require.False(t, ids["v1-custom-wip"], "custom wip is not ready")
+	require.False(t, ids["v1-custom-done"], "done is not ready")
+	require.False(t, ids["v1-custom-frozen"], "frozen is not ready")
+	require.False(t, ids["v1-pinned"], "pinned/frozen is not ready")
+	require.False(t, ids["v1-deferred-open"], "defer_until in future suppresses ready")
+	require.False(t, ids["v1-ephemeral-open"], "ephemeral issues are not ready")
+	require.False(t, ids["v1-blocked-open"], "dependency-blocked issues are not ready")
+}
+
+func TestExecutor_BeadsV1_BlockedFilterSemantics(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("blocked = true")
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "v1-blocked-open", issues[0].ID)
+
+	_, err = db.Exec(`UPDATE issues SET status = 'accepted' WHERE id = 'v1-blocker'`)
+	require.NoError(t, err)
+
+	issues, err = executor.Execute("blocked = true")
+	require.NoError(t, err)
+	require.Empty(t, issues, "custom done blockers should resolve blocked=true")
+}
+
+func TestExecutor_BeadsV1_StatusCategoryFilter(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	testutil.NewBuilder(t, db).
+		WithIssue("v1-builtin-blocked", testutil.Title("Built-in blocked"), testutil.Status("blocked")).
+		WithIssue("v1-builtin-deferred", testutil.Title("Built-in deferred"), testutil.Status("deferred")).
+		WithIssue("v1-builtin-closed", testutil.Title("Built-in closed"), testutil.Status("closed")).
+		Build()
+
+	executor := newTestExecutor(t, db)
+
+	wip, err := executor.Execute("status_category = wip")
+	require.NoError(t, err)
+	wipIDs := collectIDs(wip)
+	require.True(t, wipIDs["v1-in-progress"])
+	require.True(t, wipIDs["v1-hooked"])
+	require.True(t, wipIDs["v1-builtin-blocked"])
+	require.True(t, wipIDs["v1-custom-wip"])
+
+	done, err := executor.Execute("status_category = done")
+	require.NoError(t, err)
+	doneIDs := collectIDs(done)
+	require.True(t, doneIDs["v1-builtin-closed"])
+	require.True(t, doneIDs["v1-custom-done"])
+
+	frozen, err := executor.Execute("status_category = frozen")
+	require.NoError(t, err)
+	frozenIDs := collectIDs(frozen)
+	require.True(t, frozenIDs["v1-builtin-deferred"])
+	require.True(t, frozenIDs["v1-pinned"])
+	require.True(t, frozenIDs["v1-custom-frozen"])
+}
+
+func TestExecutor_BeadsV1_DefaultBoardLaneCoverage(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	testutil.NewBuilder(t, db).
+		WithIssue("lane-blocked", testutil.Title("Lane blocked"), testutil.Status("blocked")).
+		WithIssue("lane-deferred", testutil.Title("Lane deferred"), testutil.Status("deferred")).
+		WithIssue("lane-closed", testutil.Title("Lane closed"), testutil.Status("closed")).
+		Build()
+
+	executor := newTestExecutor(t, db)
+	lanes := config.DefaultColumns()
+
+	membership := map[string][]string{}
+	for _, lane := range lanes {
+		issues, err := executor.Execute(lane.Query)
+		require.NoError(t, err, lane.Name)
+		for _, issue := range issues {
+			membership[issue.ID] = append(membership[issue.ID], lane.Name)
+		}
+	}
+
+	expected := map[string]string{
+		"v1-open-ready":     "Ready",
+		"v1-in-progress":    "In Progress",
+		"v1-hooked":         "In Progress",
+		"lane-blocked":      "Not Ready",
+		"lane-deferred":     "Not Ready",
+		"v1-pinned":         "Not Ready",
+		"lane-closed":       "Done",
+		"v1-custom-active":  "Ready",
+		"v1-custom-wip":     "In Progress",
+		"v1-custom-done":    "Done",
+		"v1-custom-frozen":  "Not Ready",
+		"v1-deferred-open":  "Not Ready",
+		"v1-blocked-open":   "Not Ready",
+		"v1-ephemeral-open": "Not Ready",
+	}
+
+	for issueID, expectedLane := range expected {
+		lanesForIssue := membership[issueID]
+		require.Len(t, lanesForIssue, 1, "issue %s should appear in exactly one default lane", issueID)
+		require.Equal(t, expectedLane, lanesForIssue[0], "issue %s lane mismatch", issueID)
+	}
+}
+
+func TestExecutor_BeadsV1_ReadyHonorsDeferredParent(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	testutil.NewBuilder(t, db).
+		WithIssue("v1-parent-deferred", testutil.Title("Deferred parent"), testutil.Status("deferred")).
+		WithIssue("v1-child-open", testutil.Title("Open child"), testutil.Status("open")).
+		WithDependency("v1-child-open", "v1-parent-deferred", "parent-child").
+		Build()
+
+	executor := newTestExecutor(t, db)
+
+	ready, err := executor.Execute("ready = true")
+	require.NoError(t, err)
+
+	for _, issue := range ready {
+		require.NotEqual(t, "v1-child-open", issue.ID, "child of deferred parent must not be ready")
+	}
+}
+
 func TestExecutor_BeadsV1_TypeFilterContractCoverage(t *testing.T) {
 	db := setupBeadsV1DB(t)
 	defer func() { _ = db.Close() }()
 
 	executor := newTestExecutor(t, db)
 
-	issues, err := executor.Execute("type = task")
-	require.NoError(t, err)
-	require.NotEmpty(t, issues)
-
-	_, err = executor.Execute("type = story")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid value \"story\" for field \"type\"")
+	for _, q := range []string{
+		"type = task",
+		"type = decision",
+		"type = spike",
+		"type = story",
+		"type = milestone",
+		"type = convoy",
+	} {
+		issues, err := executor.Execute(q)
+		require.NoError(t, err, q)
+		if q == "type = story" || q == "type = convoy" {
+			require.NotEmpty(t, issues, q)
+		}
+	}
 }
 
 func TestExecutor_StatusFilter(t *testing.T) {

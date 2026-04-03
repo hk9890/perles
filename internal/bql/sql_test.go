@@ -33,6 +33,26 @@ func TestSQLBuilder_SimpleComparison(t *testing.T) {
 			wantParams: []interface{}{"closed"},
 		},
 		{
+			name:  "status category equals",
+			input: "status_category = frozen",
+			wantWhere: `COALESCE((CASE
+		WHEN i.status = 'open' THEN 'active'
+		WHEN i.status = 'in_progress' THEN 'wip'
+		WHEN i.status = 'blocked' THEN 'wip'
+		WHEN i.status = 'hooked' THEN 'wip'
+		WHEN i.status = 'deferred' THEN 'frozen'
+		WHEN i.status = 'pinned' THEN 'frozen'
+		WHEN i.status = 'closed' THEN 'done'
+		ELSE NULL
+	END), (
+		SELECT cs.category
+		FROM custom_statuses cs
+		WHERE cs.name = i.status
+		LIMIT 1
+	), '') = ?`,
+			wantParams: []interface{}{"frozen"},
+		},
+		{
 			name:       "less than priority",
 			input:      "priority < P2",
 			wantWhere:  "i.priority < ?",
@@ -92,7 +112,13 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 				SELECT 1
 				FROM issues blocker
 				WHERE blocker.id = d.depends_on_id
-				  AND blocker.status NOT IN ('closed', 'pinned')
+				  AND (blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))
 			  )
 		)`, where)
 		require.Empty(t, params)
@@ -115,7 +141,13 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 				SELECT 1
 				FROM issues blocker
 				WHERE blocker.id = d.depends_on_id
-				  AND blocker.status NOT IN ('closed', 'pinned')
+				  AND (blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))
 			  )
 		)`, where)
 	})
@@ -128,7 +160,33 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 		builder := NewSQLBuilder(query)
 		where, _, _ := builder.Build()
 
-		require.Equal(t, `((i.status = 'open' OR i.status = 'in_progress')
+		require.Equal(t, `((i.status = 'open'
+			OR EXISTS (
+				SELECT 1
+				FROM custom_statuses issue_status
+				WHERE issue_status.name = i.status
+				  AND issue_status.category = 'active'
+			))
+			AND COALESCE(i.ephemeral, 0) = 0
+			AND (i.defer_until IS NULL OR i.defer_until <= CURRENT_TIMESTAMP)
+			AND i.status != 'deferred'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM dependencies pd
+				JOIN issues parent ON parent.id = pd.depends_on_id
+				WHERE pd.issue_id = i.id
+				  AND pd.type = 'parent-child'
+				  AND (
+					parent.status IN ('deferred', 'pinned')
+					OR EXISTS (
+						SELECT 1
+						FROM custom_statuses parent_status
+						WHERE parent_status.name = parent.status
+						  AND parent_status.category = 'frozen'
+					)
+					OR (parent.defer_until IS NOT NULL AND parent.defer_until > CURRENT_TIMESTAMP)
+				  )
+			)
 			AND NOT EXISTS (
 				SELECT 1
 				FROM dependencies d
@@ -138,7 +196,13 @@ func TestSQLBuilder_SpecialFields(t *testing.T) {
 					SELECT 1
 					FROM issues blocker
 					WHERE blocker.id = d.depends_on_id
-					  AND blocker.status NOT IN ('closed', 'pinned')
+					  AND (blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))
 				  )
 			)
 		)`, where)
@@ -325,6 +389,32 @@ func TestSQLBuilder_InExpression(t *testing.T) {
 		require.Equal(t, "i.id IN (SELECT issue_id FROM labels WHERE label IN (?, ?))", where)
 		require.Equal(t, []interface{}{"urgent", "critical"}, params)
 	})
+
+	t.Run("status_category in list", func(t *testing.T) {
+		parser := NewParser("status_category in (wip, frozen)")
+		query, err := parser.Parse()
+		require.NoError(t, err)
+
+		builder := NewSQLBuilder(query)
+		where, _, params := builder.Build()
+
+		require.Equal(t, `COALESCE((CASE
+		WHEN i.status = 'open' THEN 'active'
+		WHEN i.status = 'in_progress' THEN 'wip'
+		WHEN i.status = 'blocked' THEN 'wip'
+		WHEN i.status = 'hooked' THEN 'wip'
+		WHEN i.status = 'deferred' THEN 'frozen'
+		WHEN i.status = 'pinned' THEN 'frozen'
+		WHEN i.status = 'closed' THEN 'done'
+		ELSE NULL
+	END), (
+		SELECT cs.category
+		FROM custom_statuses cs
+		WHERE cs.name = i.status
+		LIMIT 1
+	), '') IN (?, ?)`, where)
+		require.Equal(t, []interface{}{"wip", "frozen"}, params)
+	})
 }
 
 func TestSQLBuilder_BinaryExpressions(t *testing.T) {
@@ -383,7 +473,13 @@ func TestSQLBuilder_NotExpression(t *testing.T) {
 				SELECT 1
 				FROM issues blocker
 				WHERE blocker.id = d.depends_on_id
-				  AND blocker.status NOT IN ('closed', 'pinned')
+				  AND (blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))
 			  )
 		))`, where)
 }
@@ -484,7 +580,13 @@ func TestSQLBuilder_ComplexQuery(t *testing.T) {
 				SELECT 1
 				FROM issues blocker
 				WHERE blocker.id = d.depends_on_id
-				  AND blocker.status NOT IN ('closed', 'pinned')
+				  AND (blocker.status IN ('open', 'in_progress', 'blocked', 'hooked')
+					  OR EXISTS (
+						SELECT 1
+						FROM custom_statuses blocker_status
+						WHERE blocker_status.name = blocker.status
+						  AND blocker_status.category IN ('active', 'wip')
+					  ))
 			  )
 		))`, where)
 	require.Equal(t, "i.priority ASC, i.created_at DESC", orderBy)

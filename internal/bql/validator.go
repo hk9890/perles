@@ -7,31 +7,32 @@ import (
 
 // ValidFields defines the set of valid field names in BQL.
 var ValidFields = map[string]FieldType{
-	"type":          FieldEnum,
-	"priority":      FieldPriority,
-	"status":        FieldEnum,
-	"blocked":       FieldBool,
-	"ready":         FieldBool,
-	"pinned":        FieldBool,
-	"is_template":   FieldBool,
-	"label":         FieldString,
-	"title":         FieldString,
-	"id":            FieldString,
-	"assignee":      FieldString,
-	"sender":        FieldString,
-	"description":   FieldString,
-	"design":        FieldString,
-	"notes":         FieldString,
-	"created_by":    FieldString,
-	"hook_bead":     FieldString,
-	"role_bead":     FieldString,
-	"agent_state":   FieldString,
-	"last_activity": FieldDate,
-	"role_type":     FieldString,
-	"rig":           FieldString,
-	"mol_type":      FieldString,
-	"created":       FieldDate,
-	"updated":       FieldDate,
+	"type":            FieldEnum,
+	"status_category": FieldEnum,
+	"priority":        FieldPriority,
+	"status":          FieldEnum,
+	"blocked":         FieldBool,
+	"ready":           FieldBool,
+	"pinned":          FieldBool,
+	"is_template":     FieldBool,
+	"label":           FieldString,
+	"title":           FieldString,
+	"id":              FieldString,
+	"assignee":        FieldString,
+	"sender":          FieldString,
+	"description":     FieldString,
+	"design":          FieldString,
+	"notes":           FieldString,
+	"created_by":      FieldString,
+	"hook_bead":       FieldString,
+	"role_bead":       FieldString,
+	"agent_state":     FieldString,
+	"last_activity":   FieldDate,
+	"role_type":       FieldString,
+	"rig":             FieldString,
+	"mol_type":        FieldString,
+	"created":         FieldDate,
+	"updated":         FieldDate,
 }
 
 // FieldType categorizes fields for validation.
@@ -45,13 +46,20 @@ const (
 	FieldDate
 )
 
-// ValidTypeValues are the valid values for the type field.
-var ValidTypeValues = map[string]bool{
-	"bug":     true,
-	"feature": true,
-	"task":    true,
-	"epic":    true,
-	"chore":   true,
+// KnownTypeValues are built-in type values in beads v1.
+//
+// Validation intentionally allows custom type strings for compatibility with
+// project-specific custom_types.
+var KnownTypeValues = map[string]bool{
+	"bug":       true,
+	"feature":   true,
+	"task":      true,
+	"epic":      true,
+	"chore":     true,
+	"decision":  true,
+	"spike":     true,
+	"story":     true,
+	"milestone": true,
 }
 
 // KnownStatusValues are built-in status values used by current beads versions.
@@ -67,6 +75,14 @@ var KnownStatusValues = map[string]bool{
 	"deferred":    true,
 	"pinned":      true,
 	"hooked":      true,
+}
+
+// KnownStatusCategoryValues are the canonical status categories in beads v1.
+var KnownStatusCategoryValues = map[string]bool{
+	"active": true,
+	"wip":    true,
+	"done":   true,
+	"frozen": true,
 }
 
 // ValidPriorityValues are the valid values for the priority field.
@@ -222,8 +238,17 @@ func validateValue(field string, fieldType FieldType, value Value) error {
 		// Validate enum values
 		switch field {
 		case "type":
-			if !ValidTypeValues[value.String] {
-				return fmt.Errorf("invalid value %q for field %q (valid: bug, feature, task, epic, chore)", value.String, field)
+			if value.Type != ValueString {
+				return fmt.Errorf("field %q requires a type string value (known built-ins: %s), got %q", field, knownTypeNames(), value.Raw)
+			}
+			// Intentionally accept any string type for compatibility with custom
+			// types from project custom_types configuration.
+		case "status_category":
+			if value.Type != ValueString {
+				return fmt.Errorf("field %q requires a status category string value (valid: %s), got %q", field, knownStatusCategoryNames(), value.Raw)
+			}
+			if !KnownStatusCategoryValues[value.String] {
+				return fmt.Errorf("invalid value %q for field %q (valid: %s)", value.String, field, knownStatusCategoryNames())
 			}
 		case "status":
 			if value.Type != ValueString {
@@ -240,10 +265,27 @@ func validateValue(field string, fieldType FieldType, value Value) error {
 	return nil
 }
 
+// knownTypeNames returns a comma-separated list of known built-in type names.
+func knownTypeNames() string {
+	names := make([]string, 0, len(KnownTypeValues))
+	for name := range KnownTypeValues {
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
 // knownStatusNames returns a comma-separated list of known built-in status names.
 func knownStatusNames() string {
 	names := make([]string, 0, len(KnownStatusValues))
 	for name := range KnownStatusValues {
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func knownStatusCategoryNames() string {
+	names := make([]string, 0, len(KnownStatusCategoryValues))
+	for name := range KnownStatusCategoryValues {
 		names = append(names, name)
 	}
 	return strings.Join(names, ", ")

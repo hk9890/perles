@@ -219,9 +219,9 @@ func TestNew_UsesNotReadyAndReadySemanticsInDefaultColumns(t *testing.T) {
 
 	m := New(services)
 
-	require.Equal(t, "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", m.board.Column(0).Query())
-	require.Equal(t, "status = open and ready = true and label not in (needs:discussion, has:open-questions)", m.board.Column(1).Query())
-	require.Equal(t, "status = in_progress", m.board.Column(2).Query())
+	require.Equal(t, "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", m.board.Column(0).Query())
+	require.Equal(t, "ready = true and label not in (needs:discussion, has:open-questions)", m.board.Column(1).Query())
+	require.Equal(t, "(status in (in_progress, hooked) or status_category = wip) and status != blocked", m.board.Column(2).Query())
 }
 
 func TestKanban_EnterKey_NoIssue_NoCommand(t *testing.T) {

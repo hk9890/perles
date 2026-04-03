@@ -478,25 +478,25 @@ func DefaultColumns() []ColumnConfig {
 	return []ColumnConfig{
 		{
 			Name: "Not Ready",
-			// Keep `not ready = true` guarded by `status = open`; without that guard,
-			// deferred/closed issues can also satisfy `not ready`, which breaks the
-			// Not Ready column's intent as actionable-open work that still needs input.
-			Query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))",
+			// beads v1 built-ins classified intentionally:
+			// - blocked/deferred/pinned are explicitly non-ready workflow states
+			// - open issues still route here when not ready or discussion-blocked
+			Query: "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))",
 			Color: "#FF8787",
 		},
 		{
 			Name:  "Ready",
-			Query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)",
+			Query: "ready = true and label not in (needs:discussion, has:open-questions)",
 			Color: "#73F59F",
 		},
 		{
 			Name:  "In Progress",
-			Query: "status = in_progress",
+			Query: "(status in (in_progress, hooked) or status_category = wip) and status != blocked",
 			Color: "#54A0FF",
 		},
 		{
 			Name:  "Done",
-			Query: "status = closed",
+			Query: "status = closed or status_category = done",
 			Color: "#BBBBBB",
 		},
 	}
@@ -514,7 +514,7 @@ func DefaultViews() []ViewConfig {
 			Columns: []ColumnConfig{
 				{
 					Name:  "Deferred",
-					Query: "status = deferred",
+					Query: "status_category = frozen",
 				},
 			},
 		},
@@ -1104,29 +1104,29 @@ views:
     columns:
       - name: Not Ready
         type: bql
-        query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
+				query: "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
         color: "#FF8787"
 
       - name: Ready
         type: bql
-        query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)"
+				query: "ready = true and label not in (needs:discussion, has:open-questions)"
         color: "#73F59F"
 
       - name: In Progress
         type: bql
-        query: "status = in_progress"
+				query: "(status in (in_progress, hooked) or status_category = wip) and status != blocked"
         color: "#54A0FF"
 
       - name: Done
         type: bql
-        query: "status = closed"
+				query: "status = closed or status_category = done"
         color: "#BBBBBB"
 
   - name: Deferred
     columns:
       - name: Deferred
         type: bql
-        query: "status = deferred"
+				query: "status_category = frozen"
 
 # View options:
 #   name: Display name for the view (required)

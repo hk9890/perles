@@ -1501,6 +1501,7 @@ func TestIsNotReadyColumn(t *testing.T) {
 	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Blocked", Query: "status = open"}))
 	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Whatever", Query: "blocked = true order by priority"}))
 	require.False(t, isNotReadyColumn(config.ColumnConfig{Name: "Ready", Query: "status = open and ready = true"}))
+	require.True(t, isNotReadyColumn(config.ColumnConfig{Name: "Not Ready", Query: "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"}))
 }
 
 func TestBoard_ReadinessGlyphs_RenderOnlyInNotReadyColumns(t *testing.T) {

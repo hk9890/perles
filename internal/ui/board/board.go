@@ -135,7 +135,7 @@ func isNotReadyColumn(cfg config.ColumnConfig) bool {
 		return true
 	}
 
-	return query == "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
+	return query == "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
 }
 
 // ColCount returns the number of columns.

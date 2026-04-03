@@ -72,16 +72,16 @@ func TestDefaultColumns(t *testing.T) {
 	require.Len(t, cols, 4)
 
 	require.Equal(t, "Not Ready", cols[0].Name)
-	require.Equal(t, "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", cols[0].Query)
+	require.Equal(t, "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", cols[0].Query)
 
 	require.Equal(t, "Ready", cols[1].Name)
-	require.Equal(t, "status = open and ready = true and label not in (needs:discussion, has:open-questions)", cols[1].Query)
+	require.Equal(t, "ready = true and label not in (needs:discussion, has:open-questions)", cols[1].Query)
 
 	require.Equal(t, "In Progress", cols[2].Name)
-	require.Equal(t, "status = in_progress", cols[2].Query)
+	require.Equal(t, "(status in (in_progress, hooked) or status_category = wip) and status != blocked", cols[2].Query)
 
 	require.Equal(t, "Done", cols[3].Name)
-	require.Equal(t, "status = closed", cols[3].Query)
+	require.Equal(t, "status = closed or status_category = done", cols[3].Query)
 }
 
 func TestDefaults(t *testing.T) {
@@ -111,7 +111,7 @@ func TestDefaultViews_DeferredColumns(t *testing.T) {
 	deferred := views[1]
 	require.Equal(t, "Deferred", deferred.Name)
 	require.Equal(t, []ColumnConfig{
-		{Name: "Deferred", Query: "status = deferred"},
+		{Name: "Deferred", Query: "status_category = frozen"},
 	}, deferred.Columns)
 }
 
@@ -122,13 +122,13 @@ func TestDefaultViews_DefaultColumnsUseWorkflowQueries(t *testing.T) {
 	require.Len(t, workflow.Columns, 4)
 
 	require.Equal(t, "Not Ready", workflow.Columns[0].Name)
-	require.Equal(t, "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", workflow.Columns[0].Query)
+	require.Equal(t, "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))", workflow.Columns[0].Query)
 	require.Equal(t, "Ready", workflow.Columns[1].Name)
-	require.Equal(t, "status = open and ready = true and label not in (needs:discussion, has:open-questions)", workflow.Columns[1].Query)
+	require.Equal(t, "ready = true and label not in (needs:discussion, has:open-questions)", workflow.Columns[1].Query)
 	require.Equal(t, "In Progress", workflow.Columns[2].Name)
-	require.Equal(t, "status = in_progress", workflow.Columns[2].Query)
+	require.Equal(t, "(status in (in_progress, hooked) or status_category = wip) and status != blocked", workflow.Columns[2].Query)
 	require.Equal(t, "Done", workflow.Columns[3].Name)
-	require.Equal(t, "status = closed", workflow.Columns[3].Query)
+	require.Equal(t, "status = closed or status_category = done", workflow.Columns[3].Query)
 }
 
 func TestConfig_GetColumns(t *testing.T) {
