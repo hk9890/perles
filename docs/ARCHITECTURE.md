@@ -63,6 +63,7 @@ Orchestration uses a pub/sub broker to decouple producers (process/runtime) from
 ## Related Docs
 
 - [CONFIGURATION.md](./CONFIGURATION.md)
+- [BEADS-V1-SPEC.md](./BEADS-V1-SPEC.md)
 - [CODING.md](./CODING.md)
 - [MONITORING.md](./MONITORING.md)
 - [internal/orchestration/v2/docs/README.md](../internal/orchestration/v2/docs/README.md)
