@@ -1037,8 +1037,11 @@ func TestValidateBeadsV1Compatibility_FailsOnStaleSchema(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	t.Cleanup(func() { _ = db.Close() })
 
+	_, err := db.Exec(`ALTER TABLE issues DROP COLUMN hook_bead`)
+	require.NoError(t, err)
+
 	client := &DoltClient{db: db, details: ConnectionDetails{Host: "127.0.0.1", Port: 3306, Database: "perles"}}
-	err := client.ValidateBeadsV1Compatibility()
+	err = client.ValidateBeadsV1Compatibility()
 	require.Error(t, err)
 	require.True(t, IsCompatibilityError(err))
 	require.Contains(t, err.Error(), "missing required tables/views")
@@ -1046,6 +1049,8 @@ func TestValidateBeadsV1Compatibility_FailsOnStaleSchema(t *testing.T) {
 	require.Contains(t, err.Error(), "custom_types")
 	require.Contains(t, err.Error(), "config")
 	require.Contains(t, err.Error(), "metadata")
+	require.Contains(t, err.Error(), "missing required issues columns")
+	require.Contains(t, err.Error(), "hook_bead")
 }
 
 func TestResolveConnectionDetails_SharedServerModeClassifiedAsNoBeads(t *testing.T) {
