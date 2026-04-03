@@ -58,6 +58,7 @@ func TestResolveConnectionDetails_UnsupportedBackend(t *testing.T) {
 	require.True(t, IsNoBeadsError(err))
 	require.False(t, IsServerStartupError(err))
 	require.Contains(t, err.Error(), "unsupported beads backend")
+	require.Equal(t, "Perles supports beads v1+ projects backed by Dolt. Run 'bd bootstrap' in a Dolt-backed beads project.", StartupSuggestion(err))
 }
 
 func TestResolveConnectionDetails_EmbeddedModeClassifiedAsNoBeads(t *testing.T) {
@@ -69,6 +70,7 @@ func TestResolveConnectionDetails_EmbeddedModeClassifiedAsNoBeads(t *testing.T) 
 	require.True(t, IsNoBeadsError(err))
 	require.False(t, IsServerStartupError(err))
 	require.Contains(t, err.Error(), `unsupported dolt mode "embedded"`)
+	require.Contains(t, StartupSuggestion(err), "supports beads v1+ only in dolt_mode=server")
 }
 
 func TestResolveConnectionDetails_InvalidPortFile(t *testing.T) {
