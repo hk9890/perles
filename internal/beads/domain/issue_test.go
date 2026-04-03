@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -86,4 +87,25 @@ func TestIssueType_Values(t *testing.T) {
 	require.Equal(t, IssueType("molecule"), TypeMolecule)
 	require.Equal(t, IssueType("convoy"), TypeConvoy)
 	require.Equal(t, IssueType("agent"), TypeAgent)
+}
+
+func TestIssue_UnmarshalJSON_BeadsV1IssueTypeMapping(t *testing.T) {
+	payload := []byte(`{
+		"id":"perlesv1spec-dxi",
+		"title":"Child task",
+		"status":"in_review",
+		"priority":2,
+		"issue_type":"task",
+		"owner":"tester",
+		"dependencies":[{"id":"perlesv1spec-4t5","dependency_type":"blocks"}],
+		"dependents":[{"id":"perlesv1spec-child","dependency_type":"parent-child"}]
+	}`)
+
+	var issue Issue
+	err := json.Unmarshal(payload, &issue)
+	require.NoError(t, err)
+	require.Equal(t, TypeTask, issue.Type)
+	require.Equal(t, "tester", issue.Assignee)
+	require.Contains(t, issue.BlockedBy, "perlesv1spec-4t5")
+	require.Contains(t, issue.Children, "perlesv1spec-child")
 }

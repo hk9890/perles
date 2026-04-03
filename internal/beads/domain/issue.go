@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Status represents the issue lifecycle state.
 type Status string
@@ -60,7 +63,7 @@ type Issue struct {
 	Notes              string    `json:"notes"`
 	Status             Status    `json:"status"`
 	Priority           Priority  `json:"priority"`
-	Type               IssueType `json:"type"`
+	Type               IssueType `json:"issue_type"`
 	Assignee           string    `json:"assignee"`
 	Sender             string    `json:"sender,omitempty"`
 	Ephemeral          bool      `json:"ephemeral,omitempty"`
@@ -95,6 +98,116 @@ type Issue struct {
 
 	// CommentCount is populated by BQL queries for display without loading full comments
 	CommentCount int `json:"comment_count,omitempty"`
+}
+
+type issueDependency struct {
+	ID             string `json:"id"`
+	DependencyType string `json:"dependency_type"`
+	Type           string `json:"type"`
+}
+
+// UnmarshalJSON supports both legacy and beads v1 show payloads.
+//
+// beads v1 emits:
+//   - issue_type (not type)
+//   - owner (not assignee)
+//   - dependencies/dependents arrays with dependency_type metadata
+func (i *Issue) UnmarshalJSON(data []byte) error {
+	type issueAlias Issue
+	var aux struct {
+		issueAlias
+		LegacyType       IssueType         `json:"type"`
+		V1IssueType      IssueType         `json:"issue_type"`
+		Owner            string            `json:"owner"`
+		Dependencies     []issueDependency `json:"dependencies"`
+		Dependents       []issueDependency `json:"dependents"`
+		LegacyBlockedBy  []string          `json:"blocked_by"`
+		LegacyBlocks     []string          `json:"blocks"`
+		LegacyChildren   []string          `json:"children"`
+		LegacyDiscovered []string          `json:"discovered"`
+		LegacyFrom       []string          `json:"discovered_from"`
+		LegacyParentID   string            `json:"parent_id"`
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	*i = Issue(aux.issueAlias)
+
+	if aux.V1IssueType != "" {
+		i.Type = aux.V1IssueType
+	} else if aux.LegacyType != "" {
+		i.Type = aux.LegacyType
+	}
+
+	if i.Assignee == "" && aux.Owner != "" {
+		i.Assignee = aux.Owner
+	}
+
+	i.BlockedBy = appendUnique(append([]string(nil), aux.LegacyBlockedBy...), nil...)
+	i.Blocks = appendUnique(append([]string(nil), aux.LegacyBlocks...), nil...)
+	i.Children = appendUnique(append([]string(nil), aux.LegacyChildren...), nil...)
+	i.Discovered = appendUnique(append([]string(nil), aux.LegacyDiscovered...), nil...)
+	i.DiscoveredFrom = appendUnique(append([]string(nil), aux.LegacyFrom...), nil...)
+	if i.ParentID == "" {
+		i.ParentID = aux.LegacyParentID
+	}
+
+	for _, dep := range aux.Dependencies {
+		depType := dep.DependencyType
+		if depType == "" {
+			depType = dep.Type
+		}
+		switch depType {
+		case "blocks":
+			i.BlockedBy = appendUnique(i.BlockedBy, dep.ID)
+		case "parent-child":
+			if i.ParentID == "" {
+				i.ParentID = dep.ID
+			}
+		case "discovered-from":
+			i.DiscoveredFrom = appendUnique(i.DiscoveredFrom, dep.ID)
+		}
+	}
+
+	for _, dep := range aux.Dependents {
+		depType := dep.DependencyType
+		if depType == "" {
+			depType = dep.Type
+		}
+		switch depType {
+		case "blocks":
+			i.Blocks = appendUnique(i.Blocks, dep.ID)
+		case "parent-child":
+			i.Children = appendUnique(i.Children, dep.ID)
+		case "discovered-from":
+			i.Discovered = appendUnique(i.Discovered, dep.ID)
+		}
+	}
+
+	return nil
+}
+
+func appendUnique(base []string, items ...string) []string {
+	if len(items) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base)+len(items))
+	for _, item := range base {
+		seen[item] = struct{}{}
+	}
+	for _, item := range items {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		base = append(base, item)
+	}
+	return base
 }
 
 // CreateResult holds the result of a create operation.

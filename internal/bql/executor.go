@@ -57,6 +57,46 @@ func NewExecutor(
 // maxExpandIterations is the safety limit for unlimited depth expansion.
 const maxExpandIterations = 100
 
+var orderedIssueSelectColumns = []string{
+	"id",
+	"title",
+	"description",
+	"design",
+	"acceptance_criteria",
+	"notes",
+	"status",
+	"priority",
+	"issue_type",
+	"assignee",
+	"sender",
+	"ephemeral",
+	"pinned",
+	"is_template",
+	"created_at",
+	"created_by",
+	"updated_at",
+	"closed_at",
+	"close_reason",
+	"hook_bead",
+	"role_bead",
+	"agent_state",
+	"last_activity",
+	"role_type",
+	"rig",
+	"mol_type",
+}
+
+var requiredIssueSelectColumnSet = map[string]struct{}{
+	"id":          {},
+	"title":       {},
+	"description": {},
+	"status":      {},
+	"priority":    {},
+	"issue_type":  {},
+	"created_at":  {},
+	"updated_at":  {},
+}
+
 // DependencyEdge represents an edge in the dependency graph.
 type DependencyEdge struct {
 	TargetID string
@@ -200,42 +240,22 @@ type IssueDeps struct {
 // 3. Batch load labels for all result IDs
 // 4. Batch load comment counts for all result IDs
 func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
+	selectColumns, err := e.issueSelectColumnsSQL()
+	if err != nil {
+		return nil, fmt.Errorf("build issue select columns: %w", err)
+	}
+
 	// Build SQL
 	builder := NewSQLBuilder(query)
 	whereClause, orderBy, params := builder.Build()
 
 	// Construct main query WITHOUT dependency subqueries
-	sqlQuery := `
+	sqlQuery := fmt.Sprintf(`
 		SELECT
-			i.id,
-			i.title,
-			i.description,
-			i.design,
-			i.acceptance_criteria,
-			i.notes,
-			i.status,
-			i.priority,
-			i.issue_type,
-			i.assignee,
-			i.sender,
-			i.ephemeral,
-			i.pinned,
-			i.is_template,
-			i.created_at,
-			i.created_by,
-			i.updated_at,
-			i.closed_at,
-			i.close_reason,
-			i.hook_bead,
-			i.role_bead,
-			i.agent_state,
-			i.last_activity,
-			i.role_type,
-			i.rig,
-			i.mol_type
+			%s
 		FROM issues i
 		WHERE i.status not in ('deleted', 'tombstone')
-	`
+	`, strings.Join(selectColumns, ",\n\t\t\t"))
 
 	if whereClause != "" {
 		sqlQuery += " AND " + whereClause //nolint:gosec // whereClause is generated from validated BQL AST, not raw user SQL
@@ -314,6 +334,52 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 	}
 
 	return issues, nil
+}
+
+func (e *Executor) issueSelectColumnsSQL() ([]string, error) {
+	columns, err := e.availableIssueColumns()
+	if err != nil {
+		return nil, err
+	}
+
+	selectColumns := make([]string, 0, len(orderedIssueSelectColumns))
+	for _, col := range orderedIssueSelectColumns {
+		if _, ok := columns[col]; ok {
+			selectColumns = append(selectColumns, fmt.Sprintf("i.%s", col))
+			continue
+		}
+		if _, required := requiredIssueSelectColumnSet[col]; required {
+			return nil, fmt.Errorf("required issues column missing: %s", col)
+		}
+		selectColumns = append(selectColumns, fmt.Sprintf("NULL AS %s", col))
+	}
+
+	return selectColumns, nil
+}
+
+func (e *Executor) availableIssueColumns() (map[string]struct{}, error) {
+	db, err := e.db()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := db.Query("SELECT * FROM issues LIMIT 0")
+	if err != nil {
+		return nil, fmt.Errorf("inspect issues columns: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	columnNames, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("read issues columns: %w", err)
+	}
+
+	columns := make(map[string]struct{}, len(columnNames))
+	for _, columnName := range columnNames {
+		columns[strings.ToLower(columnName)] = struct{}{}
+	}
+
+	return columns, nil
 }
 
 // scanIssuesBase reads base issue data from database rows (without dependency fields).

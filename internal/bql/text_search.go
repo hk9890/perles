@@ -25,61 +25,42 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 	}
 
 	like := "%" + strings.ToLower(query) + "%"
-
-	sqlQuery := `
-		SELECT DISTINCT
-			i.id,
-			i.title,
-			i.description,
-			i.design,
-			i.acceptance_criteria,
-			i.notes,
-			i.status,
-			i.priority,
-			i.issue_type,
-			i.assignee,
-			i.sender,
-			i.ephemeral,
-			i.pinned,
-			i.is_template,
-			i.created_at,
-			i.created_by,
-			i.updated_at,
-			i.closed_at,
-			i.close_reason,
-			i.hook_bead,
-			i.role_bead,
-			i.agent_state,
-			i.last_activity,
-			i.role_type,
-			i.rig,
-			i.mol_type
-		FROM issues i
-		WHERE i.status NOT IN ('deleted', 'tombstone')
-		  AND (
-			LOWER(i.id) LIKE ?
-			OR LOWER(i.title) LIKE ?
-			OR LOWER(COALESCE(i.description, '')) LIKE ?
-			OR LOWER(COALESCE(i.notes, '')) LIKE ?
-			OR LOWER(COALESCE(i.design, '')) LIKE ?
-			OR LOWER(COALESCE(i.acceptance_criteria, '')) LIKE ?
-			OR EXISTS (
-				SELECT 1
-				FROM labels l
-				WHERE l.issue_id = i.id
-				  AND LOWER(l.label) LIKE ?
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM comments c
-				WHERE c.issue_id = i.id
-				  AND LOWER(COALESCE(c.text, '')) LIKE ?
-			)
-		  )
-		ORDER BY i.updated_at DESC
-	`
+	executor := &Executor{provider: provider}
 
 	executeOnce := func() ([]beads.Issue, error) {
+		selectColumns, err := executor.issueSelectColumnsSQL()
+		if err != nil {
+			return nil, fmt.Errorf("build issue select columns: %w", err)
+		}
+
+		sqlQuery := fmt.Sprintf(`
+			SELECT DISTINCT
+				%s
+			FROM issues i
+			WHERE i.status NOT IN ('deleted', 'tombstone')
+			  AND (
+				LOWER(i.id) LIKE ?
+				OR LOWER(i.title) LIKE ?
+				OR LOWER(COALESCE(i.description, '')) LIKE ?
+				OR LOWER(COALESCE(i.notes, '')) LIKE ?
+				OR LOWER(COALESCE(i.design, '')) LIKE ?
+				OR LOWER(COALESCE(i.acceptance_criteria, '')) LIKE ?
+				OR EXISTS (
+					SELECT 1
+					FROM labels l
+					WHERE l.issue_id = i.id
+					  AND LOWER(l.label) LIKE ?
+				)
+				OR EXISTS (
+					SELECT 1
+					FROM comments c
+					WHERE c.issue_id = i.id
+					  AND LOWER(COALESCE(c.text, '')) LIKE ?
+				)
+			  )
+			ORDER BY i.updated_at DESC
+		`, strings.Join(selectColumns, ",\n\t\t\t"))
+
 		db := provider.DB()
 		if db == nil {
 			return nil, errors.New("database connection unavailable")
@@ -91,7 +72,6 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 		}
 		defer func() { _ = rows.Close() }()
 
-		executor := &Executor{provider: provider}
 		issues, err := executor.scanIssuesBase(rows)
 		if err != nil {
 			return nil, err
@@ -144,7 +124,7 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 	attempt := 0
 
 	var issues []beads.Issue
-	err := retryPolicy.Execute(context.Background(), func() error {
+	execErr := retryPolicy.Execute(context.Background(), func() error {
 		attempt++
 
 		loaded, queryErr := executeOnce()
@@ -167,5 +147,5 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 		return queryErr
 	})
 
-	return issues, err
+	return issues, execErr
 }

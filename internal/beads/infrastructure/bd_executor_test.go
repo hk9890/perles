@@ -454,9 +454,10 @@ func TestBDExecutor_ShowIssue_ParsesBeadsV1GoldenOutput(t *testing.T) {
 	require.NotNil(t, issue)
 	require.Equal(t, "perlesv1spec-dxi", issue.ID)
 	require.Equal(t, "Child task", issue.TitleText)
-	// Current compatibility gap: domain expects json:"type" while v1 emits issue_type.
-	require.Equal(t, domain.IssueType(""), issue.Type)
+	require.Equal(t, domain.TypeTask, issue.Type)
+	require.Equal(t, "tester", issue.Assignee)
 	require.Contains(t, issue.Labels, "has:open-questions")
+	require.Contains(t, issue.BlockedBy, "perlesv1spec-4t5")
 	require.Len(t, issue.Comments, 1)
 	require.Equal(t, "Investigating v1 contract", issue.Comments[0].Text)
 }
@@ -474,4 +475,20 @@ func TestBDExecutor_ShowIssue_BeadsV1GoldenContractShape(t *testing.T) {
 	require.Contains(t, issue, "dependencies")
 	require.Contains(t, issue, "dependents")
 	require.Contains(t, issue, "comments")
+}
+
+func TestParseShowIssueOutput_ParsesArrayAndSingleObject(t *testing.T) {
+	arrayPayload := `[{"id":"x-1","title":"X","issue_type":"task"}]`
+	issues, err := parseShowIssueOutput(arrayPayload)
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "x-1", issues[0].ID)
+	require.Equal(t, domain.TypeTask, issues[0].Type)
+
+	objectPayload := `{"id":"x-2","title":"Y","issue_type":"bug"}`
+	issues, err = parseShowIssueOutput(objectPayload)
+	require.NoError(t, err)
+	require.Len(t, issues, 1)
+	require.Equal(t, "x-2", issues[0].ID)
+	require.Equal(t, domain.TypeBug, issues[0].Type)
 }

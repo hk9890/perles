@@ -304,8 +304,8 @@ func (e *BDExecutor) ShowIssue(issueID string) (*domain.Issue, error) {
 		return nil, err
 	}
 
-	var issues []domain.Issue
-	if err := json.Unmarshal([]byte(output), &issues); err != nil {
+	issues, err := parseShowIssueOutput(output)
+	if err != nil {
 		err = fmt.Errorf("failed to parse bd show output: %w", err)
 		log.Error(log.CatBeads, "ShowIssue parse failed", "issueID", issueID, "error", err)
 		return nil, err
@@ -318,6 +318,20 @@ func (e *BDExecutor) ShowIssue(issueID string) (*domain.Issue, error) {
 	}
 
 	return &issues[0], nil
+}
+
+func parseShowIssueOutput(output string) ([]domain.Issue, error) {
+	var issues []domain.Issue
+	if err := json.Unmarshal([]byte(output), &issues); err == nil {
+		return issues, nil
+	}
+
+	// Keep a compatibility fallback for non-array wrappers.
+	var issue domain.Issue
+	if err := json.Unmarshal([]byte(output), &issue); err != nil {
+		return nil, err
+	}
+	return []domain.Issue{issue}, nil
 }
 
 // AddComment executes 'bd comments add <id> --author <author> <text>'.

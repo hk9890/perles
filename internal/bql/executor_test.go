@@ -140,6 +140,49 @@ func TestExecutor_BeadsV1_BoardAndSearchQueriesExecute(t *testing.T) {
 	require.True(t, matched, "expected simple text search to include v1-blocked-open")
 }
 
+func TestExecutor_BeadsV1_QueryLoadingToleratesMissingLegacyColumns(t *testing.T) {
+	db := testutil.NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+	testutil.NewBuilder(t, db).WithBeadsV1CompatibilityData().Build()
+
+	_, err := db.Exec(`ALTER TABLE issues DROP COLUMN sender`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN hook_bead`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN role_bead`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN agent_state`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN role_type`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN rig`)
+	require.NoError(t, err)
+	_, err = db.Exec(`ALTER TABLE issues DROP COLUMN mol_type`)
+	require.NoError(t, err)
+
+	executor := newTestExecutor(t, db)
+
+	boardIssues, err := executor.Execute("status = open and ready = true")
+	require.NoError(t, err)
+	require.NotEmpty(t, boardIssues)
+
+	searchIssues, err := ExecuteSimpleTextSearch(staticDBProvider{db: db}, "contract")
+	require.NoError(t, err)
+	require.NotEmpty(t, searchIssues)
+
+	detailsIssue, err := executor.Execute("id = v1-blocked-open")
+	require.NoError(t, err)
+	require.Len(t, detailsIssue, 1)
+	require.Equal(t, beads.TypeTask, detailsIssue[0].Type)
+	require.Contains(t, detailsIssue[0].BlockedBy, "v1-blocker")
+	require.Empty(t, detailsIssue[0].HookBead)
+	require.Empty(t, detailsIssue[0].RoleBead)
+	require.Empty(t, detailsIssue[0].AgentState)
+	require.Empty(t, detailsIssue[0].RoleType)
+	require.Empty(t, detailsIssue[0].Rig)
+	require.Empty(t, detailsIssue[0].MolType)
+}
+
 func TestExecutor_BeadsV1_ReadyViewFixtureSemantics(t *testing.T) {
 	db := setupBeadsV1DB(t)
 	defer func() { _ = db.Close() }()
