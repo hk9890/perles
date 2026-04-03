@@ -1,6 +1,6 @@
 # Perles
 
-Perles is a terminal UI for [beads](https://github.com/steveyegge/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views without leaving your terminal. Each kanban swimlane column is defined by a BQL query, so you can slice your issues however you want.
+Perles is a terminal UI for [beads](https://github.com/gastownhall/beads) issue tracking, powered by a custom **BQL (Beads Query Language)**. Search with boolean logic, filter by dates, traverse dependency trees, and build custom kanban views without leaving your terminal. Each kanban swimlane column is defined by a BQL query, so you can slice your issues however you want.
 
 Perles has its own [Orchestration Control Plane](ORCHESTRATION.md) that spawns a headless coordinator agent that can manage and recycle multiple headless worker agents for you with built-in multi-agent workflows or user defined workflows that can run in parallel.
 
@@ -25,8 +25,39 @@ Perles has its own [Orchestration Control Plane](ORCHESTRATION.md) that spawns a
 
 ## Requirements
 
-- A beads-enabled project (`.beads/` directory with `beads.db`)
-- Minimum beads database version v0.41.0. run `bd migrate` to upgrade after updating beads
+- beads CLI/runtime `v1.0.0+` (upstream: `gastownhall/beads`)
+- A beads project configured for `backend=dolt` and `dolt_mode=server`
+- A v1-compatible project layout (`.beads/metadata.json`, `.beads/dolt/config.yaml`, `.beads/dolt-server.port`)
+
+For full compatibility boundaries and migration/repair guidance, see [docs/BEADS-COMPATIBILITY.md](docs/BEADS-COMPATIBILITY.md).
+
+### beads install sources
+
+Install beads from current upstream sources:
+
+- Repository: `https://github.com/gastownhall/beads`
+- Releases: `https://github.com/gastownhall/beads/releases`
+- Go install: `go install github.com/gastownhall/beads/cmd/bd@latest`
+
+For reproducible local validation in this repo, `mise.toml` pins beads `1.0.0`:
+
+```bash
+mise x github:gastownhall/beads@1.0.0 -- bd version
+```
+
+### beads support policy (short version)
+
+- ✅ Supported: beads `v1.0.0+`, `backend=dolt`, `dolt_mode=server`
+- ❌ Not supported yet: `dolt_mode=embedded`, `dolt_mode=shared-server`, non-Dolt backends
+- ⚠️ Upgrade note for existing users: BQL `ready=true` and `blocked=true` semantics now follow beads v1 behavior; custom board queries using these pseudo-fields may route issues differently after upgrade.
+
+If Perles reports compatibility/runtime errors, run:
+
+```bash
+bd bootstrap
+```
+
+Then verify mode/runtime metadata and retry Perles.
 
 ## Installation
 

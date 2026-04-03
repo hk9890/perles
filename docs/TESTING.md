@@ -182,6 +182,8 @@ To verify local CLI pin when refreshing live captures:
 mise x github:gastownhall/beads@1.0.0 -- bd version
 ```
 
+The pin above is committed in repository-local `mise.toml` so compatibility validation does not depend on untracked local tool state.
+
 ### Fixture-covered vs live/manual checks
 
 Fixture-covered by tests:

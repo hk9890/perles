@@ -291,7 +291,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	log.Debug(log.CatBeads, "Beads Database Version", "version", currentVersion, "minRequiredVersion", beads.MinBeadsVersion)
 	if err := beads.CheckVersion(currentVersion); err != nil {
-		return runOutdatedMode(currentVersion, beads.MinBeadsVersion, err.Error(), "Upgrade beads to v1+ and run 'bd bootstrap', then retry Perles.")
+		return runOutdatedMode(currentVersion, beads.MinBeadsVersion, err.Error(), "Upgrade beads to v1.0.0+ and run 'bd bootstrap', then retry Perles.")
 	}
 
 	// Handle --no-auto-refresh flag (negated logic)

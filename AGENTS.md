@@ -41,6 +41,7 @@ Perles is a Go TUI for beads issue tracking, search/kanban workflows, and multi-
 ## Configuration
 
 - Read `docs/CONFIGURATION.md` for config file schema, defaults, environment variables, and overrides.
+- Read `docs/BEADS-COMPATIBILITY.md` for the canonical beads v1 support matrix and migration/repair guidance.
 
 ## Reminder
 

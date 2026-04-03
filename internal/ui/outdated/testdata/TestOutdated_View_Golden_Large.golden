@@ -20,7 +20,7 @@
                                                                                                                         
                       Your beads database version (0.29.0) is older than required version (1.0.0).                      
                                                                                                                         
-                       Perles supports beads v1+ in Dolt server mode with a v1-compatible schema.                       
+                         Perles supports beads v1.0.0+ with backend=dolt and dolt_mode=server.                          
                   Run `bd bootstrap` to repair/upgrade project runtime and schema, then retry Perles.                   
                      If this project is in embedded/shared mode, switch to dolt_mode=server first.                      
                                                                                                                         

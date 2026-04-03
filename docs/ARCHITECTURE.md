@@ -60,9 +60,19 @@ Orchestration uses a pub/sub broker to decouple producers (process/runtime) from
 - Orchestration sessions: `~/.perles/sessions/` by default
 - Optional trace output: `~/.config/perles/traces/traces.jsonl`
 
+## beads runtime compatibility boundary
+
+Perles currently supports beads v1+ projects only when:
+
+- `backend=dolt`
+- `dolt_mode=server`
+
+Embedded and shared-server Dolt modes are intentionally unsupported for now. See [BEADS-COMPATIBILITY.md](./BEADS-COMPATIBILITY.md) for support matrix and migration/repair guidance.
+
 ## Related Docs
 
 - [CONFIGURATION.md](./CONFIGURATION.md)
+- [BEADS-COMPATIBILITY.md](./BEADS-COMPATIBILITY.md)
 - [BEADS-V1-SPEC.md](./BEADS-V1-SPEC.md)
 - [CODING.md](./CODING.md)
 - [MONITORING.md](./MONITORING.md)

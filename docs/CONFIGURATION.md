@@ -19,6 +19,8 @@ If no file is found, Perles creates `.perles/config.yaml` with defaults.
 - `--debug`, `-d` - enable developer/debug mode (runtime log level DEBUG)
 - `--port`, `-p` - orchestration API port override
 
+Beads path/runtime resolution uses the supplied directory to discover `.beads/` metadata and connect to a supported beads runtime (`backend=dolt`, `dolt_mode=server`).
+
 ## Important Environment Variables
 
 - `BEADS_DIR` - beads path fallback when `-b` is not set
@@ -136,5 +138,6 @@ type = epic expand down depth *
 ## Related Docs
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [BEADS-COMPATIBILITY.md](./BEADS-COMPATIBILITY.md)
 - [MONITORING.md](./MONITORING.md)
 - [README.md](../README.md)

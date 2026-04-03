@@ -91,7 +91,7 @@ func (m Model) View() string {
 		"",
 		versionMsg,
 		"",
-		messageStyle.Render("Perles supports beads v1+ in Dolt server mode with a v1-compatible schema."),
+		messageStyle.Render("Perles supports beads v1.0.0+ with backend=dolt and dolt_mode=server."),
 		messageStyle.Render("Run `bd bootstrap` to repair/upgrade project runtime and schema, then retry Perles."),
 		messageStyle.Render("If this project is in embedded/shared mode, switch to dolt_mode=server first."),
 		func() string {
