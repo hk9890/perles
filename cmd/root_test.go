@@ -70,6 +70,19 @@ func TestNoBeadsDirectory_WithBeadsFailsIfServerUnavailable(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStartupCompatibilityDetection_BeadsV1EmbeddedModeClassifiesAsNoBeadsMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	beadsPath := filepath.Join(tmpDir, ".beads")
+	require.NoError(t, os.MkdirAll(beadsPath, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(beadsPath, "metadata.json"), []byte(`{"backend":"dolt","dolt_mode":"embedded","dolt_database":"perlesv1spec"}`), 0o644))
+
+	_, err := infrabeads.NewDoltClient(beadsPath)
+	require.Error(t, err)
+	require.True(t, infrabeads.IsNoBeadsError(err))
+	require.Equal(t, startupBehaviorNoBeadsMode, classifyStartupBehavior(err))
+}
+
 func TestClassifyStartupBehavior(t *testing.T) {
 	t.Run("nil error proceeds", func(t *testing.T) {
 		behavior := classifyStartupBehavior(nil)

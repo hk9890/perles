@@ -210,3 +210,49 @@ func TestBuilder_MultipleIssuesWithLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, count) // 1 + 2 labels
 }
+
+func TestBuilder_WithBeadsV1MetadataAndCustomCatalog(t *testing.T) {
+	db := NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+
+	NewBuilder(t, db).
+		WithMetadata("schema_version", "11").
+		WithMetadata("bd_version", "1.0.0").
+		WithConfig("status.custom", "in_review:active").
+		WithCustomStatus("in_review", "active").
+		WithCustomType("convoy").
+		Build()
+
+	var schemaVersion string
+	err := db.QueryRow(`SELECT value FROM metadata WHERE key = 'schema_version'`).Scan(&schemaVersion)
+	require.NoError(t, err)
+	require.Equal(t, "11", schemaVersion)
+
+	var category string
+	err = db.QueryRow(`SELECT category FROM custom_statuses WHERE name = 'in_review'`).Scan(&category)
+	require.NoError(t, err)
+	require.Equal(t, "active", category)
+
+	var customType string
+	err = db.QueryRow(`SELECT name FROM custom_types WHERE name = 'convoy'`).Scan(&customType)
+	require.NoError(t, err)
+	require.Equal(t, "convoy", customType)
+}
+
+func TestBuilder_WithIssue_DeferUntilAndDueAt(t *testing.T) {
+	db := NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+
+	deferAt := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	dueAt := deferAt.Add(24 * time.Hour)
+
+	NewBuilder(t, db).
+		WithIssue("v1-scheduled", DeferUntil(deferAt), DueAt(dueAt)).
+		Build()
+
+	var actualDeferAt, actualDueAt time.Time
+	err := db.QueryRow(`SELECT defer_until, due_at FROM issues WHERE id = ?`, "v1-scheduled").Scan(&actualDeferAt, &actualDueAt)
+	require.NoError(t, err)
+	require.WithinDuration(t, deferAt, actualDeferAt, time.Second)
+	require.WithinDuration(t, dueAt, actualDueAt, time.Second)
+}

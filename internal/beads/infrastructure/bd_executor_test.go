@@ -1,6 +1,8 @@
 package infrastructure
 
 import (
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +12,9 @@ import (
 	domain "github.com/hk9890/perles/internal/beads/domain"
 	"github.com/stretchr/testify/require"
 )
+
+//go:embed testdata/beads_v1_show_issue.json
+var beadsV1ShowIssueGolden []byte
 
 // TestBDExecutor_ImplementsIssueExecutor verifies BDExecutor implements IssueExecutor.
 func TestBDExecutor_ImplementsIssueExecutor(t *testing.T) {
@@ -436,4 +441,37 @@ func TestBDExecutor_AddComment_StderrFromBdIsSurfaced(t *testing.T) {
 	err := executor.AddComment("PROJ-13", "alice", "Will fail")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bd comments failed: comment create failed: invalid author")
+}
+
+func TestBDExecutor_ShowIssue_ParsesBeadsV1GoldenOutput(t *testing.T) {
+	executor := newTestExecutor(func(args ...string) (string, error) {
+		require.Equal(t, []string{"show", "perlesv1spec-dxi", "--json"}, args)
+		return string(beadsV1ShowIssueGolden), nil
+	})
+
+	issue, err := executor.ShowIssue("perlesv1spec-dxi")
+	require.NoError(t, err)
+	require.NotNil(t, issue)
+	require.Equal(t, "perlesv1spec-dxi", issue.ID)
+	require.Equal(t, "Child task", issue.TitleText)
+	// Current compatibility gap: domain expects json:"type" while v1 emits issue_type.
+	require.Equal(t, domain.IssueType(""), issue.Type)
+	require.Contains(t, issue.Labels, "has:open-questions")
+	require.Len(t, issue.Comments, 1)
+	require.Equal(t, "Investigating v1 contract", issue.Comments[0].Text)
+}
+
+func TestBDExecutor_ShowIssue_BeadsV1GoldenContractShape(t *testing.T) {
+	var payload []map[string]any
+	err := json.Unmarshal(beadsV1ShowIssueGolden, &payload)
+	require.NoError(t, err)
+	require.Len(t, payload, 1)
+
+	issue := payload[0]
+	require.Equal(t, "perlesv1spec-dxi", issue["id"])
+	require.Equal(t, "in_review", issue["status"])
+	require.Equal(t, "task", issue["issue_type"])
+	require.Contains(t, issue, "dependencies")
+	require.Contains(t, issue, "dependents")
+	require.Contains(t, issue, "comments")
 }

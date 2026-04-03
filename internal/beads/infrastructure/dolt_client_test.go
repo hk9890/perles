@@ -59,6 +59,17 @@ func TestResolveConnectionDetails_UnsupportedBackend(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported beads backend")
 }
 
+func TestResolveConnectionDetails_EmbeddedModeClassifiedAsNoBeads(t *testing.T) {
+	beadsDir := t.TempDir()
+	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"embedded","dolt_database":"perlesv1spec"}`)
+
+	_, err := ResolveConnectionDetails(beadsDir)
+	require.Error(t, err)
+	require.True(t, IsNoBeadsError(err))
+	require.False(t, IsServerStartupError(err))
+	require.Contains(t, err.Error(), `unsupported dolt mode "embedded"`)
+}
+
 func TestResolveConnectionDetails_InvalidPortFile(t *testing.T) {
 	beadsDir := t.TempDir()
 	writeTestMetadata(t, beadsDir, `{"backend":"dolt","dolt_mode":"server","dolt_database":"perles"}`)

@@ -31,6 +31,8 @@ type issueData struct {
 	createdAt    time.Time
 	createdBy    string
 	updatedAt    time.Time
+	deferUntil   *time.Time
+	dueAt        *time.Time
 	closedAt     *time.Time
 	closeReason  string
 	deletedAt    *time.Time
@@ -41,6 +43,16 @@ type issueData struct {
 	roleType     string
 	rig          string
 	molType      string
+}
+
+// DeferUntil sets the defer_until timestamp for deferred scheduling semantics.
+func DeferUntil(t time.Time) IssueOption {
+	return func(i *issueData) { i.deferUntil = &t }
+}
+
+// DueAt sets the due_at timestamp for scheduling semantics.
+func DueAt(t time.Time) IssueOption {
+	return func(i *issueData) { i.dueAt = &t }
 }
 
 // defaultIssue returns an issueData with sensible defaults.

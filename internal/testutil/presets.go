@@ -118,3 +118,56 @@ func (b *Builder) WithClientTestData() *Builder {
 		WithDependency("issue-3", "issue-1", "blocks").
 		WithDependency("issue-2", "epic-1", "parent-child")
 }
+
+// WithBeadsV1CompatibilityData adds fixtures aligned with docs/BEADS-V1-SPEC.md.
+//
+// Coverage goals:
+//   - built-in v1 statuses, including pinned + hooked
+//   - built-in v1 types, including decision/spike/story/milestone
+//   - categorized custom statuses/types via normalized v1 tables
+func (b *Builder) WithBeadsV1CompatibilityData() *Builder {
+	now := time.Now().UTC()
+	deferredFuture := now.Add(24 * time.Hour)
+
+	return b.
+		WithMetadata("schema_version", "11").
+		WithMetadata("bd_version", "1.0.0").
+		WithConfig("status.custom", "in_review:active,qa_testing:wip,accepted:done,on_ice:frozen").
+		WithConfig("types.custom", "convoy,agent,role").
+		WithCustomStatus("in_review", "active").
+		WithCustomStatus("qa_testing", "wip").
+		WithCustomStatus("accepted", "done").
+		WithCustomStatus("on_ice", "frozen").
+		WithCustomType("convoy").
+		WithCustomType("agent").
+		WithCustomType("role").
+		WithIssue("v1-open-ready",
+			Title("Open ready issue"), Status("open"), Priority(1), IssueType("story"), Assignee("alice"),
+			Labels("compat", "board"), CreatedBy("tester")).
+		WithIssue("v1-in-progress",
+			Title("In progress issue"), Status("in_progress"), Priority(2), IssueType("spike")).
+		WithIssue("v1-hooked",
+			Title("Hooked issue"), Status("hooked"), Priority(2), IssueType("task")).
+		WithIssue("v1-pinned",
+			Title("Pinned issue"), Status("pinned"), Priority(3), IssueType("decision")).
+		WithIssue("v1-custom-active",
+			Title("Custom active issue"), Status("in_review"), Priority(1), IssueType("milestone")).
+		WithIssue("v1-custom-wip",
+			Title("Custom wip issue"), Status("qa_testing"), Priority(2), IssueType("feature")).
+		WithIssue("v1-custom-done",
+			Title("Custom done issue"), Status("accepted"), Priority(3), IssueType("chore")).
+		WithIssue("v1-custom-frozen",
+			Title("Custom frozen issue"), Status("on_ice"), Priority(3), IssueType("bug")).
+		WithIssue("v1-ephemeral-open",
+			Title("Ephemeral open issue"), Status("open"), Priority(2), IssueType("task"), Ephemeral(true)).
+		WithIssue("v1-deferred-open",
+			Title("Deferred open issue"), Status("open"), Priority(2), IssueType("task"), DeferUntil(deferredFuture)).
+		WithIssue("v1-blocker",
+			Title("Blocking issue"), Status("open"), Priority(0), IssueType("bug")).
+		WithIssue("v1-blocked-open",
+			Title("Blocked issue"), Status("open"), Priority(1), IssueType("task"),
+			Comments(Comment("tester", "Investigating v1 contract"))).
+		WithIssue("v1-convoy",
+			Title("Custom type issue"), Status("open"), Priority(2), IssueType("convoy")).
+		WithDependency("v1-blocked-open", "v1-blocker", "blocks")
+}

@@ -1,0 +1,31 @@
+[
+  {
+    "id": "perlesv1spec-dxi",
+    "title": "Child task",
+    "description": "Task from beads v1 CLI capture",
+    "status": "in_review",
+    "priority": 2,
+    "issue_type": "task",
+    "owner": "tester",
+    "created_at": "2026-04-03T17:42:00Z",
+    "created_by": "tester",
+    "updated_at": "2026-04-03T17:42:17Z",
+    "labels": ["has:open-questions", "needs:discussion"],
+    "dependencies": [
+      {
+        "id": "perlesv1spec-4t5",
+        "dependency_type": "blocks"
+      }
+    ],
+    "dependents": [],
+    "comments": [
+      {
+        "id": "019d9f90-2333-7f5f-8333-6adfd4c6e111",
+        "issue_id": "perlesv1spec-dxi",
+        "author": "tester",
+        "text": "Investigating v1 contract",
+        "created_at": "2026-04-03T17:42:17Z"
+      }
+    ]
+  }
+]

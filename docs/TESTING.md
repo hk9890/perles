@@ -152,6 +152,51 @@ When UI output intentionally changes:
 - Frontend changes: `npm run build && npm run test:run`
 - Cross-stack changes: `make build && make test && make lint`
 
+## beads v1.0 compatibility harness (perles-38b)
+
+The repo now includes a compatibility-focused harness that models the beads
+v1.0 contract documented in `docs/BEADS-V1-SPEC.md`.
+
+Primary coverage lives in:
+
+- `internal/testutil/db.go` (`NewBeadsV1TestDB`, `BeadsV1Schema`)
+- `internal/testutil/presets.go` (`WithBeadsV1CompatibilityData`)
+- `internal/beads/infrastructure/*_test.go`
+- `internal/bql/executor_test.go`
+- `cmd/root_test.go`
+
+Suggested focused run:
+
+```bash
+go test ./internal/testutil ./internal/beads/infrastructure ./internal/bql ./cmd
+```
+
+### Captured v1 contract artifacts
+
+- `internal/beads/infrastructure/testdata/beads_v1_show_issue.json`
+- `internal/beads/infrastructure/testdata/beads_v1_cli_contract.md`
+
+To verify local CLI pin when refreshing live captures:
+
+```bash
+mise x github:gastownhall/beads@1.0.0 -- bd version
+```
+
+### Fixture-covered vs live/manual checks
+
+Fixture-covered by tests:
+
+- startup compatibility detection for embedded-mode metadata classification
+- issue loading and BQL execution against v1-compatible schema tables
+- status/type filtering with v1 built-ins + categorized custom statuses/types
+- `bd show --json` parsing path with captured v1 output shape golden
+
+Still requiring live/manual verification against a real beads v1 repo:
+
+- end-to-end `bd` command execution against a running backend (process/env/path)
+- Dolt-specific SQL/view behavior parity beyond fixture SQL approximations
+- upstream CLI output drift beyond currently captured golden samples
+
 ## CI Alignment
 
 CI (`.github/workflows/ci.yml`) currently runs:

@@ -70,3 +70,32 @@ func TestNewTestDB_IssueColumns(t *testing.T) {
 	require.NotNil(t, assignee)
 	require.Equal(t, "alice", *assignee)
 }
+
+func TestNewBeadsV1TestDB_CreatesV1SchemaTables(t *testing.T) {
+	db := NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('issues', 'labels', 'dependencies', 'comments', 'config', 'metadata', 'custom_statuses', 'custom_types', 'blocked_issues')`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 9, count, "expected beads v1-compatible tables")
+
+	err = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='ready_issues'`).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
+func TestNewBeadsV1TestDB_IssueSchedulingColumns(t *testing.T) {
+	db := NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+
+	_, err := db.Exec(`INSERT INTO issues (id, title, status, defer_until, due_at, created_at, updated_at) VALUES (?, ?, ?, datetime('now', '+1 day'), datetime('now', '+2 day'), datetime('now'), datetime('now'))`,
+		"v1-sched", "Scheduling", "open")
+	require.NoError(t, err)
+
+	var deferUntil, dueAt string
+	err = db.QueryRow(`SELECT defer_until, due_at FROM issues WHERE id = ?`, "v1-sched").Scan(&deferUntil, &dueAt)
+	require.NoError(t, err)
+	require.NotEmpty(t, deferUntil)
+	require.NotEmpty(t, dueAt)
+}

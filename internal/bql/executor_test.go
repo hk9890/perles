@@ -28,6 +28,13 @@ func setupDB(t *testing.T, configure func(*testutil.Builder) *testutil.Builder) 
 	return db
 }
 
+func setupBeadsV1DB(t *testing.T) *sql.DB {
+	t.Helper()
+	db := testutil.NewBeadsV1TestDB(t)
+	testutil.NewBuilder(t, db).WithBeadsV1CompatibilityData().Build()
+	return db
+}
+
 // newTestExecutor creates an executor with mock caches for testing.
 // Uses testing.TB interface to work with both *testing.T and *testing.B.
 func newTestExecutor(tb testing.TB, db *sql.DB) *Executor {
@@ -85,6 +92,88 @@ func TestExecutor_TypeFilter(t *testing.T) {
 	for _, issue := range issues {
 		require.Equal(t, beads.TypeBug, issue.Type)
 	}
+}
+
+func TestExecutor_BeadsV1_StatusFiltering(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	hooked, err := executor.Execute("status = hooked")
+	require.NoError(t, err)
+	require.Len(t, hooked, 1)
+	require.Equal(t, "v1-hooked", hooked[0].ID)
+
+	pinned, err := executor.Execute("status = pinned")
+	require.NoError(t, err)
+	require.Len(t, pinned, 1)
+	require.Equal(t, "v1-pinned", pinned[0].ID)
+
+	customActive, err := executor.Execute("status = in_review")
+	require.NoError(t, err)
+	require.Len(t, customActive, 1)
+	require.Equal(t, "v1-custom-active", customActive[0].ID)
+}
+
+func TestExecutor_BeadsV1_BoardAndSearchQueriesExecute(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	boardIssues, err := executor.Execute("status = open and ready = true")
+	require.NoError(t, err)
+	require.NotEmpty(t, boardIssues)
+
+	searchIssues, err := ExecuteSimpleTextSearch(staticDBProvider{db: db}, "contract")
+	require.NoError(t, err)
+	require.NotEmpty(t, searchIssues)
+
+	matched := false
+	for _, issue := range searchIssues {
+		if issue.ID == "v1-blocked-open" {
+			matched = true
+			break
+		}
+	}
+	require.True(t, matched, "expected simple text search to include v1-blocked-open")
+}
+
+func TestExecutor_BeadsV1_ReadyViewFixtureSemantics(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	rows, err := db.Query(`SELECT id FROM ready_issues ORDER BY id`)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
+	}
+	require.NoError(t, rows.Err())
+
+	// Expected from v1 contract fixture: open/custom-active only, excluding blocked,
+	// ephemeral, and deferred-scheduled issues.
+	require.ElementsMatch(t, []string{"v1-blocker", "v1-convoy", "v1-custom-active", "v1-open-ready"}, ids)
+}
+
+func TestExecutor_BeadsV1_TypeFilterContractCoverage(t *testing.T) {
+	db := setupBeadsV1DB(t)
+	defer func() { _ = db.Close() }()
+
+	executor := newTestExecutor(t, db)
+
+	issues, err := executor.Execute("type = task")
+	require.NoError(t, err)
+	require.NotEmpty(t, issues)
+
+	_, err = executor.Execute("type = story")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid value \"story\" for field \"type\"")
 }
 
 func TestExecutor_StatusFilter(t *testing.T) {

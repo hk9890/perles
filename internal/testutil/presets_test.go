@@ -146,3 +146,35 @@ func TestPreset_ClientTestData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "deleted", status)
 }
+
+func TestPreset_BeadsV1CompatibilityData(t *testing.T) {
+	db := NewBeadsV1TestDB(t)
+	defer func() { _ = db.Close() }()
+
+	NewBuilder(t, db).WithBeadsV1CompatibilityData().Build()
+
+	var schemaVersion string
+	err := db.QueryRow(`SELECT value FROM metadata WHERE key = 'schema_version'`).Scan(&schemaVersion)
+	require.NoError(t, err)
+	require.Equal(t, "11", schemaVersion)
+
+	var builtInTypes int
+	err = db.QueryRow(`SELECT COUNT(*) FROM issues WHERE issue_type IN ('decision','spike','story','milestone')`).Scan(&builtInTypes)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, builtInTypes, 4)
+
+	var pinnedHooked int
+	err = db.QueryRow(`SELECT COUNT(*) FROM issues WHERE status IN ('pinned','hooked')`).Scan(&pinnedHooked)
+	require.NoError(t, err)
+	require.Equal(t, 2, pinnedHooked)
+
+	var customCategories int
+	err = db.QueryRow(`SELECT COUNT(DISTINCT category) FROM custom_statuses WHERE category IN ('active','wip','done','frozen')`).Scan(&customCategories)
+	require.NoError(t, err)
+	require.Equal(t, 4, customCategories)
+
+	var customTypeCount int
+	err = db.QueryRow(`SELECT COUNT(*) FROM custom_types WHERE name IN ('convoy','agent','role')`).Scan(&customTypeCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, customTypeCount)
+}
