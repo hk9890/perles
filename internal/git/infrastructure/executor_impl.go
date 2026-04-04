@@ -81,8 +81,10 @@ func parseGitError(stderr string, originalErr error) error {
 		return fmt.Errorf("%w: %s", domain.ErrWorktreeLocked, stderr)
 	}
 
-	// Not a git repository
-	if strings.Contains(stderrLower, "not a git repository") {
+	// Not a git repository or blocked by safe.directory ownership checks.
+	// Git can report either depending on version/config/environment for temp dirs.
+	if strings.Contains(stderrLower, "not a git repository") ||
+		strings.Contains(stderrLower, "detected dubious ownership in repository") {
 		return fmt.Errorf("%w: %s", domain.ErrNotGitRepo, stderr)
 	}
 

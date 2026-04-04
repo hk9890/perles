@@ -354,6 +354,11 @@ func TestParseGitError(t *testing.T) {
 			wantError: domain.ErrNotGitRepo,
 		},
 		{
+			name:      "safe directory dubious ownership treated as not git repo",
+			stderr:    "fatal: detected dubious ownership in repository at '/tmp'",
+			wantError: domain.ErrNotGitRepo,
+		},
+		{
 			name:      "unknown error",
 			stderr:    "fatal: some other error",
 			wantError: nil, // Should not match any specific error
