@@ -104,3 +104,8 @@ Perles startup/runtime and BQL behavior for v1 compatibility are implemented aga
 - Dolt server mode metadata and connectivity model
 
 Supporting embedded/shared-server and non-Dolt backends is tracked as future work, not part of current compatibility guarantees.
+
+## Verification runbook
+
+For step-by-step manual validation against a real beads v1 repo, see
+[BEADS-V1-VERIFICATION.md](./BEADS-V1-VERIFICATION.md).

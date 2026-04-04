@@ -199,6 +199,11 @@ Still requiring live/manual verification against a real beads v1 repo:
 - Dolt-specific SQL/view behavior parity beyond fixture SQL approximations
 - upstream CLI output drift beyond currently captured golden samples
 
+For a concrete manual acceptance checklist (setup, positive/negative scenarios,
+and teardown), use:
+
+- [BEADS-V1-VERIFICATION.md](./BEADS-V1-VERIFICATION.md)
+
 ## CI Alignment
 
 CI (`.github/workflows/ci.yml`) currently runs:
