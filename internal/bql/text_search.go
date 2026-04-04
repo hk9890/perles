@@ -33,6 +33,7 @@ func ExecuteSimpleTextSearch(provider appbeads.DBProvider, input string) ([]bead
 			return nil, fmt.Errorf("build issue select columns: %w", err)
 		}
 
+		//nolint:gosec // G201: selectColumns are built from internal orderedIssueSelectColumns via compatibility helper, never user input
 		sqlQuery := fmt.Sprintf(`
 			SELECT DISTINCT
 				%s

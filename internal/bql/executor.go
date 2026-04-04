@@ -250,6 +250,7 @@ func (e *Executor) executeBaseQuery(query *Query) ([]beads.Issue, error) {
 	whereClause, orderBy, params := builder.Build()
 
 	// Construct main query WITHOUT dependency subqueries
+	//nolint:gosec // G201: selectColumns are built from internal orderedIssueSelectColumns via compatibility helper, never user input
 	sqlQuery := fmt.Sprintf(`
 		SELECT
 			%s
