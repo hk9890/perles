@@ -635,6 +635,7 @@ func (c *DoltClient) ValidateBeadsV1Compatibility() error {
 
 	missingRelations := make([]string, 0)
 	for _, relation := range requiredBeadsV1Relations {
+		//nolint:gosec // G201: relation is from internal hardcoded requiredBeadsV1Relations allowlist, not user input.
 		query := fmt.Sprintf("SELECT 1 FROM %s LIMIT 1", relation)
 		if _, err := db.Exec(query); err != nil {
 			if appbeads.IsMissingTableError(err) {
