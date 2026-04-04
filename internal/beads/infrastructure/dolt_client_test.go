@@ -1047,10 +1047,10 @@ func TestValidateBeadsV1Compatibility_FailsOnStaleSchema(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, IsCompatibilityError(err))
 	require.Contains(t, err.Error(), "missing required tables/views")
-	require.Contains(t, err.Error(), "custom_statuses")
-	require.Contains(t, err.Error(), "custom_types")
 	require.Contains(t, err.Error(), "config")
 	require.Contains(t, err.Error(), "metadata")
+	require.NotContains(t, err.Error(), "custom_statuses")
+	require.NotContains(t, err.Error(), "custom_types")
 	require.Contains(t, err.Error(), "missing required issues columns")
 	require.Contains(t, err.Error(), "hook_bead")
 }
