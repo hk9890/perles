@@ -265,7 +265,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 		case startupBehaviorNoBeadsMode:
 			return runNoBeadsMode(err.Error(), suggestion)
 		case startupBehaviorCompatibilityMode:
-			return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), suggestion)
+			return runOutdatedMode("unknown", err.Error(), suggestion)
 		case startupBehaviorReturnError:
 			if suggestion != "" {
 				return fmt.Errorf("unable to connect to beads runtime: %s: %w", suggestion, err)
@@ -278,7 +278,7 @@ func runApp(cmd *cobra.Command, args []string) error {
 
 	if err := client.ValidateBeadsV1Compatibility(); err != nil {
 		log.Error(log.CatBeads, "Beads schema/layout compatibility check failed", "error", err)
-		return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), infrabeads.StartupSuggestion(err))
+		return runOutdatedMode("unknown", err.Error(), infrabeads.StartupSuggestion(err))
 	}
 
 	// Version check - query bd_version from database metadata table
@@ -286,12 +286,12 @@ func runApp(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Very old database without bd_version metadata - show outdated view
 		log.Error(log.CatBeads, "Version check failed", "error", err)
-		return runOutdatedMode("unknown", beads.MinBeadsVersion, err.Error(), infrabeads.StartupSuggestion(err))
+		return runOutdatedMode("unknown", err.Error(), infrabeads.StartupSuggestion(err))
 	}
 
 	log.Debug(log.CatBeads, "Beads Database Version", "version", currentVersion, "minRequiredVersion", beads.MinBeadsVersion)
 	if err := beads.CheckVersion(currentVersion); err != nil {
-		return runOutdatedMode(currentVersion, beads.MinBeadsVersion, err.Error(), "Upgrade beads to v1.0.0+ and run 'bd bootstrap', then retry Perles.")
+		return runOutdatedMode(currentVersion, err.Error(), "Upgrade beads to v1.0.0+ and run 'bd bootstrap', then retry Perles.")
 	}
 
 	// Handle --no-auto-refresh flag (negated logic)
@@ -489,8 +489,8 @@ func runNoBeadsMode(problem, suggestion string) error {
 }
 
 // runOutdatedMode launches the TUI showing the version upgrade screen.
-func runOutdatedMode(currentVersion, requiredVersion, problem, suggestion string) error {
-	model := outdated.New(currentVersion, requiredVersion, problem, suggestion)
+func runOutdatedMode(currentVersion, problem, suggestion string) error {
+	model := outdated.New(currentVersion, beads.MinBeadsVersion, problem, suggestion)
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),
