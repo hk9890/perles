@@ -38,9 +38,11 @@ mise x github:gastownhall/beads@1.0.0 -- bd init --non-interactive --server
 mise x github:gastownhall/beads@1.0.0 -- bd bootstrap
 mise x github:gastownhall/beads@1.0.0 -- bd context --json
 
-READY_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Ready task" --type task --priority 2)"
-BLOCKED_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Blocked bug" --type bug --priority 1)"
-INPROGRESS_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Feature in progress" --type feature --priority 3)"
+READY_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Ready task" --type task --priority 2 --silent)"
+BLOCKED_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Blocked bug" --type bug --priority 1 --silent)"
+INPROGRESS_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Feature in progress" --type feature --priority 3 --silent)"
+
+test -n "$READY_ID" && test -n "$BLOCKED_ID" && test -n "$INPROGRESS_ID"
 
 mise x github:gastownhall/beads@1.0.0 -- bd update "$INPROGRESS_ID" --status in_progress
 mise x github:gastownhall/beads@1.0.0 -- bd show "$READY_ID"

@@ -255,6 +255,8 @@ func TestHelp_SearchView_ContainsBQLFields(t *testing.T) {
 	// BQL Fields section
 	require.Contains(t, view, "BQL Fields", "expected view to contain BQL Fields section")
 	require.Contains(t, view, "status", "expected view to contain status field")
+	require.Contains(t, view, "status_category", "expected view to contain status_category field")
+	require.Contains(t, view, "active, wip, done, frozen", "expected status_category values to match docs")
 	require.Contains(t, view, "type", "expected view to contain type field")
 	require.Contains(t, view, "priority", "expected view to contain priority field")
 	require.Contains(t, view, "blocked", "expected view to contain blocked field")

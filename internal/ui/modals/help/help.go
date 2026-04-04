@@ -29,6 +29,7 @@ type BQLOperator struct {
 func BQLFields() []BQLField {
 	return []BQLField{
 		{Name: "status", Values: "open, in_progress, blocked, hooked, pinned, deferred, closed (+ custom)"},
+		{Name: "status_category", Values: "active, wip, done, frozen"},
 		{Name: "type", Values: "bug, feature, task, epic, chore, decision, spike, story, milestone (+ custom)"},
 		{Name: "priority", Values: "p0, p1, p2, p3, p4"},
 		{Name: "blocked", Values: "true, false"},
@@ -384,7 +385,7 @@ func (m Model) renderSearchContent() string {
 
 	// BQL Syntax section - two columns for fields/operators
 	bqlStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
-	bqlLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(12)
+	bqlLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(15)
 	bqlValueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
 
 	// Search mode primer section.
