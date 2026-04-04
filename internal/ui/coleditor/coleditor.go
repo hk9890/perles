@@ -1232,15 +1232,9 @@ func (m Model) buildBQLHelpRows(maxWidth int) []string {
 
 	// Keep columns constrained so widened beads v1 field values wrap inside the left panel
 	// instead of pushing content past the preview divider.
-	fieldValueWidth := maxWidth - fieldLabelWidth - opLabelWidth - columnGap - minOpValueWide
-	if fieldValueWidth < minFieldValueWide {
-		fieldValueWidth = minFieldValueWide
-	}
+	fieldValueWidth := max(minFieldValueWide, maxWidth-fieldLabelWidth-opLabelWidth-columnGap-minOpValueWide)
 
-	opValueWidth := maxWidth - fieldLabelWidth - fieldValueWidth - columnGap - opLabelWidth
-	if opValueWidth < minOpValueWide {
-		opValueWidth = minOpValueWide
-	}
+	opValueWidth := max(minOpValueWide, maxWidth-fieldLabelWidth-fieldValueWidth-columnGap-opLabelWidth)
 
 	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(fieldLabelWidth)
 	valueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
