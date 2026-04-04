@@ -24,7 +24,7 @@ Expected:
 - `bd version` reports `1.0.0` (or newer v1 if intentionally validating that)
 - `make build-go` succeeds
 
-`mise.toml` in this repo pins beads `1.0.0`; use `./bin/perles` for verification.
+`mise.toml` in this repo pins beads `1.0.0`; use `./perles` for verification.
 
 ## Setup: temporary supported v1 repo
 
@@ -38,10 +38,12 @@ mise x github:gastownhall/beads@1.0.0 -- bd init --non-interactive --server
 mise x github:gastownhall/beads@1.0.0 -- bd bootstrap
 mise x github:gastownhall/beads@1.0.0 -- bd context --json
 
-mise x github:gastownhall/beads@1.0.0 -- bd create "Ready task" --type task --priority 2
-mise x github:gastownhall/beads@1.0.0 -- bd create "Blocked bug" --type bug --priority 1
-mise x github:gastownhall/beads@1.0.0 -- bd create "Feature in progress" --type feature --priority 3
-mise x github:gastownhall/beads@1.0.0 -- bd update perles-v1-manual-003 --status in_progress
+READY_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Ready task" --type task --priority 2)"
+BLOCKED_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Blocked bug" --type bug --priority 1)"
+INPROGRESS_ID="$(mise x github:gastownhall/beads@1.0.0 -- bd create "Feature in progress" --type feature --priority 3)"
+
+mise x github:gastownhall/beads@1.0.0 -- bd update "$INPROGRESS_ID" --status in_progress
+mise x github:gastownhall/beads@1.0.0 -- bd show "$READY_ID"
 ```
 
 Context JSON must show `"backend":"dolt"` and `"dolt_mode":"server"`.
@@ -49,7 +51,7 @@ Context JSON must show `"backend":"dolt"` and `"dolt_mode":"server"`.
 ## Positive scenarios
 
 1. **Startup/board load**
-   - Run `./bin/perles --beads-dir "$TEST_REPO"` from the Perles repo root.
+   - Run `./perles --beads-dir "$TEST_REPO"` from the Perles repo root.
    - Expect normal startup (not outdated/compat screen) and issue data visible.
 
 2. **Representative BQL queries**
@@ -57,7 +59,7 @@ Context JSON must show `"backend":"dolt"` and `"dolt_mode":"server"`.
    - Expect successful execution (no parse/runtime errors) and sensible results.
 
 3. **`bd show --json` contract surface**
-   - Run `mise x github:gastownhall/beads@1.0.0 -- bd show perles-v1-manual-001 --json`.
+   - Run `mise x github:gastownhall/beads@1.0.0 -- bd show "$READY_ID" --json`.
    - Expect command success and JSON array output with v1 issue object shape.
 
 4. **Status/type editing and picker checks**

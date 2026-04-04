@@ -153,8 +153,8 @@ Organize issues into customizable columns powered by BQL queries or dependency t
 
 ### Features
 
-- Built-in `Default` workflow board: Not Ready, Ready, In Progress, Done
-- Built-in `Deferred` board for postponed work (`status = deferred`)
+- Built-in `Default` workflow board (v1-aware): Not Ready, Ready, In Progress, Done
+- Built-in `Deferred` board for frozen/deferred work (`status_category = frozen`)
 - Fully customizable columns with BQL queries or dependency trees
 - Multi-view support — create unlimited board views
 - Real-time auto-refresh when database changes
@@ -223,10 +223,10 @@ Perles ships with these built-in views (all configurable):
 
 | Column | BQL Query |
 |--------|-----------|
-| **Not Ready** | `status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))` |
-| **Ready** | `status = open and ready = true and label not in (needs:discussion, has:open-questions)` |
-| **In Progress** | `status = in_progress` |
-| **Done** | `status = closed` |
+| **Not Ready** | `status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))` |
+| **Ready** | `ready = true and label not in (needs:discussion, has:open-questions)` |
+| **In Progress** | `(status in (in_progress, hooked) or status_category = wip) and status != blocked` |
+| **Done** | `status = closed or status_category = done` |
 
 `Not Ready` is intentionally scoped to open issues (plus explicit `status = blocked`) so closed/deferred work does not leak into the actionable workflow lane.
 
@@ -234,7 +234,7 @@ Perles ships with these built-in views (all configurable):
 
 | Column | BQL Query |
 |--------|-----------|
-| **Deferred** | `status = deferred` |
+| **Deferred** | `status_category = frozen` |
 
 ---
 
@@ -332,8 +332,9 @@ field operator value [and|or field operator value ...]
 
 | Field | Description | Example Values |
 |-------|-------------|----------------|
-| `status` | Issue status | open, in_progress, closed |
-| `type` | Issue type | bug, feature, task, epic, chore |
+| `status` | Issue status | open, in_progress, blocked, hooked, pinned, deferred, closed (+ custom) |
+| `status_category` | Status category | active, wip, done, frozen |
+| `type` | Issue type | bug, feature, task, epic, chore, decision, spike, story, milestone (+ custom) |
 | `priority` | Priority level | P0, P1, P2, P3, P4 |
 | `blocked` | Has blockers | true, false |
 | `ready` | Ready to work | true, false |
@@ -465,6 +466,9 @@ type = bug and priority = P0
 # Ready work, excluding backlog
 status = open and ready = true and label not in (backlog)
 
+# In-progress lane matching built-in board behavior
+(status in (in_progress, hooked) or status_category = wip) and status != blocked
+
 # Recently updated high-priority items
 priority <= P1 and updated >= -24h order by updated desc
 
@@ -528,26 +532,26 @@ views:
     columns:
       - name: Not Ready
         type: bql
-        query: "status = blocked or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
+        query: "status = blocked or status_category = frozen or (status = open and (not ready = true or label in (needs:discussion, has:open-questions)))"
         color: "#FF8787"
       - name: Ready
         type: bql
-        query: "status = open and ready = true and label not in (needs:discussion, has:open-questions)"
+        query: "ready = true and label not in (needs:discussion, has:open-questions)"
         color: "#73F59F"
       - name: In Progress
         type: bql
-        query: "status = in_progress"
+        query: "(status in (in_progress, hooked) or status_category = wip) and status != blocked"
         color: "#54A0FF"
       - name: Done
         type: bql
-        query: "status = closed"
+        query: "status = closed or status_category = done"
         color: "#BBBBBB"
 
   - name: Deferred
     columns:
       - name: Deferred
         type: bql
-        query: "status = deferred"
+        query: "status_category = frozen"
 
   - name: Bugs Only
     columns:
