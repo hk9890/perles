@@ -707,7 +707,9 @@ func (m Model) View() string {
 	// Create vertical divider
 	dividerStyle := lipgloss.NewStyle().
 		Foreground(styles.BorderDefaultColor)
-	dividerHeight := max(m.height-3, 1) // Account for header
+	// Make divider span the tallest panel so the split remains visible even when
+	// help content grows beyond viewport height.
+	dividerHeight := max(lipgloss.Height(leftPanel), lipgloss.Height(rightPanel))
 	divider := dividerStyle.Render(strings.Repeat("│\n", dividerHeight))
 
 	// Join panels horizontally
@@ -862,7 +864,7 @@ func (m Model) renderConfigForm(width int) string {
 		titleStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextSecondaryColor)
 		title := titleStyle.Render("BQL Query Help")
 
-		helpRows := m.buildBQLHelpRows()
+		helpRows := m.buildBQLHelpRows(sectionWidth)
 		helpContent := divider + "\n\n" + title + "\n\n" + strings.Join(helpRows, "\n")
 		sections = append(sections, helpContent)
 	}
@@ -1218,22 +1220,44 @@ func (m Model) ShowDeleteModal() bool {
 }
 
 // buildBQLHelpRows builds the BQL syntax help rows using shared help data.
-// Returns a two-column layout (Fields | Operators) with Examples below.
-func (m Model) buildBQLHelpRows() []string {
-	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(12)
+// Returns a width-constrained two-column layout (Fields | Operators) with Examples below.
+func (m Model) buildBQLHelpRows(maxWidth int) []string {
+	const (
+		fieldLabelWidth   = 12
+		opLabelWidth      = 8
+		columnGap         = 4
+		minFieldValueWide = 24
+		minOpValueWide    = 10
+	)
+
+	// Keep columns constrained so widened beads v1 field values wrap inside the left panel
+	// instead of pushing content past the preview divider.
+	fieldValueWidth := maxWidth - fieldLabelWidth - opLabelWidth - columnGap - minOpValueWide
+	if fieldValueWidth < minFieldValueWide {
+		fieldValueWidth = minFieldValueWide
+	}
+
+	opValueWidth := maxWidth - fieldLabelWidth - fieldValueWidth - columnGap - opLabelWidth
+	if opValueWidth < minOpValueWide {
+		opValueWidth = minOpValueWide
+	}
+
+	labelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(fieldLabelWidth)
 	valueStyle := lipgloss.NewStyle().Foreground(styles.TextMutedColor)
+	fieldValueStyle := valueStyle.Width(fieldValueWidth)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.TextSecondaryColor)
 	columnStyle := lipgloss.NewStyle().MarginRight(4)
 
 	// Operator label needs more width for symbols like "in (a,b,c)"
-	opLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(8)
+	opLabelStyle := lipgloss.NewStyle().Foreground(styles.TextSecondaryColor).Width(opLabelWidth)
+	opValueStyle := valueStyle.Width(opValueWidth)
 
 	// Fields column
 	var fieldsCol strings.Builder
 	fieldsCol.WriteString(headerStyle.Render("BQL Fields"))
 	fieldsCol.WriteString("\n")
 	for _, f := range help.BQLFields() {
-		fieldsCol.WriteString(labelStyle.Render(f.Name) + valueStyle.Render(f.Values) + "\n")
+		fieldsCol.WriteString(labelStyle.Render(f.Name) + fieldValueStyle.Render(f.Values) + "\n")
 	}
 
 	// Operators column - use compact symbols for better layout
@@ -1250,7 +1274,7 @@ func (m Model) buildBQLHelpRows() []string {
 		{"not", "negation"},
 	}
 	for _, op := range compactOps {
-		opsCol.WriteString(opLabelStyle.Render(op.symbol) + valueStyle.Render(op.desc) + "\n")
+		opsCol.WriteString(opLabelStyle.Render(op.symbol) + opValueStyle.Render(op.desc) + "\n")
 	}
 
 	// Join columns horizontally
