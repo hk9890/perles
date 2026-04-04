@@ -1223,12 +1223,24 @@ func (m Model) ShowDeleteModal() bool {
 // Returns a width-constrained two-column layout (Fields | Operators) with Examples below.
 func (m Model) buildBQLHelpRows(maxWidth int) []string {
 	const (
-		fieldLabelWidth   = 12
+		baseFieldLabelWid = 12
+		maxFieldLabelWid  = 16
 		opLabelWidth      = 8
 		columnGap         = 4
 		minFieldValueWide = 24
 		minOpValueWide    = 10
 	)
+
+	fieldLabelWidth := baseFieldLabelWid
+	for _, f := range help.BQLFields() {
+		nameWidth := lipgloss.Width(f.Name) + 1 // one space between name and values
+		if nameWidth > fieldLabelWidth {
+			fieldLabelWidth = nameWidth
+		}
+	}
+	if fieldLabelWidth > maxFieldLabelWid {
+		fieldLabelWidth = maxFieldLabelWid
+	}
 
 	// Keep columns constrained so widened beads v1 field values wrap inside the left panel
 	// instead of pushing content past the preview divider.

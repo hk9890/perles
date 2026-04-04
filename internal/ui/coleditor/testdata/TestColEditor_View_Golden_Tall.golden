@@ -24,30 +24,32 @@
 BQL Query Help                                                                  │  │                                                 │  
                                                                                 │  │                                                 │  
 BQL Fields                                                  BQL Operators       │  ╰─────────────────────────────────────────────────╯  
-status      open, in_progress, blocked, hooked, pinned,     =  !=   equality    │                                                       
-deferred, closed (+ custom)                                 <  >    comparison  │                                                       
-type        bug, feature, task, epic, chore, decision,      ~  !~   contains    │                                                       
-spike, story, milestone (+ custom)                          in      match any   │                                                       
-priority    p0, p1, p2, p3, p4                              and or  logical     │                                                       
-blocked     true, false                                     not     negation    │                                                       
-ready       true, false                                                         │                                                       
-pinned      true, false                                                         │                                                       
-is_template true, false                                                         │                                                       
-label       string (use ~ for contains)                                         │                                                       
-title       string (use ~ for contains)                                         │                                                       
-description string (use ~ for contains)                                         │                                                       
-design      string (use ~ for contains)                                         │                                                       
-notes       string (use ~ for contains)                                         │                                                       
-id          string                                                              │                                                       
-assignee    string                                                              │                                                       
-sender      string                                                              │                                                       
-created_by  string                                                              │                                                       
-agent_state idle, running, stuck, stopped                                       │                                                       
-role_type   polecat, crew, witness, etc.                                        │                                                       
-rig         string                                                              │                                                       
-mol_type    string                                                              │                                                       
-created     date (today, yesterday, -7d)                                        │                                                       
-updated     date (today, yesterday, -7d)                                        │                                                       
+status          open, in_progress, blocked, hooked,         =  !=   equality    │                                                       
+pinned, deferred, closed (+ custom)                         <  >    comparison  │                                                       
+status_category active, wip, done, frozen                   ~  !~   contains    │                                                       
+type            bug, feature, task, epic, chore,            in      match any   │                                                       
+decision, spike, story, milestone (+                        and or  logical     │                                                       
+custom)                                                     not     negation    │                                                       
+priority        p0, p1, p2, p3, p4                                              │                                                       
+blocked         true, false                                                     │                                                       
+ready           true, false                                                     │                                                       
+pinned          true, false                                                     │                                                       
+is_template     true, false                                                     │                                                       
+label           string (use ~ for contains)                                     │                                                       
+title           string (use ~ for contains)                                     │                                                       
+description     string (use ~ for contains)                                     │                                                       
+design          string (use ~ for contains)                                     │                                                       
+notes           string (use ~ for contains)                                     │                                                       
+id              string                                                          │                                                       
+assignee        string                                                          │                                                       
+sender          string                                                          │                                                       
+created_by      string                                                          │                                                       
+agent_state     idle, running, stuck, stopped                                   │                                                       
+role_type       polecat, crew, witness, etc.                                    │                                                       
+rig             string                                                          │                                                       
+mol_type        string                                                          │                                                       
+created         date (today, yesterday, -7d)                                    │                                                       
+updated         date (today, yesterday, -7d)                                    │                                                       
                                                                                 │                                                       
 Examples                                                                        │                                                       
 status = open                                                                   │                                                       
